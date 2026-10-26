@@ -20,6 +20,10 @@
     "breaking-changes": {
       "title": "MCP Breaking Change Checker for tools/list | mcptest.io",
       "description": "Free MCP breaking-change check. Compare two tools/list results and see which changes break clients that cached the old schema: removed tools, new required inputs, narrowed types and output contracts."
+    },
+    "oauth-check": {
+      "title": "MCP OAuth Checker: Test Your Server\u2019s Authorization | mcptest.io",
+      "description": "Free MCP OAuth checker with step-by-step discovery evidence, provider-specific diagnosis, PKCE, resource URL matching and client callback guidance."
     }
   },
   "docs": {

@@ -78,6 +78,7 @@ const LAZY_VIEWS = [
   'src/components/SubmitServerView.tsx',
   'src/components/BreakingChangesView.tsx',
   'src/components/DiscoveryCheckerView.tsx',
+  'src/components/OAuthCheckerView.tsx',
   'src/components/learn/LearnArticlePage.tsx',
   'src/components/learn/MarkdownLearnArticle.tsx',
   'src/components/OAuthCallback.tsx',

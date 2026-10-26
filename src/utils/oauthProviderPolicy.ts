@@ -214,3 +214,31 @@ export const providerRequiresDynamicRegistration = (
   issuer?: string
 ): boolean => getOAuthClientEstablishmentStrategy(serverUrl, issuer)
   === 'dynamic-client-registration-only';
+
+/** Display-only sweep evidence. These notes never authorize provider-specific client behavior.
+ * Exact targets avoid applying a diagnosis to lookalike domains or other tenants.
+ */
+export function getOAuthProviderDiagnosis(serverUrl: string, issuer?: string): { note: string; requiresApproval: boolean } | undefined {
+  const policy = getOAuthProviderPolicy(serverUrl, issuer);
+  if (policy) {
+    const registration: Record<OAuthProviderPolicy['registrationMode'], string> = {
+      'browser-public': 'Browser clients can register themselves.',
+      'provider-approved': 'Only apps approved by the provider can connect.',
+      'operator-confidential': 'Clients need an OAuth app registered with the provider; its secret stays on a server, so a browser cannot register one on the fly.',
+    };
+    return {
+      note: `${policy.name}: ${registration[policy.registrationMode]} Setup: ${policy.documentationUrl}`,
+      requiresApproval: policy.registrationMode === 'provider-approved',
+    };
+  }
+  const observations = [
+    { target: 'https://mcp.dropbox.com/mcp', issuer: 'https://www.dropbox.com', note: 'Dropbox advertised DCR, but the recorded sweep received a trusted-partner registration rejection. Provider approval may be required; advertised registration is not proof of acceptance.' },
+    { target: 'https://mcp.harness.io/mcp', issuer: 'https://id.harness.io/idp/realms/HarnessIDP', note: 'Harness uses issuer-path OIDC discovery. The recorded sweep received a trusted-host registration rejection; provider approval may be required. Its metadata advertises confidential token authentication.' },
+    { target: 'https://mcp.zoominfo.com/mcp', issuer: 'https://mcp.zoominfo.com', note: 'ZoomInfo rejected registration for an unapproved vendor in the recorded sweep. Ask the provider for vendor approval; this read-only check does not repeat registration.' },
+    { target: 'https://mcp.similarweb.com/mcp', issuer: 'https://mcp-auth.similarweb.com', note: 'Similarweb metadata discovery was access-blocked in the recorded sweep. An access denial does not prove metadata is missing. Check access policy before replacing discovery with manual endpoints.' },
+  ];
+  const observation = observations.find(observation => (exactUrlMatches(serverUrl, observation.target)
+    || (observation.target === 'https://mcp.similarweb.com/mcp' && exactUrlMatches(serverUrl, 'https://mcp.similarweb.com/')))
+    && (!issuer || exactUrlMatches(issuer, observation.issuer)));
+  return observation ? { note: observation.note, requiresApproval: !observation.target.includes('similarweb') } : undefined;
+}

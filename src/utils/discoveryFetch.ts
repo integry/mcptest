@@ -104,6 +104,7 @@ export const createDiscoveryFetch = ({
       return {
         url: (route === 'proxy' ? response.headers.get(PROXY_FINAL_URL_HEADER) : response.url) || url,
         status: response.status,
+        wwwAuthenticate: response.headers.get('WWW-Authenticate') ?? undefined,
         contentType: response.headers.get('Content-Type') ?? undefined,
         body,
         route,
@@ -126,3 +127,18 @@ export const createDiscoveryFetch = ({
   }
   return attempt('proxy');
 };
+
+/** An unauthenticated MCP initialize request, bounded like metadata reads.
+ * It stays direct: the discovery proxy only permits GETs of discovery documents.
+ */
+export const createOAuthChallengeProbe = (): DiscoveryFetch => createDiscoveryFetch({
+  fetchImpl: (url, init) => fetch(url, {
+    ...init,
+    method: 'POST',
+    headers: { Accept: 'application/json, text/event-stream', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {
+      protocolVersion: '2026-07-28', capabilities: {},
+      clientInfo: { name: 'mcptest-oauth-checker', version: '1.0.0' },
+    } }),
+  }),
+});

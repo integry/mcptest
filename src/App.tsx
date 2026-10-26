@@ -23,6 +23,7 @@ import {
   OAuthConfig,
   BreakingChangesView,
   DiscoveryCheckerView,
+  OAuthCheckerView,
   ReportView,
   SubmitServerView,
   TabContent,
@@ -56,7 +57,7 @@ import { formatErrorForDisplay } from './utils/errorHandling';
 import { getCatalogServerById } from './utils/catalogUtils';
 import { getCatalogServerIdFromPath } from './utils/catalogSeo';
 import { getPreferredCatalogEndpoint } from './utils/clientSetup';
-import { DISCOVERY_CHECKER_PATH, isKnownAppPath } from './utils/appRoutes';
+import { OAUTH_CHECKER_PATH, DISCOVERY_CHECKER_PATH, isKnownAppPath } from './utils/appRoutes';
 // The MCP SDK, OAuth flow and saved-card helpers load on demand; see utils/savedCardRuntime.
 import type {
   OAuthPrerequisite,
@@ -255,6 +256,8 @@ function App() {
       return { activeView: 'breaking-changes' as const };
     }
 
+    if (path === OAUTH_CHECKER_PATH) return { activeView: 'oauth-check' as const };
+
     if (path === DISCOVERY_CHECKER_PATH) {
       return { activeView: 'discovery' as const };
     }
@@ -403,6 +406,8 @@ function App() {
       logPageView(path, 'Breaking-change check');
       return;
     }
+
+    if (path === OAUTH_CHECKER_PATH) { logPageView(path, 'MCP OAuth checker'); return; }
 
     if (path === DISCOVERY_CHECKER_PATH) {
       logPageView(path, 'MCP discovery checker');
@@ -1904,6 +1909,10 @@ function App() {
                 <BreakingChangesView initialEndpoint={new URLSearchParams(location.search).get('endpoint') ?? undefined} />
               </Suspense>
             </div>
+          )}
+
+          {activeView === 'oauth-check' && (
+            <div className="view-panel"><Suspense fallback={<ViewFallback label="Loading the OAuth checker" />}><OAuthCheckerView /></Suspense></div>
           )}
 
           {/* MCP Discovery Checker */}

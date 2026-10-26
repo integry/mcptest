@@ -1032,6 +1032,7 @@ const PRIMARY_ACTIVE_VIEWS = {
   '/catalog': ['catalog', 'server-profile'],
   '/report': ['report'],
   '/tools/breaking-changes': ['breaking-changes'],
+  '/tools/oauth-check': ['oauth-check'],
   [DISCOVERY_CHECKER_PATH]: ['discovery'],
 };
 
@@ -1791,6 +1792,7 @@ function getSitemapEntries(servers, articles, docsSlugs = []) {
     { pathname: CI_PATH },
     { pathname: '/learn', lastModified: guidesReviewed },
     { pathname: '/tools/breaking-changes' },
+    { pathname: '/tools/oauth-check' },
     ...articles.map(article => ({ pathname: article.path, lastModified: isoDay(article.lastReviewed) })),
     ...docsSlugs.map(slug => ({ pathname: `/docs/${slug}` })),
     ...servers.map(server => ({ pathname: serverPath(server.id), lastModified: isoDay(server.checkedAt) })),
@@ -2093,6 +2095,9 @@ async function main() {
   writeStaticPages(indexHtml, pageMetadata.docs);
   writeCiPage(indexHtml);
   writeToolPages(indexHtml, pageMetadata.tools, { shell: contentShell, prerender });
+  fs.writeFileSync(`${distPathFor('/tools/oauth-check')}.html`, renderStaticPageHtml(indexHtml, '/tools/oauth-check', pageMetadata.tools['oauth-check'], {
+    fallbackHtml: renderAppShell({ ...contentShell, content: prerender.renderOAuthCheckerPage(), attributes: { 'data-deferred-mount': true, 'data-page-view-title': 'MCP OAuth checker' }, view: 'oauth-check', pathname: '/tools/oauth-check', panelStyle: '' }),
+  }), 'utf8');
   writeDiscoveryPage(indexHtml, pageMetadata.discovery, {
     shell: contentShell,
     proxyConfigured: Boolean(readBuildEnv('VITE_PROXY_URL')),
