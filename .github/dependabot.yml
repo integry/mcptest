@@ -10,6 +10,11 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
+    # Keep the root compiler on the TS 6 transition release until compiler API
+    # consumers and editor tooling have been migrated for TS 7.
+    ignore:
+      - dependency-name: typescript
+        versions: [">=7.0.0 <8.0.0"]
     groups:
       vitest:
         patterns:
