@@ -3926,5 +3926,17 @@
     "authorizationServers": [
       "https://auth.portoperatingsystem.com"
     ]
+  },
+  {
+    "serverId": "the-old-ways",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateful",
+    "checkedAt": "2026-10-26T18:51:12.468Z",
+    "message": "Negotiated stateful MCP 2025-11-25 at https://mcp.theoldways.co/mcp; detected transport streamable-http; authentication none",
+    "validatedUrl": "https://mcp.theoldways.co/mcp",
+    "protocolVersion": "2025-11-25"
   }
 ]
