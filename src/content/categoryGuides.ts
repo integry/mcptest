@@ -41,6 +41,11 @@ export const CATEGORY_GUIDES: Readonly<Record<string, readonly string[]>> = {
     'connect-mcp-server-to-cursor',
     'remote-mcp-server-401-unauthorized',
   ],
+  Reference: [
+    'connect-remote-mcp-server',
+    'mcp-cors-headers-for-browser-clients',
+    'mcp-server-connected-but-no-tools',
+  ],
   Search: [
     'mcp-tool-output-schemas-and-structured-content',
     'connect-remote-mcp-server',

@@ -10403,7 +10403,7 @@
     "url": "https://connect.flickdirect.com/mcp",
     "description": "Read-only movie MCP server for FlickDirect movie and TV facts, available country dates and ratings, site-wide news and review previews, podcasts, streaming and deals. Free access with no authentication.",
     "seoDescription": "Free Movie MCP Server from FlickDirect Connect for movie facts, news, reviews, regional release dates and ratings, podcasts and original coverage links.",
-    "category": "Search",
+    "category": "Reference",
     "tags": [
       "movies",
       "television",
@@ -10612,7 +10612,7 @@
     "name": "getAbstract",
     "url": "https://www.getabstract.com/mcp",
     "description": "Search getAbstract summaries of business books, articles and reports.",
-    "category": "Search",
+    "category": "Reference",
     "tags": [
       "books",
       "summaries",
@@ -12451,7 +12451,7 @@
     "name": "The Old Ways Library",
     "url": "https://mcp.theoldways.co/mcp",
     "description": "Public, read-only search and cited passages from historical editions and mythology reference pages across five traditions. No account or API key required.",
-    "category": "Documentation",
+    "category": "Reference",
     "tags": [
       "historical-texts",
       "mythology",
