@@ -3919,7 +3919,7 @@
     "authType": "oauth",
     "requiresOAuth": true,
     "protocolEra": "stateless",
-    "checkedAt": "2026-10-27T13:08:27.879Z",
+    "checkedAt": "2026-10-27T19:11:09.396Z",
     "message": "Negotiated stateless MCP 2026-07-28 at https://api.portoperatingsystem.com/mcp; detected transport streamable-http; authentication oauth",
     "validatedUrl": "https://api.portoperatingsystem.com/mcp",
     "protocolVersion": "2026-07-28",

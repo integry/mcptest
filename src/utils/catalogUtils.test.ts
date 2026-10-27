@@ -50,12 +50,14 @@ describe('catalog authentication metadata', () => {
     expect(validation).toMatchObject({
       authType: 'oauth',
       requiresOAuth: true,
-      authorizationServers: ['https://auth.portoperatingsystem.com'],
     });
     expect(validation?.message).toContain('authentication oauth');
     expect(entry).toMatchObject({
       declaredAuthType: 'oauth', authType: 'oauth', requiresOAuth: true,
     });
+    expect(entry?.authorizationServers).toEqual(validation?.authorizationServers);
+    expect(entry?.validationMessage).toBe(validation?.message);
+    expect(entry?.checkedAt).toBe(validation?.checkedAt);
     expect(filterCatalogServers([entry!], { oauthFilter: 'oauth' })).toEqual([entry]);
     expect(filterCatalogServers([entry!], { oauthFilter: 'no-auth' })).toEqual([]);
     expect(getCatalogEndpointDiagnosticEvidence('https://api.portoperatingsystem.com/mcp'))
