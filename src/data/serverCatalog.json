@@ -12456,15 +12456,15 @@
     "tags": [
       "automation",
       "community-submission",
-      "no-auth"
+      "oauth"
     ],
     "listingSource": {
       "kind": "community-submission",
       "url": "https://portoperatingsystem.com/"
     },
     "transport": "streamable-http",
-    "requiresOAuth": false,
-    "authType": "none",
+    "requiresOAuth": true,
+    "authType": "oauth",
     "logoUrl": "/server-logos/portoperatingsystem.svg",
     "logoSourceKind": "generated-fallback",
     "logoRetrievedAt": "2026-10-27",

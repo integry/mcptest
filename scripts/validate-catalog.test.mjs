@@ -666,6 +666,16 @@ describe('catalog protocol validation', () => {
     });
   });
 
+  it('preserves Port OS OAuth when discovery completes without an auth challenge', () => {
+    const seed = catalogSeeds.find(({ id }) => id === 'portoperatingsystem');
+
+    expect(detectedAuthType(
+      seed,
+      [{ alive: true, authChallenge: false }],
+      { oauthMetadata: true, authorizationServers: ['https://auth.portoperatingsystem.com'] }
+    )).toBe('oauth');
+  });
+
   it('uses an auth challenge as bearer evidence without mislabeling it OAuth', () => {
     expect(detectedAuthType(
       { requiresOAuth: false },
