@@ -9,6 +9,7 @@ import {
   sortCatalogServers,
 } from './catalogUtils';
 import catalogValidation from '../data/catalogValidation.json';
+import catalogSeeds from '../data/serverCatalog.json';
 import catalogCapabilities from '../data/catalogCapabilities.json';
 
 const server = (
@@ -37,6 +38,32 @@ const server = (
 });
 
 describe('catalog authentication metadata', () => {
+  it('keeps Port OS device OAuth consistent through catalog metadata and endpoint hints', () => {
+    const seed = catalogSeeds.find(({ id }) => id === 'portoperatingsystem');
+    const validation = catalogValidation.find(({ serverId }) => serverId === 'portoperatingsystem');
+    const entry = getCatalogServers().find(({ id }) => id === 'portoperatingsystem');
+
+    expect(seed).toMatchObject({ authType: 'oauth', requiresOAuth: true });
+    expect(seed?.description).toContain('device operations require user OAuth');
+    expect(seed?.tags).toContain('oauth');
+    expect(seed?.tags).not.toContain('no-auth');
+    expect(validation).toMatchObject({
+      authType: 'oauth',
+      requiresOAuth: true,
+    });
+    expect(validation?.message).toContain('authentication oauth');
+    expect(entry).toMatchObject({
+      declaredAuthType: 'oauth', authType: 'oauth', requiresOAuth: true,
+    });
+    expect(entry?.authorizationServers).toEqual(validation?.authorizationServers);
+    expect(entry?.validationMessage).toBe(validation?.message);
+    expect(entry?.checkedAt).toBe(validation?.checkedAt);
+    expect(filterCatalogServers([entry!], { oauthFilter: 'oauth' })).toEqual([entry]);
+    expect(filterCatalogServers([entry!], { oauthFilter: 'no-auth' })).toEqual([]);
+    expect(getCatalogEndpointDiagnosticEvidence('https://api.portoperatingsystem.com/mcp'))
+      .toMatchObject({ authType: 'oauth', serverReachable: true });
+  });
+
   const servers = [
     server('public', 'none'),
     server('oauth', 'oauth'),
@@ -59,9 +86,12 @@ describe('catalog authentication metadata', () => {
   it('merges every expanded seed into the UI-facing catalog', () => {
     const catalog = getCatalogServers();
 
-    expect(catalog).toHaveLength(287);
-    expect(catalogValidation).toHaveLength(287);
-    expect(new Set(catalogValidation.map(({ serverId }) => serverId)).size).toBe(287);
+    expect(catalog).toHaveLength(catalogSeeds.length);
+    expect(new Set(catalog.map(({ id }) => id)).size).toBe(catalogSeeds.length);
+    expect(new Set(catalog.map(({ id }) => id)))
+      .toEqual(new Set(catalogSeeds.map(({ id }) => id)));
+    expect(catalogValidation).toHaveLength(catalogSeeds.length);
+    expect(new Set(catalogValidation.map(({ serverId }) => serverId)).size).toBe(catalogSeeds.length);
     expect(new Set(catalogValidation.map(({ serverId }) => serverId)))
       .toEqual(new Set(catalog.map(({ id }) => id)));
     expect(catalog.find(({ id }) => id === 'asana')).toBeDefined();

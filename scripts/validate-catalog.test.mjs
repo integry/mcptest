@@ -666,6 +666,45 @@ describe('catalog protocol validation', () => {
     });
   });
 
+  it('preserves Port OS OAuth when discovery completes without an auth challenge', () => {
+    const seed = catalogSeeds.find(({ id }) => id === 'portoperatingsystem');
+
+    expect(detectedAuthType(
+      seed,
+      [{ alive: true, authChallenge: false }],
+      { oauthMetadata: true, authorizationServers: ['https://auth.portoperatingsystem.com'] }
+    )).toBe('oauth');
+  });
+
+  it.each([true, false])('records Port OS authorization servers only when discovered (metadata: %s)', async (hasMetadata) => {
+    const seed = catalogSeeds.find(({ id }) => id === 'portoperatingsystem');
+    const issuer = 'https://auth.example.com';
+    const fetchImpl = async (input, init = {}) => {
+      const url = new URL(input instanceof Request ? input.url : input);
+      if (url.pathname.startsWith('/.well-known/oauth-protected-resource') && hasMetadata) {
+        return new Response(JSON.stringify({ resource: seed.url, authorization_servers: [issuer] }), {
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.pathname === '/mcp' && init.method === 'POST') {
+        return jsonRpcResponse(JSON.parse(String(init.body)), {
+          supportedVersions: ['2026-07-28'], capabilities: {},
+        });
+      }
+      return new Response('Not found', { status: 404 });
+    };
+    const result = await validateSeed(seed, { fetchImpl, timeoutMs: 1_000 });
+
+    expect(result).toMatchObject({ status: 'online', authType: 'oauth', requiresOAuth: true });
+    if (hasMetadata) {
+      expect(result.authorizationServers).toEqual([issuer]);
+    } else {
+      expect(result).not.toHaveProperty('authorizationServers');
+    }
+    const stored = [{ serverId: seed.id, authorizationServers: ['https://stale.example.com'] }];
+    expect(mergeValidationResults([seed], stored, [result])).toEqual([result]);
+  });
+
   it('uses an auth challenge as bearer evidence without mislabeling it OAuth', () => {
     expect(detectedAuthType(
       { requiresOAuth: false },
