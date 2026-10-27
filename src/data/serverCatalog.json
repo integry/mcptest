@@ -12477,5 +12477,30 @@
     "caveats": [
       "Historical editions may contain transcription errors. Reference summaries are editorial aids; source links do not verify each claim."
     ]
+  },
+  {
+    "id": "borghq-odin",
+    "name": "Odin",
+    "url": "https://odin.borghq.io/api/mcp",
+    "browserAccess": "proxy-required",
+    "description": "Read Odin security findings and remediation, link fix pull requests and track retests.",
+    "category": "Security",
+    "tags": [
+      "security",
+      "community-submission",
+      "oauth"
+    ],
+    "listingSource": {
+      "kind": "community-submission",
+      "url": "https://www.borghq.io/"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "logoUrl": "/server-logos/borghq-odin.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-27",
+    "logoLicenseNote": "Locally generated OD monogram for a community submission; it is not an official Odin mark.",
+    "homepageUrl": "https://www.borghq.io/"
   }
 ]

@@ -3923,5 +3923,19 @@
     "message": "Negotiated stateful MCP 2025-11-25 at https://mcp.theoldways.co/mcp; detected transport streamable-http; authentication none",
     "validatedUrl": "https://mcp.theoldways.co/mcp",
     "protocolVersion": "2025-11-25"
+  },
+  {
+    "serverId": "borghq-odin",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-10-27T14:36:00.081Z",
+    "message": "Authentication challenge at https://odin.borghq.io/api/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://odin.borghq.io/api/mcp",
+    "authorizationServers": [
+      "https://odin.borghq.io"
+    ]
   }
 ]
