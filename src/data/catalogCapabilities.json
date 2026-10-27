@@ -1,4 +1,226 @@
 {
+  "alfie-everyday": {
+    "version": 1,
+    "observedAt": "2026-10-27T19:59:35.948Z",
+    "provenance": {
+      "testedEndpoint": "https://everyday.alfie.family/mcp",
+      "route": "direct"
+    },
+    "authentication": "unauthenticated",
+    "tools": {
+      "status": "partial",
+      "observedCount": 14,
+      "retainedCount": 14,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "ask_for",
+          "description": "Use only when the user wants to submit feedback, a feature request, or a bug report to the Everyday MCP maintainers. Submissions are anonymous. The receipt confirms storage only and does not promise email delivery, a reply, or implementation.",
+          "input": [
+            {
+              "name": "request",
+              "type": "object",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "calendar",
+          "description": "Return a month, discover supported holiday countries/states/regions, filter holidays by type and date range, or generate/parse bounded iCalendar (ICS) text. ICS supports all-day and UTC events; floating times and timezone definitions are rejected.",
+          "input": [
+            {
+              "name": "request",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "data_convert",
+          "description": "Validate, format, or convert JSON, NDJSON, CSV, TSV, YAML, and XML; query, flatten, or unflatten bounded JSON; or project, sort, and limit up to 10,000 flat scalar table rows. NDJSON source records become one root array, NDJSON targets require one root array and emit one compact JSON value per line with a final LF (except an empty array emits an empty document). TSV follows CSV quoting with a tab delimiter. Table sorting is stable, text keys use Unicode code point order, number keys accept only finite numbers or strict JSON-number strings, output is capped at 1 MiB, and no expressions or netwo",
+          "input": [
+            {
+              "name": "request",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "date",
+          "description": "Add date/time or business-day units, calculate differences, convert ISO week dates, count business days, or find bounded meeting-time intersections.",
+          "input": [
+            {
+              "name": "request",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "everyday_calculate",
+          "description": "Calculations for shopping, bills, currency, energy, travel, DIY, cooking, sport, grades, work, finance, statistics, astronomy, codes and colors. Use action catalog with a query, then describe with the calculator ID to obtain its exact parameter schema and example, then calculate. Examples: shopping.unit_price, home.energy_cost, construction.paint, sports.pace. recipe_scale, shopping_merge, bill_split, currency_convert and currency_currencies are direct actions. Currency actions use Frankfurter blended reference rates from multiple official sources. Random selection uses cryptographic randomnes",
+          "input": [
+            {
+              "name": "request",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "text_analyze",
+          "description": "Count Unicode text units, compare bounded text or line-list membership, run linear-time RE2 patterns, or scan an explicit keyword list.",
+          "input": [
+            {
+              "name": "request",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "text_codec",
+          "description": "Encode, decode, or batch text with bounded standard codecs, including Morse and NATO phonetic spelling. Binary decoders require valid UTF-8 output; gzip decompression is capped at 1 MiB.",
+          "input": [
+            {
+              "name": "request",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "text_extract",
+          "description": "Extract bounded email, URL, phone, HTML, sitemap, or URL-component candidates from supplied text without network access.",
+          "input": [
+            {
+              "name": "request",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "text_generate",
+          "description": "Generate bounded cryptographic random strings, numeric sequences, UUIDs, or deterministic lorem placeholder text.",
+          "input": [
+            {
+              "name": "request",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "text_hash",
+          "description": "Hash UTF-8 text with SHA-2 or legacy checksum algorithms. SHA-1 and MD5 are explicitly labeled unsuitable for security.",
+          "input": [
+            {
+              "name": "algorithm",
+              "type": "string",
+              "required": true
+            },
+            {
+              "name": "encoding",
+              "type": "string",
+              "required": false
+            },
+            {
+              "name": "text",
+              "type": "string",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "text_transform",
+          "description": "Convert or shift SRT/WebVTT subtitle text, extract dialogue, apply bounded Unicode-aware casing, normalization, replacement and line operations, sanitize Markdown, convert HTML to text, or remove tracking parameters from a supplied URL. No fetching.",
+          "input": [
+            {
+              "name": "request",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "time",
+          "description": "Get current times, convert across IANA zones, or explicitly convert seconds/milliseconds epoch timestamps at millisecond precision. Ambiguous and nonexistent DST wall times are rejected.",
+          "input": [
+            {
+              "name": "request",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "timer",
+          "description": "Create, inspect, or cancel a durable anonymous timer. Creation returns a one-time secret capability required for later access and events.",
+          "input": [
+            {
+              "name": "request",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "unit_convert",
+          "description": "Convert strictly within length, mass, temperature, area, volume, speed, pressure, energy, power, or data-size dimensions. Volume units distinguish US and Imperial definitions; data size distinguishes SI decimal and IEC binary units.",
+          "outputSchema": true
+        }
+      ]
+    },
+    "resources": {
+      "status": "partial",
+      "observedCount": 6,
+      "retainedCount": 4,
+      "omittedCount": 2,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "everyday-tools",
+          "description": "Select and use Everyday MCP tools for everyday calculations, reference currency conversion and utilities. Use when a user needs an exact calculation, conversion, text utility, calendar helper, or timer supported by Everyday MCP.",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "recipe-to-shopping-list",
+          "description": "Scale recipes and turn the scaled ingredient quantities into a merged shopping list with Everyday MCP. Use for serving changes, pan-size adjustments, or combining exact recipe quantities for shopping.",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "references/examples.json",
+          "mimeType": "application/json"
+        },
+        {
+          "name": "travel-cost-comparison",
+          "description": "Compare user-supplied fuel, EV charging, commute, and ticket costs with Everyday MCP. Use when evaluating travel options over one explicit trip count or time period.",
+          "mimeType": "text/markdown"
+        }
+      ]
+    },
+    "resourceTemplates": {
+      "status": "complete",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "prompts": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    }
+  },
   "astro-docs": {
     "version": 1,
     "observedAt": "2026-10-26T13:08:04.247Z",
