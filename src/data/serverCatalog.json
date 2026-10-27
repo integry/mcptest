@@ -10403,7 +10403,7 @@
     "url": "https://connect.flickdirect.com/mcp",
     "description": "Read-only movie MCP server for FlickDirect movie and TV facts, available country dates and ratings, site-wide news and review previews, podcasts, streaming and deals. Free access with no authentication.",
     "seoDescription": "Free Movie MCP Server from FlickDirect Connect for movie facts, news, reviews, regional release dates and ratings, podcasts and original coverage links.",
-    "category": "Search",
+    "category": "Reference",
     "tags": [
       "movies",
       "television",
@@ -10612,7 +10612,7 @@
     "name": "getAbstract",
     "url": "https://www.getabstract.com/mcp",
     "description": "Search getAbstract summaries of business books, articles and reports.",
-    "category": "Search",
+    "category": "Reference",
     "tags": [
       "books",
       "summaries",
@@ -12445,5 +12445,37 @@
     "registryVersion": "1.2.0",
     "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.qencode%2Fqencode/versions/1.2.0",
     "sourceUrl": "https://github.com/Qencode-Corp/mcp"
+  },
+  {
+    "id": "the-old-ways",
+    "name": "The Old Ways Library",
+    "url": "https://mcp.theoldways.co/mcp",
+    "description": "Public, read-only search and cited passages from historical editions and mythology reference pages across five traditions. No account or API key required.",
+    "category": "Reference",
+    "tags": [
+      "historical-texts",
+      "mythology",
+      "library",
+      "citations"
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://theoldways.co/ai"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/the-old-ways.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-26",
+    "logoLicenseNote": "Locally generated OW monogram; not an official The Old Ways mark.",
+    "homepageUrl": "https://theoldways.co/ai",
+    "registryName": "co.theoldways/library",
+    "registryVersion": "1.0.0",
+    "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/co.theoldways%2Flibrary/versions/1.0.0",
+    "caveats": [
+      "Historical editions may contain transcription errors. Reference summaries are editorial aids; source links do not verify each claim."
+    ]
   }
 ]

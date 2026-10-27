@@ -12714,6 +12714,113 @@
       ]
     }
   },
+  "the-old-ways": {
+    "version": 1,
+    "observedAt": "2026-10-26T18:51:12.164Z",
+    "provenance": {
+      "testedEndpoint": "https://mcp.theoldways.co/mcp",
+      "route": "direct"
+    },
+    "authentication": "unauthenticated",
+    "tools": {
+      "status": "complete",
+      "observedCount": 3,
+      "retainedCount": 3,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "list_collections",
+          "description": "List available book landing pages, traditions, content types, index-build timestamp and the source policy before exploring The Old Ways. Index-build time is not the publication date of a historical text.",
+          "outputSchema": false
+        },
+        {
+          "name": "read_page",
+          "description": "Read a bounded text excerpt from an indexed public theoldways.co page. Supply a canonical URL or path returned by search_library. Returns a citation URL, edition/source note, text and nextOffset for continuation. Never accesses arbitrary websites, private accounts or the live app. Imported historical editions can contain transcription errors; editorial summaries are not passage-level source verification.",
+          "input": [
+            {
+              "name": "length",
+              "type": "integer",
+              "required": false
+            },
+            {
+              "name": "offset",
+              "type": "integer",
+              "required": false
+            },
+            {
+              "name": "url",
+              "type": "string",
+              "required": true
+            }
+          ],
+          "outputSchema": false
+        },
+        {
+          "name": "search_library",
+          "description": "Search the Old Ways historical-text and mythology reference collection: Norse, Greek/Hellenic, Egyptian/Kemetic, Celtic and Zoroastrian writings, glossary, deity profiles and explanatory questions. Returns canonical citation URLs and short previews from a prebuilt lexical index. Not web search or verification of historical claims. Use read_page to examine the passage and recorded edition details. Known malformed and noindex pages are excluded.",
+          "input": [
+            {
+              "name": "kind",
+              "type": "string",
+              "required": false
+            },
+            {
+              "name": "limit",
+              "type": "integer",
+              "required": false
+            },
+            {
+              "name": "query",
+              "type": "string",
+              "required": true
+            },
+            {
+              "name": "tradition",
+              "type": "string",
+              "required": false
+            }
+          ],
+          "outputSchema": false
+        }
+      ]
+    },
+    "resources": {
+      "status": "complete",
+      "observedCount": 2,
+      "retainedCount": 2,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "reading-guide",
+          "title": "Old Ways first-reading guide",
+          "mimeType": "text/plain"
+        },
+        {
+          "name": "source-policy",
+          "title": "Old Ways source and editorial policy",
+          "mimeType": "text/plain"
+        }
+      ]
+    },
+    "resourceTemplates": {
+      "status": "complete",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "prompts": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    }
+  },
   "xposedornot": {
     "version": 1,
     "observedAt": "2026-10-26T13:08:43.291Z",
