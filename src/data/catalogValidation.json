@@ -3911,5 +3911,20 @@
     "authorizationServers": [
       "https://auth.qencode.com/"
     ]
+  },
+  {
+    "serverId": "portoperatingsystem",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateless",
+    "checkedAt": "2026-10-27T13:08:27.879Z",
+    "message": "Negotiated stateless MCP 2026-07-28 at https://api.portoperatingsystem.com/mcp; detected transport streamable-http; authentication none",
+    "validatedUrl": "https://api.portoperatingsystem.com/mcp",
+    "protocolVersion": "2026-07-28",
+    "authorizationServers": [
+      "https://auth.portoperatingsystem.com"
+    ]
   }
 ]
