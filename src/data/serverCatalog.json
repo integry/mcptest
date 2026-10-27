@@ -12447,6 +12447,31 @@
     "sourceUrl": "https://github.com/Qencode-Corp/mcp"
   },
   {
+    "id": "portoperatingsystem",
+    "name": "Port OS Smart Home",
+    "url": "https://api.portoperatingsystem.com/mcp",
+    "browserAccess": "proxy-required",
+    "description": "Discover supported smart home devices, read their state and control them with approved permissions. Hosted Streamable HTTP; device operations require user OAuth.",
+    "category": "Automation",
+    "tags": [
+      "automation",
+      "community-submission",
+      "oauth"
+    ],
+    "listingSource": {
+      "kind": "community-submission",
+      "url": "https://portoperatingsystem.com/"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "logoUrl": "/server-logos/portoperatingsystem.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-27",
+    "logoLicenseNote": "Locally generated PO monogram for a community submission; it is not an official Port OS Smart Home mark.",
+    "homepageUrl": "https://portoperatingsystem.com/"
+  },
+  {
     "id": "the-old-ways",
     "name": "The Old Ways Library",
     "url": "https://mcp.theoldways.co/mcp",
