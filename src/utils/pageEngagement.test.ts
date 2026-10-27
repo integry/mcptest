@@ -30,3 +30,34 @@ it('counts depth once across the static-to-React handoff and resets on the next 
   const cleanupNext = enhanceEngagement(article); send(); cleanupNext();
   expect(vi.mocked(trackEvent).mock.calls.filter(([name]) => name === 'scroll_depth')).toHaveLength(2);
 });
+
+it.each([
+  ['article root', '<article></article>', 'article'],
+  ['reading article inside a container', '<main><article class="reading-article"></article></main>', 'main'],
+  ['server profile inside a container', '<main><article class="server-profile"></article></main>', 'main'],
+])('observes and cleans up reading depth for an %s', (_label, markup, selector) => {
+  const observe = vi.fn();
+  const disconnect = vi.fn();
+  vi.stubGlobal('IntersectionObserver', class { observe = observe; disconnect = disconnect; });
+  document.body.innerHTML = markup;
+  const root = document.querySelector<HTMLElement>(selector)!;
+  const article = document.querySelector('article')!;
+
+  const cleanup = enhanceEngagement(root);
+  expect([...article.querySelectorAll<HTMLElement>('[data-depth]')].map(el => el.dataset.depth)).toEqual(['25', '50', '75', '100']);
+  expect(observe).toHaveBeenCalledTimes(4);
+  cleanup();
+  expect(disconnect).toHaveBeenCalledOnce();
+  expect(article.querySelector('[data-depth]')).toBeNull();
+});
+
+it('allows a container without an article', () => {
+  const observe = vi.fn();
+  vi.stubGlobal('IntersectionObserver', class { observe = observe; disconnect() {} });
+  document.body.innerHTML = '<main></main>';
+  const root = document.querySelector('main')!;
+  const cleanup = enhanceEngagement(root);
+  expect(observe).not.toHaveBeenCalled();
+  expect(root.querySelector('[data-depth]')).toBeNull();
+  cleanup();
+});
