@@ -31,7 +31,7 @@ const Header: React.FC<HeaderProps> = ({ theme, onToggleTheme }) => {
           <img src="/logo-96.png" alt="MCP Logo" width="40" height="40" />
         </Link>
         <Link to="/" className="app-brand-copy">
-          <h1 className="app-brand-title">mcptest.io</h1>
+          <span className="app-brand-title">mcptest.io</span>
           <p className="app-brand-subtitle d-none d-md-block">
             Remote MCP Inspector
           </p>

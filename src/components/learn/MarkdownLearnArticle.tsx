@@ -1,3 +1,4 @@
+import { isErrorGuide } from '../../utils/guideNextSteps';
 import React, { useEffect, useMemo, useState } from 'react';
 import { getContentComponent } from '../../content/componentRegistry';
 import type { LearnArticle, LearnArticleEntry } from '../../content/learnRegistry';
@@ -59,6 +60,7 @@ const MarkdownLearnArticle: React.FC<{ article: LearnArticleEntry | LearnArticle
           {bodyReady ? (
             <ArticleMarkdown
               content={content}
+              inlineTest={isErrorGuide(article)}
               embedded={Embedded ? <div className="reading-embed"><Embedded /></div> : undefined}
             />
           ) : failed ? (

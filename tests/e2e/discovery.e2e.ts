@@ -15,6 +15,10 @@ test.describe('MCP discovery checker', () => {
 
   test('finds the endpoint a local domain advertises, validates each location and opens it in the inspector', async ({ page, externalRequests }) => {
     await page.goto('/tools/discovery');
+    // The prerendered form is replaced when React mounts. Start the mount and
+    // wait for that form to leave before entering a value.
+    await page.getByLabel('Domain', { exact: true }).focus();
+    await expect(page.locator('#discovery-domain')).toHaveCount(0);
     await page.getByLabel('Domain', { exact: true }).fill(DOMAIN);
     await page.getByRole('button', { name: 'Check domain' }).click();
 
@@ -38,13 +42,15 @@ test.describe('MCP discovery checker', () => {
     // A valid card was found, so there is nothing to fix.
     await expect(page.getByRole('heading', { name: /Publish a Server Card/ })).toHaveCount(0);
 
-    // The inspector opens with the endpoint prefilled; connecting is one more click.
-    await page.getByRole('link', { name: 'Test in inspector' }).click();
-    await expect(page).toHaveURL(`/server/${ENDPOINT}/mcp`);
-    // The landing tab stays open behind the new one; act on the visible tab.
-    await expect(page.locator('input#serverUrl').filter({ visible: true })).toHaveValue(ENDPOINT);
-    await page.getByRole('button', { name: 'Connect', exact: true }).filter({ visible: true }).click();
+    // The canonical inspector link preserves the endpoint and connects automatically.
+    const inspectorLink = page.getByRole('link', { name: 'Test in inspector' });
+    await expect(inspectorLink).toHaveAttribute('href', `/server/http:127.0.0.1:${MOCK_PORT}/2026/mcp`);
+    await inspectorLink.click();
+    await expect(page).toHaveURL(`/server/http:127.0.0.1:${MOCK_PORT}/2026/mcp`);
+    // Reaching ready without a Connect click verifies that opening the link connects.
     await expect(page.getByRole('heading', { name: 'MCP connection ready' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Connect', exact: true })).toHaveCount(0);
+    await expect(page.locator('code').filter({ hasText: ENDPOINT })).toBeVisible();
     expect(externalRequests).toEqual([]);
   });
 

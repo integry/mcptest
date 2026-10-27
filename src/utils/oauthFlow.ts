@@ -404,7 +404,7 @@ const issuerForDiscovery = (discovery?: OAuthDiscoveryState): string | undefined
 const assertPkceS256Discovery = (discovery?: OAuthDiscoveryState): void => {
   if (!discovery?.authorizationServerMetadata?.code_challenge_methods_supported?.includes('S256')) {
     throw new Error(
-      'Incompatible authorization server: validated metadata does not advertise PKCE S256 support.'
+      'Incompatible authorization server: validated metadata does not advertise PKCE S256 support. Server authors: implement S256 and publish code_challenge_methods_supported: ["S256"] in authorization-server metadata. See https://mcptest.io/learn/mcp-oauth-2-1-reference#pkce-s256-rfc-7636.'
     );
   }
 };
@@ -477,7 +477,7 @@ const latestFailureIsProxyAuthentication = (trace: OAuthFlightRecorder): boolean
 
 /**
  * True only when every authorization-server metadata URL answered with a
- * definitive client error. Unreadable (CORS) or transient responses are not
+ * missing-document status. Access denials, unreadable (CORS) or transient responses are not
  * evidence that the server publishes no metadata.
  */
 const hasDefinitiveMetadataAbsence = (trace: OAuthFlightRecorder): boolean => {
@@ -487,10 +487,7 @@ const hasDefinitiveMetadataAbsence = (trace: OAuthFlightRecorder): boolean => {
     latestByUrl.set(event.request?.url || '', event.response?.status);
   }
   return latestByUrl.size > 0 && Array.from(latestByUrl.values()).every((status) => (
-    typeof status === 'number'
-    && status >= 400
-    && status < 500
-    && ![408, 425, 429].includes(status)
+    status === 404 || status === 410
   ));
 };
 
@@ -733,6 +730,23 @@ const registrationFailureCategory = (
     .filter((value): value is string => typeof value === 'string')
     .join(' ')
     .replace(/[-_]+/g, ' ');
+  // Some providers publish a registration endpoint solely to explain their
+  // closed partner program. Retrying or correcting metadata cannot open it.
+  if (
+    errorCode === 'registration_not_supported'
+    && /\b(?:only\s+pre\s+registered|trusted\s+partners?\s+(?:are\s+)?allowed)\b/i.test(responseText)
+  ) {
+    return 'approval_policy';
+  }
+  if (
+    /\bpolicy\b/i.test(responseText)
+    && /\b(?:does\s+not|doesn't)\s+match\s+any\s+trusted\s+(?:host|domain)\b/i.test(responseText)
+  ) {
+    return 'approval_policy';
+  }
+  if (/\bnot\s+found\s+in\s+(?:the\s+)?approved\s+vendors\b/i.test(responseText)) {
+    return 'approval_policy';
+  }
   if (
     /\bredirect\s+uris?\b/i.test(responseText)
     && /\b(?:invalid|not\s+approved|not\s+registered|not\s+(?:on|in)\s+(?:the\s+)?(?:allow|white)\s*list)\b/i.test(responseText)
@@ -941,7 +955,7 @@ const buildOAuthPrerequisite = (
     return {
       ...base,
       canConfigureClient: true,
-      explanation: `${guidance.name} advertises neither Client ID Metadata Documents nor Dynamic Client Registration. Use an OAuth application registered with the provider.`,
+      explanation: `${guidance.name} advertises neither Client ID Metadata Documents nor Dynamic Client Registration. Use an OAuth application registered with the provider, with redirect URI ${provider.redirectUrl} and Authorization Code with PKCE S256. Enter its public client ID below; confidential client secrets require operator setup.`,
     };
   }
   if (kind === 'transient_discovery_failure') {
@@ -1041,7 +1055,7 @@ const buildOAuthPrerequisite = (
   return {
     ...base,
     canConfigureClient: false,
-    explanation: `OAuth discovery could not be completed at the ${failedStage} stage. Check the exact discovery request in the OAuth flight recorder.`,
+    explanation: `OAuth discovery could not be completed at the ${failedStage} stage. Check the exact discovery request in the OAuth flight recorder.${failedEvent?.response?.status === 401 || failedEvent?.response?.status === 403 ? ` HTTP ${failedEvent.response.status} denies access; it does not prove that metadata is missing. Check authorization and WAF rules on the well-known endpoint.` : ''} Server authors: serve JSON protected-resource metadata at the challenged resource_metadata URL or the path-suffixed/root well-known location, and publish RFC 8414 or OIDC metadata whose issuer exactly matches authorization_servers. See the OAuth discovery troubleshooting reference.`,
   };
 };
 

@@ -111,8 +111,12 @@ jobs:
         if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: npx playwright install-deps chromium
 
-      - name: Playwright smoke suite
+      - name: Playwright smoke and WCAG 2.2 accessibility gate
         run: npm run test:e2e
+
+      - name: Accessibility findings summary
+        if: always()
+        run: node tests/e2e/accessibility-summary.mjs
 
       - name: Upload the Playwright report
         if: failure()
@@ -145,3 +149,42 @@ jobs:
           path: .lighthouseci/
           include-hidden-files: true
           retention-days: 14
+
+  action-smoke:
+    name: Local composite action against stateless MCP
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - name: Start mock MCP server
+        run: |
+          node tests/e2e/mock-mcp-server.mjs > "$RUNNER_TEMP/mock-mcp.log" 2>&1 &
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:4180/health; then exit 0; fi
+            sleep 1
+          done
+          exit 1
+      - name: Run this checkout's composite action
+        id: gate
+        uses: ./
+        with:
+          endpoints: http://127.0.0.1:4180/2026/mcp
+          session-resilience: 'true'
+          comment: 'true'
+          publish: 'false'
+      - name: Assert action outputs
+        env:
+          DECISION: ${{ steps.gate.outputs.decision }}
+          BREAKING_COUNT: ${{ steps.gate.outputs.breaking-count }}
+          REPORT_PATH: ${{ steps.gate.outputs.report-path }}
+        run: |
+          test "$DECISION" = ready || test "$DECISION" = review
+          test "$BREAKING_COUNT" = 0
+          test -f "$REPORT_PATH/summary.md"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: action-smoke-reports
+          path: mcptest-reports/

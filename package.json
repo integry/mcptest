@@ -22,6 +22,7 @@
     "mcptest": "vite-node scripts/mcptest.ts",
     "typecheck": "tsc --noEmit",
     "validate-catalog": "vite-node scripts/run-validate-catalog.ts",
+    "oauth-sweep": "vite-node scripts/oauth-sweep.ts",
     "import-catalog-capabilities": "vite-node scripts/import-catalog-capabilities.ts",
     "validate-catalog-assets": "node scripts/validate-catalog-assets.js",
     "summarize-catalog-diff": "vite-node scripts/run-summarize-catalog-diff.ts",
@@ -57,10 +58,11 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
     "@lhci/cli": "^0.15.1",
     "@playwright/test": "^1.64.1",
     "@resvg/resvg-js": "^2.6.2",
-    "@types/node": "^24.0.0",
+    "@types/node": "^26.6.5",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^4.7.0",
@@ -73,7 +75,7 @@
     "vite": "^6.4.3",
     "vite-node": "^3.2.4",
     "vitest": "^5.0.5",
-    "wrangler": "^4.151.2"
+    "wrangler": "^4.152.0"
   },
   "//": [
     "overrides.@grpc/grpc-js: firebase -> @firebase/firestore pins ~1.9.0; 1.13.7 fixes GHSA-m9gg-hp2v-232j and GHSA-f596-whhp-79r4 (minor bump, client API unchanged). Remove once @firebase/firestore depends on a fixed grpc-js.",

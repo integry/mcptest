@@ -119,7 +119,7 @@ const collectRedactedSchemaPaths = (
   }
 };
 
-const redactedSchemaChanges = (
+export const redactedSchemaChanges = (
   before: unknown,
   after: unknown,
   toolName: string,
@@ -309,7 +309,7 @@ function compareSchemaAcceptance(beforeValue: unknown, afterValue: unknown): Sch
   return 'widened';
 }
 
-const schemaChanges = (
+export const schemaChanges = (
   before: unknown,
   after: unknown,
   toolName: string,

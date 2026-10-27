@@ -42,6 +42,13 @@ new_sqlite_classes = ["PublishedReports"]
 tag = "v3"
 new_sqlite_classes = ["SubmissionRateLimiter"]
 
+# Weekly watch of opted-in published endpoints (src/weeklyWatch.js). Each hourly
+# run checks at most WATCH_BATCH_PER_RUN endpoints that are due, so every watched
+# endpoint is listed about once a week and one run stays within Worker limits.
+# The watch stores its snapshots in PublishedReports under new keys: no migration.
+[triggers]
+crons = ["23 * * * *"]
+
 [observability.logs]
 enabled = true
 

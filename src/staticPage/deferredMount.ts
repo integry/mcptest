@@ -75,7 +75,7 @@ const snapshotFocus = (root: HTMLElement): FocusSnapshot | null => {
 };
 
 /** Writes a value the way typing does, so a React-controlled field's onChange sees it. */
-const setFieldValue = (field: HTMLInputElement | HTMLTextAreaElement, value: string): void => {
+export const setFieldValue = (field: HTMLInputElement | HTMLTextAreaElement, value: string): void => {
   const prototype = field instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
   Object.getOwnPropertyDescriptor(prototype, 'value')?.set?.call(field, value);
   field.dispatchEvent(new Event('input', { bubbles: true }));

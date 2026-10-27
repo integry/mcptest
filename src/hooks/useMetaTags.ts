@@ -14,10 +14,11 @@ import {
   getCatalogServerSeo,
   SITE_URL,
 } from '../utils/catalogSeo';
-import { CATALOG_METADATA, DISCOVERY_METADATA, HOME_METADATA } from '../utils/pageMetadata';
+import { OAUTH_CHECKER_METADATA, BREAKING_CHANGES_METADATA, CATALOG_METADATA, DISCOVERY_METADATA, HOME_METADATA } from '../utils/pageMetadata';
+import { BREAKING_CHANGES_TOOL_PATH } from '../utils/breakingChangesRoute';
 import { OG_IMAGE_HEIGHT, OG_IMAGE_WIDTH, getOgImagePath } from '../utils/ogImage';
 import { parseResultShareUrl } from '../utils/urlUtils';
-import { DISCOVERY_CHECKER_PATH, isKnownAppPath } from '../utils/appRoutes';
+import { OAUTH_CHECKER_PATH, DISCOVERY_CHECKER_PATH, isKnownAppPath } from '../utils/appRoutes';
 import {
   LEARN_INDEX_METADATA,
   getContentPage,
@@ -189,6 +190,12 @@ export const useMetaTags = () => {
         canonicalUrl: `${SITE_URL}${location.pathname}`,
         robots: 'noindex, follow',
       });
+    } else if (location.pathname === BREAKING_CHANGES_TOOL_PATH) {
+      applyMetadata({
+        ...BREAKING_CHANGES_METADATA,
+        canonicalUrl: `${SITE_URL}${BREAKING_CHANGES_TOOL_PATH}`,
+        imageUrl: ogImage(BREAKING_CHANGES_TOOL_PATH),
+      });
     } else if (resultData) {
       const { type, name, serverUrl } = resultData;
       const title = `MCP Test Result: ${name}`;
@@ -208,6 +215,8 @@ export const useMetaTags = () => {
         canonicalUrl: `${SITE_URL}${location.pathname}`,
         robots: 'noindex, follow',
       });
+    } else if (location.pathname === OAUTH_CHECKER_PATH) {
+      applyMetadata({ ...OAUTH_CHECKER_METADATA, canonicalUrl: `${SITE_URL}${OAUTH_CHECKER_PATH}`, imageUrl: ogImage(OAUTH_CHECKER_PATH) });
     } else if (location.pathname === DISCOVERY_CHECKER_PATH) {
       applyMetadata({
         ...DISCOVERY_METADATA,

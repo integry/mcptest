@@ -98,6 +98,7 @@ describe('connection URL finalization', () => {
     vi.useFakeTimers();
     localStorage.clear();
     sessionStorage.clear();
+    window.history.replaceState(null, '', '/');
     connectionMocks.attempt.mockReset();
     oauthMocks.begin.mockReset();
     authMocks.currentUser = null;
@@ -108,6 +109,60 @@ describe('connection URL finalization', () => {
     vi.useRealTimers();
     vi.unstubAllEnvs();
     vi.restoreAllMocks();
+  });
+
+  it('connects the context7 literal path first and preserves it in recent storage', async () => {
+    const endpoint = 'https://mcp.context7.com/mcp';
+    window.history.replaceState(null, '', '/server/mcp.context7.com/mcp');
+    connectionMocks.attempt.mockResolvedValueOnce({
+      client: { close: vi.fn().mockResolvedValue(undefined) }, url: endpoint,
+      transportType: 'streamable-http', protocolEra: 'stateless',
+    });
+    const view = renderConnectionHook();
+    await act(async () => { await view.connection.handleConnect(vi.fn(), vi.fn(), vi.fn(), endpoint); });
+    expect(connectionMocks.attempt).toHaveBeenCalledOnce();
+    expect(connectionMocks.attempt.mock.calls[0][0]).toBe(endpoint);
+    expect(view.connection.serverUrl).toBe(endpoint);
+    expect(view.connection.recentServers).toEqual([endpoint]);
+    expect(JSON.parse(localStorage.getItem('mcpRecentServers')!)).toEqual([{ url: endpoint }]);
+    view.unmount();
+  });
+
+  it('updates the address at attempt start, retries a legacy link only after a literal 404, and clears on disconnect', async () => {
+    const endpoint = 'https://legacy.example/custom/mcp';
+    window.history.replaceState(null, '', '/server/legacy.example/custom/mcp');
+    connectionMocks.attempt.mockRejectedValueOnce(new TransportConnectionError([new Error('404')], [{
+      candidateUrl: endpoint, error: new Error('404'),
+      observedRequests: [{ method: 'POST', url: endpoint, status: 404 }],
+    }]));
+    connectionMocks.attempt.mockResolvedValueOnce({
+      client: { close: vi.fn().mockResolvedValue(undefined) }, url: 'https://legacy.example/custom',
+      transportType: 'streamable-http', protocolEra: 'modern',
+    });
+    const view = renderConnectionHook();
+    await act(async () => {
+      await view.connection.handleConnect(vi.fn(), vi.fn(), vi.fn(), endpoint);
+    });
+    expect(connectionMocks.attempt.mock.calls.map(call => call[0])).toEqual([endpoint, 'https://legacy.example/custom']);
+    expect(window.location.pathname + window.location.search).toBe('/server/legacy.example/custom?transport=http');
+    expect(view.connection.connectionStatus).toBe('Connected');
+    await act(async () => { await view.connection.handleDisconnect(); });
+    expect(window.location.pathname).toBe('/');
+    view.unmount();
+  });
+
+  it('omits secret query parameters from the address while connecting to the full endpoint', async () => {
+    const endpoint = 'https://example.com/mcp?access_token=private';
+    connectionMocks.attempt.mockResolvedValueOnce({
+      client: { close: vi.fn().mockResolvedValue(undefined) }, url: endpoint,
+      transportType: 'streamable-http', protocolEra: 'modern',
+    });
+    const view = renderConnectionHook();
+    await act(async () => { await view.connection.handleConnect(vi.fn(), vi.fn(), vi.fn(), endpoint); });
+    expect(connectionMocks.attempt.mock.calls[0][0]).toBe(endpoint);
+    expect(window.location.pathname + window.location.search).toBe('/server/example.com/mcp');
+    expect(view.connection.shareLinkNotice).toContain('does not include');
+    view.unmount();
   });
 
   it.each(['https://mcp.sentry.dev/', 'https://mcp.sentry.dev/mcp'])(

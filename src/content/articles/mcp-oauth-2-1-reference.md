@@ -213,6 +213,24 @@ What a browser client cannot do:
 - **Reach private networks freely.** Mixed-content rules and Private Network Access limit calls from a public HTTPS page to localhost or internal hosts. mcptest explains these limits instead of bypassing them.
 - **See the `WWW-Authenticate` header** unless the server exposes it through CORS. Without it, mcptest falls back to well-known discovery.
 
+## Pre-login troubleshooting
+
+The manual catalog sweep (`npm run oauth-sweep`) exercises the inspector's real OAuth flow without signing in. A login page proves only that the pre-login steps worked; browser CORS, user consent and token exchange still need separate checks. See the October 2026 sweep report in the repository for per-server HTTP evidence.
+
+| Failure | Fix for the server author or operator |
+| --- | --- |
+| HTTP 401 without usable discovery | Add `WWW-Authenticate: Bearer resource_metadata="https://…"`; serve JSON at that exact URL. Also serve the path-suffixed or root [RFC 9728 location](#protected-resource-metadata-rfc-9728). Expose `WWW-Authenticate` through CORS for browser clients. |
+| Missing or mismatched issuer | Publish [RFC 8414 or OIDC metadata](#authorization-server-metadata-rfc-8414) at the issuer's well-known locations, including the issuer path. Make `issuer` exactly equal the advertised authorization server, including trailing slashes. Clients must not disable issuer validation. |
+| Resource URL mismatch (observed at New Relic) | Publish the canonical MCP resource in [protected-resource metadata](#protected-resource-metadata-rfc-9728). `/mcp` and `/mcp/` are different resource paths: either redirect to the canonical endpoint or correct the metadata. Do not ask clients to remove the resource binding. |
+| No S256 advertised | Implement [PKCE S256](#pkce-s256-rfc-7636) and advertise `code_challenge_methods_supported: ["S256"]`. Do not ask clients to downgrade to `plain`. |
+| `invalid_target` (observed at Semgrep) | Accept the exact `resource` identifier published in resource metadata as an allowed audience at authorization and token exchange. Fix the metadata if it names the wrong resource. Keep [RFC 8707 audience binding](#resource-indicators-and-token-audience-rfc-8707). |
+| `invalid_redirect_uri` / “Invalid redirect URI” (observed at Canva) | Honor the exact redirect URI accepted during registration: `https://mcptest.io/oauth/callback`. Keep it unchanged when validating the authorization request. A successful registration alone does not establish callback compatibility. |
+| Advertised HTTPS client ID rejected | If `client_id_metadata_document_supported` is true, fetch and validate the [published document](https://mcptest.io/oauth/client-metadata.json) and its redirect URI. Otherwise correct the advertised capability and publish a working registration route. |
+| No automatic client registration | Pre-registered clients are a supported provider policy. Register an application and use the inspector's public client ID form when available. GitHub and Slack require operator-managed confidential applications; their secrets belong in the operator service. See [client registration](#client-registration). |
+| Registration restricted to trusted partners or hosts (observed at Dropbox and Harness) | Complete the provider's approval process or configure a trusted host/domain for the client. Publishing a registration endpoint does not make registration open to every client. Retrying unchanged metadata will not resolve an explicit policy rejection. |
+| Registration response cannot be used by this client | Return the agreed redirect URI, grant types, response types and `application_type`, and a token authentication method consistent with authorization-server metadata. A public `none` client must not receive a required secret. Confidential client modes need a hosted relay; the credential-free sweep does not configure one. |
+| HTTP 403 challenge page, HTTP 429, HTTP 5xx or timeout | Check WAF rules, service health and rate limits. Allow discovery and authorization GETs for legitimate clients. Honor `Retry-After`; a headless probe cannot establish whether an interactive browser can pass an anti-bot challenge. |
+
 ## Try it
 
 Open [Linear in the playground](/server/https://mcp.linear.app/mcp/mcp), a public catalog server that answers with a `401` OAuth challenge. Start authorization to watch discovery, client registration and the token exchange run against a real provider.

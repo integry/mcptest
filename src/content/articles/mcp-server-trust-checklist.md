@@ -6,8 +6,9 @@ level: practitioner
 order: 3
 category: Security and trust
 readingTimeMinutes: 9
-lastReviewed: 2026-08-17
+lastReviewed: "2026-10-25"
 relatedSlugs:
+  - how-to-vet-an-mcp-server
   - mcp-clients-compared
   - designing-production-mcp-server
 sourceLinks:
@@ -24,6 +25,9 @@ sourceLinks:
   - title: OpenAI MCP app safety guidance
     url: "https://help.openai.com/en/articles/12584461-developer-mode-and-full-mcp-connectors-in-chatgpt"
 ---
+
+For a repeatable approval process and organisation client controls, see [how to vet an MCP server: assessment, audit and allowlisting](/learn/how-to-vet-an-mcp-server).
+
 ## Trust is a chain, not a badge
 
 Connecting an MCP server can give an AI host access to local code, private data, external accounts, or write operations. “Uses MCP,” a directory listing, a familiar tool name, or a successful connection test does not establish safety. Evaluate the publisher, distributed code, runtime, hosting operator, authorization server, downstream APIs, tools, and client controls as one chain.

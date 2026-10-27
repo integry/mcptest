@@ -120,3 +120,15 @@ Earlier, unstructured events were replaced by catalog events. `connect_success` 
 `connect_failure` became `connect_result`, and `catalog_test_server` became
 `catalog_open_server`. `server_url_connection` and `result_share_connection` now send a host
 instead of the full endpoint URL and tool name.
+
+### Landing-page next actions and reading depth
+
+| Event | When | Parameters |
+| --- | --- | --- |
+| `server_page_action` | A server profile action is followed, including before React mounts | `action`: `test_live`, `report`, `similar_server`, `guide`, `watch` |
+| `guide_inline_test` | An inline test form is submitted or rejected | `outcome`: `submitted`, `invalid` |
+| `next_steps_click` | A connected playground visitor follows a next step | `step`: `tool`, `report`, `badge`, `watch`, `ci` |
+| `next_steps_dismiss` | The visitor dismisses the strip for this browser | none |
+| `scroll_depth` | A guide or server profile's 25/50/75/100 percent sentinel enters the viewport, once per page view | `depth`: `25`, `50`, `75`, `100` |
+
+These events include no endpoint, host, entered text, path, or query parameters. The shared analytics sender retains its sanitized page location and honors DNT/GPC. IntersectionObserver measures depth without scroll listeners; the static page hands its recorded depths to React to avoid counting them twice. Native static anchors report before navigation and are not replayed; form buttons handled by the static page are excluded from deferred click replay. Progress checks use browser session storage; dismissal uses local storage and is read before the strip's first render.

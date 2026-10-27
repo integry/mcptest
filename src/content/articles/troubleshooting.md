@@ -1,17 +1,31 @@
 ---
-title: Troubleshooting Remote MCP Servers
+title: "MCP Server Errors: Causes and Fixes"
 navTitle: Troubleshooting
-summary: Map CORS, session, routing-header, streaming, and authorization failures to concrete fixes, with an HTTP status decoder.
+summary: Find exact MCP client errors by symptom, then diagnose OAuth discovery, registration, Host rejection, HTTP routing, lost streams and request timeouts.
 track: reference
 level: practitioner
 order: 1
 category: Troubleshooting
 readingTimeMinutes: 8
-lastReviewed: "2026-08-10"
+lastReviewed: "2026-10-26"
 path: /docs/troubleshooting
-metaTitle: Troubleshooting MCP Server Errors | mcptest.io
-metaDescription: Fix common Model Context Protocol connection issues. A technical guide to resolving CORS, session state errors, 404s, and routing metadata failures.
+metaTitle: "MCP Server Errors: Causes and Fixes | mcptest.io"
+metaDescription: "Find exact MCP errors: OAuth discovery, unsupported registration, invalid_redirect_uri, SSE 404, closed streams, request timeouts and Invalid Host header."
 relatedSlugs:
+  - mcp-error-failed-to-discover-oauth-metadata
+  - mcp-error-dynamic-client-registration
+  - mcp-error-invalid-redirect-uri
+  - mcp-error-sse-non-200-404
+  - mcp-error-posting-to-endpoint
+  - mcp-error-sse-stream-disconnected
+  - mcp-error-connection-closed
+  - mcp-error-request-timed-out
+  - mcp-error-invalid-host-header
+  - mcp-session-not-found-after-deploy
+  - mcp-oauth-protected-resource-mismatch
+  - vscode-mcp-oauth-redirect-uris
+  - remote-mcp-server-401-unauthorized
+  - mcp-server-connected-but-no-tools
   - testing-guide
   - connect-remote-mcp-server
 sourceLinks:
@@ -24,6 +38,38 @@ sourceLinks:
 ---
 
 Start with the actual HTTP exchange: endpoint, status, response headers, protocol era, and JSON-RPC body. Most failures then collapse into one of six buckets—wrong URL, 2026 routing metadata, 2025 session state, CORS, streaming infrastructure, or authorization.
+
+## Find the exact error
+
+These guides select recurring remote-connection symptoms from linked 2026 client reports and SDK documentation. Reports are version-specific, and there is no public cross-client incident census. Each guide ranks causes qualitatively by recurrence in its cited cases and explains the evidence needed to distinguish them; this is not a statistical frequency ranking.
+
+### OAuth discovery and sign-in
+
+- **[Failed to discover OAuth metadata](/learn/mcp-error-failed-to-discover-oauth-metadata)** — trace discovery requests, issuer validation and failures during refresh.
+- **[Incompatible auth server: does not support dynamic client registration](/learn/mcp-error-dynamic-client-registration)** — distinguish DCR, pre-registered applications and CIMD support.
+- **[invalid_redirect_uri](/learn/mcp-error-invalid-redirect-uri)** — find the registration, authorization or token request rejecting the callback.
+- **[SDK auth failed: protected resource does not match expected](/learn/mcp-oauth-protected-resource-mismatch)** — compare `/mcp` with the origin and fix resource identity.
+- **[VS Code MCP OAuth redirect URIs](/learn/vscode-mcp-oauth-redirect-uris)** — `http://127.0.0.1:33418`, `https://vscode.dev/redirect`, or the OAuth page opens but connecting fails, including Figma authorize URLs.
+- **[401 Unauthorized](/learn/remote-mcp-server-401-unauthorized)** — separate missing credentials from invalid issuer, audience or scope.
+
+### HTTP routing, headers and browser access
+
+- **[SSE error: Non-200 status code (404)](/learn/mcp-error-sse-non-200-404)** — compare legacy SSE fallback, optional GET failure and a session 404.
+- **[Streamable HTTP error: Error POSTing to endpoint](/learn/mcp-error-posting-to-endpoint)** — decode the status and body behind this wrapper.
+- **[Invalid Host header](/learn/mcp-error-invalid-host-header)** — fix DNS rebinding allowlists for public hosts, Docker ports and reverse proxies.
+- **[406 Not Acceptable, 415 and 405](/learn/mcp-406-not-acceptable-415-and-405)** — check media types, request methods and optional streams.
+- **[CORS headers for browser clients](/learn/mcp-cors-headers-for-browser-clients)** — distinguish blocked preflights and hidden headers from endpoint failures.
+
+### Streams, sessions and deadlines
+
+- **[SSE stream disconnected: TypeError: terminated](/learn/mcp-error-sse-stream-disconnected)** — distinguish truncated streams, premature cleanup and idle deadlines.
+- **[MCP error -32000: Connection closed](/learn/mcp-error-connection-closed)** — correlate pending requests with recovery, process exits and network cuts.
+- **[MCP error -32001: Request timed out](/learn/mcp-error-request-timed-out)** — distinguish client deadlines, missing replies and blocked work.
+- **[Session not found after deploys](/learn/mcp-session-not-found-after-deploy)** — includes `failed to get tools`, `client is closing` and `subscriptions/listen` in the same client output.
+
+### Connected but discovery is incomplete
+
+- **[Connected but no tools](/learn/mcp-server-connected-but-no-tools)** — verify capability advertisement, listing and client visibility.
 
 ## The endpoint cannot be reached
 

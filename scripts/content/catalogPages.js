@@ -57,7 +57,7 @@ function initials(name) {
 
 function renderRowLogo(server) {
   if (typeof server.logoUrl === 'string' && server.logoUrl.startsWith('/server-logos/')) {
-    return `<span class="catalog-server-logo catalog-server-card-logo flex-shrink-0" aria-hidden="true" data-catalog-server-logo="true"><img src="${escapeHtml(server.logoUrl)}" alt="" loading="lazy" /></span>`;
+    return `<span class="catalog-server-logo catalog-server-card-logo flex-shrink-0" aria-hidden="true" data-catalog-server-logo="true"><img src="${escapeHtml(server.logoUrl)}" alt="" width="40" height="40" loading="lazy" decoding="async" /></span>`;
   }
   return `<span class="catalog-server-logo catalog-server-card-logo flex-shrink-0 catalog-server-logo--fallback" role="img" aria-label="${escapeHtml(server.name)} logo" data-catalog-server-logo="true"><span class="catalog-server-logo-initials" aria-hidden="true">${escapeHtml(initials(server.name))}</span></span>`;
 }
@@ -91,7 +91,46 @@ function hostname(url) {
   }
 }
 
-/** One dense catalog row, as CatalogServerCard renders it. */
+// Keep the source link and its icon: its width affects the title row on mount.
+// Share the drawing across rows so catalog growth doesn't repeat the SVG paths.
+function renderListingSourceIconDefinition() {
+  return '<svg width="0" height="0" aria-hidden="true" focusable="false" style="position:absolute"><defs><symbol id="catalog-source-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6m-11 5 11-11M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></symbol></defs></svg>';
+}
+
+function renderListingSource(server) {
+  const label = escapeHtml(LISTING_SOURCE_LABELS[server.listingSource?.kind] || 'Community');
+  if (!server.listingSource?.url) return `<span class="catalog-listing-source">${label}</span>`;
+  return `<a class="catalog-listing-source" href="${escapeHtml(server.listingSource.url)}" target="_blank" rel="noopener noreferrer">${label}<svg class="catalog-listing-source-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#catalog-source-icon"/></svg></a>`;
+}
+
+/** The unfiltered catalog's first frame. Controls become active when React mounts. */
+function renderCatalogFallback({ servers, summaries }) {
+  const select = (field, label, options) => `<div class="catalog-${field}-field"><label class="visually-hidden" for="catalog-${field}">${label}</label><select id="catalog-${field}" class="form-select" inert>${options.map(([value, text], index) => `<option value="${escapeHtml(value)}"${index === 0 ? ' selected' : ''}>${escapeHtml(text)}</option>`).join('')}</select></div>`;
+  return [
+    '<div class="catalog-view"><div class="catalog-command-bar"><div class="catalog-command-copy">',
+    renderListingSourceIconDefinition(),
+    '<h1 class="mb-1">Remote MCP server catalog</h1><p class="text-muted mb-0">Inspect transport, protocol era, and authentication before you connect.</p>',
+    `<div class="catalog-results-bar" aria-live="polite"><p class="catalog-results-count">Showing <strong>${servers.length}</strong> of ${servers.length} servers</p></div>`,
+    '</div><div class="catalog-filters"><div class="catalog-search-field"><i class="bi bi-search catalog-search-icon" aria-hidden="true"></i>',
+    '<input id="catalog-search" type="search" class="form-control" aria-label="Search servers" value="" placeholder="Search by name, URL, tag, or description"></div>',
+    '<button type="button" class="catalog-filters-toggle" aria-expanded="false" aria-controls="catalog-filter-fields"><i class="bi bi-sliders" aria-hidden="true"></i><span>Filters</span><i class="bi bi-chevron-down catalog-filters-chevron" aria-hidden="true"></i></button>',
+    '<div id="catalog-filter-fields" class="catalog-filter-fields" data-active-filters="0">',
+    select('auth', 'Authentication', [['all', 'All'], ['no-auth', 'No auth'], ['oauth', 'OAuth'], ['bearer-token', 'Bearer'], ['api-token', 'API token'], ['api-key', 'API key']].map(([value, label]) => [value, `Authentication: ${label}`])),
+    select('sort', 'Sort', [['catalog-order', 'Catalog order'], ['name', 'Name'], ['recently-tested', 'Recently tested'], ['browser-ready', 'Browser ready']].map(([value, label]) => [value, `Sort: ${label}`])),
+    select('category', 'Category', [['all', `Category: All (${servers.length})`], ...summaries.map(({category, count}) => [category, `Category: ${category} (${count})`])]),
+    '</div></div></div><div class="catalog-content-layout">',
+    renderCategoryRail(summaries),
+    `<div class="catalog-results-region"><ul class="catalog-server-list" aria-label="Catalog servers">${servers.map(renderCatalogRow).join('')}</ul></div>`,
+    '</div></div>',
+  ].join('');
+}
+
+/**
+ * One dense catalog row, as CatalogServerCard renders it. Keep layout classes
+ * and visible content, but omit repeated tooltips and redundant ARIA prose:
+ * repeating the interactive card's full attributes across hundreds of rows is costly.
+ * Report and Playground actions stay native anchors before the mount.
+ */
 function renderCatalogRow(server) {
   const statusClass = server.status === 'online'
     ? 'catalog-status-dot--online'
@@ -105,15 +144,15 @@ function renderCatalogRow(server) {
     '<li class="catalog-server-list-item"><article class="catalog-server-row">',
     renderRowLogo(server),
     '<div class="catalog-server-heading"><div class="catalog-server-title-row"><div class="catalog-server-name-source">',
-    `<h3 class="mb-0"><a class="catalog-server-title" href="${escapeHtml(getCatalogServerPath(server.id))}">${escapeHtml(server.name)}</a></h3>`,
-    `<span class="catalog-listing-source">${escapeHtml(LISTING_SOURCE_LABELS[server.listingSource?.kind] || 'Community')}</span>`,
+    `<h3><a class="catalog-server-title" href="${escapeHtml(getCatalogServerPath(server.id))}">${escapeHtml(server.name)}</a></h3>`,
+    renderListingSource(server),
     '</div>',
     `<span class="catalog-runtime-status${server.status === 'online' ? ' catalog-runtime-status--online' : ''}"><span class="catalog-status-dot rounded-circle ${statusClass}" aria-hidden="true"></span>${escapeHtml(statusLabel(server))}</span>`,
     '</div>',
-    `<p class="catalog-server-url small text-truncate mb-0">${escapeHtml(hostname(server.url))}</p>`,
-    `<p class="catalog-server-description mb-0">${escapeHtml(server.description)}</p>`,
+    `<p class="catalog-server-url" title="${escapeHtml(server.url)}">${escapeHtml(hostname(server.url))}</p>`,
+    `<p class="catalog-server-description">${escapeHtml(server.description)}</p>`,
     '</div>',
-    '<div class="catalog-server-meta"><div class="catalog-server-badges d-flex flex-wrap align-items-center" role="group" aria-label="Server summary">',
+    '<div class="catalog-server-meta"><div class="catalog-server-badges" role="group" aria-label="Server summary">',
     `<a class="badge catalog-metadata-badge catalog-metadata-badge--category" href="${escapeHtml(getCatalogCategoryPath(server.category))}">${escapeHtml(server.category)}</a>`,
     `<span class="badge catalog-metadata-badge catalog-metadata-badge--auth">${escapeHtml(formatCatalogAuth(server.authType))}</span>`,
     ...transportBadges(server).map(label => `<span class="badge catalog-metadata-badge catalog-metadata-badge--transport">${escapeHtml(label)}</span>`),
@@ -123,9 +162,9 @@ function renderCatalogRow(server) {
     '</div>',
     browserEvidence,
     '</div>',
-    '<div class="catalog-card-actions align-items-center">',
+    '<div class="catalog-card-actions">',
     `<a class="catalog-report-link" href="${escapeHtml(getCatalogServerPath(server.id))}">View report</a>`,
-    `<a class="btn btn-sm btn-outline-primary catalog-test-button" href="${escapeHtml(playgroundPath(server))}">Test in Playground</a>`,
+    `<a class="btn btn-sm btn-outline-primary catalog-test-button${server.status === 'offline' ? ' disabled' : ''}"${server.status === 'offline' ? ' aria-disabled="true" tabindex="-1"' : ''} href="${escapeHtml(playgroundPath(server))}">Test in Playground</a>`,
     '</div>',
     '</article></li>',
   ].join('');
@@ -156,7 +195,7 @@ function renderCategoryRail(summaries, current) {
   return [
     '<nav class="catalog-category-rail" aria-label="Catalog categories">',
     '<p class="catalog-category-heading">Categories</p>',
-    option('All', total, CATALOG_PATH, false),
+    option('All', total, CATALOG_PATH, current === undefined),
     ...summaries.map(summary => option(summary.category, summary.count, summary.path, summary.category === current)),
     '</nav>',
   ].join('\n');
@@ -191,6 +230,7 @@ function renderCategoryFallback({ summary, summaries, servers, articles }) {
   const members = servers.filter(server => server.category === summary.category);
   return [
     `<div class="catalog-view seo-catalog-category" data-category="${escapeHtml(summary.slug)}">`,
+    renderListingSourceIconDefinition(),
     '<div class="catalog-command-bar"><div class="catalog-command-copy">',
     `<nav aria-label="Breadcrumb" class="catalog-category-breadcrumb"><a href="${CATALOG_PATH}">Server Catalog</a><span aria-hidden="true">/</span><span aria-current="page">${escapeHtml(summary.category)}</span></nav>`,
     `<h1 class="mb-1">${escapeHtml(summary.category)} MCP servers</h1>`,
@@ -384,6 +424,7 @@ function renderToolInventory(server) {
 }
 
 module.exports = {
+  renderCatalogFallback,
   renderCatalogRow,
   renderCategoryFallback,
   renderServerConnect,

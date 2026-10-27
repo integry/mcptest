@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { describe, expect, it } from 'vitest';
+import { themeInitVersion, versionThemeInitTag } from './theme-init-version.js';
 
 const projectRoot = path.join(__dirname, '..');
 const source = fs.readFileSync(path.join(projectRoot, 'public', 'theme-init.js'), 'utf8');
@@ -59,5 +60,54 @@ describe('theme-init.js', () => {
     expect(indexHtml.indexOf('type="module"')).toBeGreaterThan(position);
     // CSP: script-src 'self' covers a same-origin file, so no hash is needed.
     expect(head).toMatch(/script-src 'self'/);
+  });
+});
+
+describe('theme-init.js versioning', () => {
+  const indexHtml = fs.readFileSync(path.join(projectRoot, 'index.html'), 'utf8');
+
+  it('adds a content hash to the script URL so caches fetch a changed script', () => {
+    const versioned = versionThemeInitTag(indexHtml, source);
+    expect(versioned).toContain(`<script src="/theme-init.js?v=${themeInitVersion(source)}"></script>`);
+    expect(versioned).not.toContain('<script src="/theme-init.js"></script>');
+    expect(themeInitVersion(source)).not.toBe(themeInitVersion(`${source}\n// changed`));
+  });
+
+  it('is idempotent and fails loudly when the tag is missing', () => {
+    const once = versionThemeInitTag(indexHtml, source);
+    expect(versionThemeInitTag(once, source)).toBe(once);
+    expect(() => versionThemeInitTag('<html></html>', source)).toThrow(/theme-init/);
+  });
+});
+
+describe('returning-visitor bootstrap', () => {
+  it.each(['[]', '{}', 'null', 'broken', '[null, 7, {}]'])(
+    'does not select returning state for invalid or empty data %s', stored => {
+      const attributes = {};
+      new Function('window', 'document', source)({ localStorage: { getItem: key => key === 'mcpRecentServers' ? stored : null } }, {
+        documentElement: { setAttribute: (key, value) => { attributes[key] = value; } },
+      });
+      expect(attributes['data-returning-visitor']).toBeUndefined();
+    });
+
+  it('builds escaped workspace entries and saved tabs before paint', async () => {
+    const { JSDOM } = await import('jsdom');
+    const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', { url: 'https://mcptest.io', runScripts: 'outside-only' });
+    const unsafe = '<img src=x onerror=alert(1)>';
+    dom.window.localStorage.setItem('mcpRecentServers', JSON.stringify(['https://example.com/mcp', { url: unsafe }]));
+    dom.window.localStorage.setItem('mcpSidebarCollapsed', 'true');
+    dom.window.localStorage.setItem('mcpConnectionTabs', JSON.stringify([{ id: 'default-tab', title: 'New Connection', serverUrl: '' }, { id: 'server', title: unsafe, serverUrl: 'https://example.com/mcp' }]));
+    dom.window.eval(source);
+    expect(dom.window.document.documentElement.getAttribute('data-returning-visitor')).toBe('true');
+    expect(dom.window.document.documentElement.getAttribute('data-sidebar-collapsed')).toBe('true');
+    const { default: generator } = await import('./generate-seo-pages.js');
+    dom.window.document.body.innerHTML = generator.renderShellFallback({ catalogCount: 1 });
+    await new Promise(resolve => dom.window.setTimeout(resolve, 0));
+    const frame = dom.window.document.querySelector('[data-workspace-recent]');
+    expect([...frame.querySelectorAll('.recent-server-link')].map(el => el.textContent)).toEqual(['https://example.com/mcp', unsafe]);
+    expect(frame.querySelector('img')).toBeNull();
+    expect(frame.querySelectorAll('li')).toHaveLength(2);
+    expect([...dom.window.document.querySelectorAll('.playground-tab-label')].map(el => el.textContent)).toEqual(['New Connection', unsafe]);
+    dom.window.close();
   });
 });

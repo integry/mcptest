@@ -32,6 +32,11 @@ const waitForDeferredStylesheets = (): Promise<void> => {
       resolve()
       return
     }
+    // theme-init.js normally applies the preload on arrival. A stale cached copy
+    // of that script, or a load event that fired before it listened, would leave
+    // the page unstyled until the timeout; applying it here is idempotent, and the
+    // browser reuses the preloaded response.
+    if (link.rel === 'preload') link.rel = 'stylesheet'
     const timer = window.setTimeout(done, STYLESHEET_TIMEOUT_MS)
     function done() {
       window.clearTimeout(timer)

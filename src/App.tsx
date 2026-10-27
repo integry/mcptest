@@ -21,13 +21,16 @@ import {
   LearnArticlePage,
   OAuthCallback,
   OAuthConfig,
+  BreakingChangesView,
   DiscoveryCheckerView,
+  OAuthCheckerView,
   ReportView,
   SubmitServerView,
   TabContent,
   ViewFallback,
 } from './views/deferredViews';
 import { PAGE_COMPONENTS } from './content/componentRegistry';
+import { BREAKING_CHANGES_TOOL_PATH } from './utils/breakingChangesRoute';
 import {
   getContentPage,
   getLearnArticle,
@@ -54,7 +57,7 @@ import { formatErrorForDisplay } from './utils/errorHandling';
 import { getCatalogServerById } from './utils/catalogUtils';
 import { getCatalogServerIdFromPath } from './utils/catalogSeo';
 import { getPreferredCatalogEndpoint } from './utils/clientSetup';
-import { DISCOVERY_CHECKER_PATH, isKnownAppPath } from './utils/appRoutes';
+import { OAUTH_CHECKER_PATH, DISCOVERY_CHECKER_PATH, isKnownAppPath } from './utils/appRoutes';
 // The MCP SDK, OAuth flow and saved-card helpers load on demand; see utils/savedCardRuntime.
 import type {
   OAuthPrerequisite,
@@ -197,13 +200,14 @@ function App() {
   
   // Tab state
   const [tabs, setTabs] = useState<ConnectionTab[]>(() => {
-    const savedTabs = localStorage.getItem(TABS_KEY);
-    if (savedTabs) {
-      const parsedTabs = JSON.parse(savedTabs);
-      if (Array.isArray(parsedTabs) && parsedTabs.length > 0) {
+    try {
+      const savedTabs = localStorage.getItem(TABS_KEY);
+      const parsedTabs = savedTabs && JSON.parse(savedTabs);
+      if (Array.isArray(parsedTabs) && parsedTabs.length > 0
+        && parsedTabs.every(tab => tab && typeof tab.id === 'string' && typeof tab.title === 'string')) {
         return parsedTabs;
       }
-    }
+    } catch { /* Unavailable or corrupt storage uses the empty workspace. */ }
     return createDefaultTabs();
   });
   const [activeTabId, setActiveTabId] = useState<string>(() => {
@@ -247,6 +251,12 @@ function App() {
     if (path === '/submit') {
       return { activeView: 'submit' as const };
     }
+
+    if (path === BREAKING_CHANGES_TOOL_PATH) {
+      return { activeView: 'breaking-changes' as const };
+    }
+
+    if (path === OAUTH_CHECKER_PATH) return { activeView: 'oauth-check' as const };
 
     if (path === DISCOVERY_CHECKER_PATH) {
       return { activeView: 'discovery' as const };
@@ -392,13 +402,20 @@ function App() {
       return;
     }
 
+    if (path === BREAKING_CHANGES_TOOL_PATH) {
+      logPageView(path, 'Breaking-change check');
+      return;
+    }
+
+    if (path === OAUTH_CHECKER_PATH) { logPageView(path, 'MCP OAuth checker'); return; }
+
     if (path === DISCOVERY_CHECKER_PATH) {
       logPageView(path, 'MCP discovery checker');
       return;
     }
     
     // Check for server URL routes
-    const serverUrlData = parseServerUrl(path);
+    const serverUrlData = parseServerUrl(path, location.search, location.hash);
     if (serverUrlData) {
       console.log('[Server URL Route] Detected server URL:', serverUrlData);
       
@@ -455,7 +472,7 @@ function App() {
   // Server URL and result share handlers
   const handleServerUrlConnection = (serverUrl: string, transportMethod?: string) => {
     trackEvent('server_url_connection', { host: getAnalyticsHost(serverUrl), transport_method: transportMethod });
-    const preferredTransport = transportMethod === 'mcp'
+    const preferredTransport = (transportMethod === 'mcp' || transportMethod === 'http')
       ? 'streamable-http'
       : transportMethod === 'sse'
         ? 'legacy-sse'
@@ -472,6 +489,8 @@ function App() {
         serverUrl: serverUrl,
         connectionStatus: 'Disconnected',
         preferredTransportHint: preferredTransport,
+        forcedTransport: preferredTransport,
+        autoConnect: true,
         useProxy: true,
       };
       setTabs(prev => [...prev, targetTab!]);
@@ -484,7 +503,8 @@ function App() {
     handleUpdateTab(targetTab.id, {
       serverUrl: serverUrl,
       title: `Server: ${serverUrl}`,
-      ...(preferredTransport ? { preferredTransportHint: preferredTransport } : {}),
+      autoConnect: true,
+      ...(preferredTransport ? { preferredTransportHint: preferredTransport, forcedTransport: preferredTransport } : {}),
     });
   };
 
@@ -1880,6 +1900,19 @@ function App() {
                 <SubmitServerView initialUrl={connectedTab?.serverUrl} />
               </Suspense>
             </div>
+          )}
+
+          {/* Breaking-change check */}
+          {activeView === 'breaking-changes' && (
+            <div className="view-panel">
+              <Suspense fallback={<ViewFallback label="Loading the breaking-change check" />}>
+                <BreakingChangesView initialEndpoint={new URLSearchParams(location.search).get('endpoint') ?? undefined} />
+              </Suspense>
+            </div>
+          )}
+
+          {activeView === 'oauth-check' && (
+            <div className="view-panel"><Suspense fallback={<ViewFallback label="Loading the OAuth checker" />}><OAuthCheckerView /></Suspense></div>
           )}
 
           {/* MCP Discovery Checker */}

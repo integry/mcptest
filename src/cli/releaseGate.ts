@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
-import type { CompatibilityMatrixV1 } from '../compatibility';
+import { assessHostCompatibility, getClientHostProfile, type CompatibilityMatrixV1 } from '../compatibility';
+import { CLIENT_COMPATIBILITY } from '../data/clientCompatibility';
 import type { EvaluationReport } from '../utils/evaluation';
 import { validateCapabilityInventory } from '../utils/capabilityInventory';
 import { evaluateServer } from '../utils/evaluation';
@@ -13,6 +14,7 @@ import {
 } from '../utils/reportArtifact';
 import {
   createCompatibilityMatrix,
+  createObservedServerFacts,
   createReleaseDecision,
   type ReleaseDecision,
   type ReleaseReadinessStatus,
@@ -65,6 +67,7 @@ export interface ReleaseGateRunResult {
 }
 
 export interface RunReleaseGateOptions {
+  clientCompatibility?: boolean;
   sessionResilience?: boolean;
   endpoints: readonly string[];
   headers?: HeadersInit;
@@ -468,7 +471,8 @@ const createReleaseArtifact = (
   evaluation: EvaluationReport,
   endpoint: string,
   generatedAt: string | Date | undefined,
-  credentials: readonly string[]
+  credentials: readonly string[],
+  clientCompatibility = false
 ): { decision: ReleaseDecision; report: PublicReport } => {
   const compatibilityMatrix = createCompatibilityMatrix(evaluation);
   const decision = createReleaseDecision(
@@ -476,6 +480,18 @@ const createReleaseArtifact = (
     compatibilityMatrix,
     evaluation.toolSurfaceAnalysis
   );
+  if (clientCompatibility) {
+    const facts = createObservedServerFacts(evaluation);
+    for (const client of CLIENT_COMPATIBILITY.clients) {
+      const profile = getClientHostProfile(client);
+      if (profile) {
+        const assessment = assessHostCompatibility(facts, profile);
+        (compatibilityMatrix.assessments as Record<string, typeof assessment>)[client.id] = {
+          ...assessment, profileId: client.id as typeof assessment.profileId,
+        };
+      }
+    }
+  }
   const publicEvaluation = redactEvaluationCredentials(evaluation, endpoint, credentials);
   const report = createPublicReport(publicEvaluation, {
     generatedAt,
@@ -532,7 +548,8 @@ export const runReleaseGate = async (
         evaluation,
         endpoint,
         options.generatedAt,
-        credentials
+        credentials,
+        options.clientCompatibility
       );
       const authorizationRequired = decision.status === 'authorization-required';
       targets.push({

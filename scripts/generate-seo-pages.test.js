@@ -51,10 +51,9 @@ describe('generated server report Playground links', () => {
       catalogServer('https://mcp.linear.app/mcp', 'streamable-http')
     );
 
-    expect(html).toContain('href="/server/https://mcp.linear.app/mcp/mcp"');
-    expect(parseServerUrl('/server/https://mcp.linear.app/mcp/mcp')).toEqual({
+    expect(html).toContain('href="/server/mcp.linear.app/mcp"');
+    expect(parseServerUrl('/server/mcp.linear.app/mcp')).toEqual({
       serverUrl: 'https://mcp.linear.app/mcp',
-      transportMethod: 'mcp',
     });
   });
 
@@ -64,10 +63,9 @@ describe('generated server report Playground links', () => {
       catalogServer('https://example.com/sse', 'legacy-sse')
     );
 
-    expect(html).toContain('href="/server/https://example.com/sse/sse"');
-    expect(parseServerUrl('/server/https://example.com/sse/sse')).toEqual({
+    expect(html).toContain('href="/server/example.com/sse"');
+    expect(parseServerUrl('/server/example.com/sse')).toEqual({
       serverUrl: 'https://example.com/sse',
-      transportMethod: 'sse',
     });
   });
 
@@ -77,10 +75,9 @@ describe('generated server report Playground links', () => {
 
     const html = renderServerHtml(indexHtml, server);
 
-    expect(html).toContain('href="/server/https://example.com/endpoint/sse"');
-    expect(parseServerUrl('/server/https://example.com/endpoint/sse')).toEqual({
+    expect(html).toContain('href="/server/example.com/endpoint"');
+    expect(parseServerUrl('/server/example.com/endpoint')).toEqual({
       serverUrl: 'https://example.com/endpoint',
-      transportMethod: 'sse',
     });
   });
 
@@ -91,7 +88,7 @@ describe('generated server report Playground links', () => {
 
     const html = renderServerHtml(indexHtml, server);
 
-    expect(html).toContain('href="/server/https://example.com/sse/mcp"');
+    expect(html).toContain('href="/server/example.com/sse"');
     expect(html).toContain('claude mcp add --transport http');
   });
 
@@ -102,7 +99,7 @@ describe('generated server report Playground links', () => {
 
     const html = renderServerHtml(indexHtml, server);
 
-    expect(html).toContain('href="/server/https://example.com/mcp/mcp"');
+    expect(html).toContain('href="/server/example.com/mcp"');
     expect(html).toContain('claude mcp add --transport http');
   });
 
@@ -116,7 +113,7 @@ describe('generated server report Playground links', () => {
     const html = renderServerHtml(indexHtml, server);
 
     expect(html).toContain('Browser-verified endpoint');
-    expect(html).toContain('href="/server/https://example.com/sse/sse"');
+    expect(html).toContain('href="/server/example.com/sse"');
   });
 });
 
@@ -474,36 +471,48 @@ describe('generated page metadata', () => {
     expect(html).toContain('catalog-server-logo-initials');
   });
 
-  it('leads search and social descriptions with the curated summary intact, then a setup phrase that fits', () => {
+  it('uses natural sentences consistently in search and social descriptions', () => {
     const server = catalogServer('https://example.com/mcp', 'streamable-http');
-    server.seoDescription = 'Inspect the Example Server MCP server. Explore example records and queries.';
-
+    server.seoDescription = 'Explore example records.';
     const html = renderServerHtml(indexHtml, server);
-
-    const description = 'Inspect the Example Server MCP server. Explore example records and queries. '
-      + 'Setup for Claude, ChatGPT, Cursor and more.';
-    expect(html).toContain('<title>Example Server MCP Server Report | mcptest.io</title>');
+    const description = 'Connect to the Example Server MCP server at example.com without authentication. '
+      + 'Setup for Claude, ChatGPT, Cursor and VS Code. Explore example records.';
+    expect(html).toContain('<title>Example Server MCP Server: URL, Auth &amp; Setup | mcptest.io</title>');
     expect(html).toContain(`name="description" content="${description}"`);
     expect(html).toContain(`property="og:description" content="${description}"`);
     expect(html).toContain(`name="twitter:description" content="${description}"`);
   });
 
-  it('drops client names rather than truncating a long curated summary', () => {
+  it('reserves room for client setup before adding a complete summary sentence', () => {
     const server = catalogServer('https://example.com/mcp', 'streamable-http');
-    const summary = 'Inspect the Example Server MCP server. Explore example records, saved queries, audit logs, '
-      + 'dashboards and workspace settings.';
-    server.seoDescription = summary;
+    server.seoDescription = 'Explore example records and queries. Inspect tools and resources.';
+    const description = () => new DOMParser().parseFromString(renderServerHtml(indexHtml, server), 'text/html')
+      .querySelector('meta[name="description"]').getAttribute('content');
+    const answer = 'Connect to the Example Server MCP server at example.com without authentication.';
+    expect(description()).toBe(`${answer} Setup for Claude, ChatGPT, Cursor and VS Code. Inspect tools and resources.`);
+    server.seoDescription += ' This additional sentence is too long to fit within the description budget.';
+    expect(description()).toBe(`${answer} Setup for Claude, ChatGPT, Cursor and VS Code. Inspect tools and resources.`);
+  });
 
-    const metaDescription = () => renderServerHtml(indexHtml, server).match(/<meta name="description" content="([^"]*)"/)?.[1];
-    const description = metaDescription();
-
-    expect(description.startsWith(`${summary} `)).toBe(true);
-    expect(description).not.toContain('…');
-    expect(description.length).toBeLessThanOrEqual(158);
-    expect(description).toBe(`${summary} Setup for Claude and more.`);
-
-    server.seoDescription = `${summary} Covers every endpoint too.`;
-    expect(metaDescription()).toBe(`${summary} Covers every endpoint too.`);
+  it('generates complete descriptions without ellipses or partial words across the whole catalog', () => {
+    const servers = mergeCatalogServers(catalogSeeds, catalogValidation, catalogCapabilities);
+    for (const server of servers) {
+      const html = renderServerHtml(indexHtml, server);
+      const description = html.match(/<meta name="description" content="([^"]*)"/)[1]
+        .replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+      expect(description, server.id).toMatch(/^Connect to the .+ MCP server at .+\./);
+      expect(description.length, server.id).toBeGreaterThanOrEqual(100);
+      expect(description.length, server.id).toBeLessThanOrEqual(158);
+      expect(description, server.id).toMatch(/(?:Setup for .+|Client setup, auth and tools)\./);
+      expect(description, server.id).not.toMatch(/(?:…|\.\.\.)$/);
+      expect(description, server.id).toMatch(/[.!?]$/);
+      const answerEnd = description.indexOf('. ', description.indexOf(' MCP server at '));
+      const summary = answerEnd < 0 ? '' : description.slice(answerEnd + 2);
+      // Every retained summary ends at a boundary present in the source text.
+      if (summary && !summary.startsWith('Setup ') && !summary.startsWith('Client setup')) {
+        expect((server.seoDescription || server.description).trim(), server.id).toContain(summary);
+      }
+    }
   });
 
   it('renders the home page with its canonical URL, Open Graph card and crawler-visible landing copy', () => {
@@ -577,7 +586,8 @@ describe('generated page metadata', () => {
     expect(html).toContain('<title>Catalog | mcptest.io</title>');
     expect(html).toContain('rel="canonical" href="https://mcptest.io/catalog"');
     expect(html).toContain('property="og:image" content="https://mcptest.io/og/catalog.png"');
-    expect(html).toContain('<div id="root"></div>');
+    expect(html).toContain('class="catalog-view"');
+    expect(html).toContain('data-deferred-mount');
   });
 
   it('prerenders the discovery checker in the app shell, with the form React mounts over at load', () => {
@@ -685,11 +695,11 @@ describe('generated page metadata', () => {
     const article = articles.find(item => item.slug === 'testing-guide');
     const html = renderLearnArticleHtml(indexHtml, article, articles, learnIndex);
 
-    expect(html).toContain('<title>Testing Guide for Remote MCP Servers | mcptest.io</title>');
+    expect(html).toContain('<title>How to Test a Remote MCP Server (Step by Step) | mcptest.io</title>');
     expect(html).toContain('rel="canonical" href="https://mcptest.io/docs/testing-guide"');
-    expect(html).toContain('name="description" content="Learn how to test, inspect, and debug remote Model Context Protocol (MCP) servers.');
+    expect(html).toContain('name="description" content="Test a remote MCP server step by step:');
     expect(html).toContain('<blockquote><p><strong>Browser clients need CORS.</strong>');
-    expect(html).toContain('<pre><code class="hljs language-bash">curl -i https://your-server.example.com/mcp');
+    expect(html).toContain('<pre tabindex="0"><code class="hljs language-bash">curl -i https://your-server.example.com/mcp');
     expect(html).toContain('<h3 id="capabilities">Capabilities</h3>');
   });
 
@@ -767,7 +777,7 @@ describe('generated page metadata', () => {
   it('renders tilde-fenced code without allocating a heading id inside the fence', () => {
     const markdown = ['## Example', '', '~~~', '## Example', '~~~', '', '## Example'].join('\n');
     const html = renderMarkdown(markdown);
-    expect(html).toContain('<pre><code>## Example</code></pre>');
+    expect(html).toContain('<pre tabindex="0"><code>## Example</code></pre>');
     expect(html).toContain('<h2 id="example">Example</h2>');
     expect(html).toContain('<h2 id="example-2">Example</h2>');
     expect(html).not.toContain('example-3');
@@ -780,16 +790,16 @@ describe('generated page metadata', () => {
     // The static HTML carries highlight.js markup so a guide paints colored code
     // before any script runs; unknown languages stay plain, as in the browser.
     const html = renderMarkdown('```typescript\nconst x: number = 1;\n```\n\n```nginx\nserver {}\n```\n\n```\nplain\n```');
-    expect(html).toContain('<pre><code class="hljs language-typescript"><span class="hljs-keyword">const</span> <span class="hljs-attr">x</span>: <span class="hljs-built_in">number</span> = <span class="hljs-number">1</span>;</code></pre>');
-    expect(html).toContain('<pre><code class="language-nginx">server {}</code></pre>');
-    expect(html).toContain('<pre><code>plain</code></pre>');
+    expect(html).toContain('<pre tabindex="0"><code class="hljs language-typescript"><span class="hljs-keyword">const</span> <span class="hljs-attr">x</span>: <span class="hljs-built_in">number</span> = <span class="hljs-number">1</span>;</code></pre>');
+    expect(html).toContain('<pre tabindex="0"><code class="language-nginx">server {}</code></pre>');
+    expect(html).toContain('<pre tabindex="0"><code>plain</code></pre>');
   });
 
   it('closes a fence only with a matching delimiter of at least the opening length', () => {
     const markdown = ['~~~~ text', '```', '## not a heading', '~~~', '~~~~', '', '```js', 'const a = `~~~`;', '```'].join('\n');
     const html = renderMarkdown(markdown);
-    expect(html).toContain('<pre><code class="language-text">```\n## not a heading\n~~~</code></pre>');
-    expect(html).toContain('<pre><code class="hljs language-js"><span class="hljs-keyword">const</span> a = <span class="hljs-string">`~~~`</span>;</code></pre>');
+    expect(html).toContain('<pre tabindex="0"><code class="language-text">```\n## not a heading\n~~~</code></pre>');
+    expect(html).toContain('<pre tabindex="0"><code class="hljs language-js"><span class="hljs-keyword">const</span> a = <span class="hljs-string">`~~~`</span>;</code></pre>');
     expect(html).not.toContain('<h2');
   });
 
@@ -945,9 +955,10 @@ describe('content pages in the app shell (issue #405)', () => {
     expect(app.querySelector('.badge-embed-preview img').getAttribute('width')).toBe('130');
   });
 
-  it('keeps the home page mounting at load', () => {
+  it('defers the home page while keeping the endpoint editable', () => {
     const html = renderHomeHtml(indexHtml, { title: 'Home', description: 'Home.' }, 3, shell);
-    expect(html).not.toContain('data-deferred-mount');
+    expect(html).toContain('data-deferred-mount');
+    expect(rootOf(html).querySelector('#serverUrl').readOnly).toBe(false);
     expect(rootOf(html).querySelector('.sidenav-group:first-child a.nav-link.active').getAttribute('href')).toBe('/');
   });
 
@@ -1039,7 +1050,7 @@ describe('server page "Connect it" section', () => {
     expect(chatgpt.textContent).toContain('ChatGPT does not support API key headers');
 
     const description = document.querySelector('meta[name="description"]').getAttribute('content');
-    expect(description).toBe('An example MCP server. Setup for Claude, Cursor, VS Code and more.');
+    expect(description).toBe('Connect to the Example Server MCP server at example.com with an API key header. Setup for Claude, Cursor, VS Code and Claude Code. An example MCP server.');
     expect(description).not.toContain('ChatGPT');
     expect(description).toContain('Cursor');
   });

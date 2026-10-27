@@ -13,13 +13,17 @@
 export const DISCOVERY_CHECKER_PATH = '/tools/discovery';
 
 /** Paths the app serves exactly (a trailing slash is not a variant). */
+export const OAUTH_CHECKER_PATH = '/tools/oauth-check';
+
 export const EXACT_APP_ROUTES: readonly string[] = [
   '/',
   '/catalog',
   '/learn',
   '/report',
   '/submit',
+  '/tools/breaking-changes',
   DISCOVERY_CHECKER_PATH,
+  OAUTH_CHECKER_PATH,
   '/oauth/callback',
   '/install-integration',
 ];

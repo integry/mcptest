@@ -195,13 +195,13 @@ describe('checkMcpDiscovery', () => {
         url: 'https://example.com/mcp',
         transport: 'streamable-http',
         sources: ['Server Card: urn:air:example.com:mcp:weather', 'Official MCP Registry', 'Server Card at https://example.com/mcp'],
-        inspectorPath: '/server/https://example.com/mcp/mcp',
+        inspectorPath: '/server/example.com/mcp',
       },
       {
         url: 'https://api.example.com/mcp',
         transport: 'streamable-http',
         sources: ['mcptest.io catalog'],
-        inspectorPath: '/server/https://api.example.com/mcp/mcp',
+        inspectorPath: '/server/api.example.com/mcp',
       },
     ]);
     expect(hasValidServerCard(report)).toBe(true);

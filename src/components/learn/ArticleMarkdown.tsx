@@ -1,3 +1,4 @@
+import InlineTestForm from './InlineTestForm';
 import React, { useEffect, useMemo, useState } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import { Link } from 'react-router-dom';
@@ -65,7 +66,7 @@ const CodeBlock: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
         <i className={`bi ${copied ? 'bi-check-lg' : 'bi-copy'}`} aria-hidden="true"></i>
         <span>{copied ? 'Copied' : 'Copy'}</span>
       </button>
-      <pre>
+      <pre tabIndex={0}>
         {highlighted !== null ? (
           <code className={`hljs language-${language}`} dangerouslySetInnerHTML={{ __html: highlighted }} />
         ) : (
@@ -103,9 +104,10 @@ export interface ArticleMarkdownProps {
   content: string;
   /** Component inserted at the `<!-- component -->` marker, or after the body when no marker exists. */
   embedded?: React.ReactNode;
+  inlineTest?: boolean;
 }
 
-const ArticleMarkdown: React.FC<ArticleMarkdownProps> = ({ content, embedded }) => {
+const ArticleMarkdown: React.FC<ArticleMarkdownProps> = ({ content, embedded, inlineTest }) => {
   // Heading ids are precomputed per segment so each Markdown processing run is
   // deterministic: StrictMode re-invoking ReactMarkdown with the same plugins
   // must not allocate `-2` suffixes the outline never links to.
@@ -118,13 +120,18 @@ const ArticleMarkdown: React.FC<ArticleMarkdownProps> = ({ content, embedded }) 
     };
   }, [content]);
 
+  let codeIndex = 0;
+  const components = { ...markdownComponents, pre: ({ children }: { children?: React.ReactNode }) => {
+    const first = codeIndex++ === 0;
+    return <><CodeBlock>{children}</CodeBlock>{inlineTest && first && <InlineTestForm id="guide-early-test" />}</>;
+  } };
   return (
     <>
       {segments.map((segment, index) => (
         <React.Fragment key={index}>
           {index > 0 && embedded}
           {segment.markdown && (
-            <ReactMarkdown remarkPlugins={plugins[index]} components={markdownComponents}>
+            <ReactMarkdown remarkPlugins={plugins[index]} components={components}>
               {segment.markdown}
             </ReactMarkdown>
           )}

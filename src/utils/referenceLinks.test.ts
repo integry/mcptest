@@ -102,6 +102,8 @@ describe('pre-existing article anchors', () => {
   ) as Record<string, string[]>;
 
   it.each(Object.keys(pinned))('keeps every heading id of %s unchanged', (slug) => {
-    expect(articleHeadings(slug).map(({ id }) => id)).toEqual(pinned[slug]);
+    // New sections may be added while published anchors keep their identity and order.
+    const existingIds = articleHeadings(slug).map(({ id }) => id).filter(id => pinned[slug].includes(id));
+    expect(existingIds).toEqual(pinned[slug]);
   });
 });

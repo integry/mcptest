@@ -149,6 +149,21 @@ describe.skipIf(!process.env.SITE_AUDIT)('sitemap, robots and canonical audit of
     }
   });
 
+  it('prerenders every catalog server link, critical styles and the server ItemList', () => {
+    const html = fs.readFileSync(path.join(distDir, 'catalog.html'), 'utf8');
+    const servers = readJson('src/data/serverCatalog.json');
+    console.log(`Catalog HTML: ${Buffer.byteLength(html)} bytes for ${servers.length} rows (including critical CSS and JSON-LD).`);
+    for (const { id } of servers) {
+      expect(html, id).toContain(`href="/servers/${encodeURIComponent(id)}/"`);
+    }
+    expect(html.match(/class="catalog-server-row"/g)).toHaveLength(servers.length);
+    expect(html).toContain('<style data-critical-css>');
+    expect(html).toContain('data-deferred-mount');
+    const data = JSON.parse(html.match(/<script id="server-structured-data" type="application\/ld\+json">(.*?)<\/script>/)[1]);
+    expect(data.numberOfItems).toBe(servers.length);
+    expect(data.itemListElement.map(item => item.url)).toEqual(servers.map(({ id }) => `https://mcptest.io/servers/${encodeURIComponent(id)}/`));
+  });
+
   it('has no broken internal links', () => {
     expect(checkSite(loadSite(distDir)).errors).toEqual([]);
   });

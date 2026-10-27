@@ -1,0 +1,224 @@
+/* /tools/breaking-changes and the report history's "Changes since the previous snapshot". */
+.breaking-changes {
+  max-width: 52rem;
+  margin: 0 auto;
+  padding: var(--space-2) 0 var(--space-8);
+}
+
+.breaking-changes-header {
+  margin-bottom: var(--space-5);
+  padding-bottom: var(--space-5);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.breaking-changes-header h1 {
+  margin-bottom: var(--space-2);
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  line-height: 1.15;
+}
+
+.breaking-changes-header p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.9375rem;
+}
+
+.breaking-changes-header p + p {
+  margin-top: var(--space-2);
+}
+
+.breaking-changes-section {
+  padding-bottom: var(--space-5);
+  margin-bottom: var(--space-5);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.breaking-changes-section h2 {
+  margin-bottom: var(--space-3);
+  font-size: 1.1rem;
+}
+
+.breaking-changes-modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-5);
+  margin: 0 0 var(--space-4);
+  padding: 0;
+  border: 0;
+}
+
+.breaking-changes-modes legend {
+  float: none;
+  width: auto;
+  margin-bottom: var(--space-2);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.breaking-changes-payloads {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: var(--space-4);
+}
+
+.breaking-changes-payloads .form-label,
+.breaking-changes-live .form-label {
+  font-weight: 600;
+}
+
+.breaking-changes-payloads textarea {
+  min-height: 14rem;
+  font-family: var(--font-family-mono);
+  font-size: 0.8125rem;
+}
+
+.breaking-changes-hint {
+  margin: var(--space-1) 0 0;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+.breaking-changes-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+
+.breaking-changes-live .form-control {
+  font-family: var(--font-family-mono);
+  font-size: 0.875rem;
+}
+
+.breaking-changes-live .form-check {
+  margin-top: var(--space-2);
+}
+
+.breaking-changes-baseline {
+  margin: 0 0 var(--space-3);
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+/* Findings */
+.breaking-findings-summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-3);
+  font-size: 1.0625rem;
+  font-weight: 600;
+}
+
+.breaking-findings-summary.is-breaking i {
+  color: var(--danger-color);
+}
+
+.breaking-findings-summary.is-risky i {
+  color: var(--warning-color);
+}
+
+.breaking-findings-summary.is-safe i {
+  color: var(--success-color);
+}
+
+.breaking-findings-limitations {
+  margin: 0 0 var(--space-4);
+  padding-left: var(--space-5);
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+.breaking-findings-group {
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--border-color);
+}
+
+.breaking-findings-subject {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-2);
+  font-size: 1rem;
+}
+
+.breaking-findings-subject code {
+  overflow-wrap: anywhere;
+  font-size: 0.9375rem;
+}
+
+.breaking-findings-kind {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.breaking-findings-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.breaking-finding {
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+}
+
+.breaking-finding-severity {
+  flex: 0 0 4.75rem;
+  align-self: flex-start;
+  padding: 0.125rem var(--space-2);
+  border: 1px solid currentColor;
+  border-radius: var(--border-radius-sm);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.breaking-finding-severity.is-breaking {
+  color: var(--danger-color);
+}
+
+.breaking-finding-severity.is-risky {
+  color: var(--warning-color);
+}
+
+.breaking-finding-severity.is-safe {
+  color: var(--success-color);
+}
+
+.breaking-finding-body {
+  min-width: 0;
+}
+
+.breaking-finding-title {
+  margin: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.breaking-finding-reason {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+@media (max-width: 575.98px) {
+  .breaking-finding {
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  .breaking-finding-severity {
+    flex-basis: auto;
+  }
+}
+
+.breaking-changes-header a {
+  text-decoration: underline;
+}

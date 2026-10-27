@@ -777,7 +777,6 @@ const ReportView: React.FC = () => {
                     className="flex-grow-1"
                     style={{ border: 0, background: 'transparent', padding: 0, textAlign: 'left' }}
                     onClick={() => setServerUrl(server.url)}
-                    aria-label={`Use ${server.url}`}
                   >
                     <div className="fw-bold">{server.url}</div>
                     <small className="text-muted">

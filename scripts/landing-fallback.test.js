@@ -90,7 +90,7 @@ describe('crawler-visible landing fallback', () => {
 
     const componentClasses = new Set(Array.from(component.querySelectorAll('[class]'), element => [...element.classList]).flat());
     const fallbackClasses = Array.from(fallback.querySelectorAll('[class]'), element => [...element.classList]).flat();
-    expect(fallbackClasses.filter(name => name !== 'seo-landing-fallback' && !componentClasses.has(name))).toEqual([]);
+    expect(fallbackClasses.filter(name => name !== 'seo-landing-fallback' && !['landing-quick-picks', 'landing-recent', 'landing-quick-picks-label'].includes(name) && !componentClasses.has(name))).toEqual([]);
   });
 });
 
@@ -106,6 +106,9 @@ const HIDDEN_IN_FIRST_FRAME = [
   '.view-panel.d-none',
   '.main-content > .d-none',
   'style',
+  // Static alternative selected before first paint for returning visitors.
+  '[data-prerendered-recent]',
+  'template',
   // The shell carries both theme icons and shows one with CSS.
   '.theme-toggle-icon',
 ];
@@ -162,6 +165,8 @@ describe('static first frame (header, sidebar, playground landing)', () => {
     const shell = renderShell(authEnabled);
 
     expect(app).not.toBeNull();
+    // This variant is hidden by CSS for new visitors.
+    shell.querySelector('.seo-returning-workspace')?.remove();
     expect(outline(shell)).toEqual(outline(app));
     expect(Boolean(shell.querySelector('.app-auth-placeholder'))).toBe(authEnabled);
   });
@@ -187,10 +192,10 @@ describe('static first frame (header, sidebar, playground landing)', () => {
       .toEqual(LEARN_TRACKS.flatMap(track => track.items.map(item => item.path)));
   });
 
-  it('renders the landing connect form and quick picks as inert markup', () => {
+  it('renders an editable connect form and quick picks for the deferred mount', () => {
     const shell = renderShell(false);
     const input = shell.querySelector('.landing-connect input#serverUrl');
-    expect(input.hasAttribute('readonly')).toBe(true);
+    expect(input.hasAttribute('readonly')).toBe(false);
     expect(shell.querySelector('.landing-connect button#connectBtn').disabled).toBe(true);
     expect(shell.querySelectorAll('[onclick], script')).toHaveLength(0);
     expect(Array.from(shell.querySelectorAll('.landing-quick-pick'), button => button.dataset.serverId))

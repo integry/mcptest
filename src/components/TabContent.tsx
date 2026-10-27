@@ -1,3 +1,4 @@
+import NextStepsStrip from './NextStepsStrip';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 // Bootstrap's dropdown behaviour; loaded with this chunk rather than on every page.
 import 'bootstrap';
@@ -180,6 +181,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     connectionError,
     clearConnectionError,
     client,
+    shareLinkNotice,
     recentServers,
     handleConnect,
     handleDisconnect,
@@ -203,7 +205,8 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
       onUpdateTab(tab.id, { isAuthFlowActive: true });
       sessionStorage.setItem('oauth_tab_id', tab.id);
     },
-    requestHeaders
+    requestHeaders,
+    tab.serverUrl
   );
 
   const catalogProtocolEndpointRef = useRef(
@@ -353,7 +356,8 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
           tab.serverUrl,
           tab.useProxy, // Pass the current tab's useProxy value
           getCatalogProtocolEraHint(tab.serverUrl),
-          getPreferredTransportHint(tab.serverUrl)
+          getPreferredTransportHint(tab.serverUrl),
+          tab.forcedTransport
         );
       }, 100);
     }
@@ -730,7 +734,8 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
           tab.serverUrl,
           tab.useProxy,
           getCatalogProtocolEraHint(tab.serverUrl),
-          getPreferredTransportHint(tab.serverUrl)
+          getPreferredTransportHint(tab.serverUrl),
+          tab.forcedTransport
         );
       }, 500); // 500ms delay to ensure token is available
     }
@@ -808,7 +813,8 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
         || protocolEraHint === 'legacy'
         ? protocolEraHint
         : getCatalogProtocolEraHint(requestedUrl),
-      preferredTransportHint ?? getPreferredTransportHint(requestedUrl)
+      preferredTransportHint ?? getPreferredTransportHint(requestedUrl),
+      tab.forcedTransport
     );
   };
 
@@ -971,10 +977,10 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     && isDisconnected
     && !connectionError
     && !isAuthFlowActive;
-  // The landing is the empty state for new and returning users alike. It stays
-  // up while someone types into its input, so unlike isFirstConnection it does
-  // not depend on the entered URL; a connection attempt or an error leaves it.
+  // Recent servers are loaded synchronously by useConnection. Returning
+  // visitors start in the workspace on the first commit.
   const showLanding = landingEligible
+    && recentServers.length === 0
     && !hasStartedFirstConnection
     && isDisconnected
     && !connectionError
@@ -1079,6 +1085,8 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
         />
       ) : connectionPanel}
 
+      {shareLinkNotice && <p role="status" className="small text-muted px-3">{shareLinkNotice}</p>}
+
       {tab.originalServerUrl && tab.originalServerUrl !== serverUrl && tab.serverUrl === serverUrl && (
         <p className="small text-muted px-3">
           Entered URL: <code>{tab.originalServerUrl}</code>. Discovered endpoint: <code>{serverUrl}</code>.
@@ -1131,6 +1139,11 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
         />
       )}
 
+      {isConnected && <NextStepsStrip endpoint={tab.serverUrl} onCallTool={() => {
+        const pane = document.querySelector<HTMLElement>('.workbench-capabilities');
+        pane?.scrollIntoView({ block: 'nearest' });
+        pane?.querySelector<HTMLElement>('button')?.focus();
+      }} />}
       {!showLanding && isConnected && playgroundHistory.interfaceDiff && (
         <InterfaceChangeStrip
           diff={playgroundHistory.interfaceDiff}
