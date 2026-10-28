@@ -1,6 +1,9 @@
+// @vitest-environment node
+// Vite's esbuild service needs Node rather than the jsdom default in vite.config.js.
+
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import ts from 'typescript';
+import { transformWithEsbuild } from 'vite';
 import { describe, expect, it } from 'vitest';
 
 type Format = 'both' | 'json' | 'sse';
@@ -11,10 +14,10 @@ const article = readFileSync(resolve('src/content/articles/mcp-406-not-acceptabl
 const serverFixes = article.slice(article.indexOf('### Server-side fixes'), article.indexOf('## 415 Unsupported'));
 
 // Runs the Express adapter from the article against stand-ins for the SDK, recording which pinned handler served each request.
-function loadExpressAdapter(): (request: Request) => Served {
+async function loadExpressAdapter(): Promise<(request: Request) => Served> {
   const source = serverFixes.match(/```typescript\n([\s\S]*?)```/)?.[1];
   if (!source) throw new Error('406 article no longer contains the Express adapter');
-  const js = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
+  const { code: js } = await transformWithEsbuild(source, 'adapter.ts', { target: 'es2022' });
   let route: ((req: Request, res: unknown) => void) | undefined;
   let served: Served | undefined;
   const createMcpHandler = (_factory: unknown, options?: { responseMode?: string }) => options?.responseMode;
@@ -32,16 +35,16 @@ function loadExpressAdapter(): (request: Request) => Served {
 }
 
 describe('406 article Accept adapter', () => {
-  it('pins the response to the only format a one-sided client accepts', () => {
-    const serve = loadExpressAdapter();
+  it('pins the response to the only format a one-sided client accepts', async () => {
+    const serve = await loadExpressAdapter();
     expect(serve({ method: 'POST', headers: { accept: 'application/json' } }).responseMode).toBe('json');
     expect(serve({ method: 'POST', headers: { accept: 'text/event-stream' } }).responseMode).toBe('sse');
     expect(serve({ method: 'POST', headers: { accept: '*/*' } }).responseMode).toBe('json');
     expect(serve({ method: 'POST', headers: {} }).responseMode).toBe('json');
   });
 
-  it('widens the header only for a pinned handler', () => {
-    const serve = loadExpressAdapter();
+  it('widens the header only for a pinned handler', async () => {
+    const serve = await loadExpressAdapter();
     expect(serve({ method: 'POST', headers: { accept: 'application/json' } }).accept).toBe(
       'application/json, text/event-stream',
     );
