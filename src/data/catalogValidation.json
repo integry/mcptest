@@ -3954,6 +3954,20 @@
     ]
   },
   {
+    "serverId": "ecommercedataapi",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-10-28T00:23:55.231Z",
+    "message": "Authentication challenge at https://ecommercedataapi.com/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://ecommercedataapi.com/mcp",
+    "authorizationServers": [
+      "https://ecommercedataapi.com/api/auth"
+    ]
+  },
+  {
     "serverId": "alfie-everyday",
     "status": "online",
     "transport": "streamable-http",

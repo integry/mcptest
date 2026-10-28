@@ -12529,6 +12529,31 @@
     "homepageUrl": "https://www.borghq.io/"
   },
   {
+    "id": "ecommercedataapi",
+    "name": "Ecommerce Data API",
+    "url": "https://ecommercedataapi.com/mcp",
+    "browserAccess": "proxy-required",
+    "description": "Exposes Amazon product, keyword, market, sales estimate, review and traffic research data as MCP tools for AI agents. Authenticates with an Ecommerce Data API key (paid plans).",
+    "category": "Analytics",
+    "tags": [
+      "analytics",
+      "community-submission",
+      "oauth"
+    ],
+    "listingSource": {
+      "kind": "community-submission",
+      "url": "https://ecommercedataapi.com/en/docs"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "logoUrl": "/server-logos/ecommercedataapi.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-28",
+    "logoLicenseNote": "Locally generated ED monogram for a community submission; it is not an official Ecommerce Data API mark.",
+    "homepageUrl": "https://ecommercedataapi.com/en/docs"
+  },
+  {
     "id": "alfie-everyday",
     "name": "Everyday MCP",
     "url": "https://everyday.alfie.family/mcp",
