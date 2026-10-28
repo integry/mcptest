@@ -35,7 +35,7 @@ it.each([
   ['article root', '<article></article>', 'article'],
   ['reading article inside a container', '<main><article class="reading-article"></article></main>', 'main'],
   ['server profile inside a container', '<main><article class="server-profile"></article></main>', 'main'],
-])('observes and cleans up reading depth for an %s', (_label, markup, selector) => {
+])('observes and cleans up reading depth for %s', (_label, markup, selector) => {
   const observe = vi.fn();
   const disconnect = vi.fn();
   vi.stubGlobal('IntersectionObserver', class { observe = observe; disconnect = disconnect; });

@@ -1,4 +1,5 @@
 // @vitest-environment node
+// Vite's esbuild service needs Node; the CORS example also uses native Request/Response instead of the jsdom default.
 
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';

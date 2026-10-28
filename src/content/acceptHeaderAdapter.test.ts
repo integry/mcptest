@@ -1,4 +1,5 @@
 // @vitest-environment node
+// Vite's esbuild service needs Node rather than the jsdom default in vite.config.js.
 
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';

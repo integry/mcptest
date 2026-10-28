@@ -29,6 +29,15 @@ describe('.github/dependabot.yml', () => {
     }
   });
 
+  it('keeps TypeScript compiler updates eligible in the root and workers', () => {
+    for (const update of npmUpdates) {
+      const compilerIgnores = (update.ignore || []).filter(rule => (
+        rule['dependency-name'] === 'typescript' || rule['dependency-name'] === '*'
+      ));
+      expect(compilerIgnores, update.directory).toEqual([]);
+    }
+  });
+
   it('groups minor and patch updates, with vitest, wrangler and MCP packages on their own', () => {
     for (const update of config.updates) {
       expect(Object.values(update.groups).some(group => (

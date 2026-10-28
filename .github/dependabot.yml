@@ -10,10 +10,6 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
-    ignore:
-      # Stage the root compiler upgrade through TS 6 before migrating to TS 7.
-      - dependency-name: typescript
-        versions: [">=7.0.0 <8.0.0"]
     groups:
       vitest:
         patterns:
