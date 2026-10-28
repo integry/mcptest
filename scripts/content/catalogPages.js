@@ -6,6 +6,7 @@
  * page reads the same before React mounts and replaces the root. The text
  * itself comes from the shared src/utils modules the components use.
  */
+const { getServerUrl } = require('../../src/utils/urlUtils.ts');
 const { getPreferredCatalogEndpoint } = require('../../src/utils/clientSetup.ts');
 const {
   CATALOG_PATH,
@@ -45,8 +46,7 @@ function escapeHtml(value) {
 
 function playgroundPath(server) {
   const endpoint = getPreferredCatalogEndpoint(server);
-  const transportMethod = endpoint.transport === 'legacy-sse' ? 'sse' : 'mcp';
-  return `/server/${endpoint.url}/${transportMethod}`;
+  return getServerUrl(endpoint.url, endpoint.transport);
 }
 
 function initials(name) {

@@ -372,10 +372,7 @@ export const useConnection = (
     let targetUrl = originalTargetUrl; // Add protocol if missing
     const catalogEndpointEvidence = getCatalogEndpointDiagnosticEvidence(targetUrl);
     let effectivePreferredTransport = preferredTransport
-      || (catalogEndpointEvidence?.transport === 'streamable-http'
-        || catalogEndpointEvidence?.transport === 'legacy-sse'
-        ? catalogEndpointEvidence.transport
-        : undefined);
+      || catalogEndpointEvidence?.preferredTransport;
     const diagnosticTransportEvidence = preferredTransport
       || catalogEndpointEvidence?.transport
       || effectivePreferredTransport

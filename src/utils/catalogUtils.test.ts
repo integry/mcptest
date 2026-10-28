@@ -1,3 +1,4 @@
+import { resolveCatalogEndpointTransport } from './clientSetup';
 import { describe, expect, it } from 'vitest';
 import type { CatalogAuthType, CatalogServer } from '../types/catalog';
 import {
@@ -132,6 +133,7 @@ describe('catalog authentication metadata', () => {
 
   it('resolves exact Upwork catalog transport and OAuth evidence without a provider rule', () => {
     expect(getCatalogEndpointDiagnosticEvidence('https://mcp.upwork.com/mcp')).toEqual({
+      preferredTransport: 'streamable-http',
       transport: 'streamable-http',
       authType: 'oauth',
       supportsBearerToken: false,
@@ -267,4 +269,16 @@ describe('catalog category facets', () => {
       ],
     });
   });
+});
+
+
+it('keeps diagnostic transport observations separate from concrete connection hints', () => {
+  for (const server of getCatalogServers()) {
+    for (const endpoint of [server.url, server.browserUrl, server.validatedUrl, ...(server.alternativeEndpoints ?? []).map(({ url }) => url)].filter(Boolean)) {
+      const evidence = getCatalogEndpointDiagnosticEvidence(endpoint);
+      if (!evidence) continue;
+      expect(evidence.preferredTransport).toBe(resolveCatalogEndpointTransport(server, endpoint));
+      expect(evidence.preferredTransport === undefined || evidence.preferredTransport === 'streamable-http' || evidence.preferredTransport === 'legacy-sse').toBe(true);
+    }
+  }
 });

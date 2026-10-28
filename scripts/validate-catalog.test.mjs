@@ -1209,3 +1209,19 @@ describe('single-server validation (--only)', () => {
     expect(mergeValidationResults(seeds, undefined, [fresh])).toEqual([fresh]);
   });
 });
+
+describe('OAuth environment identifier validation', () => {
+  for (const field of ['clientId', 'clientSecret']) {
+    it.each(['BAD}NAME', 'BAD"NAME', "BAD'NAME", 'BAD$(id)', 'BAD;id', 'BAD&&id', 'BAD`id`', 'BAD\nNAME', '', 'lowercase', '_NAME', 'A'.repeat(65), ['VALID_NAME']])(`rejects ${field}: %j`, (name) => {
+      const seed = structuredClone(catalogSeeds.find(({ id }) => id === 'asana'));
+      seed.oauthRegistration[field].environmentVariable = name;
+      expect(() => validateCatalogSeed(seed)).toThrow(`oauthRegistration.${field}.environmentVariable is invalid`);
+    });
+  }
+  it('accepts uppercase identifiers at both length boundaries', () => {
+    const seed = structuredClone(catalogSeeds.find(({ id }) => id === 'asana'));
+    seed.oauthRegistration.clientId.environmentVariable = 'A';
+    seed.oauthRegistration.clientSecret.environmentVariable = 'A'.repeat(64);
+    expect(() => validateCatalogSeed(seed)).not.toThrow();
+  });
+});

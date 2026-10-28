@@ -7,7 +7,7 @@ export const CATALOG_CATEGORY_ALL = 'all' as const;
 /**
  * Remote MCP transport variants the catalog can advertise or validate.
  */
-export type CatalogTransport = 'streamable-http' | 'legacy-sse';
+export type CatalogTransport = import('./index').TransportType;
 
 /**
  * Transport result values produced by catalog validation. Validation can prove

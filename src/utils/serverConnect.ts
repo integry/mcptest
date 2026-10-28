@@ -211,7 +211,7 @@ export const getCatalogServerFacts = (
   return {
     schemaVersion: COMPATIBILITY_SCHEMA_VERSION,
     serverUrl: endpoint.url,
-    transport: { kind: fact(endpoint.transport, `${endpoint.provenanceLabel}.`) },
+    transport: { kind: fact(endpoint.transport ?? 'unknown', `${endpoint.provenanceLabel}.`) },
     protocol: {
       era: era ? fact(era, `Catalog validation negotiated MCP ${server.protocolVersion}.`) : notRecorded(),
       version: server.protocolVersion ? fact(server.protocolVersion, 'Catalog validation.') : notRecorded(),
@@ -281,7 +281,8 @@ const cellCheck = (cell: SourcedCell<SupportLevel>, what: string, client: string
   return { level: 'unsupported', reason: `${client} does not support ${what}.${note}` };
 };
 
-const transportCheck = (entry: ClientCompatibilityEntry, transport: CatalogTransport, client: string): CellCheck => (
+const transportCheck = (entry: ClientCompatibilityEntry, transport: CatalogTransport | undefined, client: string): CellCheck => (
+  !transport ? { level: 'partial', reason: 'The endpoint transport has not been verified.' } :
   transport === 'legacy-sse'
     ? cellCheck(entry.transports.legacySse, 'legacy SSE servers', client)
     : cellCheck(entry.transports.streamableHttp, 'Streamable HTTP servers', client)
@@ -435,6 +436,9 @@ export const createAgentPrompt = (
     `Server URL: ${endpoint.url}`,
     `Transport: ${formatCatalogTransport(endpoint.transport)} (remote MCP server, no local install).`,
     ...promptAuth(server, authSummary, sharedNotes),
+    ...setups.filter(({ supported }) => !supported).map((setup) => (
+      `${setup.label} setup unavailable: ${setup.unsupportedReasons.join(' ')} Do not invent a configuration for this client.`
+    )),
     toolLine,
     `Reference: ${SITE_URL}${getCatalogServerPath(server.id)}`,
     '',

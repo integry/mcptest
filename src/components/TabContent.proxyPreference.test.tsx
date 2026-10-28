@@ -3,6 +3,8 @@ import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ConnectionTab } from '../types';
+import { getCatalogServers } from '../utils/catalogUtils';
+import { getPreferredCatalogEndpoint } from '../utils/clientSetup';
 
 const connectionMocks = vi.hoisted(() => ({ attempt: vi.fn() }));
 const oauthMocks = vi.hoisted(() => ({ begin: vi.fn() }));
@@ -330,6 +332,25 @@ describe('endpoint-scoped preferred transport hints', () => {
       title: 'mcp.api.coingecko.com',
       preferredTransportHint: 'streamable-http',
     });
+    view.unmount();
+  });
+
+  it.each(['both', 'unknown'] as const)('passes only concrete hints to an immediate %s connection', async (transport) => {
+    const endpoint = getPreferredCatalogEndpoint({
+      ...getCatalogServers()[0],
+      url: 'https://unverified.example/custom', browserUrl: undefined, validatedUrl: undefined,
+      transport,
+    });
+    const view = renderTab({
+      id: 'resolved-tab', title: 'Resolved transport', serverUrl: endpoint.url,
+      preferredTransportHint: endpoint.transport, connectionStatus: 'Disconnected', useProxy: false,
+    });
+    await act(async () => {
+      view.container.querySelector<HTMLButtonElement>('#connectBtn')?.click();
+    });
+    expect(connectionMocks.attempt).toHaveBeenCalledOnce();
+    expect(connectionMocks.attempt.mock.calls[0][0]).toBe(endpoint.url);
+    expect(connectionMocks.attempt.mock.calls[0][7]).toBe(transport === 'both' ? 'streamable-http' : undefined);
     view.unmount();
   });
 

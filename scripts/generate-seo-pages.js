@@ -233,7 +233,7 @@ function detectedAuthenticationLabel(server) {
 
 function playgroundPath(server) {
   const endpoint = getPreferredCatalogEndpoint(server);
-  return getServerUrl(endpoint.url);
+  return getServerUrl(endpoint.url, endpoint.transport);
 }
 
 function replaceOrInsertHead(html, pattern, replacement) {
