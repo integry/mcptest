@@ -12577,5 +12577,30 @@
     "logoRetrievedAt": "2026-10-27",
     "logoLicenseNote": "Locally generated EM monogram for a community submission; it is not an official Everyday MCP mark.",
     "homepageUrl": "https://alfie.family/agent-guide.html"
+  },
+  {
+    "id": "agentweb",
+    "name": "AgentWeb",
+    "url": "https://api.agentweb.live/mcp",
+    "browserAccess": "direct",
+    "description": "Search 130M+ business records, indexed web pages and local places, with weather and travel tools for AI agents. Hosted Streamable HTTP MCP; authenticated tool calls use a free AgentWeb API key in the X-API-Key header.",
+    "category": "Search",
+    "tags": [
+      "search",
+      "community-submission",
+      "no-auth"
+    ],
+    "listingSource": {
+      "kind": "community-submission",
+      "url": "https://agentweb.live/install.md"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "logoUrl": "/server-logos/agentweb.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-28",
+    "logoLicenseNote": "Locally generated AG monogram for a community submission; it is not an official AgentWeb mark.",
+    "homepageUrl": "https://agentweb.live/install.md"
   }
 ]
