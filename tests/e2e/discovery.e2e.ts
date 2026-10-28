@@ -44,9 +44,9 @@ test.describe('MCP discovery checker', () => {
 
     // The canonical inspector link preserves the endpoint and connects automatically.
     const inspectorLink = page.getByRole('link', { name: 'Test in inspector' });
-    await expect(inspectorLink).toHaveAttribute('href', `/server/http:127.0.0.1:${MOCK_PORT}/2026/mcp`);
+    await expect(inspectorLink).toHaveAttribute('href', `/server/http:127.0.0.1:${MOCK_PORT}/2026/mcp?transport=http`);
     await inspectorLink.click();
-    await expect(page).toHaveURL(`/server/http:127.0.0.1:${MOCK_PORT}/2026/mcp`);
+    await expect(page).toHaveURL(`/server/http:127.0.0.1:${MOCK_PORT}/2026/mcp?transport=http`);
     // Reaching ready without a Connect click verifies that opening the link connects.
     await expect(page.getByRole('heading', { name: 'MCP connection ready' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Connect', exact: true })).toHaveCount(0);

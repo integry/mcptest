@@ -206,7 +206,8 @@ function validateOAuthCredentialRequirement(value, label, field) {
     throw new Error(`${label}: oauthRegistration.${field}.required must be boolean`);
   }
   if (value.environmentVariable !== undefined
-      && !/^[A-Z][A-Z0-9_]{1,63}$/.test(value.environmentVariable)) {
+      && (typeof value.environmentVariable !== 'string'
+        || !/^[A-Z][A-Z0-9_]{0,63}$/.test(value.environmentVariable))) {
     throw new Error(`${label}: oauthRegistration.${field}.environmentVariable is invalid`);
   }
   for (const key of Object.keys(value)) {
