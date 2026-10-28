@@ -12527,5 +12527,30 @@
     "logoRetrievedAt": "2026-10-27",
     "logoLicenseNote": "Locally generated OD monogram for a community submission; it is not an official Odin mark.",
     "homepageUrl": "https://www.borghq.io/"
+  },
+  {
+    "id": "alfie-everyday",
+    "name": "Everyday MCP",
+    "url": "https://everyday.alfie.family/mcp",
+    "browserAccess": "proxy-required",
+    "description": "Fourteen remote MCP tools for calculations, unit conversion, time and dates, text, subtitles, and structured data. Uses Streamable HTTP without an Everyday account or API key.",
+    "category": "Productivity",
+    "tags": [
+      "productivity",
+      "community-submission",
+      "no-auth"
+    ],
+    "listingSource": {
+      "kind": "community-submission",
+      "url": "https://alfie.family/agent-guide.html"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "logoUrl": "/server-logos/alfie-everyday.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-27",
+    "logoLicenseNote": "Locally generated EM monogram for a community submission; it is not an official Everyday MCP mark.",
+    "homepageUrl": "https://alfie.family/agent-guide.html"
   }
 ]
