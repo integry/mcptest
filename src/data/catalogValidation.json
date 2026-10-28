@@ -3978,5 +3978,19 @@
     "message": "Negotiated stateless MCP 2026-07-28 at https://everyday.alfie.family/mcp; detected transport streamable-http; authentication none",
     "validatedUrl": "https://everyday.alfie.family/mcp",
     "protocolVersion": "2026-07-28"
+  },
+  {
+    "serverId": "futureinfra",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-10-28T09:42:36.113Z",
+    "message": "Authentication challenge at https://futureinfra.ai/v1/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://futureinfra.ai/v1/mcp",
+    "authorizationServers": [
+      "https://futureinfra.ai"
+    ]
   }
 ]

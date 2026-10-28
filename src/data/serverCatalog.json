@@ -12577,5 +12577,30 @@
     "logoRetrievedAt": "2026-10-27",
     "logoLicenseNote": "Locally generated EM monogram for a community submission; it is not an official Everyday MCP mark.",
     "homepageUrl": "https://alfie.family/agent-guide.html"
+  },
+  {
+    "id": "futureinfra",
+    "name": "FutureInfra",
+    "url": "https://futureinfra.ai/v1/mcp",
+    "browserAccess": "direct",
+    "description": "Manage Korean cloud virtual machines, snapshots, public IPs and firewall rules. Hosted MCP access supports OAuth 2.1 with PKCE; resources use paid prepaid credits and console sign-in is limited to South Korea.",
+    "category": "Cloud",
+    "tags": [
+      "cloud",
+      "community-submission",
+      "oauth"
+    ],
+    "listingSource": {
+      "kind": "community-submission",
+      "url": "https://futureinfra.ai/docs/mcp/"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "logoUrl": "/server-logos/futureinfra.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-28",
+    "logoLicenseNote": "Locally generated FU monogram for a community submission; it is not an official FutureInfra mark.",
+    "homepageUrl": "https://futureinfra.ai/docs/mcp/"
   }
 ]
