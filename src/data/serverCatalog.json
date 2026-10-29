@@ -12577,5 +12577,30 @@
     "logoRetrievedAt": "2026-10-27",
     "logoLicenseNote": "Locally generated EM monogram for a community submission; it is not an official Everyday MCP mark.",
     "homepageUrl": "https://alfie.family/agent-guide.html"
+  },
+  {
+    "id": "neverapply",
+    "name": "NeverApply",
+    "url": "https://neverapply.co/mcp",
+    "browserAccess": "direct",
+    "description": "NeverApply's hosted MCP server lets Claude, Cursor, Cline and other MCP clients search and match jobs, tailor resumes, answer screening questions, prepare for interviews, and apply to jobs with your approval. OAuth sign-in, 15 tools.",
+    "category": "Productivity",
+    "tags": [
+      "productivity",
+      "community-submission",
+      "oauth"
+    ],
+    "listingSource": {
+      "kind": "community-submission",
+      "url": "https://neverapply.co/features/mcp"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "logoUrl": "/server-logos/neverapply.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-29",
+    "logoLicenseNote": "Locally generated NE monogram for a community submission; it is not an official NeverApply mark.",
+    "homepageUrl": "https://neverapply.co/features/mcp"
   }
 ]

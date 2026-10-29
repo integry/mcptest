@@ -3978,5 +3978,19 @@
     "message": "Negotiated stateless MCP 2026-07-28 at https://everyday.alfie.family/mcp; detected transport streamable-http; authentication none",
     "validatedUrl": "https://everyday.alfie.family/mcp",
     "protocolVersion": "2026-07-28"
+  },
+  {
+    "serverId": "neverapply",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-10-29T04:13:24.450Z",
+    "message": "Authentication challenge at https://neverapply.co/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://neverapply.co/mcp",
+    "authorizationServers": [
+      "https://neverapply.co"
+    ]
   }
 ]
