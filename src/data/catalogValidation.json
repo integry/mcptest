@@ -3978,5 +3978,17 @@
     "message": "Negotiated stateless MCP 2026-07-28 at https://everyday.alfie.family/mcp; detected transport streamable-http; authentication none",
     "validatedUrl": "https://everyday.alfie.family/mcp",
     "protocolVersion": "2026-07-28"
+  },
+  {
+    "serverId": "tasarim",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateful",
+    "checkedAt": "2026-10-30T09:48:11.277Z",
+    "message": "Negotiated stateful MCP 2025-11-25 at https://tasarim.ai/api/mcp; detected transport streamable-http; authentication none",
+    "validatedUrl": "https://tasarim.ai/api/mcp",
+    "protocolVersion": "2025-11-25"
   }
 ]
