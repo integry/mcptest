@@ -12577,5 +12577,30 @@
     "logoRetrievedAt": "2026-10-27",
     "logoLicenseNote": "Locally generated EM monogram for a community submission; it is not an official Everyday MCP mark.",
     "homepageUrl": "https://alfie.family/agent-guide.html"
+  },
+  {
+    "id": "grigora",
+    "name": "Grigora MCP",
+    "url": "https://mcp.grigora.co/mcp",
+    "browserAccess": "proxy-required",
+    "description": "Grigora MCP connects AI clients to website management, CMS content, commerce, SEO, and publishing. It uses OAuth and is in beta for Pro and Enterprise users with Developer Mode enabled.",
+    "category": "Productivity",
+    "tags": [
+      "productivity",
+      "community-submission",
+      "oauth"
+    ],
+    "listingSource": {
+      "kind": "community-submission",
+      "url": "https://www.grigora.co/mcp/"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "logoUrl": "/server-logos/grigora.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-30",
+    "logoLicenseNote": "Locally generated GM monogram for a community submission; it is not an official Grigora MCP mark.",
+    "homepageUrl": "https://www.grigora.co/mcp/"
   }
 ]
