@@ -12583,7 +12583,7 @@
     "name": "FutureInfra",
     "url": "https://futureinfra.ai/v1/mcp",
     "browserAccess": "direct",
-    "description": "Manage Korean cloud virtual machines, snapshots, public IPs and firewall rules. Hosted MCP access supports OAuth 2.1 with PKCE; resources use paid prepaid credits and console sign-in is limited to South Korea.",
+    "description": "Manage Korean cloud virtual machines, snapshots, public IPs and firewall rules. Hosted MCP access uses OAuth 2.1 with PKCE.",
     "category": "Cloud",
     "tags": [
       "cloud",
@@ -12597,10 +12597,34 @@
     "transport": "streamable-http",
     "requiresOAuth": true,
     "authType": "oauth",
+    "oauthRegistration": {
+      "mode": "automatic",
+      "responsibleParty": "automatic",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "browserPublicClientSupported": true,
+      "callback": {
+        "required": false,
+        "redirectUrls": {}
+      },
+      "setupSteps": [],
+      "settings": [],
+      "availability": "ready",
+      "reviewedAt": "2026-10-31",
+      "evidenceUrl": "https://futureinfra.ai/docs/mcp/"
+    },
     "logoUrl": "/server-logos/futureinfra.svg",
     "logoSourceKind": "generated-fallback",
     "logoRetrievedAt": "2026-10-28",
-    "logoLicenseNote": "Locally generated FU monogram for a community submission; it is not an official FutureInfra mark.",
-    "homepageUrl": "https://futureinfra.ai/docs/mcp/"
+    "logoLicenseNote": "Locally generated FI monogram for a community submission; it is not an official FutureInfra mark.",
+    "homepageUrl": "https://futureinfra.ai/docs/mcp/",
+    "caveats": [
+      "Resources are billed against prepaid account credits.",
+      "FutureInfra console sign-in is limited to South Korea."
+    ]
   }
 ]
