@@ -4006,6 +4006,20 @@
     "protocolVersion": "2025-11-25"
   },
   {
+    "serverId": "neverapply",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-10-29T04:13:24.450Z",
+    "message": "Authentication challenge at https://neverapply.co/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://neverapply.co/mcp",
+    "authorizationServers": [
+      "https://neverapply.co"
+    ]
+  },
+  {
     "serverId": "grigora",
     "status": "online",
     "transport": "unknown",
