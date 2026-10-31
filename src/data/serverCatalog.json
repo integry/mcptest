@@ -12579,6 +12579,80 @@
     "homepageUrl": "https://alfie.family/agent-guide.html"
   },
   {
+    "id": "futureinfra",
+    "name": "FutureInfra",
+    "url": "https://futureinfra.ai/v1/mcp",
+    "browserAccess": "direct",
+    "description": "Manage Korean cloud virtual machines, snapshots, public IPs and firewall rules. Hosted MCP access uses OAuth 2.1 with PKCE.",
+    "category": "Cloud",
+    "tags": [
+      "cloud",
+      "community-submission",
+      "oauth"
+    ],
+    "listingSource": {
+      "kind": "community-submission",
+      "url": "https://futureinfra.ai/docs/mcp/"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "oauthRegistration": {
+      "mode": "automatic",
+      "responsibleParty": "automatic",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "browserPublicClientSupported": true,
+      "callback": {
+        "required": false,
+        "redirectUrls": {}
+      },
+      "setupSteps": [],
+      "settings": [],
+      "availability": "ready",
+      "reviewedAt": "2026-10-31",
+      "evidenceUrl": "https://futureinfra.ai/docs/mcp/"
+    },
+    "logoUrl": "/server-logos/futureinfra.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-28",
+    "logoLicenseNote": "Locally generated FI monogram for a community submission; it is not an official FutureInfra mark.",
+    "homepageUrl": "https://futureinfra.ai/docs/mcp/",
+    "caveats": [
+      "Resources are billed against prepaid account credits.",
+      "FutureInfra console sign-in is limited to South Korea."
+    ]
+  },
+  {
+    "id": "tasarim",
+    "name": "tasarim.ai AI Catalog",
+    "url": "https://tasarim.ai/api/mcp",
+    "browserAccess": "proxy-required",
+    "description": "Find AI design tools, compare catalog records, and inspect stored evidence and limitations.",
+    "category": "Design",
+    "tags": [
+      "design",
+      "community-submission",
+      "no-auth"
+    ],
+    "listingSource": {
+      "kind": "community-submission",
+      "url": "https://tasarim.ai/en/mcp"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "logoUrl": "/server-logos/tasarim.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-30",
+    "logoLicenseNote": "Locally generated TA monogram for a community submission; it is not an official tasarim.ai AI Catalog mark.",
+    "homepageUrl": "https://tasarim.ai/en/mcp"
+  },
+  {
     "id": "neverapply",
     "name": "NeverApply",
     "url": "https://neverapply.co/mcp",

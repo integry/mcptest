@@ -3980,6 +3980,32 @@
     "protocolVersion": "2026-07-28"
   },
   {
+    "serverId": "futureinfra",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-10-28T09:42:36.113Z",
+    "message": "Authentication challenge at https://futureinfra.ai/v1/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://futureinfra.ai/v1/mcp",
+    "authorizationServers": [
+      "https://futureinfra.ai"
+    ]
+  },
+  {
+    "serverId": "tasarim",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateful",
+    "checkedAt": "2026-10-30T09:48:11.277Z",
+    "message": "Negotiated stateful MCP 2025-11-25 at https://tasarim.ai/api/mcp; detected transport streamable-http; authentication none",
+    "validatedUrl": "https://tasarim.ai/api/mcp",
+    "protocolVersion": "2025-11-25"
+  },
+  {
     "serverId": "neverapply",
     "status": "online",
     "transport": "unknown",
