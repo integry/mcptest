@@ -4018,5 +4018,19 @@
     "authorizationServers": [
       "https://neverapply.co"
     ]
+  },
+  {
+    "serverId": "grigora",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-10-30T10:05:13.068Z",
+    "message": "Authentication challenge at https://mcp.grigora.co/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://mcp.grigora.co/mcp",
+    "authorizationServers": [
+      "https://mcp.grigora.co/"
+    ]
   }
 ]
