@@ -1,4 +1,5 @@
 import React, { Suspense, useCallback, useEffect, useRef, useState, useMemo } from 'react';
+import type { CatalogTransport } from './types/catalog';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 // Import Analytics helpers
@@ -470,13 +471,9 @@ function App() {
   }, [location.pathname, spaces, navigate]);
 
   // Server URL and result share handlers
-  const handleServerUrlConnection = (serverUrl: string, transportMethod?: string) => {
+  const handleServerUrlConnection = (serverUrl: string, transportMethod?: CatalogTransport) => {
     trackEvent('server_url_connection', { host: getAnalyticsHost(serverUrl), transport_method: transportMethod });
-    const preferredTransport = (transportMethod === 'mcp' || transportMethod === 'http')
-      ? 'streamable-http'
-      : transportMethod === 'sse'
-        ? 'legacy-sse'
-        : undefined;
+    const preferredTransport = transportMethod;
     
     // Find or create a tab for this server
     let targetTab = tabs.find(tab => tab.serverUrl === serverUrl);

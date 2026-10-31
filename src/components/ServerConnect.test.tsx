@@ -224,3 +224,22 @@ describe('ServerConnect compatibility rows', () => {
     expect(chatgpt?.textContent).toContain('ChatGPT does not support API key headers');
   });
 });
+
+describe('untrusted OAuth environment names in the DOM', () => {
+  for (const field of ['clientId', 'clientSecret'] as const) {
+    it.each(['BAD}NAME', 'BAD"NAME', "BAD'NAME", 'BAD$(id)', 'BAD;id', 'BAD&&id', 'BAD`id`', 'BAD\nNAME'])(`blocks ${field}: %j`, async (name) => {
+      const asana = structuredClone(getCatalogServerById('asana')!);
+      asana.oauthRegistration![field].environmentVariable = name;
+      const writeText = vi.fn().mockResolvedValue(undefined);
+      Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+      const view = renderConnect(asana);
+      expect(view.textContent).not.toContain(name);
+      expect(view.querySelectorAll('.client-setup-copy')).toHaveLength(0);
+      expect(view.querySelectorAll('.client-setup-unsupported')).toHaveLength(4);
+      await act(async () => view.querySelector<HTMLButtonElement>('.server-connect-agent-copy')?.click());
+      expect(writeText).toHaveBeenCalledOnce();
+      expect(writeText.mock.calls[0][0]).not.toContain(name);
+      expect(writeText.mock.calls[0][0]).not.toContain('claude mcp add');
+    });
+  }
+});

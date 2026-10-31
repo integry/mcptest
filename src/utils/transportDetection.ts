@@ -951,7 +951,7 @@ const directCandidates = (
 
   // A catalog-selected endpoint is authoritative transport evidence. Keep its
   // exact path and do not invent a sibling transport endpoint.
-  if (preferredTransport) {
+  if (preferredTransport === 'streamable-http' || preferredTransport === 'legacy-sse') {
     addExact(endpoint, preferredTransport);
     return candidates;
   }

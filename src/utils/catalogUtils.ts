@@ -1,3 +1,4 @@
+import { resolveCatalogEndpointTransport } from './clientSetup';
 import serverCatalog from '../data/serverCatalog.json';
 import catalogValidation from '../data/catalogValidation.json';
 import catalogCapabilities from '../data/catalogCapabilities.json';
@@ -37,6 +38,8 @@ const getInventory = (serverId: string) => {
 };
 
 export interface CatalogEndpointDiagnosticEvidence {
+  /** Concrete, endpoint-scoped hint; diagnostic evidence may remain broad. */
+  preferredTransport?: CatalogTransport;
   transport: CatalogValidationTransport | CatalogTransport;
   authType: CatalogAuthType;
   supportsBearerToken: boolean;
@@ -196,6 +199,7 @@ export const getCatalogEndpointDiagnosticEvidence = (
       const validatedEndpointMatches = server.validatedUrl
         && normalizedEndpointKey(server.validatedUrl) === endpointKey;
       return {
+        preferredTransport: resolveCatalogEndpointTransport(server, endpoint),
         transport: validatedEndpointMatches && server.transport !== 'unknown'
           ? server.transport
           : server.declaredTransport,
@@ -211,6 +215,7 @@ export const getCatalogEndpointDiagnosticEvidence = (
     ));
     if (alternative) {
       return {
+        preferredTransport: resolveCatalogEndpointTransport(server, endpoint),
         transport: server.declaredTransport,
         authType: alternative.authType || server.authType,
         supportsBearerToken: alternative.authType === 'bearer-token'

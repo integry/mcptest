@@ -16,8 +16,11 @@ export const selectGuideServers = (article: LearnArticleSummary) => {
 export default function GuideServers({ article }: { article: LearnArticleSummary }) {
   const servers = selectGuideServers(article);
   if (!servers.length) return null;
-  return <section className="reading-related" aria-label="Servers to try"><h2>Servers to try</h2><ul>{servers.map(server => <li key={server.id}>
+  return <section className="reading-related" aria-label="Servers to try"><h2>Servers to try</h2><ul>{servers.map(server => {
+    const endpoint = getPreferredCatalogEndpoint(server);
+    return <li key={server.id}>
     <a href={`/servers/${server.id}/`}>{server.name}</a> — {server.description}{' '}
-    <a href={getServerUrl(getPreferredCatalogEndpoint(server).url)}>Test it live<span className="visually-hidden">: {server.name}</span></a>
-  </li>)}</ul></section>;
+    <a href={getServerUrl(endpoint.url, endpoint.transport)}>Test it live<span className="visually-hidden">: {server.name}</span></a>
+  </li>;
+  })}</ul></section>;
 }

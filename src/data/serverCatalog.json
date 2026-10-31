@@ -12626,5 +12626,30 @@
       "Resources are billed against prepaid account credits.",
       "FutureInfra console sign-in is limited to South Korea."
     ]
+  },
+  {
+    "id": "tasarim",
+    "name": "tasarim.ai AI Catalog",
+    "url": "https://tasarim.ai/api/mcp",
+    "browserAccess": "proxy-required",
+    "description": "Find AI design tools, compare catalog records, and inspect stored evidence and limitations.",
+    "category": "Design",
+    "tags": [
+      "design",
+      "community-submission",
+      "no-auth"
+    ],
+    "listingSource": {
+      "kind": "community-submission",
+      "url": "https://tasarim.ai/en/mcp"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "logoUrl": "/server-logos/tasarim.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-10-30",
+    "logoLicenseNote": "Locally generated TA monogram for a community submission; it is not an official tasarim.ai AI Catalog mark.",
+    "homepageUrl": "https://tasarim.ai/en/mcp"
   }
 ]
