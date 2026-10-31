@@ -15,6 +15,7 @@ describe('authorization guidance classifications', () => {
     ['notion', 'no-registration-needed', false, false],
     ['atlassian', 'no-registration-needed', false, false],
     ['stripe', 'no-registration-needed', false, false],
+    ['futureinfra', 'no-registration-needed', false, false],
   ] as const)('classifies %s', (id, status, clientIdRequired, clientSecretRequired) => {
     const server = getCatalogServerById(id);
     expect(server).toBeDefined();
