@@ -17,7 +17,7 @@ import ContentTrackNav from './learn/ContentTrackNav';
 import GuideSearch from './learn/GuideSearch';
 import { isGuideSearchShortcutView } from './learn/guideSearchShortcut';
 
-type ActiveView = 'playground' | 'dashboards' | 'docs' | 'learn' | 'report' | 'catalog' | 'server-profile' | 'breaking-changes' | 'discovery' | 'oauth-check';
+type ActiveView = 'playground' | 'dashboards' | 'docs' | 'learn' | 'report' | 'catalog' | 'server-profile' | 'evals' | 'breaking-changes' | 'discovery' | 'oauth-check';
 
 interface SideNavProps {
   activeView: ActiveView;
@@ -40,6 +40,7 @@ const PRIMARY_ACTIVE_VIEWS: Record<string, ActiveView[]> = {
   '/': ['playground'],
   '/catalog': ['catalog', 'server-profile'],
   '/report': ['report'],
+  '/evals': ['evals'],
   '/tools/breaking-changes': ['breaking-changes'],
   '/tools/oauth-check': ['oauth-check'],
   '/tools/discovery': ['discovery'],
