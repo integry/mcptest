@@ -4032,5 +4032,17 @@
     "authorizationServers": [
       "https://mcp.grigora.co/"
     ]
+  },
+  {
+    "serverId": "agentweb",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateful",
+    "checkedAt": "2026-10-28T14:39:06.634Z",
+    "message": "Negotiated stateful MCP 2025-06-18 at https://api.agentweb.live/mcp; detected transport streamable-http; authentication none",
+    "validatedUrl": "https://api.agentweb.live/mcp",
+    "protocolVersion": "2025-06-18"
   }
 ]
