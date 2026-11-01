@@ -68,10 +68,10 @@ const snapshot = () => ({
   connectionPanel: Boolean(container.querySelector('.view-panel:not(.d-none) .connection-console')),
 });
 
-const mount = () => {
+const mount = (path = '/') => {
   root = createRoot(container);
   act(() => root!.render(
-    <MemoryRouter initialEntries={['/']}>
+    <MemoryRouter initialEntries={[path]}>
       <AuthProvider>
         <App />
       </AuthProvider>
@@ -81,7 +81,7 @@ const mount = () => {
 
 const FIRST_FRAME = {
   header: true,
-  sidebarLinks: ['Playground', 'Catalog', 'Reports', 'Breaking changes', 'OAuth check', 'Discovery check'],
+  sidebarLinks: ['Playground', 'Catalog', 'Reports', 'Tool-selection evals', 'Breaking changes', 'OAuth check', 'Discovery check'],
   dashboards: ['My first dashboard'],
   tabs: ['New Connection'],
   landing: 'Inspect, debug and evaluate remote MCP servers in your browser',
@@ -106,6 +106,18 @@ describe('App first render', () => {
     container.remove();
     vi.unstubAllEnvs();
     vi.restoreAllMocks();
+  });
+
+  it.each([
+    ['/evals', 'Tool-selection evaluations'],
+    ['/tools/discovery', 'MCP discovery checker'],
+  ])('renders %s and marks its sidebar link active after the merge', async (path, heading) => {
+    await preloadViewsForPath(path);
+    await act(async () => mount(path));
+
+    expect(container.querySelector('.not-found-page')).toBeNull();
+    expect(container.querySelector('.view-panel:not(.d-none) h1')?.textContent).toBe(heading);
+    expect(container.querySelector(`.desktop-sidebar a[href="${path}"]`)?.getAttribute('aria-current')).toBe('page');
   });
 
   it('renders the shell and landing for a new visitor, then settles signed out without loading Firebase', async () => {
