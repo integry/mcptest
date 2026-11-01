@@ -1865,6 +1865,140 @@
       "items": []
     }
   },
+  "cadprops": {
+    "version": 1,
+    "observedAt": "2026-11-01T07:34:36.980Z",
+    "provenance": {
+      "testedEndpoint": "https://www.cadprops.com/api/v1/mcp",
+      "route": "direct"
+    },
+    "authentication": "unauthenticated",
+    "tools": {
+      "status": "partial",
+      "observedCount": 4,
+      "retainedCount": 4,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "convert_cad",
+          "description": "Convert a file opened with inspect_cad to STEP, STL or GLB and return a download link that expires in 30 minutes. STEP is a solid B-Rep when the source was read exactly; otherwise it is a triangulated STEP that CAD software cannot edit as a solid. STL and GLB are always triangulated meshes.",
+          "input": [
+            {
+              "name": "ref",
+              "type": "string",
+              "description": "The ref from an inspect_cad result. An upload_ticket is not a ref.",
+              "required": true
+            },
+            {
+              "name": "step_kind",
+              "type": "string",
+              "description": "Only for target=step: auto picks solid B-Rep when the source was exact else mesh STEP; solid forces B-Rep; mesh forces triangulated STEP.",
+              "required": false
+            },
+            {
+              "name": "target",
+              "type": "string",
+              "description": "Output format: step (CAD B-Rep or mesh STEP), stl (triangle mesh), or glb (glTF binary mesh).",
+              "required": true
+            },
+            {
+              "name": "wait_seconds",
+              "type": "integer",
+              "description": "Seconds to wait for conversion to finish before returning status=running, 0–20, default 15.",
+              "required": false
+            }
+          ],
+          "outputSchema": false
+        },
+        {
+          "name": "inspect_cad",
+          "description": "Open a CAD file on CADProps servers and report its format, size, volume, area, units and accuracy, with an interactive 3D preview. Supported: 3DM, 3DXML, 3MF, 7Z, AMF, ASM, BMP, CATDRAWING, CATPART, CATPRODUCT, CGM, DFT, DRW, DWF, DWFX, DWG, DXF, EMF, F3D, GCODE, GIF, GLB, GLTF, GZ, IAM, ICO, IDW, IFC, IFCZIP, IGES, IGS, IPT, JPG, JT, NEU, OBJ, PAR, PCX, PDF, PLT, PLY, PNG, PRC, PRT, PSM, RAR, SAB, SAT, SLDASM, SLDDRW, SLDPRT, STEP, STL, STP, SVG, TGA, TGZ, TIFF, U3D, UNV, VDA, VDAFS, VRML, WEBP, WMF, WRL, WRZ, X3D, X3DV, X_B, X_T, ZIP. Creo .prt files with supported saved triangle strips show",
+          "input": [
+            {
+              "name": "file",
+              "type": "object",
+              "description": "Hosted CAD file from the chat platform. Prefer this when the host already uploaded the attachment; otherwise omit and use the upload link flow.",
+              "required": false
+            },
+            {
+              "name": "ref",
+              "type": "string",
+              "description": "Reference returned by an earlier inspect_cad call.",
+              "required": false
+            },
+            {
+              "name": "upload_ticket",
+              "type": "string",
+              "description": "Ticket from a previous upload link, after the user says the upload is done.",
+              "required": false
+            },
+            {
+              "name": "wait_seconds",
+              "type": "integer",
+              "description": "Seconds to wait for inspect to finish before returning status=running, 0–20, default 15.",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "open_in_workspace",
+          "description": "Return a one-time link (valid 15 minutes) that opens this file in the CADProps web workspace for measuring, sectioning and sharing. After it is opened, the chat preview and links for this file stop working.",
+          "input": [
+            {
+              "name": "ref",
+              "type": "string",
+              "description": "The ref from an inspect_cad result. An upload_ticket is not a ref.",
+              "required": true
+            }
+          ],
+          "outputSchema": false
+        },
+        {
+          "name": "refresh_view_token",
+          "description": "Used by the CADProps preview to renew its read-only token.",
+          "input": [
+            {
+              "name": "ref",
+              "type": "string",
+              "description": "The ref from an inspect_cad result whose preview token should be renewed.",
+              "required": true
+            }
+          ],
+          "outputSchema": false
+        }
+      ]
+    },
+    "resources": {
+      "status": "partial",
+      "observedCount": 1,
+      "retainedCount": 1,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "CADProps 3D preview"
+        }
+      ]
+    },
+    "resourceTemplates": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "prompts": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    }
+  },
   "cloudflare-agents-docs": {
     "version": 1,
     "observedAt": "2026-10-26T13:08:21.363Z",
