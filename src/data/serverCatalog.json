@@ -12726,5 +12726,30 @@
     "logoRetrievedAt": "2026-10-28",
     "logoLicenseNote": "Locally generated AG monogram for a community submission; it is not an official AgentWeb mark.",
     "homepageUrl": "https://agentweb.live/install.md"
+  },
+  {
+    "id": "cadprops",
+    "name": "CADProps",
+    "url": "https://www.cadprops.com/api/v1/mcp",
+    "browserAccess": "proxy-required",
+    "description": "Inspect supported CAD files, report dimensions and geometry properties, preview models, convert supported formats and hand off to the CADProps workspace. Guest MCP processing uses no account or API key; uploaded files and results expire after about one hour.",
+    "category": "Design",
+    "tags": [
+      "design",
+      "community-submission",
+      "no-auth"
+    ],
+    "listingSource": {
+      "kind": "community-submission",
+      "url": "https://www.cadprops.com/connector/"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "logoUrl": "/server-logos/cadprops.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-01",
+    "logoLicenseNote": "Locally generated CA monogram for a community submission; it is not an official CADProps mark.",
+    "homepageUrl": "https://www.cadprops.com/connector/"
   }
 ]

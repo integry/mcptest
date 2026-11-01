@@ -4044,5 +4044,17 @@
     "message": "Negotiated stateful MCP 2025-06-18 at https://api.agentweb.live/mcp; detected transport streamable-http; authentication none",
     "validatedUrl": "https://api.agentweb.live/mcp",
     "protocolVersion": "2025-06-18"
+  },
+  {
+    "serverId": "cadprops",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateful",
+    "checkedAt": "2026-11-01T07:34:37.416Z",
+    "message": "Negotiated stateful MCP 2025-11-25 at https://www.cadprops.com/api/v1/mcp; detected transport streamable-http; authentication none",
+    "validatedUrl": "https://www.cadprops.com/api/v1/mcp",
+    "protocolVersion": "2025-11-25"
   }
 ]
