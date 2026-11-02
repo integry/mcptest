@@ -12726,5 +12726,31 @@
     "logoRetrievedAt": "2026-10-28",
     "logoLicenseNote": "Locally generated AG monogram for a community submission; it is not an official AgentWeb mark.",
     "homepageUrl": "https://agentweb.live/install.md"
+  },
+  {
+    "id": "mallary",
+    "name": "Mallary",
+    "url": "https://mallary.ai/mcp",
+    "browserAccess": "direct",
+    "description": "Mallary exposes tools to publish and schedule social posts, manage drafts, reply to comments, and read analytics across 10 social platforms. Connect with OAuth or a Mallary API key; a Mallary account is required.",
+    "category": "Automation",
+    "tags": [
+      "automation",
+      "community-submission",
+      "oauth"
+    ],
+    "listingSource": {
+      "kind": "community-submission",
+      "url": "https://mallary.ai/social-media-mcp-server"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "logoUrl": "/server-logos/mallary.svg",
+    "logoSourceUrl": "https://mallary.ai/assets/fav/favicon.svg",
+    "logoSourceKind": "official-brand",
+    "logoRetrievedAt": "2026-11-02",
+    "logoLicenseNote": "Mallary mark from the publisher's brand asset page on mallary.ai, as stated by the submitter; trademark rights remain with the publisher.",
+    "homepageUrl": "https://mallary.ai/social-media-mcp-server"
   }
 ]

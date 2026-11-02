@@ -4044,5 +4044,19 @@
     "message": "Negotiated stateful MCP 2025-06-18 at https://api.agentweb.live/mcp; detected transport streamable-http; authentication none",
     "validatedUrl": "https://api.agentweb.live/mcp",
     "protocolVersion": "2025-06-18"
+  },
+  {
+    "serverId": "mallary",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-02T02:18:30.406Z",
+    "message": "Authentication challenge at https://mallary.ai/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://mallary.ai/mcp",
+    "authorizationServers": [
+      "https://auth.mallary.ai"
+    ]
   }
 ]
