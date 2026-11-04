@@ -124,7 +124,7 @@ describe('routes.txt', () => {
   const routes = parseRoutes(renderRoutesTxt(['/', '/catalog', '/learn/what-is-mcp', '/servers/alpha/']));
 
   it('lists prerendered pages and app routes exactly, and dynamic routes as prefixes', () => {
-    for (const pathname of ['/', '/catalog', '/learn', '/report', '/submit', '/tools/discovery', '/oauth/callback', '/learn/what-is-mcp', '/servers/alpha/']) {
+    for (const pathname of ['/', '/catalog', '/evals', '/learn', '/report', '/submit', '/tools/discovery', '/oauth/callback', '/learn/what-is-mcp', '/servers/alpha/']) {
       expect(routes.exact.has(pathname), pathname).toBe(true);
     }
     expect(routes.prefixes).toEqual(['/server/', '/call/', '/space/', '/report/']);
@@ -138,7 +138,7 @@ describe('routes.txt', () => {
 
 describe('isKnownAppPath', () => {
   it.each([
-    '/', '/catalog', '/learn', '/learn/', '/learn/what-is-mcp', '/docs/privacy-policy', '/report',
+    '/', '/catalog', '/evals', '/learn', '/learn/', '/learn/what-is-mcp', '/docs/privacy-policy', '/report',
     '/report/x', '/submit', '/servers/github/', '/servers/github', '/server/https://example.com/mcp/mcp',
     '/call/https://example.com/mcp/tool/echo', '/space/my-dashboard', '/oauth/callback', '/install-integration',
   ])('knows %s', pathname => {

@@ -18,6 +18,7 @@ export const OAUTH_CHECKER_PATH = '/tools/oauth-check';
 export const EXACT_APP_ROUTES: readonly string[] = [
   '/',
   '/catalog',
+  '/evals',
   '/learn',
   '/report',
   '/submit',
