@@ -1,7 +1,7 @@
 {
   "agentweb": {
     "version": 1,
-    "observedAt": "2026-10-28T14:39:05.476Z",
+    "observedAt": "2026-11-02T16:00:15.615Z",
     "provenance": {
       "testedEndpoint": "https://api.agentweb.live/mcp",
       "route": "direct"
@@ -1063,7 +1063,7 @@
   },
   "alfie-everyday": {
     "version": 1,
-    "observedAt": "2026-10-27T19:59:35.948Z",
+    "observedAt": "2026-11-02T16:00:14.932Z",
     "provenance": {
       "testedEndpoint": "https://everyday.alfie.family/mcp",
       "route": "direct"
@@ -1285,7 +1285,7 @@
   },
   "astro-docs": {
     "version": 1,
-    "observedAt": "2026-10-26T13:08:04.247Z",
+    "observedAt": "2026-11-02T15:59:19.913Z",
     "provenance": {
       "testedEndpoint": "https://mcp.docs.astro.build/mcp",
       "route": "direct"
@@ -1340,7 +1340,7 @@
   },
   "aws": {
     "version": 1,
-    "observedAt": "2026-10-26T13:08:15.585Z",
+    "observedAt": "2026-11-02T15:59:35.057Z",
     "provenance": {
       "testedEndpoint": "https://aws-mcp.us-east-1.api.aws/mcp",
       "route": "direct"
@@ -1524,7 +1524,7 @@
   },
   "aws-knowledge": {
     "version": 1,
-    "observedAt": "2026-10-26T13:08:03.648Z",
+    "observedAt": "2026-11-02T15:59:19.729Z",
     "provenance": {
       "testedEndpoint": "https://knowledge-mcp.global.api.aws/",
       "route": "direct"
@@ -1665,7 +1665,7 @@
   },
   "browser-use": {
     "version": 1,
-    "observedAt": "2026-10-26T13:08:31.073Z",
+    "observedAt": "2026-11-02T15:59:54.942Z",
     "provenance": {
       "testedEndpoint": "https://api.browser-use.com/v3/mcp",
       "route": "direct"
@@ -1867,7 +1867,7 @@
   },
   "cadprops": {
     "version": 1,
-    "observedAt": "2026-11-01T07:34:36.980Z",
+    "observedAt": "2026-11-02T16:00:15.465Z",
     "provenance": {
       "testedEndpoint": "https://www.cadprops.com/api/v1/mcp",
       "route": "direct"
@@ -2001,7 +2001,7 @@
   },
   "cloudflare-agents-docs": {
     "version": 1,
-    "observedAt": "2026-10-26T13:08:21.363Z",
+    "observedAt": "2026-11-02T15:59:40.655Z",
     "provenance": {
       "testedEndpoint": "https://agents.cloudflare.com/mcp",
       "route": "direct"
@@ -2062,7 +2062,7 @@
   },
   "cloudflare-docs": {
     "version": 1,
-    "observedAt": "2026-10-26T13:08:03.426Z",
+    "observedAt": "2026-11-02T15:59:18.700Z",
     "provenance": {
       "testedEndpoint": "https://docs.mcp.cloudflare.com/mcp",
       "route": "direct"
@@ -2126,7 +2126,7 @@
   },
   "coingecko": {
     "version": 1,
-    "observedAt": "2026-10-26T13:08:00.017Z",
+    "observedAt": "2026-11-02T15:59:14.896Z",
     "provenance": {
       "testedEndpoint": "https://mcp.api.coingecko.com/mcp",
       "route": "direct"
@@ -2212,7 +2212,7 @@
   },
   "context7": {
     "version": 1,
-    "observedAt": "2026-10-26T13:07:59.593Z",
+    "observedAt": "2026-11-02T15:59:14.121Z",
     "provenance": {
       "testedEndpoint": "https://mcp.context7.com/mcp",
       "route": "direct"
@@ -2298,7 +2298,7 @@
   },
   "courier": {
     "version": 1,
-    "observedAt": "2026-10-26T13:08:28.368Z",
+    "observedAt": "2026-11-02T15:59:51.337Z",
     "provenance": {
       "testedEndpoint": "https://mcp.courier.com/",
       "route": "direct"
@@ -3686,7 +3686,7 @@
   },
   "deepwiki": {
     "version": 1,
-    "observedAt": "2026-10-26T13:08:00.563Z",
+    "observedAt": "2026-11-02T15:59:14.557Z",
     "provenance": {
       "testedEndpoint": "https://mcp.deepwiki.com/mcp",
       "route": "direct"
@@ -3772,7 +3772,7 @@
   },
   "exa": {
     "version": 1,
-    "observedAt": "2026-10-26T13:08:05.964Z",
+    "observedAt": "2026-11-02T15:59:21.762Z",
     "provenance": {
       "testedEndpoint": "https://mcp.exa.ai/mcp",
       "route": "direct"
@@ -3869,7 +3869,7 @@
   },
   "excalidraw": {
     "version": 1,
-    "observedAt": "2026-10-26T13:08:30.444Z",
+    "observedAt": "2026-11-02T15:59:54.009Z",
     "provenance": {
       "testedEndpoint": "https://mcp.excalidraw.com/",
       "route": "direct"
@@ -3971,7 +3971,7 @@
   },
   "gameanalytics": {
     "version": 1,
-    "observedAt": "2026-10-26T13:08:33.072Z",
+    "observedAt": "2026-11-02T15:59:56.761Z",
     "provenance": {
       "testedEndpoint": "https://mcp.docs.gameanalytics.com/",
       "route": "direct"
@@ -4045,7 +4045,7 @@
   },
   "gitbook-docs": {
     "version": 1,
-    "observedAt": "2026-10-26T13:08:05.465Z",
+    "observedAt": "2026-11-02T15:59:21.674Z",
     "provenance": {
       "testedEndpoint": "https://gitbook.com/docs/~gitbook/mcp",
       "route": "direct"
@@ -4156,7 +4156,7 @@
   },
   "gitmcp": {
     "version": 1,
-    "observedAt": "2026-10-26T13:08:05.629Z",
+    "observedAt": "2026-11-02T15:59:21.953Z",
     "provenance": {
       "testedEndpoint": "https://gitmcp.io/docs",
       "route": "direct"
@@ -4299,7 +4299,7 @@
   },
   "google-alloydb": {
     "version": 1,
-    "observedAt": "2026-10-26T13:08:18.994Z",
+    "observedAt": "2026-11-02T15:59:36.181Z",
     "provenance": {
       "testedEndpoint": "https://alloydb.googleapis.com/mcp",
       "route": "direct"
@@ -4927,7 +4927,7 @@
   },
   "google-bigquery": {
     "version": 1,
-    "observedAt": "2026-10-26T13:08:08.513Z",
+    "observedAt": "2026-11-02T15:59:25.859Z",
     "provenance": {
       "testedEndpoint": "https://bigquery.googleapis.com/mcp",
       "route": "direct"
@@ -5254,7 +5254,7 @@
   },
   "google-cloud-logging": {
     "version": 1,
-    "observedAt": "2026-10-26T13:08:18.755Z",
+    "observedAt": "2026-11-02T15:59:36.784Z",
     "provenance": {
       "testedEndpoint": "https://logging.googleapis.com/mcp",
       "route": "direct"
@@ -5446,7 +5446,7 @@
   },
   "google-cloud-monitoring": {
     "version": 1,
-    "observedAt": "2026-10-26T13:08:18.762Z",
+    "observedAt": "2026-11-02T15:59:37.070Z",
     "provenance": {
       "testedEndpoint": "https://monitoring.googleapis.com/mcp",
       "route": "direct"
@@ -5770,7 +5770,7 @@
   },
   "google-cloud-resource-manager": {
     "version": 1,
-    "observedAt": "2026-10-26T13:08:16.344Z",
+    "observedAt": "2026-11-02T15:59:34.699Z",
     "provenance": {
       "testedEndpoint": "https://cloudresourcemanager.googleapis.com/mcp",
       "route": "direct"
@@ -5837,7 +5837,7 @@
   },
   "google-cloud-run": {
     "version": 1,
-    "observedAt": "2026-10-26T13:08:15.812Z",
+    "observedAt": "2026-11-02T15:59:34.301Z",
     "provenance": {
       "testedEndpoint": "https://run.googleapis.com/mcp",
       "route": "direct"
@@ -5981,7 +5981,7 @@
   },
   "google-compute-engine": {
     "version": 1,
-    "observedAt": "2026-10-26T13:08:16.784Z",
+    "observedAt": "2026-11-02T15:59:34.996Z",
     "provenance": {
       "testedEndpoint": "https://compute.googleapis.com/mcp",
       "route": "direct"
@@ -6802,7 +6802,7 @@
   },
   "google-developer-knowledge": {
     "version": 1,
-    "observedAt": "2026-10-26T13:08:03.838Z",
+    "observedAt": "2026-11-02T15:59:19.237Z",
     "provenance": {
       "testedEndpoint": "https://developerknowledge.googleapis.com/mcp",
       "route": "direct"
@@ -6883,7 +6883,7 @@
   },
   "google-firestore": {
     "version": 1,
-    "observedAt": "2026-10-26T13:08:18.274Z",
+    "observedAt": "2026-11-02T15:59:36.637Z",
     "provenance": {
       "testedEndpoint": "https://firestore.googleapis.com/mcp",
       "route": "direct"
@@ -7450,7 +7450,7 @@
   },
   "google-kubernetes-engine": {
     "version": 1,
-    "observedAt": "2026-10-26T13:08:15.724Z",
+    "observedAt": "2026-11-02T15:59:34.328Z",
     "provenance": {
       "testedEndpoint": "https://container.googleapis.com/mcp",
       "route": "direct"
@@ -7743,13 +7743,13 @@
             {
               "name": "since",
               "type": "string",
-              "description": "Optional. Retrieve logs since this duration ago (e.g. \"1h\", \"10m\").",
+              "description": "Optional. Retrieve logs since this duration ago (e.g. \"1h\", \"10m\"). Only one of this field or sinceTime should be set.",
               "required": false
             },
             {
               "name": "sinceTime",
               "type": "string",
-              "description": "Optional. Retrieve logs since this time (RFC3339). e.g. \"2024-08-30T06:00:00Z\".",
+              "description": "Optional. Retrieve logs since this time (RFC3339). e.g. \"2024-08-30T06:00:00Z\". Only one of this field or since should be set.",
               "required": false
             },
             {
@@ -8115,7 +8115,7 @@
   },
   "google-spanner": {
     "version": 1,
-    "observedAt": "2026-10-26T13:08:18.397Z",
+    "observedAt": "2026-11-02T15:59:36.377Z",
     "provenance": {
       "testedEndpoint": "https://spanner.googleapis.com/mcp",
       "route": "direct"
@@ -8589,7 +8589,7 @@
   },
   "grep": {
     "version": 1,
-    "observedAt": "2026-10-26T13:08:07.258Z",
+    "observedAt": "2026-11-02T15:59:23.464Z",
     "provenance": {
       "testedEndpoint": "https://mcp.grep.app/",
       "route": "direct"
@@ -8680,7 +8680,7 @@
   },
   "greptile": {
     "version": 1,
-    "observedAt": "2026-10-26T13:08:22.375Z",
+    "observedAt": "2026-11-02T15:59:42.576Z",
     "provenance": {
       "testedEndpoint": "https://api.greptile.com/mcp",
       "route": "direct"
@@ -9430,7 +9430,7 @@
   },
   "jina": {
     "version": 1,
-    "observedAt": "2026-10-26T13:08:05.566Z",
+    "observedAt": "2026-11-02T15:59:21.773Z",
     "provenance": {
       "testedEndpoint": "https://mcp.jina.ai/v1",
       "route": "direct"
@@ -9791,7 +9791,7 @@
   },
   "kindwise": {
     "version": 1,
-    "observedAt": "2026-10-26T13:08:47.777Z",
+    "observedAt": "2026-11-02T16:00:11.845Z",
     "provenance": {
       "testedEndpoint": "https://agents.kindwise.com/mcp",
       "route": "direct"
@@ -10076,7 +10076,7 @@
   },
   "langchain-docs": {
     "version": 1,
-    "observedAt": "2026-10-26T13:08:21.465Z",
+    "observedAt": "2026-11-02T15:59:40.218Z",
     "provenance": {
       "testedEndpoint": "https://docs.langchain.com/mcp",
       "route": "direct"
@@ -10145,7 +10145,7 @@
       "items": [
         {
           "name": "langchain",
-          "description": "Use when building AI agents, integrating LLMs with tools, managing agent state and memory, deploying agents to production, or tracing and evaluating agent behavior. LangChain is the framework for composing agents from models, tools, and middleware; use it for custom agent architectures, tool integration, and multi-step reasoning workflows.",
+          "description": "Use when building AI agents with tool calling, designing multi-step workflows, integrating LLMs with external systems, or deploying production agents. Agents are the core pattern: a model calling tools in a loop until a task completes, shaped by a configurable harness of prompt, tools, and middleware.",
           "mimeType": "text/markdown"
         }
       ]
@@ -10169,7 +10169,7 @@
   },
   "livekit-docs": {
     "version": 1,
-    "observedAt": "2026-10-26T13:08:21.271Z",
+    "observedAt": "2026-11-02T15:59:40.359Z",
     "provenance": {
       "testedEndpoint": "https://docs.livekit.io/mcp",
       "route": "direct"
@@ -10605,7 +10605,7 @@
   },
   "mailtester": {
     "version": 1,
-    "observedAt": "2026-10-26T13:08:36.416Z",
+    "observedAt": "2026-11-02T16:00:00.429Z",
     "provenance": {
       "testedEndpoint": "https://app.mailtester.com/mcp",
       "route": "direct"
@@ -10785,7 +10785,7 @@
   },
   "mdn": {
     "version": 1,
-    "observedAt": "2026-10-26T13:08:02.048Z",
+    "observedAt": "2026-11-02T15:59:17.292Z",
     "provenance": {
       "testedEndpoint": "https://mcp.mdn.mozilla.net/",
       "route": "direct"
@@ -10866,7 +10866,7 @@
   },
   "microsoft-learn": {
     "version": 1,
-    "observedAt": "2026-10-26T13:08:04.041Z",
+    "observedAt": "2026-11-02T15:59:19.481Z",
     "provenance": {
       "testedEndpoint": "https://learn.microsoft.com/api/mcp",
       "route": "direct"
@@ -10953,7 +10953,7 @@
   },
   "mubboo-flights": {
     "version": 1,
-    "observedAt": "2026-10-26T13:08:31.949Z",
+    "observedAt": "2026-11-02T15:59:55.576Z",
     "provenance": {
       "testedEndpoint": "https://mubboo.flights/api/mcp",
       "route": "direct"
@@ -11074,7 +11074,7 @@
   },
   "nuxt": {
     "version": 1,
-    "observedAt": "2026-10-26T13:08:04.656Z",
+    "observedAt": "2026-11-02T15:59:20.635Z",
     "provenance": {
       "testedEndpoint": "https://nuxt.com/mcp",
       "route": "direct"
@@ -11400,7 +11400,7 @@
   },
   "openai-docs": {
     "version": 1,
-    "observedAt": "2026-10-26T13:08:20.793Z",
+    "observedAt": "2026-11-02T15:59:40.003Z",
     "provenance": {
       "testedEndpoint": "https://developers.openai.com/mcp",
       "route": "direct"
@@ -11525,7 +11525,7 @@
   },
   "openzeppelin-solidity": {
     "version": 1,
-    "observedAt": "2026-10-26T13:08:22.949Z",
+    "observedAt": "2026-11-02T15:59:43.524Z",
     "provenance": {
       "testedEndpoint": "https://mcp.openzeppelin.com/contracts/solidity/mcp",
       "route": "direct"
@@ -12348,7 +12348,7 @@
   },
   "parallel-search": {
     "version": 1,
-    "observedAt": "2026-10-26T13:08:20.343Z",
+    "observedAt": "2026-11-02T15:59:38.687Z",
     "provenance": {
       "testedEndpoint": "https://search.parallel.ai/mcp",
       "route": "direct"
@@ -12468,7 +12468,7 @@
   },
   "prowler": {
     "version": 1,
-    "observedAt": "2026-10-26T13:08:25.810Z",
+    "observedAt": "2026-11-02T15:59:47.012Z",
     "provenance": {
       "testedEndpoint": "https://mcp.prowler.com/mcp",
       "route": "direct"
@@ -12483,11 +12483,17 @@
       "items": [
         {
           "name": "prowler_cloud_apply_organization_discovery",
-          "description": "Apply a succeeded discovery: create/link Prowler providers for the selected accounts, subscriptions or projects and build the OU/management-group/folder hierarchy. WARNING: for AWS organizations, omitting `accounts` (or passing an empty list) onboards the ENTIRE organization — every discovered account. Always pass an explicit selection unless that is intended. For Azure, `subscriptions` is required and must be non-empty; for GCP, `projects` is required and must be non-empty. Items whose discovery `apply_status` was 'blocked' (e.g. the account already belongs to another organization) will be re",
+          "description": "Apply a succeeded discovery: create/link Prowler providers for the selected accounts, subscriptions or projects and build the OU/management-group/folder hierarchy. For AWS organizations, pass the `accounts` to onboard. Onboarding the ENTIRE organization (every discovered account) requires `all_accounts=true`, so confirm that with the user first. For Azure, `subscriptions` is required and must be non-empty; for GCP, `projects` is required and must be non-empty. Items whose discovery `apply_status` was 'blocked' (e.g. the account already belongs to another organization) will be rejected by the A",
           "input": [
             {
               "name": "accounts",
-              "description": "AWS only: accounts to onboard, e.g. [{\"id\": \"123456789012\", \"alias\": \"Production\"}] (alias optional). WARNING: omitting this onboards ALL discovered accounts.",
+              "description": "AWS only: accounts to onboard, e.g. [{\"id\": \"123456789012\", \"alias\": \"Production\"}] (alias optional). Required for AWS unless all_accounts is true.",
+              "required": false
+            },
+            {
+              "name": "all_accounts",
+              "type": "boolean",
+              "description": "AWS only: set to true to onboard EVERY discovered account of the organization. Cannot be combined with accounts, projects or subscriptions.",
               "required": false
             },
             {
@@ -13074,7 +13080,7 @@
   },
   "qrcodekit": {
     "version": 1,
-    "observedAt": "2026-10-26T13:08:38.197Z",
+    "observedAt": "2026-11-02T16:00:02.633Z",
     "provenance": {
       "testedEndpoint": "https://mcp.v2.qrcodekit.com/mcp",
       "route": "direct"
@@ -13502,7 +13508,7 @@
   },
   "svelte": {
     "version": 1,
-    "observedAt": "2026-10-26T13:08:04.271Z",
+    "observedAt": "2026-11-02T15:59:19.824Z",
     "provenance": {
       "testedEndpoint": "https://mcp.svelte.dev/mcp",
       "route": "direct"
@@ -13598,97 +13604,97 @@
         {
           "name": "ai/claude-plugin",
           "title": "Claude Code",
-          "description": "use title and path to estimate use case"
+          "description": "ai-assisted development, using claude code, llm code generation, automated svelte coding, ai pair programming"
         },
         {
           "name": "ai/cli",
           "title": "CLI",
-          "description": "use title and path to estimate use case"
+          "description": "ai agents, automation scripts, cli tools, documentation lookup, code migration, svelte 4 to 5 upgrade, quick reference checks, programmatic doc access"
         },
         {
           "name": "ai/codex-plugin",
           "title": "Codex CLI",
-          "description": "use title and path to estimate use case"
+          "description": "ai-assisted development, llm code generation, codex cli setup, automated svelte coding, ai agent integration"
         },
         {
           "name": "ai/copilot-plugin",
           "title": "GitHub Copilot CLI",
-          "description": "use title and path to estimate use case"
+          "description": "ai-assisted development, github copilot integration, llm code generation, vs code setup, automated svelte coding, ai pair programming"
         },
         {
           "name": "ai/cursor-plugin",
           "title": "Cursor",
-          "description": "use title and path to estimate use case"
+          "description": "ai-assisted development, cursor ide setup, svelte tooling, code generation with ai, project automation"
         },
         {
           "name": "ai/instructions",
           "title": "AGENTS.md",
-          "description": "use title and path to estimate use case"
+          "description": "ai agent setup, mcp server configuration, ai-assisted development, agent tool integration, claude code setup, gemini setup"
         },
         {
           "name": "ai/local-setup",
           "title": "Local setup",
-          "description": "use title and path to estimate use case"
+          "description": "ai-assisted development, mcp server setup, claude integration, cursor setup, vs code configuration, copilot integration, ai coding tools"
         },
         {
           "name": "ai/mcp",
           "title": "Overview",
-          "description": "use title and path to estimate use case"
+          "description": "ai-assisted coding, llm code generation, claude integration, copilot setup, automated svelte development, code analysis tools"
         },
         {
           "name": "ai/opencode-plugin",
           "title": "OpenCode",
-          "description": "use title and path to estimate use case"
+          "description": "opencode integration, ai-assisted development, svelte tooling setup, configuring development environment, mcp servers, ai agents for svelte"
         },
         {
           "name": "ai/overview",
           "title": "Overview",
-          "description": "use title and path to estimate use case"
+          "description": "ai tools setup, using ai assistants with svelte, agent-based development, ai code generation, llm integration with svelte projects"
         },
         {
           "name": "ai/prompts",
           "title": "Prompts",
-          "description": "use title and path to estimate use case"
+          "description": "ai agent workflows, llm integration, mcp server usage, ai-assisted development, automated svelte coding, ai code generation"
         },
         {
           "name": "ai/remote-setup",
           "title": "Remote setup",
-          "description": "use title and path to estimate use case"
+          "description": "ai coding assistants, claude, cursor, copilot, vs code, mcp server setup, ai-assisted development, code generation tools"
         },
         {
           "name": "ai/resources",
           "title": "Resources",
-          "description": "use title and path to estimate use case"
+          "description": "mcp server setup, ai-assisted development, llm integration, documentation embedding, automated code generation"
         },
         {
           "name": "ai/skills",
           "title": "Overview",
-          "description": "use title and path to estimate use case"
+          "description": "ai-assisted development, using ai coding tools, claude/copilot plugins, debugging ai-generated code, improving ai code quality"
         },
         {
           "name": "ai/subagent",
           "title": "Overview",
-          "description": "use title and path to estimate use case"
+          "description": "ai agent development, llm integration, code generation tools, automated svelte editing, ai-powered development workflows"
         },
         {
           "name": "ai/tools",
           "title": "Tools",
-          "description": "use title and path to estimate use case"
+          "description": "ai development, llm integration, code generation tools, chatbot features, ai-assisted coding, automated code analysis, testing generated code"
         },
         {
           "name": "cli/ai-tools",
           "title": "ai-tools",
-          "description": "use title and path to estimate use case"
+          "description": "ai-assisted development, llm code generation, claude integration, cursor setup, ai coding tools, project setup with ai"
         },
         {
           "name": "cli/better-auth",
           "title": "better-auth",
-          "description": "use title and path to estimate use case"
+          "description": "authentication, login systems, user management, registration, oauth integration, email/password auth, github login, database setup"
         },
         {
           "name": "cli/community",
           "title": "[create your own]",
-          "description": "use title and path to estimate use case"
+          "description": "creating cli addons, extending svelte tooling, custom project scaffolding, team standardization, publishing community tools, testing cli extensions"
         },
         {
           "name": "cli/drizzle",
@@ -13698,7 +13704,7 @@
         {
           "name": "cli/enhanced-img",
           "title": "enhanced-img",
-          "description": "use title and path to estimate use case"
+          "description": "image optimization, responsive images, performance, photo galleries, content-heavy sites, reducing bundle size, lazy loading images"
         },
         {
           "name": "cli/eslint",
@@ -13708,7 +13714,7 @@
         {
           "name": "cli/experimental",
           "title": "experimental",
-          "description": "use title and path to estimate use case"
+          "description": "experimental features, async components, remote functions, forked preloading, testing new svelte features, early adoption"
         },
         {
           "name": "cli/faq",
@@ -13718,17 +13724,17 @@
         {
           "name": "cli/mdsvex",
           "title": "mdsvex",
-          "description": "blog, content sites, markdown rendering, documentation sites, technical writing, cms integration, article pages"
+          "description": "blog, content sites, markdown rendering, documentation sites, technical writing, cms integration"
         },
         {
           "name": "cli/overview",
           "title": "Overview",
-          "description": "project setup, creating new svelte apps, scaffolding, cli tools, initializing projects"
+          "description": "project setup, creating new svelte apps, scaffolding, cli tools, initializing projects, development workflow"
         },
         {
           "name": "cli/paraglide",
           "title": "paraglide",
-          "description": "internationalization, multi-language sites, i18n, translation, localization, language switching, global apps, multilingual content"
+          "description": "internationalization, multi-language sites, i18n, translation, localization, language switching, global apps"
         },
         {
           "name": "cli/playwright",
@@ -13748,32 +13754,32 @@
         {
           "name": "cli/sv",
           "title": "sv",
-          "description": "use title and path to estimate use case"
+          "description": "creating custom addons, extending sv cli, project scaffolding tools, code generation, automated project setup, file transformations, ast manipulation"
         },
         {
           "name": "cli/sv-add",
           "title": "sv add",
-          "description": "project setup, adding features to existing projects, integrating tools, testing setup, styling setup, authentication, database setup, deployment adapters"
+          "description": "adding features, integrating tools, setting up linting, adding auth, database setup, styling setup, testing setup, deployment adapters, markdown support, internationalization"
         },
         {
           "name": "cli/sv-check",
           "title": "sv check",
-          "description": "code quality, ci/cd pipelines, error checking, typescript projects, pre-commit hooks, finding unused css, accessibility auditing, production builds"
+          "description": "ci/cd pipelines, code quality checks, error detection, typescript validation, accessibility audits, pre-commit hooks, continuous integration, automated testing"
         },
         {
           "name": "cli/sv-create",
           "title": "sv create",
-          "description": "project setup, starting new sveltekit app, initializing project, creating from playground, choosing project template"
+          "description": "project setup, starting new sveltekit project, initializing app, creating library, building addon, playground import"
         },
         {
           "name": "cli/sv-migrate",
           "title": "sv migrate",
-          "description": "migration, upgrading svelte versions, upgrading sveltekit versions, modernizing codebase, svelte 3 to 4, svelte 4 to 5, sveltekit 1 to 2, adopting runes, refactoring deprecated apis"
+          "description": "upgrading svelte versions, migrating sveltekit projects, updating dependencies, version migration, codebase modernization"
         },
         {
           "name": "cli/sv-utils",
           "title": "sv-utils",
-          "description": "use title and path to estimate use case"
+          "description": "codemod tools, ast manipulation, file transformation, cli tools, code generation, migration scripts, build tooling, automated refactoring"
         },
         {
           "name": "cli/sveltekit-adapter",
@@ -13783,157 +13789,157 @@
         {
           "name": "cli/tailwind",
           "title": "tailwindcss",
-          "description": "project setup, styling, css framework, rapid prototyping, utility-first css, design systems, responsive design, adding tailwind to svelte"
+          "description": "project setup, styling, css framework, rapid prototyping, utility-first css, design systems, responsive design, modern ui development"
         },
         {
           "name": "cli/vitest",
           "title": "vitest",
-          "description": "testing, unit tests, component testing, test setup, quality assurance, ci/cd pipelines, test-driven development"
+          "description": "testing, unit tests, component tests, test setup, quality assurance, ci/cd pipelines"
         },
         {
           "name": "kit/@sveltejs-kit",
           "title": "@sveltejs/kit",
-          "description": "forms, form actions, server-side validation, form submission, error handling, redirects, json responses, http errors, server utilities"
+          "description": "forms, form validation, error handling, authentication, data submission, user input, server actions, api endpoints, redirects, http errors"
         },
         {
           "name": "kit/@sveltejs-kit-adapter",
           "title": "@sveltejs/kit/adapter",
-          "description": "use title and path to estimate use case"
+          "description": "adapter development, custom adapters, serverless deployment, catch-all handlers, url rewriting, reroute hook implementation"
         },
         {
           "name": "kit/@sveltejs-kit-env",
           "title": "@sveltejs/kit/env",
-          "description": "use title and path to estimate use case"
+          "description": "environment variables, configuration, api keys, deployment setup, validation, type-safe env vars, public/private config"
         },
         {
           "name": "kit/@sveltejs-kit-hooks",
           "title": "@sveltejs/kit/hooks",
-          "description": "middleware, request processing, authentication chains, logging, multiple hooks, request/response transformation"
+          "description": "middleware, request interception, authentication, logging, error handling, custom headers, api proxies, request modification"
         },
         {
           "name": "kit/@sveltejs-kit-node",
           "title": "@sveltejs/kit/node",
-          "description": "node.js adapter, custom server setup, http integration, streaming files, node deployment, server-side rendering with node"
+          "description": "node.js adapter, custom server setup, http integration, streaming files, node deployment, server configuration"
         },
         {
           "name": "kit/@sveltejs-kit-params",
           "title": "@sveltejs/kit/params",
-          "description": "use title and path to estimate use case"
+          "description": "advanced routing, custom route parameters, url validation, type-safe routing, dynamic routes with constraints"
         },
         {
           "name": "kit/@sveltejs-kit-vite",
           "title": "@sveltejs/kit/vite",
-          "description": "project setup, vite configuration, initial sveltekit setup, build tooling"
+          "description": "project setup, vite configuration, build settings, deployment configuration, adapters, prerendering, routing setup, csp security, csrf protection, service workers, environment variables"
         },
         {
           "name": "kit/$app-env",
           "title": "$app/env",
-          "description": "use title and path to estimate use case"
+          "description": "environment detection, conditional logic, client-server differences, build-time checks, development vs production, prerendering, version tracking"
         },
         {
           "name": "kit/$app-env-private",
           "title": "$app/env/private",
-          "description": "use title and path to estimate use case"
+          "description": "environment variables, configuration, api keys, secrets management, deployment setup, production builds"
         },
         {
           "name": "kit/$app-env-public",
           "title": "$app/env/public",
-          "description": "use title and path to estimate use case"
+          "description": "environment variables, configuration, api keys, public config, deployment setup, environment-specific settings"
         },
         {
           "name": "kit/$app-environment",
           "title": "$app/environment",
-          "description": "always, conditional logic, client-side code, server-side code, build-time logic, prerendering, development vs production, environment detection"
+          "description": "migration from sveltekit 2 to 3, upgrading deprecated modules, legacy code maintenance"
         },
         {
           "name": "kit/$app-forms",
           "title": "$app/forms",
-          "description": "forms, user input, data submission, progressive enhancement, custom form handling, form validation"
+          "description": "forms, user input, data submission, progressive enhancement, custom form handling, form validation, login systems, contact forms"
         },
         {
           "name": "kit/$app-manifest",
           "title": "$app/manifest",
-          "description": "use title and path to estimate use case"
+          "description": "service workers, offline support, pwa, caching strategies, build manifest inspection, route introspection, static asset management"
         },
         {
           "name": "kit/$app-navigation",
           "title": "$app/navigation",
-          "description": "routing, navigation, multi-page apps, programmatic navigation, data reloading, preloading, shallow routing, navigation lifecycle, scroll handling, view transitions"
+          "description": "programmatic navigation, routing, navigation lifecycle, shallow routing, preloading, scroll handling, history management, view transitions, navigation interception"
         },
         {
           "name": "kit/$app-paths",
           "title": "$app/paths",
-          "description": "static assets, images, fonts, public files, base path configuration, subdirectory deployment, cdn setup, asset urls, links, navigation"
+          "description": "static assets, image paths, file references, base path configuration, route matching, dynamic routing, url resolution, pathname handling"
         },
         {
           "name": "kit/$app-server",
           "title": "$app/server",
-          "description": "remote functions, server-side logic, data fetching, form handling, api endpoints, client-server communication, prerendering, file reading, batch queries"
+          "description": "remote functions, server-client communication, data fetching, forms, mutations, live queries, real-time data, validation, prerendering, batch requests"
         },
         {
           "name": "kit/$app-service-worker",
           "title": "$app/service-worker",
-          "description": "use title and path to estimate use case"
+          "description": "service workers, offline support, pwa, caching strategies, background sync, push notifications"
         },
         {
           "name": "kit/$app-state",
           "title": "$app/state",
-          "description": "routing, navigation, multi-page apps, loading states, url parameters, form handling, error states, version updates, page metadata, shallow routing"
+          "description": "routing, navigation, multi-page apps, loading indicators, url parameters, form actions, error handling, shallow routing, version updates, page state management"
         },
         {
           "name": "kit/$app-stores",
           "title": "$app/stores",
-          "description": "legacy projects, sveltekit pre-2.12, migration from stores to runes, maintaining older codebases, accessing page data, navigation state, app version updates"
+          "description": "migration from svelte 4, upgrading legacy stores, replacing deprecated app state stores"
         },
         {
           "name": "kit/$app-tsconfig",
           "title": "$app/tsconfig",
-          "description": "use title and path to estimate use case"
+          "description": "project setup, typescript configuration, type safety, service workers, module resolution, build configuration"
         },
         {
           "name": "kit/$app-tsconfig-service-worker",
           "title": "$app/tsconfig/service-worker",
-          "description": "use title and path to estimate use case"
+          "description": "service worker setup, offline functionality, pwa development, caching strategies, background sync, push notifications"
         },
         {
           "name": "kit/$app-types",
           "title": "$app/types",
-          "description": "routing, navigation, type safety, route parameters, dynamic routes, link generation, pathname validation, multi-page apps"
+          "description": "type-safe routing, navigation with types, route parameters validation, api endpoints typing, static asset paths, typescript projects"
         },
         {
           "name": "kit/$env-dynamic-private",
           "title": "$env/dynamic/private",
-          "description": "api keys, secrets management, server-side config, environment variables, backend logic, deployment-specific settings, private data handling"
+          "description": "migration from sveltekit 2 to 3, upgrading deprecated features, environment variable configuration"
         },
         {
           "name": "kit/$env-dynamic-public",
           "title": "$env/dynamic/public",
-          "description": "environment variables, client-side config, runtime configuration, public api keys, deployment-specific settings, multi-environment apps"
+          "description": "migration from sveltekit 2 to 3, legacy projects, updating deprecated code, environment variable configuration"
         },
         {
           "name": "kit/$env-static-private",
           "title": "$env/static/private",
-          "description": "server-side api keys, backend secrets, database credentials, private configuration, build-time optimization, server endpoints, authentication tokens"
+          "description": "migration from sveltekit 2 to 3, legacy projects, updating deprecated code, environment variable configuration"
         },
         {
           "name": "kit/$env-static-public",
           "title": "$env/static/public",
-          "description": "environment variables, public config, client-side data, api endpoints, build-time configuration, public constants"
+          "description": "migration from sveltekit 2 to 3, legacy projects, updating deprecated code, environment variable configuration"
         },
         {
           "name": "kit/$lib",
           "title": "#lib",
-          "description": "project setup, component organization, importing shared components, reusable ui elements, code structure"
+          "description": "project setup, organizing code, importing components, code structure, module aliases, migrating from $lib to #lib"
         },
         {
           "name": "kit/$service-worker",
           "title": "$service-worker",
-          "description": "offline support, pwa, service workers, caching strategies, progressive web apps, offline-first apps"
+          "description": "service workers, pwa, offline support, caching strategies, migration from sveltekit 2"
         },
         {
           "name": "kit/accessibility",
           "title": "Accessibility",
-          "description": "always, any sveltekit project, screen reader support, keyboard navigation, multi-page apps, client-side routing, internationalization, multilingual sites"
+          "description": "always, screen reader support, keyboard navigation, multi-page apps, internationalization, multilingual sites, client-side routing"
         },
         {
           "name": "kit/adapter-auto",
@@ -13943,7 +13949,7 @@
         {
           "name": "kit/adapter-bun",
           "title": "Bun servers",
-          "description": "use title and path to estimate use case"
+          "description": "deployment, production builds, bun runtime, hosting setup, server configuration, standalone server"
         },
         {
           "name": "kit/adapter-cloudflare",
@@ -13958,22 +13964,22 @@
         {
           "name": "kit/adapter-netlify",
           "title": "Netlify",
-          "description": "deployment, netlify hosting, production builds, serverless functions, edge functions, static site hosting"
+          "description": "deployment, netlify hosting, production builds, serverless functions, edge functions, static site generation, prerendering, forms, redirects, headers"
         },
         {
           "name": "kit/adapter-node",
           "title": "Node servers",
-          "description": "deployment, production builds, node.js hosting, custom server setup, environment configuration, reverse proxy setup, docker deployment, systemd services"
+          "description": "deployment, production builds, node server, hosting setup, reverse proxy, environment variables, custom server, docker, systemd"
         },
         {
           "name": "kit/adapter-static",
           "title": "Static site generation",
-          "description": "static site generation, ssg, prerendering, deployment, github pages, spa mode, blogs, documentation sites, marketing sites"
+          "description": "static site generation, ssg, prerendering, deployment to static hosts, github pages, spa mode, zero-config hosting"
         },
         {
           "name": "kit/adapter-vercel",
           "title": "Vercel",
-          "description": "deployment, vercel hosting, production builds, serverless functions, edge functions, isr, image optimization, environment variables"
+          "description": "deployment, vercel hosting, production builds, serverless functions, isr, image optimization, environment variables, vercel-specific configuration"
         },
         {
           "name": "kit/adapters",
@@ -13983,22 +13989,22 @@
         {
           "name": "kit/additional-resources",
           "title": "Additional resources",
-          "description": "troubleshooting, getting help, finding examples, learning sveltekit, project templates, common issues, community support"
+          "description": "troubleshooting, getting help, learning from examples, project templates, common issues, starting new projects, finding solutions"
         },
         {
           "name": "kit/advanced-routing",
           "title": "Advanced routing",
-          "description": "advanced routing, dynamic routes, file viewers, nested paths, custom 404 pages, url validation, route parameters, multi-level navigation"
+          "description": "advanced routing, dynamic routes, file viewers, nested paths, custom 404 pages, route parameters, url validation, route matching, complex navigation structures"
         },
         {
           "name": "kit/auth",
           "title": "Auth",
-          "description": "authentication, login systems, user management, session handling, jwt tokens, protected routes, user credentials, authorization checks"
+          "description": "authentication, login systems, user management, session handling, jwt tokens, protected routes, user credentials"
         },
         {
           "name": "kit/building-your-app",
           "title": "Building your app",
-          "description": "production builds, deployment preparation, build process optimization, adapter configuration, preview before deployment"
+          "description": "deployment, production builds, adapters, build process, preview production app, conditional code execution during build"
         },
         {
           "name": "kit/cli",
@@ -14018,47 +14024,47 @@
         {
           "name": "kit/environment-variables",
           "title": "Environment variables",
-          "description": "use title and path to estimate use case"
+          "description": "api keys, secrets management, configuration, analytics integration, feature flags, deployment, environment-specific settings, third-party services"
         },
         {
           "name": "kit/errors",
           "title": "Errors",
-          "description": "error handling, custom error pages, 404 pages, api error responses, production error logging, error tracking, type-safe errors"
+          "description": "error handling, 404 pages, 500 errors, custom error pages, logging errors, error boundaries, handleerror hook, production error tracking"
         },
         {
           "name": "kit/faq",
           "title": "Frequently asked questions",
-          "description": "troubleshooting package imports, library compatibility issues, client-side code execution, external api integration, middleware setup, database configuration, view transitions, yarn configuration"
+          "description": "troubleshooting package imports, library compatibility issues, including external dependencies, vite configuration, cors and api proxies, middleware setup, client-side only code"
         },
         {
           "name": "kit/form-actions",
           "title": "Form actions",
-          "description": "forms, user input, data submission, authentication, login systems, user registration, progressive enhancement, validation errors"
+          "description": "forms, user input, data submission, authentication, login systems, user registration, validation errors, progressive enhancement"
         },
         {
           "name": "kit/glossary",
           "title": "Glossary",
-          "description": "rendering strategies, performance optimization, deployment configuration, seo requirements, static sites, spas, server-side rendering, prerendering, edge deployment, pwa development"
+          "description": "rendering configuration, performance optimization, deployment strategy, seo requirements, static sites, progressive web apps, understanding sveltekit architecture"
         },
         {
           "name": "kit/hooks",
           "title": "Hooks",
-          "description": "authentication, logging, error tracking, request interception, api proxying, custom routing, internationalization, database initialization, middleware logic, session management"
+          "description": "server middleware, request interception, authentication, logging, error tracking, custom headers, api proxying, database initialization, url rewriting, internationalization"
         },
         {
           "name": "kit/icons",
           "title": "Icons",
-          "description": "icons, ui components, styling, css frameworks, tailwind, unocss, performance optimization, dependency management"
+          "description": "icons, ui design, css frameworks, tailwind, unocss, vite optimization, dependency management"
         },
         {
           "name": "kit/images",
           "title": "Images",
-          "description": "image optimization, responsive images, performance, hero images, product photos, galleries, cms integration, cdn setup, asset management"
+          "description": "image optimization, performance, responsive images, hero images, product photos, galleries, cms content, cdn integration, build setup"
         },
         {
           "name": "kit/integrations",
           "title": "Integrations",
-          "description": "project setup, css preprocessors, postcss, scss, sass, less, stylus, typescript setup, adding integrations, tailwind, testing, auth, linting, formatting"
+          "description": "project setup, css preprocessors, typescript configuration, sass/scss/less/stylus, adding integrations, tooling setup"
         },
         {
           "name": "kit/introduction",
@@ -14068,17 +14074,17 @@
         {
           "name": "kit/link-options",
           "title": "Link options",
-          "description": "routing, navigation, multi-page apps, performance optimization, link preloading, forms with get method, search functionality, focus management, scroll behavior"
+          "description": "navigation, routing, multi-page apps, performance optimization, preloading, link behavior, external links, scroll management, focus management, search forms"
         },
         {
           "name": "kit/load",
           "title": "Loading data",
-          "description": "data fetching, api calls, database queries, dynamic routes, page initialization, loading states, authentication checks, ssr data, form data, content rendering"
+          "description": "data fetching, api calls, database queries, loading state, ssr data, page props, dynamic routes, authentication checks, parent data access, streaming data"
         },
         {
           "name": "kit/migrating",
           "title": "Migrating from Sapper",
-          "description": "migrating from sapper, upgrading legacy projects, sapper to sveltekit conversion, project modernization"
+          "description": "migrating from sapper, upgrading legacy apps, sapper to sveltekit conversion, project modernization"
         },
         {
           "name": "kit/migrating-to-sveltekit-2",
@@ -14088,12 +14094,12 @@
         {
           "name": "kit/migrating-to-sveltekit-3",
           "title": "Migrating to SvelteKit v3",
-          "description": "use title and path to estimate use case"
+          "description": "DO NOT READ IN GREENFIELD v3 PROJECTS, upgrading to sveltekit 3, migration from sveltekit 2, breaking changes, dependency updates, configuration changes, modernizing existing projects"
         },
         {
           "name": "kit/observability",
           "title": "Observability",
-          "description": "performance monitoring, debugging, observability, tracing requests, production diagnostics, analyzing slow requests, finding bottlenecks, monitoring server-side operations"
+          "description": "performance monitoring, debugging, observability, production troubleshooting, request tracing, load function analysis, form action debugging, api endpoint monitoring"
         }
       ]
     },
@@ -14134,7 +14140,7 @@
   },
   "tasarim": {
     "version": 1,
-    "observedAt": "2026-10-30T09:48:10.376Z",
+    "observedAt": "2026-11-02T16:00:14.613Z",
     "provenance": {
       "testedEndpoint": "https://tasarim.ai/api/mcp",
       "route": "direct"
@@ -14242,7 +14248,7 @@
   },
   "the-old-ways": {
     "version": 1,
-    "observedAt": "2026-10-26T18:51:12.164Z",
+    "observedAt": "2026-11-02T16:00:11.104Z",
     "provenance": {
       "testedEndpoint": "https://mcp.theoldways.co/mcp",
       "route": "direct"
@@ -14349,7 +14355,7 @@
   },
   "xposedornot": {
     "version": 1,
-    "observedAt": "2026-10-26T13:08:43.291Z",
+    "observedAt": "2026-11-02T16:00:07.679Z",
     "provenance": {
       "testedEndpoint": "https://api.xposedornot.com/mcp",
       "route": "direct"
@@ -14473,7 +14479,7 @@
   },
   "yahoo-finance": {
     "version": 1,
-    "observedAt": "2026-10-26T13:08:01.412Z",
+    "observedAt": "2026-11-02T15:59:16.465Z",
     "provenance": {
       "testedEndpoint": "https://gateway.mcpservers.org/yahoo-finance/mcp",
       "route": "direct"
@@ -14627,7 +14633,7 @@
   },
   "zuplo-docs": {
     "version": 1,
-    "observedAt": "2026-10-26T13:08:21.461Z",
+    "observedAt": "2026-11-02T15:59:41.122Z",
     "provenance": {
       "testedEndpoint": "https://dev.zuplo.com/mcp/docs",
       "route": "direct"
@@ -14711,7 +14717,7 @@
   },
   "zylalabs": {
     "version": 1,
-    "observedAt": "2026-10-26T13:08:44.800Z",
+    "observedAt": "2026-11-02T16:00:08.945Z",
     "provenance": {
       "testedEndpoint": "https://mcp.zylalabs.com/mcp",
       "route": "direct"
