@@ -828,10 +828,8 @@ const observeAuthenticationResponses = (
       if (readableResponseHeaders.length > 0) {
         attemptedRequest.readableResponseHeaders = readableResponseHeaders;
       }
-      if (response.status === 429) {
-        const retryAfter = boundHeaderValue(response.headers.get('retry-after'));
-        if (retryAfter) attemptedRequest.retryAfter = retryAfter;
-      }
+      const retryAfter = boundHeaderValue(response.headers.get('retry-after'));
+      if (retryAfter) attemptedRequest.retryAfter = retryAfter;
       attemptedRequest.durationMs = Math.max(0, Date.now() - startedAtMs);
       attemptedRequest.outcome = response.ok ? 'succeeded' : 'failed';
       if (attemptedRequest.responseSource === 'target' && !response.ok) {
