@@ -912,6 +912,9 @@ async function validateSeed(
   if (authorizationEvidence.authorizationServers.length > 0) {
     result.authorizationServers = authorizationEvidence.authorizationServers;
   }
+  if (authType === 'none' && authorizationEvidence.authorizationServers.length > 0) {
+    result.message += '; WARNING: OAuth authorization servers advertised; an anonymous MCP handshake does not establish anonymous tool access';
+  }
   if (errorCode) result.errorCode = errorCode;
   if (successfulProbe?.capabilityInventory) {
     result.capabilityInventory = successfulProbe.capabilityInventory;

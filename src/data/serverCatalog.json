@@ -12779,6 +12779,31 @@
     "homepageUrl": "https://mallary.ai/social-media-mcp-server"
   },
   {
+    "id": "menloinsurance",
+    "name": "Menlo Insurance MCP",
+    "url": "https://www.menloinsurance.com/mcp",
+    "browserAccess": "proxy-required",
+    "description": "Connect AI assistants to Menlo insurance applications, document attachments, carrier quote requests and follow-ups. Public discovery is available without credentials; private customer actions require OAuth authorization and quote consent. Insurance purchases are a separate broker-reviewed step.",
+    "category": "Finance",
+    "tags": [
+      "finance",
+      "community-submission",
+      "oauth"
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://www.menloinsurance.com/ai-assistants"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "logoUrl": "/server-logos/menloinsurance.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-03",
+    "logoLicenseNote": "Locally generated MI monogram for a community submission; it is not an official Menlo Insurance MCP mark.",
+    "homepageUrl": "https://www.menloinsurance.com/ai-assistants"
+  },
+  {
     "id": "pattorelay",
     "name": "Patto",
     "url": "https://pattorelay.com/mcp",

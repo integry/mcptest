@@ -209,6 +209,20 @@ describe('generated page metadata', () => {
     expect(html).not.toContain('aria-label="Claude Code configuration"');
   });
 
+  it('renders Menlo as OAuth after merging the saved validation evidence', () => {
+    const menlo = mergeCatalogServers(catalogSeeds, catalogValidation)
+      .find(({ id }) => id === 'menloinsurance');
+    expect(menlo).toMatchObject({ declaredAuthType: 'oauth', authType: 'oauth', requiresOAuth: true });
+    const html = renderServerHtml(indexHtml, menlo);
+    expect(html).toContain('with OAuth sign-in');
+    const structuredData = JSON.parse(html.match(/<script id="server-structured-data" type="application\/ld\+json">(.*?)<\/script>/s)[1]);
+    expect(structuredData.additionalProperty).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'Declared authentication', value: 'OAuth 2.1' }),
+      expect.objectContaining({ name: 'Detected authentication', value: 'OAuth 2.1 detected or retained from publisher evidence' }),
+    ]));
+    expect(structuredData.keywords.split(', ')).not.toContain('no-auth');
+  });
+
   it('renders static Asana setup parity from typed registration evidence', () => {
     const asana = mergeCatalogServers(
       catalogSeeds, catalogValidation, catalogCapabilities

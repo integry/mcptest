@@ -4072,6 +4072,21 @@
     ]
   },
   {
+    "serverId": "menloinsurance",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "stateless",
+    "checkedAt": "2026-11-04T00:39:18.177Z",
+    "message": "Negotiated stateless MCP 2026-07-28 at https://www.menloinsurance.com/mcp; detected transport streamable-http; authentication oauth",
+    "validatedUrl": "https://www.menloinsurance.com/mcp",
+    "protocolVersion": "2026-07-28",
+    "authorizationServers": [
+      "https://www.menloinsurance.com"
+    ]
+  },
+  {
     "serverId": "pattorelay",
     "status": "online",
     "transport": "unknown",
