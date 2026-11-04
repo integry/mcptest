@@ -7,6 +7,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 
 const callbackMocks = vi.hoisted(() => ({
   complete: vi.fn(),
+  completeHosted: vi.fn(),
   getIdToken: vi.fn(),
   navigate: vi.fn(),
 }));
@@ -14,11 +15,14 @@ const authState = vi.hoisted(() => ({
   currentUser: null as null | { getIdToken: () => Promise<string> },
   loading: true,
 }));
+const locationState = vi.hoisted(() => ({
+  search: '?code=restored-user-code&state=callback-state',
+}));
 
 vi.mock('react-router-dom', () => ({
   useLocation: () => ({
     pathname: '/oauth/callback',
-    search: '?code=restored-user-code&state=callback-state',
+    search: locationState.search,
   }),
   useNavigate: () => callbackMocks.navigate,
 }));
@@ -30,6 +34,11 @@ vi.mock('../context/AuthContext', () => ({
 vi.mock('../utils/oauthFlow', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../utils/oauthFlow')>();
   return { ...actual, completeOAuthFlow: callbackMocks.complete };
+});
+
+vi.mock('../utils/hostedOAuth', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../utils/hostedOAuth')>();
+  return { ...actual, completeHostedOAuthFlow: callbackMocks.completeHosted };
 });
 
 import OAuthCallback from './OAuthCallback';
@@ -54,6 +63,11 @@ describe('OAuthCallback authentication restoration', () => {
     callbackMocks.navigate.mockReset();
     authState.currentUser = null;
     authState.loading = true;
+    locationState.search = '?code=restored-user-code&state=callback-state';
+    callbackMocks.completeHosted.mockReset().mockResolvedValue({
+      serverUrl: 'https://api.githubcopilot.com/mcp/',
+      issuer: 'https://github.com/login/oauth',
+    });
   });
 
   afterEach(() => {
@@ -234,6 +248,88 @@ describe('OAuthCallback authentication restoration', () => {
         authorizedServerUrl: 'https://mcp.example/mcp',
       },
       replace: true,
+    });
+  });
+});
+
+describe('hosted OAuth callback return views', () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+    vi.stubEnv('VITE_PROXY_URL', 'https://proxy.mcptest.test/');
+    callbackMocks.navigate.mockReset();
+    callbackMocks.complete.mockReset();
+    callbackMocks.getIdToken.mockReset().mockResolvedValue('firebase-token');
+    callbackMocks.completeHosted.mockReset().mockResolvedValue({
+      serverUrl: 'https://api.githubcopilot.com/mcp/',
+      issuer: 'https://github.com/login/oauth',
+    });
+    authState.currentUser = { getIdToken: callbackMocks.getIdToken };
+    authState.loading = false;
+    locationState.search = '?hosted_result=opaque-result';
+  });
+
+  afterEach(() => {
+    if (root) act(() => root?.unmount());
+    root = undefined;
+    vi.unstubAllEnvs();
+  });
+
+  const renderCallback = async () => {
+    const container = document.createElement('div');
+    root = createRoot(container);
+    await act(async () => {
+      root?.render(<OAuthCallback />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+  };
+
+  it('returns hosted completion to the originating report', async () => {
+    const serverUrl = 'https://api.githubcopilot.com/mcp/';
+    sessionStorage.setItem('oauth_return_view', JSON.stringify({
+      activeView: 'report',
+      serverUrl,
+    }));
+
+    await renderCallback();
+
+    expect(callbackMocks.completeHosted).toHaveBeenCalledOnce();
+    expect(callbackMocks.complete).not.toHaveBeenCalled();
+    expect(callbackMocks.navigate).toHaveBeenCalledWith(
+      `/report/${encodeURIComponent(serverUrl)}`,
+      {
+        state: {
+          oauthSuccess: true,
+          authorizedServerUrl: serverUrl,
+          fromOAuthReturn: true,
+          serverUrl,
+        },
+        replace: true,
+      }
+    );
+  });
+
+  it('returns hosted completion to the originating playground tab context', async () => {
+    sessionStorage.setItem('oauth_tab_id', 'playground-tab-2');
+    sessionStorage.setItem('oauth_return_view', JSON.stringify({
+      activeView: 'playground',
+      activeTabId: 'playground-tab-2',
+    }));
+
+    await renderCallback();
+
+    expect(callbackMocks.completeHosted).toHaveBeenCalledOnce();
+    expect(callbackMocks.complete).not.toHaveBeenCalled();
+    expect(callbackMocks.navigate).toHaveBeenCalledWith('/', {
+      state: {
+        oauthSuccess: true,
+        authorizedServerUrl: 'https://api.githubcopilot.com/mcp/',
+      },
+      replace: true,
+    });
+    expect(JSON.parse(sessionStorage.getItem('oauth_return_view') || 'null')).toEqual({
+      activeView: 'playground',
+      activeTabId: 'playground-tab-2',
     });
   });
 });

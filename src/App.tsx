@@ -1995,6 +1995,7 @@ function App() {
         <Suspense fallback={null}>
         <OAuthConfig 
           serverUrl={oauthConfigServerUrl}
+          currentUser={currentUser}
           prerequisite={oauthPrerequisite || undefined}
           onConfigured={async () => {
             setNeedsOAuthConfig(false);
