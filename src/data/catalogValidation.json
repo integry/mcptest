@@ -4072,6 +4072,18 @@
     ]
   },
   {
+    "serverId": "macalculatriceenligne",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateful",
+    "checkedAt": "2026-11-03T10:56:19.238Z",
+    "message": "Negotiated stateful MCP 2025-11-25 at https://macalculatriceenligne.com/api/mcp; detected transport streamable-http; authentication none",
+    "validatedUrl": "https://macalculatriceenligne.com/api/mcp",
+    "protocolVersion": "2025-11-25"
+  },
+  {
     "serverId": "pattorelay",
     "status": "online",
     "transport": "unknown",

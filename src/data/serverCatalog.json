@@ -12779,6 +12779,37 @@
     "homepageUrl": "https://mallary.ai/social-media-mcp-server"
   },
   {
+    "id": "macalculatriceenligne",
+    "name": "MaCalculatrice (macalc)",
+    "url": "https://macalculatriceenligne.com/api/mcp",
+    "browserAccess": "proxy-required",
+    "description": "Calculators from macalculatriceenligne.com as MCP tools: tax, salary, real estate, maths, health and unit conversions for France and other French-speaking countries. Each result links to the related page of the site. No authentication.",
+    "caveats": [
+      "Some tools, including the AI-powered calculate_anything, require a premium subscription. Pricing and rate limits are described by the pricing_policy resource."
+    ],
+    "category": "Reference",
+    "tags": [
+      "reference",
+      "community-submission",
+      "no-auth",
+      "calculator",
+      "tax",
+      "france"
+    ],
+    "listingSource": {
+      "kind": "community-submission",
+      "url": "https://macalculatriceenligne.com/mcp/"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "logoUrl": "/server-logos/macalculatriceenligne.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-03",
+    "logoLicenseNote": "Locally generated MC monogram for a community submission; it is not an official MaCalculatrice (macalc) mark.",
+    "homepageUrl": "https://macalculatriceenligne.com/mcp/"
+  },
+  {
     "id": "pattorelay",
     "name": "Patto",
     "url": "https://pattorelay.com/mcp",

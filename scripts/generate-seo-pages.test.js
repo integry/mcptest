@@ -384,6 +384,29 @@ describe('generated page metadata', () => {
     )).toThrow('inventory endpoint does not match its catalog origin');
   });
 
+  it('accepts and renders basic tax prose but rejects unsanitized Basic credentials', () => {
+    const server = catalogServer('https://example.com/mcp', 'streamable-http');
+    const description = 'Calculate Canadian tax with the basic personal amount credited.';
+    const inventory = createCapabilityInventory({
+      testedEndpoint: server.url,
+      route: 'direct',
+      authentication: 'unauthenticated',
+      statuses: { tools: 'complete', resources: 'complete', resourceTemplates: 'complete', prompts: 'complete' },
+      discovered: { tools: [{ name: 'calculate_canada_federal_tax', description }] },
+    });
+    expect(() => validateCapabilitySnapshots({ 'example-server': inventory }, [server])).not.toThrow();
+    server.capabilityInventory = inventory;
+    expect(renderServerHtml(indexHtml, server)).toContain(description);
+    inventory.tools.items[0].description = 'Use Basic dXNlcjpwYXNz';
+    expect(() => validateCapabilitySnapshots({ 'example-server': inventory }, [server]))
+      .toThrow('contains unsanitized data');
+    for (const description of ['Use Basic dXNlcjpwYXNz.', 'Use Basic dXNlcjpwYXNz-', 'Use Basic dXNlcjpwYXNz-suffix']) {
+      inventory.tools.items[0].description = description;
+      expect(() => validateCapabilitySnapshots({ 'example-server': inventory }, [server]))
+        .toThrow('contains unsanitized data');
+    }
+  });
+
   it('accepts canonical inventories created from case-distinct argument names', () => {
     const inventory = createCapabilityInventory({
       observedAt: '2026-08-17T22:00:00.000Z',
