@@ -4084,5 +4084,19 @@
     "authorizationServers": [
       "https://pattorelay.com"
     ]
+  },
+  {
+    "serverId": "a-repostit-mcp-cfjcykgqda-uc",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-05T17:18:35.458Z",
+    "message": "Authentication challenge at https://repostit-mcp-cfjcykgqda-uc.a.run.app/mcp/v1.1 returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://repostit-mcp-cfjcykgqda-uc.a.run.app/mcp/v1.1",
+    "authorizationServers": [
+      "https://repostit-mcp-cfjcykgqda-uc.a.run.app"
+    ]
   }
 ]
