@@ -13500,6 +13500,121 @@
       "items": []
     }
   },
+  "realtycrawl": {
+    "version": 1,
+    "observedAt": "2026-11-05T02:20:49.517Z",
+    "provenance": {
+      "testedEndpoint": "https://realtycrawl.dev/mcp",
+      "route": "direct"
+    },
+    "authentication": "unauthenticated",
+    "tools": {
+      "status": "complete",
+      "observedCount": 5,
+      "retainedCount": 5,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "call_endpoint",
+          "description": "Execute one source read or search. May consume credits. No automatic retry or pagination. POST search requests need a stable idempotency key.",
+          "input": [
+            {
+              "name": "endpointId",
+              "type": "string",
+              "required": true
+            },
+            {
+              "name": "idempotencyKey",
+              "type": "string",
+              "required": false
+            },
+            {
+              "name": "maxCredits",
+              "type": "integer",
+              "required": true
+            },
+            {
+              "name": "parameters",
+              "type": "object",
+              "required": false
+            }
+          ],
+          "outputSchema": false
+        },
+        {
+          "name": "get_capabilities",
+          "description": "Inspect current source operations, supported selectors, and markets before requesting data. Free.",
+          "input": [
+            {
+              "name": "country",
+              "type": "string",
+              "required": false
+            },
+            {
+              "name": "platform",
+              "type": "string",
+              "required": false
+            }
+          ],
+          "outputSchema": false
+        },
+        {
+          "name": "get_endpoint",
+          "description": "Read an operation’s parameters, request schema and referenced component schemas.",
+          "input": [
+            {
+              "name": "endpointId",
+              "type": "string",
+              "required": true
+            }
+          ],
+          "outputSchema": false
+        },
+        {
+          "name": "list_endpoints",
+          "description": "List API operations with source associations and evidence. Contract inclusion does not guarantee live source availability.",
+          "input": [
+            {
+              "name": "query",
+              "type": "string",
+              "required": false
+            }
+          ],
+          "outputSchema": false
+        },
+        {
+          "name": "list_platforms",
+          "description": "List researched real estate platforms and their current status. Free.",
+          "outputSchema": false
+        }
+      ]
+    },
+    "resources": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "resourceTemplates": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "prompts": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    }
+  },
   "svelte": {
     "version": 1,
     "observedAt": "2026-10-26T13:08:04.271Z",
