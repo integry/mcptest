@@ -10346,7 +10346,7 @@
     "logoSourceUrl": "https://mubboo.flights/mubboo-flights-favicon-512.png",
     "logoSourceKind": "official-site",
     "logoRetrievedAt": "2026-10-23",
-    "logoLicenseNote": "Mubboo Flights mark from the publisher’s official website, supplied by Mubboo LLC for this directory listing; trademark rights remain with Mubboo LLC.",
+    "logoLicenseNote": "Mubboo Flights mark from the publisher\u2019s official website, supplied by Mubboo LLC for this directory listing; trademark rights remain with Mubboo LLC.",
     "homepageUrl": "https://mubboo.flights/mcp",
     "sourceUrl": "https://github.com/Mubboo-Ai/mubboo-flights-mcp",
     "caveats": [
@@ -12802,5 +12802,47 @@
     "logoRetrievedAt": "2026-11-04",
     "logoLicenseNote": "Locally generated PA monogram for a community submission; it is not an official Patto mark.",
     "homepageUrl": "https://pattorelay.com"
+  },
+  {
+    "id": "realtycrawl",
+    "name": "RealtyCrawl",
+    "url": "https://realtycrawl.dev/mcp",
+    "description": "Discover real estate capabilities and endpoint schemas, then retrieve source-linked observations with explicit credit budgets. Metadata is public; data calls require a RealtyCrawl API key.",
+    "category": "Search",
+    "tags": [
+      "real-estate",
+      "research",
+      "api",
+      "data"
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://github.com/realtycrawl/realtycrawl-mcp"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "alternativeAuthTypes": [
+      "bearer-token"
+    ],
+    "requiredHeaders": [
+      {
+        "name": "Authorization",
+        "description": "User-supplied RealtyCrawl API key for data calls; not required for public metadata.",
+        "valueTemplate": "Bearer <REALTYCRAWL_API_KEY>",
+        "required": false,
+        "secret": true
+      }
+    ],
+    "logoUrl": "/server-logos/realtycrawl.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-04",
+    "logoLicenseNote": "Generated R monogram for directory identification; not the official RealtyCrawl mark.",
+    "homepageUrl": "https://realtycrawl.dev",
+    "sourceUrl": "https://github.com/realtycrawl/realtycrawl-mcp",
+    "caveats": [
+      "Metadata discovery is free. Data operations require an API key, credits and explicit request budgets; eligible accounts receive 500 signup credits once.",
+      "Check current capabilities before execution. Research, unavailable and documentation-backed beta entries do not establish verified live source coverage."
+    ]
   }
 ]

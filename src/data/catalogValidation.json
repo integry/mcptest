@@ -4084,5 +4084,17 @@
     "authorizationServers": [
       "https://pattorelay.com"
     ]
+  },
+  {
+    "serverId": "realtycrawl",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateful",
+    "checkedAt": "2026-11-05T02:20:50.836Z",
+    "message": "Negotiated stateful MCP 2025-11-25 at https://realtycrawl.dev/mcp; detected transport streamable-http; authentication none",
+    "validatedUrl": "https://realtycrawl.dev/mcp",
+    "protocolVersion": "2025-11-25"
   }
 ]
