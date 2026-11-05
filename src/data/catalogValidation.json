@@ -4084,5 +4084,17 @@
     "authorizationServers": [
       "https://pattorelay.com"
     ]
+  },
+  {
+    "serverId": "lianxiaozhi",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateless",
+    "checkedAt": "2026-11-05T03:21:40.554Z",
+    "message": "Negotiated stateless MCP 2026-07-28 at https://lianxiaozhi.com/api/mcp; detected transport streamable-http; authentication none",
+    "validatedUrl": "https://lianxiaozhi.com/api/mcp",
+    "protocolVersion": "2026-07-28"
   }
 ]

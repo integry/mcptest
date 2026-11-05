@@ -10167,6 +10167,211 @@
       "items": []
     }
   },
+  "lianxiaozhi": {
+    "version": 1,
+    "observedAt": "2026-11-05T03:21:40.436Z",
+    "provenance": {
+      "testedEndpoint": "https://lianxiaozhi.com/api/mcp",
+      "route": "direct"
+    },
+    "authentication": "unauthenticated",
+    "tools": {
+      "status": "complete",
+      "observedCount": 8,
+      "retainedCount": 8,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "lianxiaozhi_get_daily",
+          "description": "Get 链小知's edited daily overview, either the latest issue or a real YYYY-MM-DD date. Use this when the user asks for a daily report rather than a raw chronological list.",
+          "input": [
+            {
+              "name": "date",
+              "type": "string",
+              "description": "Optional real calendar date in YYYY-MM-DD. Omit for the latest daily report.",
+              "required": false
+            }
+          ],
+          "outputSchema": false
+        },
+        {
+          "name": "lianxiaozhi_get_hot_topics",
+          "description": "Get the current 链小知 Top 10 with each event's one-based rank. Use this for 'what is hot now' and to discover valid story public IDs; use lianxiaozhi_get_latest for a chronological news list. Internal heat scores are not returned.",
+          "input": [
+            {
+              "name": "limit",
+              "type": "integer",
+              "description": "Maximum number of current topics, from 1 to 10.",
+              "required": false
+            }
+          ],
+          "outputSchema": false
+        },
+        {
+          "name": "lianxiaozhi_get_knowledge",
+          "description": "Find blockchain knowledge guides and methodology, outside the news tool's 7-day window. Omit inputs to list guides, pass q for literal keyword search, or use a returned slug for full text with sources, update date and citation URL. This is not live price data.",
+          "input": [
+            {
+              "name": "q",
+              "type": "string",
+              "required": false
+            },
+            {
+              "name": "slug",
+              "type": "string",
+              "required": false
+            }
+          ],
+          "outputSchema": false
+        },
+        {
+          "name": "lianxiaozhi_get_latest",
+          "description": "Get the latest 链小知 items for a 24-hour or 7-day briefing. Prefer selected mode unless the user explicitly asks for every public item. Do not use this for named-topic search or multi-source event context.",
+          "input": [
+            {
+              "name": "category",
+              "type": "string",
+              "description": "Optional category: bitcoin, chains, defi, stablecoins-payments, rwa-institutions, ai-crypto, consumer, industry.",
+              "required": false
+            },
+            {
+              "name": "limit",
+              "type": "integer",
+              "description": "Maximum number of results, from 1 to 30.",
+              "required": false
+            },
+            {
+              "name": "mode",
+              "type": "string",
+              "description": "selected returns editorial picks; all returns every public item.",
+              "required": false
+            },
+            {
+              "name": "window",
+              "type": "string",
+              "description": "Time window. Use 24h for a current briefing and 7d for a weekly view.",
+              "required": false
+            }
+          ],
+          "outputSchema": false
+        },
+        {
+          "name": "lianxiaozhi_get_story",
+          "description": "Get the evolving timeline, latest development, digest, and related events for one public story. Only pass a public_id obtained from lianxiaozhi_get_hot_topics links.story; never invent or infer IDs.",
+          "input": [
+            {
+              "name": "public_id",
+              "type": "string",
+              "description": "Opaque story public ID. Obtain it from the final path segment of lianxiaozhi_get_hot_topics links.story; never guess it.",
+              "required": true
+            },
+            {
+              "name": "report_limit",
+              "type": "integer",
+              "description": "Maximum number of timeline reports, from 1 to 50.",
+              "required": false
+            }
+          ],
+          "outputSchema": false
+        },
+        {
+          "name": "lianxiaozhi_get_tool_guide",
+          "description": "Read a published onchain task guide, including prerequisites, per-step checks, pitfalls, completion criteria and official evidence. Obtain slug from lianxiaozhi_get_tools guides; never guess it. documentation means official-documentation research only; read-only and testnet indicate those verification scopes. No signing, trading or model calls occur when reading.",
+          "input": [
+            {
+              "name": "slug",
+              "type": "string",
+              "required": true
+            }
+          ],
+          "outputSchema": false
+        },
+        {
+          "name": "lianxiaozhi_get_tools",
+          "description": "Find official onchain tools and task guide summaries outside the recent-news time window. Omit inputs for the full directory; q searches tasks, networks and official references, category filters the tool category, network matches a label returned by the directory. Pass a returned tool slug alone for its complete sourced profile, canonical URL and related tutorials. reviewedAt is the documentation review date, not a live quote or real-account acceptance.",
+          "input": [
+            {
+              "name": "category",
+              "type": "string",
+              "required": false
+            },
+            {
+              "name": "network",
+              "type": "string",
+              "required": false
+            },
+            {
+              "name": "q",
+              "type": "string",
+              "required": false
+            },
+            {
+              "name": "slug",
+              "type": "string",
+              "required": false
+            }
+          ],
+          "outputSchema": false
+        },
+        {
+          "name": "lianxiaozhi_search",
+          "description": "Search 链小知's latest 7 days by a 2–200 character topic, company, product, or person. It searches editorial picks first and automatically expands to all public items only when picks have no result.",
+          "input": [
+            {
+              "name": "category",
+              "type": "string",
+              "description": "Optional category: bitcoin, chains, defi, stablecoins-payments, rwa-institutions, ai-crypto, consumer, industry.",
+              "required": false
+            },
+            {
+              "name": "limit",
+              "type": "integer",
+              "description": "Maximum number of results, from 1 to 30.",
+              "required": false
+            },
+            {
+              "name": "q",
+              "type": "string",
+              "description": "Search query, 2 to 200 characters.",
+              "required": true
+            },
+            {
+              "name": "window",
+              "type": "string",
+              "description": "Search window. Defaults to the latest 7 days.",
+              "required": false
+            }
+          ],
+          "outputSchema": false
+        }
+      ]
+    },
+    "resources": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "resourceTemplates": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "prompts": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    }
+  },
   "livekit-docs": {
     "version": 1,
     "observedAt": "2026-10-26T13:08:21.271Z",

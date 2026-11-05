@@ -12802,5 +12802,30 @@
     "logoRetrievedAt": "2026-11-04",
     "logoLicenseNote": "Locally generated PA monogram for a community submission; it is not an official Patto mark.",
     "homepageUrl": "https://pattorelay.com"
+  },
+  {
+    "id": "lianxiaozhi",
+    "name": "链小知区块链",
+    "url": "https://lianxiaozhi.com/api/mcp",
+    "browserAccess": "proxy-required",
+    "description": "Affiliated submission by 链小知区块链 content operations. Eight read-only tools offer Chinese blockchain knowledge, tool guides, recent news, event timelines and daily briefs with source links; anonymous Streamable HTTP, no API key, seven-day news-search window.",
+    "category": "Reference",
+    "tags": [
+      "reference",
+      "community-submission",
+      "no-auth"
+    ],
+    "listingSource": {
+      "kind": "community-submission",
+      "url": "https://lianxiaozhi.com/agent"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "logoUrl": "/server-logos/lianxiaozhi.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-05",
+    "logoLicenseNote": "Locally generated ? monogram for a community submission; it is not an official 链小知区块链 mark.",
+    "homepageUrl": "https://lianxiaozhi.com/agent"
   }
 ]
