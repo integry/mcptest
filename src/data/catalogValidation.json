@@ -4084,5 +4084,17 @@
     "authorizationServers": [
       "https://pattorelay.com"
     ]
+  },
+  {
+    "serverId": "blockvectra-docs",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateless",
+    "checkedAt": "2026-11-07T07:44:07.358Z",
+    "message": "Negotiated stateless MCP 2026-07-28 at https://docs.blockvectra.com/mcp/docs; detected transport streamable-http; authentication none",
+    "validatedUrl": "https://docs.blockvectra.com/mcp/docs",
+    "protocolVersion": "2026-07-28"
   }
 ]

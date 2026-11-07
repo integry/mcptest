@@ -12802,5 +12802,36 @@
     "logoRetrievedAt": "2026-11-04",
     "logoLicenseNote": "Locally generated PA monogram for a community submission; it is not an official Patto mark.",
     "homepageUrl": "https://pattorelay.com"
+  },
+  {
+    "id": "blockvectra-docs",
+    "name": "BlockVectra Docs",
+    "url": "https://docs.blockvectra.com/mcp/docs",
+    "description": "Search and read BlockVectra RPC and Data API documentation with search_docs and read_doc. This documentation-only endpoint needs no account or API key.",
+    "category": "Documentation",
+    "tags": [
+      "docs",
+      "blockchain",
+      "developer-tools",
+      "no-auth"
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://github.com/blockvectra/mcp/blob/main/README.md"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "exactEndpointOnly": true,
+    "browserAccess": "unknown",
+    "logoUrl": "/server-logos/blockvectra-docs.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-07",
+    "logoLicenseNote": "Locally generated BV monogram; it is not an official BlockVectra mark.",
+    "homepageUrl": "https://docs.blockvectra.com/en/guides/mcp-server/?ref=dir-mcptest-docs",
+    "sourceUrl": "https://github.com/blockvectra/mcp",
+    "caveats": [
+      "This endpoint provides documentation tools only, not JSON-RPC execution or account operations. Browser connectivity has not been verified."
+    ]
   }
 ]

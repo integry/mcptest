@@ -1663,6 +1663,92 @@
       "items": []
     }
   },
+  "blockvectra-docs": {
+    "version": 1,
+    "observedAt": "2026-11-07T07:44:05.397Z",
+    "provenance": {
+      "testedEndpoint": "https://docs.blockvectra.com/mcp/docs",
+      "route": "direct"
+    },
+    "authentication": "unauthenticated",
+    "tools": {
+      "status": "complete",
+      "observedCount": 2,
+      "retainedCount": 2,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "read_doc",
+          "description": "Read the raw Markdown content of a documentation page from /md/{lang}/{path}.md. Path must be an internal relative path (e.g. 'quickstart', 'guides/ai-agents', 'api/json-rpc', 'chains').",
+          "input": [
+            {
+              "name": "lang",
+              "type": "string",
+              "description": "Published documentation language (case-insensitive, e.g. zh-hant or zh-Hant). Omit for English; unavailable languages return an error.",
+              "required": false
+            },
+            {
+              "name": "path",
+              "type": "string",
+              "description": "Internal relative documentation path (e.g. 'quickstart', 'guides/ai-agents', 'api/json-rpc'). Do not include protocol, hostname, query string, fragment, or '..'.",
+              "required": true
+            }
+          ],
+          "outputSchema": false
+        },
+        {
+          "name": "search_docs",
+          "description": "Find documentation by topic or task keywords in page titles, navigation titles, relative paths, and summaries. Read a result with read_doc using its path and the same lang; use read_doc directly for a known path. Omit lang for English; limit is 1-20 (default 5). If no results match, try broader keywords or read_doc with path 'quickstart'. Available without an API key.",
+          "input": [
+            {
+              "name": "lang",
+              "type": "string",
+              "description": "Published documentation language (case-insensitive, e.g. zh-hant or zh-Hant). Omit for English; unavailable languages return an error.",
+              "required": false
+            },
+            {
+              "name": "limit",
+              "type": "number",
+              "description": "Maximum number of search results to return (1-20, default 5).",
+              "required": false
+            },
+            {
+              "name": "query",
+              "type": "string",
+              "description": "Keywords to search for in documentation titles, navigation titles, paths, and summaries.",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        }
+      ]
+    },
+    "resources": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "resourceTemplates": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "prompts": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    }
+  },
   "browser-use": {
     "version": 1,
     "observedAt": "2026-10-26T13:08:31.073Z",
