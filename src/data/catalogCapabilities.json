@@ -10603,6 +10603,1478 @@
       "items": []
     }
   },
+  "macalculatriceenligne": {
+    "version": 1,
+    "observedAt": "2026-11-03T10:56:18.776Z",
+    "provenance": {
+      "testedEndpoint": "https://macalculatriceenligne.com/api/mcp",
+      "route": "direct"
+    },
+    "authentication": "unauthenticated",
+    "tools": {
+      "status": "partial",
+      "observedCount": 446,
+      "retainedCount": 56,
+      "omittedCount": 390,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "calculate_1rm_table",
+          "description": "Generate a full 1RM-to-12RM repetition table from a known lift using Epley formula. Returns: {input_weight, input_reps, estimated_1rm}. See list_bundles for related 'sport' calculators.",
+          "input": [
+            {
+              "name": "reps",
+              "type": "number",
+              "description": "Repetitions performed at that weight",
+              "required": true
+            },
+            {
+              "name": "weight",
+              "type": "number",
+              "description": "Weight lifted in kg or lbs",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "calculate_add_hours",
+          "description": "Add two time durations and return the total in hours and minutes. See list_bundles for related 'temps-rh' calculators.",
+          "input": [
+            {
+              "name": "hours1",
+              "type": "number",
+              "description": "First duration — hours",
+              "required": true
+            },
+            {
+              "name": "hours2",
+              "type": "number",
+              "description": "Second duration — hours",
+              "required": true
+            },
+            {
+              "name": "minutes1",
+              "type": "number",
+              "description": "First duration — minutes",
+              "required": true
+            },
+            {
+              "name": "minutes2",
+              "type": "number",
+              "description": "Second duration — minutes",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "calculate_age",
+          "description": "Calculate exact age in years, months and days from a birth date. Returns: {today, age_years, age_months, age_days, total_days_lived, days_to_next_birthday}. See list_bundles for related 'temps-rh' calculators.",
+          "input": [
+            {
+              "name": "birth_date",
+              "type": "string",
+              "description": "YYYY-MM-DD — Date of birth",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "calculate_age_in_units",
+          "description": "Calculate exact age in multiple units from birth date. Returns: {weeks, hours, minutes, seconds}. See list_bundles for related 'fun' calculators.",
+          "input": [
+            {
+              "name": "birth_date",
+              "type": "string",
+              "description": "Birth date YYYY-MM-DD",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "calculate_alcohol_units",
+          "description": "Compute alcohol units (UK) and grams of pure alcohol in a drink. Use for health tracking and limit awareness. Inputs: volume mL, ABV %. Returns UK units, grams of pure alcohol, and standard-drink equivalent. See list_bundles for related 'cuisine' calculators.",
+          "input": [
+            {
+              "name": "drinks",
+              "type": "array",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "calculate_altitude_sickness",
+          "description": "Assess altitude sickness risk and recommend acclimatization schedule. Returns: {risk_level, risk_color, recommended_acclimatization_days, symptoms_to_watch, recommendations}. See list_bundles for related 'voyage' calculators.",
+          "input": [
+            {
+              "name": "altitude_m",
+              "type": "number",
+              "description": "Target altitude in meters",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "calculate_angle_convert",
+          "description": "Convert angles between degrees, radians, gradians and turns. Returns: {original}. See list_bundles for related 'conversions' calculators.",
+          "input": [
+            {
+              "name": "from_unit",
+              "type": "string",
+              "description": "Source unit",
+              "required": true
+            },
+            {
+              "name": "to_unit",
+              "type": "string",
+              "description": "Target unit",
+              "required": true
+            },
+            {
+              "name": "value",
+              "type": "number",
+              "description": "Angle value",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "calculate_annuity_payment",
+          "description": "Calculate periodic payment amount for a loan or annuity. Returns: {monthly_payment_eur, total_paid_eur, total_interest_eur}. See list_bundles for related 'finance-universal' calculators.",
+          "input": [
+            {
+              "name": "periods",
+              "type": "number",
+              "description": "Number of payment periods (months)",
+              "required": true
+            },
+            {
+              "name": "principal",
+              "type": "number",
+              "description": "Principal amount EUR",
+              "required": true
+            },
+            {
+              "name": "rate",
+              "type": "number",
+              "description": "Annual interest rate percent",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "calculate_anything",
+          "description": "Universal AI-powered calculator — handles any calculation not covered by specialized tools. Requires premium subscription.",
+          "input": [
+            {
+              "name": "context",
+              "type": "string",
+              "description": "Optional context: units, constraints, domain",
+              "required": false
+            },
+            {
+              "name": "query",
+              "type": "string",
+              "description": "Calculation request in natural language (English or French)",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "calculate_aquarium_volume",
+          "description": "Compute aquarium water volume in L and US gallons. Use for fishkeeping, dosing, and stocking decisions. Inputs: shape (rectangular/cylindrical/bow-front), L×W×H or radius×height in cm. Returns liters and gallons. See list_bundles for related 'animaux' calculators.",
+          "input": [
+            {
+              "name": "height_cm",
+              "type": "number",
+              "required": true
+            },
+            {
+              "name": "length_cm",
+              "type": "number",
+              "required": true
+            },
+            {
+              "name": "substrate_cm",
+              "type": "number",
+              "required": false
+            },
+            {
+              "name": "width_cm",
+              "type": "number",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "calculate_area",
+          "description": "Compute area for common 2D shapes (rectangle, triangle, circle, trapezoid, etc.). Use for geometry, real estate, or paint estimates. Inputs: shape + dimensions. Returns area in input-units squared. See list_bundles for related 'math' calculators.",
+          "input": [
+            {
+              "name": "d1",
+              "type": "number",
+              "description": "Diagonal 1 for rhombus",
+              "required": false
+            },
+            {
+              "name": "d2",
+              "type": "number",
+              "description": "Diagonal 2 for rhombus",
+              "required": false
+            },
+            {
+              "name": "height",
+              "type": "number",
+              "description": "Height",
+              "required": false
+            },
+            {
+              "name": "length",
+              "type": "number",
+              "description": "Length or base",
+              "required": false
+            },
+            {
+              "name": "radius",
+              "type": "number",
+              "description": "Radius",
+              "required": false
+            },
+            {
+              "name": "semi_major",
+              "type": "number",
+              "description": "Semi-major axis for ellipse",
+              "required": false
+            },
+            {
+              "name": "semi_minor",
+              "type": "number",
+              "description": "Semi-minor axis for ellipse",
+              "required": false
+            },
+            {
+              "name": "shape",
+              "type": "string",
+              "description": "Shape type",
+              "required": true
+            },
+            {
+              "name": "side",
+              "type": "number",
+              "description": "Side for hexagon",
+              "required": false
+            },
+            {
+              "name": "width",
+              "type": "number",
+              "description": "Width",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "calculate_auto_entrepreneur",
+          "description": "Calculate French auto-entrepreneur (micro-enterprise) net income and social charges. Returns: {social_charges_rate_pct, social_charges, abatement_fiscal_pct, taxable_income_approx, net_before_tax, cfe_estimate_eur}. See list_bundles for related 'finance-france' calculators.",
+          "input": [
+            {
+              "name": "category",
+              "type": "string",
+              "description": "Activity category: vente (sales), service_bic, service_bnc, liberal",
+              "required": false
+            },
+            {
+              "name": "revenue",
+              "type": "number",
+              "description": "Annual revenue (chiffre d'affaires) in euros",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "calculate_average",
+          "description": "Compute simple, weighted, geometric, or harmonic mean. Use for grade averages, returns, or rates. Inputs: values list, optional weights, mode. Returns mean and detail. See list_bundles for related 'math' calculators.",
+          "input": [
+            {
+              "name": "values",
+              "type": "array",
+              "description": "Array of numbers",
+              "required": true
+            },
+            {
+              "name": "weights",
+              "type": "array",
+              "description": "Optional weights for weighted average",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "calculate_bac_points",
+          "description": "Estimate French Baccalauréat final score from grades and coefficients. Use to track lycée results before official scores. Inputs: grades by subject with coefficients. Returns weighted average and mention. See list_bundles for related 'education' calculators.",
+          "input": [
+            {
+              "name": "continuous_control",
+              "type": "number",
+              "description": "Continuous assessment score (/720 = 40%)",
+              "required": true
+            },
+            {
+              "name": "french_oral",
+              "type": "number",
+              "description": "French oral exam (/20, coeff 5)",
+              "required": true
+            },
+            {
+              "name": "french_written",
+              "type": "number",
+              "description": "French written exam (/20, coeff 5)",
+              "required": true
+            },
+            {
+              "name": "grand_oral",
+              "type": "number",
+              "description": "Grand oral (/20, coeff 10)",
+              "required": true
+            },
+            {
+              "name": "philosophy",
+              "type": "number",
+              "description": "Philosophy (/20, coeff 8)",
+              "required": true
+            },
+            {
+              "name": "specialty1",
+              "type": "number",
+              "description": "Specialty 1 (/20, coeff 16)",
+              "required": true
+            },
+            {
+              "name": "specialty2",
+              "type": "number",
+              "description": "Specialty 2 (/20, coeff 16)",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "calculate_baking_altitude",
+          "description": "Adjust baking recipe for high altitude (less leavening, more liquid, higher temp). Use for mountain cooking. Inputs: altitude m, ingredients. Returns adjusted recipe. See list_bundles for related 'cuisine' calculators.",
+          "input": [
+            {
+              "name": "altitude_m",
+              "type": "number",
+              "description": "Altitude in meters",
+              "required": true
+            },
+            {
+              "name": "flour_cups",
+              "type": "number",
+              "description": "Flour in cups",
+              "required": true
+            },
+            {
+              "name": "liquid_cups",
+              "type": "number",
+              "description": "Liquid in cups",
+              "required": true
+            },
+            {
+              "name": "oven_temp_c",
+              "type": "number",
+              "description": "Oven temperature °C",
+              "required": true
+            },
+            {
+              "name": "sugar_cups",
+              "type": "number",
+              "description": "Sugar in cups",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "calculate_baking_conversion",
+          "description": "Convert baking measurements between cups, tablespoons, grams, and milliliters for common ingredients. Use for translating recipes across regions. Inputs: ingredient, value, from-unit, to-unit. Returns converted quantity. See list_bundles for related 'cuisine' calculators.",
+          "input": [
+            {
+              "name": "ingredient",
+              "type": "string",
+              "required": true
+            },
+            {
+              "name": "quantity_cups",
+              "type": "number",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "calculate_base_converter",
+          "description": "Convert numbers between bases (binary, octal, decimal, hexadecimal, any base 2-36). Returns: {input, decimal_value, result}. See list_bundles for related 'math' calculators.",
+          "input": [
+            {
+              "name": "from_base",
+              "type": "integer",
+              "description": "Source base",
+              "required": true
+            },
+            {
+              "name": "to_base",
+              "type": "integer",
+              "description": "Target base",
+              "required": true
+            },
+            {
+              "name": "value",
+              "type": "string",
+              "description": "Number as string",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "calculate_beam_load",
+          "description": "Calculate max bending moment and shear for a beam under uniform distributed load. Returns: {load_kN_per_m, max_moment_kNm, max_shear_kN, note}. See list_bundles for related 'construction' calculators.",
+          "input": [
+            {
+              "name": "beam_type",
+              "type": "string",
+              "description": "Support type",
+              "required": false
+            },
+            {
+              "name": "load_kg_per_m",
+              "type": "number",
+              "description": "Distributed load in kg/m",
+              "required": true
+            },
+            {
+              "name": "span_m",
+              "type": "number",
+              "description": "Beam span in meters",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "calculate_belgian_car_advantage",
+          "description": "Calculate Belgian benefit-in-kind for company car (avantage de toute nature voiture). Returns: {co2_reference, benefit_rate_pct, annual_taxable_benefit, monthly_taxable_benefit, estimated_monthly_tax_impact}. See list_bundles for related 'finance-belgique' calculators.",
+          "input": [
+            {
+              "name": "catalog_value",
+              "type": "number",
+              "description": "Catalog value of the vehicle (HTVA) in euros",
+              "required": true
+            },
+            {
+              "name": "co2",
+              "type": "number",
+              "description": "CO2 emissions in g/km",
+              "required": true
+            },
+            {
+              "name": "fuel_type",
+              "type": "string",
+              "description": "Fuel type",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "calculate_belgian_donation",
+          "description": "Compute Belgian donation tax (droits de donation) by region (Bruxelles/Flandre/Wallonie). Use for estate planning in Belgium. Inputs: region, amount, recipient relation. Returns tax due and effective rate. See list_bundles for related 'finance-belgique' calculators.",
+          "input": [
+            {
+              "name": "amount",
+              "type": "number",
+              "description": "Donation amount in euros",
+              "required": true
+            },
+            {
+              "name": "relationship",
+              "type": "string",
+              "description": "Relationship: direct_line (parents/children), between_spouses (or cohabitants), others",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "calculate_belgian_income_tax",
+          "description": "Calculate Belgian personal income tax (IPP/PB) on an annual taxable base using the income-year 2026 (tax year 2027) progressive brackets, minus the tax-free allowance reduction (SPF method). Returns: {income, tax_free_amount, tax_free_reduction, taxable_base, income_tax, effective_rate_pct, marginal_rate_pct, ...}. See list_bundles for related 'finance-belgique' calculators.",
+          "input": [
+            {
+              "name": "income",
+              "type": "number",
+              "description": "Annual taxable income in euros (after social security and professional expenses)",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "calculate_belgian_pension",
+          "description": "Estimate Belgian retirement pension based on career years and average salary. Use for retirement planning in Belgium. Inputs: years of contribution, average salary, status (employee/self-employed). Returns monthly pension estimate. See list_bundles for related 'finance-belgique' calculators.",
+          "input": [
+            {
+              "name": "average_salary",
+              "type": "number",
+              "description": "Average annual salary in euros",
+              "required": true
+            },
+            {
+              "name": "career_years",
+              "type": "number",
+              "description": "Number of career years",
+              "required": true
+            },
+            {
+              "name": "household_type",
+              "type": "string",
+              "description": "Pension type: single rate (60%) or household rate (75%)",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "calculate_belgian_salary",
+          "description": "Convert Belgian gross monthly salary to net salary (estimate: employee ONSS 13.07% + annual personal income tax, single, no municipal surcharge; same engine as /api/v1/salaire-net?pays=be). Returns: {gross_monthly, social_cotisations_13_07pct, special_social_contribution, professional_withholding_tax, net_monthly, net_annual, ...}. See list_bundles for related 'finance-belgique' calculators.",
+          "input": [
+            {
+              "name": "gross_monthly",
+              "type": "number",
+              "description": "Gross monthly salary in euros",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "calculate_belgian_social_contributions",
+          "description": "Calculate Belgian self-employed social contributions (cotisations INASTI). Returns: {annual_income, tier1_up_to_73850_at_20_5pct, tier2_73850_to_108785_at_14_16pct, tier3_above_108785, total_contributions, effective_rate_pct}. See list_bundles for related 'finance-belgique' calculators.",
+          "input": [
+            {
+              "name": "annual_income",
+              "type": "number",
+              "description": "Annual net professional income in euros",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "calculate_belgian_vat",
+          "description": "Calculate Belgian VAT — convert between HT and TTC. Returns: {amount_ht, amount_ttc, vat_amount, vat_rate}. See list_bundles for related 'finance-belgique' calculators.",
+          "input": [
+            {
+              "name": "amount",
+              "type": "number",
+              "description": "Amount in euros",
+              "required": true
+            },
+            {
+              "name": "mode",
+              "type": "string",
+              "description": "Input mode: ht=before tax, ttc=after tax",
+              "required": false
+            },
+            {
+              "name": "rate",
+              "type": "string",
+              "description": "VAT rate: 6%, 12% or 21%",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "calculate_biorhythm",
+          "description": "Compute physical, emotional, and intellectual biorhythm cycles for a date based on birth date. Use for self-tracking enthusiasts (pseudoscience). Inputs: birth date, target date. Returns 3 cycle values (-100 to +100) and zone. See list_bundles for related 'fun' calculators.",
+          "input": [
+            {
+              "name": "birth_date",
+              "type": "string",
+              "description": "Birth date YYYY-MM-DD",
+              "required": true
+            },
+            {
+              "name": "target_date",
+              "type": "string",
+              "description": "Target date YYYY-MM-DD",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "calculate_blood_alcohol",
+          "description": "Estimate blood alcohol content (BAC) using Widmark formula. Returns: {bac_percent, legal_status_fr, estimated_sober_in_hours}. See list_bundles for related 'sante' calculators.",
+          "input": [
+            {
+              "name": "drinks",
+              "type": "number",
+              "description": "Number of standard drinks (1 drink = 14g pure alcohol)",
+              "required": true
+            },
+            {
+              "name": "hours_drinking",
+              "type": "number",
+              "description": "Hours elapsed since first drink",
+              "required": true
+            },
+            {
+              "name": "sex",
+              "type": "string",
+              "description": "Biological sex",
+              "required": true
+            },
+            {
+              "name": "weight_kg",
+              "type": "number",
+              "description": "Body weight in kilograms",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "calculate_bmi",
+          "description": "Calculate Body Mass Index (BMI) and weight category. See list_bundles for related 'sante' calculators.",
+          "input": [
+            {
+              "name": "height_cm",
+              "type": "number",
+              "description": "Height in centimeters",
+              "required": true
+            },
+            {
+              "name": "weight_kg",
+              "type": "number",
+              "description": "Weight in kilograms",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "calculate_bmr",
+          "description": "Calculate Basal Metabolic Rate using Mifflin-St Jeor equation. Returns: {bmr_kcal}. See list_bundles for related 'sante' calculators.",
+          "input": [
+            {
+              "name": "age",
+              "type": "number",
+              "description": "Age in years",
+              "required": true
+            },
+            {
+              "name": "height_cm",
+              "type": "number",
+              "description": "Height in centimeters",
+              "required": true
+            },
+            {
+              "name": "sex",
+              "type": "string",
+              "description": "Biological sex",
+              "required": true
+            },
+            {
+              "name": "weight_kg",
+              "type": "number",
+              "description": "Weight in kilograms",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "calculate_body_fat",
+          "description": "Estimate body fat percentage from BMI, age and sex using Deurenberg equation. Returns: {body_fat_pct}. See list_bundles for related 'sante' calculators.",
+          "input": [
+            {
+              "name": "age",
+              "type": "number",
+              "description": "Age in years",
+              "required": true
+            },
+            {
+              "name": "bmi",
+              "type": "number",
+              "description": "Body Mass Index",
+              "required": true
+            },
+            {
+              "name": "sex",
+              "type": "string",
+              "description": "Biological sex",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "calculate_body_fat_navy",
+          "description": "Calculate body fat percentage using the US Navy circumference method. See list_bundles for related 'sante' calculators.",
+          "input": [
+            {
+              "name": "height_cm",
+              "type": "number",
+              "description": "Height in centimeters",
+              "required": true
+            },
+            {
+              "name": "hip_cm",
+              "type": "number",
+              "description": "Hip circumference in cm (widest point, required for females)",
+              "required": false
+            },
+            {
+              "name": "neck_cm",
+              "type": "number",
+              "description": "Neck circumference in cm (below larynx)",
+              "required": true
+            },
+            {
+              "name": "sex",
+              "type": "string",
+              "description": "Biological sex",
+              "required": true
+            },
+            {
+              "name": "waist_cm",
+              "type": "number",
+              "description": "Waist circumference in cm (at navel for males, narrowest for females)",
+              "required": true
+            },
+            {
+              "name": "weight_kg",
+              "type": "number",
+              "description": "Body weight in kg (default 70kg for fat mass calculation)",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "calculate_bpm_to_ms",
+          "description": "Convert BPM tempo to millisecond delay times for different note values. See list_bundles for related 'musique' calculators.",
+          "input": [
+            {
+              "name": "bpm",
+              "type": "number",
+              "description": "Tempo in beats per minute",
+              "required": true
+            },
+            {
+              "name": "note_value",
+              "type": "string",
+              "description": "Musical note value to convert",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "calculate_bra_size",
+          "description": "Calculate bra size in FR, US or UK system from underbust and bust measurements (cm). Returns: {band_size, size, cup_diff_cm}. See list_bundles for related 'textile-mode' calculators.",
+          "input": [
+            {
+              "name": "bust_cm",
+              "type": "number",
+              "required": true
+            },
+            {
+              "name": "system",
+              "type": "string",
+              "required": true
+            },
+            {
+              "name": "underbust_cm",
+              "type": "number",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "calculate_bra_size_convert",
+          "description": "Convert bra size between FR, US, UK and EU systems. Returns: {FR, US, UK, EU}. See list_bundles for related 'textile-mode' calculators.",
+          "input": [
+            {
+              "name": "band_size",
+              "type": "integer",
+              "description": "Band size in source system (numeric)",
+              "required": true
+            },
+            {
+              "name": "cup",
+              "type": "string",
+              "description": "Cup letter (A, B, C, D, DD, E, F)",
+              "required": true
+            },
+            {
+              "name": "from_system",
+              "type": "string",
+              "description": "Source sizing system",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "calculate_braking_distance",
+          "description": "Compute reaction + braking distance by road condition (dry/wet/icy). Use for driver safety education. Inputs: speed km/h, reaction time s, road type. Returns total stopping distance m. See list_bundles for related 'auto-transport' calculators.",
+          "input": [
+            {
+              "name": "condition",
+              "type": "string",
+              "description": "Road",
+              "required": false
+            },
+            {
+              "name": "speed_kmh",
+              "type": "number",
+              "description": "Speed km/h",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "calculate_braquet",
+          "description": "Compute cycling gear ratio (braquet) and development per pedal turn. Use for road cycling gear analysis. Inputs: chainring teeth, sprocket teeth, wheel diameter mm. Returns ratio and meters per pedal turn. See list_bundles for related 'sport' calculators.",
+          "input": [
+            {
+              "name": "chainring_teeth",
+              "type": "number",
+              "description": "Number of teeth on the front chainring",
+              "required": true
+            },
+            {
+              "name": "cog_teeth",
+              "type": "number",
+              "description": "Number of teeth on the rear cog",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "calculate_bread_hydration",
+          "description": "Compute baker's hydration % = water/flour×100. Use for bread recipe analysis. Inputs: flour g, water g. Returns hydration % and dough type (firm/standard/wet). See list_bundles for related 'cuisine' calculators.",
+          "input": [
+            {
+              "name": "flour_grams",
+              "type": "number",
+              "description": "Flour weight grams",
+              "required": true
+            },
+            {
+              "name": "water_grams",
+              "type": "number",
+              "description": "Water weight grams",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "calculate_break_even",
+          "description": "Compute break-even point in units and revenue. Use for business plans and pricing decisions. Inputs: fixed costs, price/unit, variable cost/unit. Returns break-even units and revenue. See list_bundles for related 'finance-universal' calculators.",
+          "input": [
+            {
+              "name": "fixed_costs",
+              "type": "number",
+              "description": "Total fixed costs",
+              "required": true
+            },
+            {
+              "name": "price_per_unit",
+              "type": "number",
+              "description": "Selling price per unit",
+              "required": true
+            },
+            {
+              "name": "variable_cost_per_unit",
+              "type": "number",
+              "description": "Variable cost per unit",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "calculate_breeding_due_date",
+          "description": "Compute due date for animal breeding given mating date and species gestation period. Use for breeders. Inputs: species (dog/cat/horse/rabbit/cow), mating date. Returns due date and gestation milestones. See list_bundles for related 'animaux' calculators.",
+          "input": [
+            {
+              "name": "animal",
+              "type": "string",
+              "required": true
+            },
+            {
+              "name": "mating_date",
+              "type": "string",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "calculate_brevet_points",
+          "description": "Estimate French Brevet (DNB) score from grades and continuous-control marks. Use for collège students forecasting their result. Inputs: grades by subject, continuous control. Returns total points and mention. See list_bundles for related 'education' calculators.",
+          "input": [
+            {
+              "name": "french",
+              "type": "number",
+              "description": "French exam score (/100)",
+              "required": true
+            },
+            {
+              "name": "history_geo",
+              "type": "number",
+              "description": "History-Geography score (/50)",
+              "required": true
+            },
+            {
+              "name": "math",
+              "type": "number",
+              "description": "Math exam score (/100)",
+              "required": true
+            },
+            {
+              "name": "oral",
+              "type": "number",
+              "description": "Oral exam score (/100)",
+              "required": true
+            },
+            {
+              "name": "science",
+              "type": "number",
+              "description": "Science score (/50)",
+              "required": true
+            },
+            {
+              "name": "socle_commun",
+              "type": "number",
+              "description": "Socle commun points (50-400)",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "calculate_brick_count",
+          "description": "Compute bricks or blocks needed for a wall including waste margin. Use for masonry projects. Inputs: wall dimensions, brick size, waste %. Returns brick count and pallets. See list_bundles for related 'construction' calculators.",
+          "input": [
+            {
+              "name": "height_m",
+              "type": "number",
+              "description": "Wall height m",
+              "required": true
+            },
+            {
+              "name": "length_m",
+              "type": "number",
+              "description": "Wall length m",
+              "required": true
+            },
+            {
+              "name": "type",
+              "type": "string",
+              "description": "Brick type",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "calculate_buoyancy",
+          "description": "Compute buoyancy force, displaced volume, or floating analysis (Archimedes). Use for physics or shipping. Inputs: object mass/volume, fluid density. Returns buoyant force and float/sink verdict. See list_bundles for related 'science' calculators.",
+          "input": [
+            {
+              "name": "fluid_density",
+              "type": "number",
+              "description": "Fluid density kg/m³",
+              "required": false
+            },
+            {
+              "name": "object_mass",
+              "type": "number",
+              "description": "Object mass kg",
+              "required": true
+            },
+            {
+              "name": "volume_m3",
+              "type": "number",
+              "description": "Object volume m³",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "calculate_burn_rate",
+          "description": "Compute startup monthly burn rate and runway. Use for fundraising or expense control. Inputs: cash on hand, monthly expenses, monthly revenue. Returns burn, runway in months, profitability date. See list_bundles for related 'finance-universal' calculators.",
+          "input": [
+            {
+              "name": "cash_balance",
+              "type": "number",
+              "description": "Cash in bank EUR",
+              "required": true
+            },
+            {
+              "name": "monthly_expenses",
+              "type": "number",
+              "description": "Monthly expenses EUR",
+              "required": true
+            },
+            {
+              "name": "monthly_revenue",
+              "type": "number",
+              "description": "Monthly revenue EUR",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "calculate_cable_section",
+          "description": "Compute electrical cable cross-section (mm²) per NF C 15-100. Use for residential wiring. Inputs: power kW, voltage, length, max voltage drop %. Returns required section. See list_bundles for related 'construction' calculators.",
+          "input": [
+            {
+              "name": "length_m",
+              "type": "number",
+              "description": "Cable length m",
+              "required": true
+            },
+            {
+              "name": "max_drop_pct",
+              "type": "number",
+              "description": "Max voltage drop %",
+              "required": false
+            },
+            {
+              "name": "power_w",
+              "type": "number",
+              "description": "Power W",
+              "required": true
+            },
+            {
+              "name": "voltage",
+              "type": "number",
+              "description": "Voltage",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "calculate_cable_section_electrical",
+          "description": "Calculate cable section from power, voltage, distance and max voltage drop. Returns: {current_a, allowed_drop_v, calculated_section_mm2, recommended_mm2}. See list_bundles for related 'science' calculators.",
+          "input": [
+            {
+              "name": "distance_m",
+              "type": "number",
+              "description": "One-way cable distance in meters",
+              "required": true
+            },
+            {
+              "name": "max_drop_pct",
+              "type": "number",
+              "description": "Max voltage drop % (default 3)",
+              "required": false
+            },
+            {
+              "name": "power_w",
+              "type": "number",
+              "description": "Power in watts",
+              "required": true
+            },
+            {
+              "name": "voltage",
+              "type": "number",
+              "description": "Voltage (default 230V)",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "calculate_cac_ltv_ratio",
+          "description": "Compute Customer Acquisition Cost vs Lifetime Value ratio. Use for SaaS unit economics analysis (target ≥3.0). Inputs: total CAC, LTV. Returns ratio and health verdict. See list_bundles for related 'finance-universal' calculators.",
+          "input": [
+            {
+              "name": "cac",
+              "type": "number",
+              "description": "Customer acquisition cost EUR",
+              "required": true
+            },
+            {
+              "name": "ltv",
+              "type": "number",
+              "description": "Customer lifetime value EUR",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "calculate_caffeine_clearance",
+          "description": "Compute remaining caffeine in body over time using 5-hour half-life. Use for sleep planning. Inputs: caffeine mg, time since intake. Returns remaining mg and clearance forecast. See list_bundles for related 'sante' calculators.",
+          "input": [
+            {
+              "name": "hours",
+              "type": "number",
+              "description": "Hours since consumption",
+              "required": false
+            },
+            {
+              "name": "mg",
+              "type": "number",
+              "description": "Caffeine mg consumed",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "calculate_caffeine_half_life",
+          "description": "Calculate remaining caffeine in body after time elapsed. Returns: {hours_to_below_25mg, safe_to_sleep}. See list_bundles for related 'sante' calculators.",
+          "input": [
+            {
+              "name": "hours_since",
+              "type": "number",
+              "description": "Hours since consumption",
+              "required": true
+            },
+            {
+              "name": "mg_consumed",
+              "type": "number",
+              "description": "Caffeine consumed mg",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "calculate_caffeine_intake",
+          "description": "Track caffeine intake against the safe daily limit (400 mg adult). Use for monitoring coffee/tea/soda consumption. Inputs: list of drinks (type, quantity). Returns total mg, % of limit, time-of-day distribution. See list_bundles for related 'cuisine' calculators.",
+          "input": [
+            {
+              "name": "drinks",
+              "type": "array",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "calculate_calories_burned",
+          "description": "Estimate calories burned during physical activity using MET values. Returns: {calories_burned}. See list_bundles for related 'sante' calculators.",
+          "input": [
+            {
+              "name": "activity",
+              "type": "string",
+              "description": "Type of activity",
+              "required": true
+            },
+            {
+              "name": "duration_minutes",
+              "type": "number",
+              "description": "Duration in minutes",
+              "required": true
+            },
+            {
+              "name": "weight_kg",
+              "type": "number",
+              "description": "Body weight in kilograms",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "calculate_canada_combined_tax",
+          "description": "Calculate combined Quebec + federal income tax on an employment income with the Quebec federal abatement (16.5%), single, no dependents (same engine as /api/v1/salaire-net?pays=qc). Returns: {income_cad, quebec_provincial_tax, federal_gross_tax, federal_abatement_qc, federal_net_tax, total_combined_tax, ...}. See list_bundles for related 'finance-afrique-quebec' calculators.",
+          "input": [
+            {
+              "name": "income_cad",
+              "type": "number",
+              "description": "Annual employment income in CAD",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "calculate_canada_ei",
+          "description": "Calculate Canadian Employment Insurance (EI) premiums for Quebec and non-Quebec residents. Returns: {gross_annual_cad, max_insurable_earnings, insurable_earnings, employee_rate_pct, employee_premium}. See list_bundles for related 'finance-afrique-quebec' calculators.",
+          "input": [
+            {
+              "name": "gross_annual_cad",
+              "type": "number",
+              "description": "Gross annual insurable earnings in CAD",
+              "required": true
+            },
+            {
+              "name": "province",
+              "type": "string",
+              "description": "Province: QC (Quebec rate) or other (standard rate)",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "calculate_canada_federal_tax",
+          "description": "Calculate Canadian federal income tax (CRA) with the basic personal amount credited at the lowest rate (before any Quebec abatement). Returns: {income_cad, basic_personal_amount, basic_personal_credit, taxable_income, federal_tax, effective_rate_pct, marginal_rate_pct, ...}. See list_bundles for related 'finance-afrique-quebec' calculators.",
+          "input": [
+            {
+              "name": "income_cad",
+              "type": "number",
+              "description": "Annual income in Canadian dollars (CAD)",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "calculate_canada_rrq",
+          "description": "Calculate Quebec Pension Plan (RRQ) contributions for employee. Returns: {gross_annual_cad, rrq_base_earnings, rrq_contribution_tier1, rrq_additional_earnings, rrq_contribution_tier2, total_rrq_contribution, ...}. See list_bundles for related 'finance-afrique-quebec' calculators.",
+          "input": [
+            {
+              "name": "gross_annual_cad",
+              "type": "number",
+              "description": "Gross annual earnings in CAD",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "calculate_capital_gains_property",
+          "description": "Compute French property capital gains tax (plus-value immobilière) including duration abatements. Use for sellers of secondary residence. Inputs: purchase price, sale price, years held, work cost. Returns tax due, social charges, net gain. See list_bundles for related 'finance-france' calculators.",
+          "input": [
+            {
+              "name": "purchase_price",
+              "type": "number",
+              "description": "Original purchase price in euros",
+              "required": true
+            },
+            {
+              "name": "sale_price",
+              "type": "number",
+              "description": "Sale price in euros",
+              "required": true
+            },
+            {
+              "name": "years_held",
+              "type": "number",
+              "description": "Number of years the property was held",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "calculate_car_depreciation",
+          "description": "Calculate car residual value: Y1:-25%, Y2:-15%, Y3:-10%, Y4-5:-8%, Y6+:-5%. Returns: {residual_value, total_dep, pct_lost}. See list_bundles for related 'auto-transport' calculators.",
+          "input": [
+            {
+              "name": "age_years",
+              "type": "number",
+              "description": "Age in years",
+              "required": true
+            },
+            {
+              "name": "purchase_price",
+              "type": "number",
+              "description": "Original price",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        }
+      ]
+    },
+    "resources": {
+      "status": "complete",
+      "observedCount": 3,
+      "retainedCount": 3,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "bundle_catalog",
+          "description": "Full catalog of tool bundles with descriptions and tool lists",
+          "mimeType": "application/json"
+        },
+        {
+          "name": "pricing_policy",
+          "description": "Pricing and rate-limit policy for the macalc MCP server",
+          "mimeType": "text/plain"
+        },
+        {
+          "name": "server_info",
+          "description": "Server metadata: name, version, transport, total tool count, supported countries",
+          "mimeType": "application/json"
+        }
+      ]
+    },
+    "resourceTemplates": {
+      "status": "complete",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "prompts": {
+      "status": "complete",
+      "observedCount": 6,
+      "retainedCount": 6,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "compare_countries_tax",
+          "description": "Compare income tax across countries for the same gross salary",
+          "arguments": [
+            {
+              "name": "countries",
+              "description": "Countries CSV (e.g. \"fr,be,ch,us\"; default \"fr,be,ch\")",
+              "required": false
+            },
+            {
+              "name": "gross_annual",
+              "description": "Gross annual income in local currency (e.g. \"60000\")",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "discover_calculators",
+          "description": "Find the right calculator for a natural-language question",
+          "arguments": [
+            {
+              "name": "question",
+              "description": "What you want to calculate, in plain language (any language)",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "french_tax_summary",
+          "description": "Compute a complete French tax summary (income tax + net salary + social charges) for a worker",
+          "arguments": [
+            {
+              "name": "family_parts",
+              "description": "Number of fiscal shares (default \"1\")",
+              "required": false
+            },
+            {
+              "name": "gross_monthly",
+              "description": "Gross monthly salary in EUR (e.g. \"3500\")",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "health_baseline",
+          "description": "Compute a personal health baseline (BMI + BMR + TDEE + ideal weight)",
+          "arguments": [
+            {
+              "name": "activity",
+              "description": "Activity level: sedentary|light|moderate|active|very_active (default \"moderate\")",
+              "required": false
+            },
+            {
+              "name": "age",
+              "description": "Age in years",
+              "required": true
+            },
+            {
+              "name": "height_cm",
+              "description": "Height in cm",
+              "required": true
+            },
+            {
+              "name": "sex",
+              "description": "Biological sex: \"male\" or \"female\"",
+              "required": true
+            },
+            {
+              "name": "weight_kg",
+              "description": "Weight in kg",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "home_renovation_budget",
+          "description": "Estimate concrete + paint + tiles quantities for a renovation project",
+          "arguments": [
+            {
+              "name": "area_m2",
+              "description": "Floor area in m²",
+              "required": true
+            },
+            {
+              "name": "includes_concrete",
+              "description": "\"yes\" if concrete slab needed",
+              "required": false
+            },
+            {
+              "name": "wall_height_m",
+              "description": "Wall height in m (default \"2.5\")",
+              "required": false
+            }
+          ]
+        },
+        {
+          "name": "mortgage_capacity",
+          "description": "Estimate maximum loan amount and monthly payment given income and rate",
+          "arguments": [
+            {
+              "name": "annual_rate",
+              "description": "Mortgage annual rate in % (e.g. \"3.5\")",
+              "required": true
+            },
+            {
+              "name": "monthly_income",
+              "description": "Net monthly income in EUR (e.g. \"3000\")",
+              "required": true
+            },
+            {
+              "name": "years",
+              "description": "Loan duration in years (default \"25\")",
+              "required": false
+            }
+          ]
+        }
+      ]
+    }
+  },
   "mailtester": {
     "version": 1,
     "observedAt": "2026-10-26T13:08:36.416Z",
