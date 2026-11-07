@@ -4086,7 +4086,7 @@
     ]
   },
   {
-    "serverId": "a-repostit-mcp-cfjcykgqda-uc",
+    "serverId": "repostit",
     "status": "online",
     "transport": "unknown",
     "authType": "oauth",
