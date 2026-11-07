@@ -12808,7 +12808,7 @@
     "name": "链小知区块链",
     "url": "https://lianxiaozhi.com/api/mcp",
     "browserAccess": "proxy-required",
-    "description": "Affiliated submission by 链小知区块链 content operations. Eight read-only tools offer Chinese blockchain knowledge, tool guides, recent news, event timelines and daily briefs with source links; anonymous Streamable HTTP, no API key, seven-day news-search window.",
+    "description": "Eight read-only tools for Chinese-language blockchain knowledge, tool guides, recent news (seven-day search window), event timelines and daily briefs, with source links. Anonymous Streamable HTTP; no API key or authentication.",
     "category": "Reference",
     "tags": [
       "reference",
@@ -12824,8 +12824,8 @@
     "authType": "none",
     "logoUrl": "/server-logos/lianxiaozhi.svg",
     "logoSourceKind": "generated-fallback",
-    "logoRetrievedAt": "2026-11-05",
-    "logoLicenseNote": "Locally generated ? monogram for a community submission; it is not an official 链小知区块链 mark.",
+    "logoRetrievedAt": "2026-11-07",
+    "logoLicenseNote": "Locally generated LX (Lianxiaozhi) monogram for a community submission; it is not an official 链小知区块链 mark.",
     "homepageUrl": "https://lianxiaozhi.com/agent"
   }
 ]
