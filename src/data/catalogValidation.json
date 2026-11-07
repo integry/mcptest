@@ -4072,6 +4072,18 @@
     ]
   },
   {
+    "serverId": "folklore",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateless",
+    "checkedAt": "2026-11-03T22:47:44.455Z",
+    "message": "Negotiated stateless MCP 2026-07-28 at https://api.helena.bio/folklore/v1/mcp; detected transport streamable-http; authentication none",
+    "validatedUrl": "https://api.helena.bio/folklore/v1/mcp",
+    "protocolVersion": "2026-07-28"
+  },
+  {
     "serverId": "pattorelay",
     "status": "online",
     "transport": "unknown",

@@ -3969,6 +3969,361 @@
       "items": []
     }
   },
+  "folklore": {
+    "version": 1,
+    "observedAt": "2026-11-03T22:47:44.309Z",
+    "provenance": {
+      "testedEndpoint": "https://api.helena.bio/folklore/v1/mcp",
+      "route": "direct"
+    },
+    "authentication": "unauthenticated",
+    "tools": {
+      "status": "complete",
+      "observedCount": 11,
+      "retainedCount": 11,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "classify_germline_variant",
+          "description": "Classify one GRCh38 germline nuclear SNV or simple indel smaller than 50 bp under ACMG/AMP. Accepts genomic, coding or protein HGVS, coordinates, SPDI, rsID or a returned canonical key. Returns normalized identity, automated classification, applied criteria, ClinVar assertions, population frequencies, annotations and source provenance when available. Ambiguous input returns candidates for selection.",
+          "input": [
+            {
+              "name": "assembly",
+              "type": "string",
+              "description": "Reference genome assembly. Folklore currently accepts GRCh38 only.",
+              "required": false
+            },
+            {
+              "name": "query",
+              "type": "string",
+              "description": "One germline nuclear SNV or simple indel to resolve and interpret; accepted forms include coordinates, genomic/coding/protein HGVS, SPDI, rsID, or a returned Folklore canonical_key in GRCh38:chrN:position:REF:ALT form.",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "get_gene_disease_associations",
+          "description": "Find diseases associated with an exact gene symbol or HGNC identifier. Returns ClinGen gene-disease validity assertions, relation-specific inheritance, source reports and snapshot provenance, including conflicting and limited assertions.",
+          "input": [
+            {
+              "name": "gene",
+              "type": "string",
+              "description": "One public human gene symbol or HGNC identifier, for example BRCA1 or HGNC:1100.",
+              "required": true
+            },
+            {
+              "name": "limit",
+              "type": "integer",
+              "description": "Maximum number of source assertions per page, from 1 to 50.",
+              "required": false
+            },
+            {
+              "name": "offset",
+              "type": "integer",
+              "description": "Zero-based assertion offset; use the returned nextOffset when present.",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "get_gene_profile",
+          "description": "Read the selected gene_id and immutable snapshot_id from resolve_gene. Returns overview, disease validity, dosage, mechanisms, transcripts, native assemblies, constraint, ClinVar summaries and consequences, expression, GWAS, phenotypes and protein/pathways with source assertions, coverage, count units and null values. get_gene_section supplies further pages. Live search_gene_literature is separate from the snapshot literature section.",
+          "input": [
+            {
+              "name": "gene_id",
+              "type": "string",
+              "description": "Canonical HGNC gene_id returned by resolve_gene. Select an explicit candidate when resolution is ambiguous.",
+              "required": true
+            },
+            {
+              "name": "snapshot_id",
+              "type": "string",
+              "description": "identity_snapshot_id returned by resolve_gene, or snapshot_id from the current gene profile. Restart resolution after snapshot_unavailable.",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "get_gene_section",
+          "description": "Read a gene-profile section using gene_id, snapshot_id and its returned opaque cursor. Returns source records, assembly/release, coverage, totals, count units and provenance. snapshot_unavailable requires a fresh resolution/profile request.",
+          "input": [
+            {
+              "name": "cursor",
+              "description": "Opaque next_cursor returned for this same gene, snapshot and section. Omit for its first page.",
+              "required": false
+            },
+            {
+              "name": "gene_id",
+              "type": "string",
+              "description": "Canonical HGNC gene_id returned by resolve_gene. Select an explicit candidate when resolution is ambiguous.",
+              "required": true
+            },
+            {
+              "name": "limit",
+              "type": "integer",
+              "description": "Maximum source records per page, from 1 to 50. Counts retain their original source unit.",
+              "required": false
+            },
+            {
+              "name": "section",
+              "type": "string",
+              "description": "Source-qualified section from the current profile. Literature is a separate live capture; use search_gene_literature for it.",
+              "required": true
+            },
+            {
+              "name": "snapshot_id",
+              "type": "string",
+              "description": "identity_snapshot_id returned by resolve_gene, or snapshot_id from the current gene profile. Restart resolution after snapshot_unavailable.",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "get_publication_details",
+          "description": "Retrieve one PMID from the PubMed-derived genetics corpus, including title, abstract, authors, journal, publication types, MeSH terms, gene and variant mentions, retraction status and PubMed/PMC links.",
+          "input": [
+            {
+              "name": "pmid",
+              "type": "string",
+              "description": "One PubMed identifier to look up in Folklore's current corpus, as 1 to 12 digits without a PMID prefix.",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "resolve_gene",
+          "description": "Resolve a human gene symbol, previous symbol, alias, HGNC, Ensembl or NCBI Gene identifier. Returns exact, alias, ambiguous, not_found or withdrawn status with candidates and identity_snapshot_id. Use a selected HGNC gene_id and snapshot_id with get_gene_profile. Gene-plus-HGVS and variant expressions use classify_germline_variant.",
+          "input": [
+            {
+              "name": "query",
+              "type": "string",
+              "description": "One public gene symbol, previous symbol, alias, HGNC ID, Ensembl gene ID or NCBI Gene ID.",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "search_disease_genes",
+          "description": "Find genes associated with an exact MONDO identifier or disease-name search. Returns ClinGen validity assertions with inheritance, source reports and snapshot provenance. Name searches can return multiple disease identities.",
+          "input": [
+            {
+              "name": "disease",
+              "type": "string",
+              "description": "One public disease name or exact MONDO identifier (MONDO: followed by seven digits). A name search may match multiple distinct diseases.",
+              "required": true
+            },
+            {
+              "name": "limit",
+              "type": "integer",
+              "description": "Maximum number of source assertions per page, from 1 to 50.",
+              "required": false
+            },
+            {
+              "name": "offset",
+              "type": "integer",
+              "description": "Zero-based assertion offset; use the returned nextOffset when present.",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "search_gene_literature",
+          "description": "Retrieve a live publication capture for a resolved gene_id and snapshot_id. Returns source links, match labels, capture time/hash, degradation and gene/snapshot/sort-bound cursors. This capture is separate from the immutable reference snapshot and contains no abstracts.",
+          "input": [
+            {
+              "name": "cursor",
+              "description": "Opaque next_cursor returned for this same gene, snapshot and sort. Omit for the first page.",
+              "required": false
+            },
+            {
+              "name": "gene_id",
+              "type": "string",
+              "description": "Canonical HGNC gene_id returned by resolve_gene. Select an explicit candidate when resolution is ambiguous.",
+              "required": true
+            },
+            {
+              "name": "limit",
+              "type": "integer",
+              "description": "Maximum publication records in one live discovery page, from 1 to 25.",
+              "required": false
+            },
+            {
+              "name": "snapshot_id",
+              "type": "string",
+              "description": "identity_snapshot_id returned by resolve_gene, or snapshot_id from the current gene profile. Restart resolution after snapshot_unavailable.",
+              "required": true
+            },
+            {
+              "name": "sort",
+              "type": "string",
+              "description": "Discovery ordering. Keep the same sort for continuation pages.",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "search_literature_corpus",
+          "description": "Search the genetics Literature Corpus by question, PMID, DOI, PMCID, gene, variant, phenotype, HPO or OMIM concept. Known publication identifiers provide exact anchors. Returns ranked publications, match types, scores and source links.",
+          "input": [
+            {
+              "name": "cursor",
+              "description": "Opaque continuation cursor from the preceding response for the same query and sort order; omit for the first page.",
+              "required": false
+            },
+            {
+              "name": "limit",
+              "type": "integer",
+              "description": "Maximum number of publications to return, from 1 to 25.",
+              "required": false
+            },
+            {
+              "name": "query",
+              "type": "string",
+              "description": "Natural-language literature question or exact PMID, DOI, PMCID, gene, variant, phenotype, HPO, or OMIM query. Include every known publication identifier when comparing or finding related papers.",
+              "required": true
+            },
+            {
+              "name": "sort",
+              "type": "string",
+              "description": "Result ordering: relevance-ranked, newest publication first, or oldest publication first.",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "search_variant_literature",
+          "description": "Resolve one GRCh38 germline variant and retrieve publications from the PubMed-derived genetics corpus. Exact variant mentions rank ahead of broader gene associations. Returns match types, source links, corpus provenance and retrieval time.",
+          "input": [
+            {
+              "name": "assembly",
+              "type": "string",
+              "description": "Reference genome assembly. Folklore currently accepts GRCh38 only.",
+              "required": false
+            },
+            {
+              "name": "limit",
+              "type": "integer",
+              "description": "Maximum number of publications to return, from 1 to 25.",
+              "required": false
+            },
+            {
+              "name": "query",
+              "type": "string",
+              "description": "One germline nuclear SNV or simple indel to resolve before retrieving its literature; this is a variant identifier, not a natural-language question. Accepts a returned Folklore canonical_key in GRCh38:chrN:position:REF:ALT form.",
+              "required": true
+            },
+            {
+              "name": "question",
+              "description": "Optional natural-language focus applied after the variant is resolved, such as a condition or evidence question; do not put the variant identifier here.",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "support_helena",
+          "description": "Retrieve Helena Good campaign, rules, manifest and MCP connection URLs.",
+          "outputSchema": true
+        }
+      ]
+    },
+    "resources": {
+      "status": "partial",
+      "observedCount": 1,
+      "retainedCount": 1,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "folklore-variant-classification-view",
+          "title": "Variant Classification",
+          "description": "Interactive, read-only rendering of Folklore variant classifications."
+        }
+      ]
+    },
+    "resourceTemplates": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "prompts": {
+      "status": "complete",
+      "observedCount": 5,
+      "retainedCount": 5,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "assess_vus",
+          "description": "Assess the classification and applied criteria for a variant of uncertain significance.",
+          "arguments": [
+            {
+              "name": "variant",
+              "description": "One HGVS, SPDI, rsID or genomic coordinate expression.",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "classify_germline_variant",
+          "description": "Resolve one GRCh38 germline variant and report its automated ACMG/AMP classification, applied criteria, annotations and source provenance.",
+          "arguments": [
+            {
+              "name": "variant",
+              "description": "One HGVS, SPDI, rsID or genomic coordinate expression.",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "compare_variant_literature",
+          "description": "Resolve a variant and compare its classification and annotations with associated publications.",
+          "arguments": [
+            {
+              "name": "variant",
+              "description": "One HGVS, SPDI, rsID or genomic coordinate expression.",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "explain_acmg_classification",
+          "description": "Explain the returned ACMG/AMP criteria and source annotations for one supported variant.",
+          "arguments": [
+            {
+              "name": "variant",
+              "description": "One HGVS, SPDI, rsID or genomic coordinate expression.",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "verify_variant_identity",
+          "description": "Resolve one public variant expression to its normalized identity and stop for user disambiguation rather than selecting an allele.",
+          "arguments": [
+            {
+              "name": "variant",
+              "description": "One HGVS, SPDI, rsID or genomic coordinate expression.",
+              "required": true
+            }
+          ]
+        }
+      ]
+    }
+  },
   "gameanalytics": {
     "version": 1,
     "observedAt": "2026-10-26T13:08:33.072Z",

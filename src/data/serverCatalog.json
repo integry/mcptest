@@ -12779,6 +12779,52 @@
     "homepageUrl": "https://mallary.ai/social-media-mcp-server"
   },
   {
+    "id": "folklore",
+    "name": "Folklore Clinical Variant Interpretation MCP",
+    "url": "https://api.helena.bio/folklore/v1/mcp",
+    "description": "Offers 11 public tools for ACMG/AMP germline variant classification, gene profiles, disease associations and literature. An optional Folklore Bearer API key adds 18 tools for case analysis, approved source files and reports.",
+    "category": "Reference",
+    "tags": [
+      "genomics",
+      "bioinformatics",
+      "germline",
+      "acmg-amp",
+      "no-auth",
+      "bearer-token"
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://folklore.helena.bio/integrations/mcp"
+    },
+    "transport": "streamable-http",
+    "exactEndpointOnly": true,
+    "requiresOAuth": false,
+    "authType": "none",
+    "alternativeAuthTypes": [
+      "bearer-token"
+    ],
+    "requiredHeaders": [
+      {
+        "name": "Authorization",
+        "description": "Optional Folklore API key for case, approved-source and report tools: Bearer <FOLKLORE_API_KEY>",
+        "valueTemplate": "Bearer <FOLKLORE_API_KEY>",
+        "required": false,
+        "secret": true
+      }
+    ],
+    "caveats": [
+      "Germline classifications are automated and GRCh38-only; they are not a substitute for clinical review.",
+      "The server also exposes support_helena, a non-scientific Helena Good campaign tool."
+    ],
+    "logoUrl": "/server-logos/folklore.png",
+    "logoSourceUrl": "https://folklore.helena.bio/images/logos/folklore.png",
+    "logoSourceKind": "official-site",
+    "logoRetrievedAt": "2026-11-03",
+    "logoLicenseNote": "Official Folklore mark from Helena Bioinformatics; trademark rights remain with Helena Bioinformatics. Submitted by the publisher.",
+    "homepageUrl": "https://folklore.helena.bio/integrations/mcp",
+    "sourceUrl": "https://github.com/helena-bioinformatics/folklore-mcp"
+  },
+  {
     "id": "pattorelay",
     "name": "Patto",
     "url": "https://pattorelay.com/mcp",
