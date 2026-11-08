@@ -65,6 +65,26 @@ describe('catalog authentication metadata', () => {
       .toMatchObject({ authType: 'oauth', serverReachable: true });
   });
 
+  it('keeps Menlo OAuth consistent in the listing, filters and connection hints', () => {
+    const seed = catalogSeeds.find(({ id }) => id === 'menloinsurance');
+    const validation = catalogValidation.find(({ serverId }) => serverId === 'menloinsurance');
+    const entry = getCatalogServers().find(({ id }) => id === 'menloinsurance');
+
+    expect(seed).toMatchObject({
+      authType: 'oauth', requiresOAuth: true,
+      listingSource: { kind: 'publisher', url: 'https://www.menloinsurance.com/ai-assistants' },
+    });
+    expect(seed?.tags).toContain('oauth');
+    expect(seed?.tags).not.toContain('no-auth');
+    expect(validation).toMatchObject({ authType: 'oauth', requiresOAuth: true });
+    expect(validation?.message).toContain('authentication oauth');
+    expect(entry).toMatchObject({ declaredAuthType: 'oauth', authType: 'oauth', requiresOAuth: true });
+    expect(filterCatalogServers([entry!], { oauthFilter: 'oauth' })).toEqual([entry]);
+    expect(filterCatalogServers([entry!], { oauthFilter: 'no-auth' })).toEqual([]);
+    expect(getCatalogEndpointDiagnosticEvidence('https://www.menloinsurance.com/mcp'))
+      .toMatchObject({ authType: 'oauth', serverReachable: true });
+  });
+
   const servers = [
     server('public', 'none'),
     server('oauth', 'oauth'),

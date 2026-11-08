@@ -4072,6 +4072,33 @@
     ]
   },
   {
+    "serverId": "menloinsurance",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "stateless",
+    "checkedAt": "2026-11-04T00:39:18.177Z",
+    "message": "Negotiated stateless MCP 2026-07-28 at https://www.menloinsurance.com/mcp; detected transport streamable-http; authentication oauth",
+    "validatedUrl": "https://www.menloinsurance.com/mcp",
+    "protocolVersion": "2026-07-28",
+    "authorizationServers": [
+      "https://www.menloinsurance.com"
+    ]
+  },
+  {
+    "serverId": "macalculatriceenligne",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateful",
+    "checkedAt": "2026-11-03T10:56:19.238Z",
+    "message": "Negotiated stateful MCP 2025-11-25 at https://macalculatriceenligne.com/api/mcp; detected transport streamable-http; authentication none",
+    "validatedUrl": "https://macalculatriceenligne.com/api/mcp",
+    "protocolVersion": "2025-11-25"
+  },
+  {
     "serverId": "pattorelay",
     "status": "online",
     "transport": "unknown",
@@ -4083,6 +4110,20 @@
     "validatedUrl": "https://pattorelay.com/mcp",
     "authorizationServers": [
       "https://pattorelay.com"
+    ]
+  },
+  {
+    "serverId": "repostit",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-05T17:18:35.458Z",
+    "message": "Authentication challenge at https://repostit-mcp-cfjcykgqda-uc.a.run.app/mcp/v1.1 returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://repostit-mcp-cfjcykgqda-uc.a.run.app/mcp/v1.1",
+    "authorizationServers": [
+      "https://repostit-mcp-cfjcykgqda-uc.a.run.app"
     ]
   },
   {

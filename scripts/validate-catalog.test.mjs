@@ -705,6 +705,34 @@ describe('catalog protocol validation', () => {
     expect(mergeValidationResults([seed], stored, [result])).toEqual([result]);
   });
 
+  it.each([
+    ['none', true, true],
+    ['none', false, false],
+    ['oauth', true, false],
+    ['bearer-token', true, false],
+  ])('flags advertised OAuth for anonymous access (auth: %s, metadata: %s)', async (authType, hasMetadata, warns) => {
+    const seed = { ...catalogSeeds.find(({ id }) => id === 'menloinsurance'), authType, requiresOAuth: authType === 'oauth' };
+    const fetchImpl = async (input, init = {}) => {
+      const url = new URL(input instanceof Request ? input.url : input);
+      if (url.pathname.startsWith('/.well-known/oauth-protected-resource') && hasMetadata) {
+        return Response.json({ resource: seed.url, authorization_servers: ['https://www.menloinsurance.com'] });
+      }
+      if (url.pathname === '/mcp' && init.method === 'POST') {
+        return jsonRpcResponse(JSON.parse(String(init.body)), {
+          supportedVersions: ['2026-07-28'], capabilities: {},
+        });
+      }
+      return new Response('Not found', { status: 404 });
+    };
+    const result = await validateSeed(seed, { fetchImpl, timeoutMs: 1_000 });
+
+    expect(result).toMatchObject({ status: 'online', authType, requiresOAuth: authType === 'oauth' });
+    expect(result.message.includes('WARNING: OAuth authorization servers advertised')).toBe(warns);
+    if (warns) expect(result.message).toContain('an anonymous MCP handshake does not establish anonymous tool access');
+    // A fresh observation replaces old evidence, including a previously stored warning.
+    expect(mergeValidationResults([seed], [{ ...result, message: 'stale warning' }], [result])).toEqual([result]);
+  });
+
   it('uses an auth challenge as bearer evidence without mislabeling it OAuth', () => {
     expect(detectedAuthType(
       { requiresOAuth: false },

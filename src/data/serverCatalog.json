@@ -12779,6 +12779,62 @@
     "homepageUrl": "https://mallary.ai/social-media-mcp-server"
   },
   {
+    "id": "menloinsurance",
+    "name": "Menlo Insurance MCP",
+    "url": "https://www.menloinsurance.com/mcp",
+    "browserAccess": "proxy-required",
+    "description": "Connect AI assistants to Menlo insurance applications, document attachments, carrier quote requests and follow-ups. Public discovery is available without credentials; private customer actions require OAuth authorization and quote consent. Insurance purchases are a separate broker-reviewed step.",
+    "category": "Finance",
+    "tags": [
+      "finance",
+      "community-submission",
+      "oauth"
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://www.menloinsurance.com/ai-assistants"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "logoUrl": "/server-logos/menloinsurance.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-03",
+    "logoLicenseNote": "Locally generated MI monogram for a community submission; it is not an official Menlo Insurance MCP mark.",
+    "homepageUrl": "https://www.menloinsurance.com/ai-assistants"
+  },
+  {
+    "id": "macalculatriceenligne",
+    "name": "MaCalculatrice (macalc)",
+    "url": "https://macalculatriceenligne.com/api/mcp",
+    "browserAccess": "proxy-required",
+    "description": "Calculators from macalculatriceenligne.com as MCP tools: tax, salary, real estate, maths, health and unit conversions for France and other French-speaking countries. Each result links to the related page of the site. No authentication.",
+    "caveats": [
+      "Some tools, including the AI-powered calculate_anything, require a premium subscription. Pricing and rate limits are described by the pricing_policy resource."
+    ],
+    "category": "Reference",
+    "tags": [
+      "reference",
+      "community-submission",
+      "no-auth",
+      "calculator",
+      "tax",
+      "france"
+    ],
+    "listingSource": {
+      "kind": "community-submission",
+      "url": "https://macalculatriceenligne.com/mcp/"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "logoUrl": "/server-logos/macalculatriceenligne.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-03",
+    "logoLicenseNote": "Locally generated MC monogram for a community submission; it is not an official MaCalculatrice (macalc) mark.",
+    "homepageUrl": "https://macalculatriceenligne.com/mcp/"
+  },
+  {
     "id": "pattorelay",
     "name": "Patto",
     "url": "https://pattorelay.com/mcp",
@@ -12802,6 +12858,48 @@
     "logoRetrievedAt": "2026-11-04",
     "logoLicenseNote": "Locally generated PA monogram for a community submission; it is not an official Patto mark.",
     "homepageUrl": "https://pattorelay.com"
+  },
+  {
+    "id": "repostit",
+    "name": "Repostit MCP Connector",
+    "url": "https://repostit-mcp-cfjcykgqda-uc.a.run.app/mcp/v1.1",
+    "browserAccess": "proxy-required",
+    "description": "Creates and schedules social posts and carousels, manages publishing workflows, and checks delivery status. It uses OAuth2 authorization; a Repostit account is required and plan limits apply.",
+    "category": "Automation",
+    "tags": [
+      "automation",
+      "community-submission",
+      "oauth"
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://app.repostit.io/claude-connector.html"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false,
+        "redirectUrls": {}
+      },
+      "setupSteps": [],
+      "settings": [],
+      "reviewedAt": "2026-11-07",
+      "evidenceUrl": "https://app.repostit.io/claude-connector.html"
+    },
+    "logoUrl": "/server-logos/repostit.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-05",
+    "logoLicenseNote": "Locally generated RM monogram for a community submission; it is not an official Repostit MCP Connector mark.",
+    "homepageUrl": "https://app.repostit.io/claude-connector.html"
   },
   {
     "id": "lianxiaozhi",
