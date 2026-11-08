@@ -104,6 +104,15 @@ describe('catalog authentication metadata', () => {
       .toEqual([expectedId]);
   });
 
+  it('guards against accidental catalog truncation without capping growth', () => {
+    // Lower bound only, so ordinary submissions never trip it. The baseline is independent of
+    // the seed so a truncated serverCatalog.json is caught; a few removals stay within tolerance.
+    // To bump: set reviewedCatalogSize to the current entry count after a reviewed bulk change.
+    const reviewedCatalogSize = 297;
+    const allowedShrink = 0.1;
+    expect(catalogSeeds.length).toBeGreaterThanOrEqual(reviewedCatalogSize * (1 - allowedShrink));
+  });
+
   it('merges every expanded seed into the UI-facing catalog', () => {
     const catalog = getCatalogServers();
 
