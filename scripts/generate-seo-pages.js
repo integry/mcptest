@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 const { renderServerActions, renderServerNextSteps } = require('../src/utils/serverNextSteps.ts');
 
+const { redactCapabilityAuthValues } = require('../src/utils/capabilityInventory.ts');
 const fs = require('fs');
 const path = require('path');
 const { getPreferredCatalogEndpoint } = require('../src/utils/clientSetup.ts');
@@ -1927,9 +1928,8 @@ function assertSafeInventoryString(value, maxLength, label, optional = false) {
       || value !== value.replace(/\s+/g, ' ').trim()) {
     throw new Error(`${label} is not a canonical public-safe string.`);
   }
-  const sanitized = value
-    .replace(/\b(authorization|cookie|password|passwd|secret|client[_ -]?secret|access[_ -]?token|refresh[_ -]?token|id[_ -]?token|api[_ -]?key|private[_ -]?key|credential|session|token)\s*[:=]\s*(?:\[REDACTED\]|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,;&]+)/gi, '$1=[REDACTED]')
-    .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, '$1 [REDACTED]')
+  const sanitized = redactCapabilityAuthValues(value
+    .replace(/\b(authorization|cookie|password|passwd|secret|client[_ -]?secret|access[_ -]?token|refresh[_ -]?token|id[_ -]?token|api[_ -]?key|private[_ -]?key|credential|session|token)\s*[:=]\s*(?:\[REDACTED\]|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,;&]+)/gi, '$1=[REDACTED]'))
     .replace(/\beyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g, '[REDACTED]')
     .replace(STANDALONE_CREDENTIAL, '[REDACTED]')
     .replace(/\b[A-Za-z][A-Za-z0-9+.-]*:\/\/[^\s<>]+/g, '[REDACTED URI]');
