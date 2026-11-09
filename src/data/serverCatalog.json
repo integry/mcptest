@@ -13046,6 +13046,31 @@
     ]
   },
   {
+    "id": "cookierisk",
+    "name": "CookieRisk Quickscan",
+    "url": "https://cookierisk.eu/mcp",
+    "browserAccess": "proxy-required",
+    "description": "Scan a public homepage for cookies and tracking observed before consent interaction. Start a scan and retrieve its progress or findings by scan ID. The hosted Streamable HTTP server requires no sign-in or API key.",
+    "category": "Security",
+    "tags": [
+      "security",
+      "community-submission",
+      "no-auth"
+    ],
+    "listingSource": {
+      "kind": "community-submission",
+      "url": "https://cookierisk.eu/developers/mcp"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "logoUrl": "/server-logos/cookierisk.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-09",
+    "logoLicenseNote": "Locally generated CQ monogram for a community submission; it is not an official CookieRisk Quickscan mark.",
+    "homepageUrl": "https://cookierisk.eu/developers/mcp"
+  },
+  {
     "id": "agentseo",
     "name": "AgentSEO",
     "url": "https://www.agentseo.dev/mcp",
