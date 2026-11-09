@@ -1,7 +1,7 @@
 {
   "agentweb": {
     "version": 1,
-    "observedAt": "2026-11-02T16:00:15.615Z",
+    "observedAt": "2026-11-09T16:26:39.118Z",
     "provenance": {
       "testedEndpoint": "https://api.agentweb.live/mcp",
       "route": "direct"
@@ -1063,7 +1063,7 @@
   },
   "alfie-everyday": {
     "version": 1,
-    "observedAt": "2026-11-02T16:00:14.932Z",
+    "observedAt": "2026-11-09T16:26:38.014Z",
     "provenance": {
       "testedEndpoint": "https://everyday.alfie.family/mcp",
       "route": "direct"
@@ -1285,7 +1285,7 @@
   },
   "astro-docs": {
     "version": 1,
-    "observedAt": "2026-11-02T15:59:19.913Z",
+    "observedAt": "2026-11-09T16:25:39.413Z",
     "provenance": {
       "testedEndpoint": "https://mcp.docs.astro.build/mcp",
       "route": "direct"
@@ -1340,7 +1340,7 @@
   },
   "aws": {
     "version": 1,
-    "observedAt": "2026-11-02T15:59:35.057Z",
+    "observedAt": "2026-11-09T16:25:55.763Z",
     "provenance": {
       "testedEndpoint": "https://aws-mcp.us-east-1.api.aws/mcp",
       "route": "direct"
@@ -1524,7 +1524,7 @@
   },
   "aws-knowledge": {
     "version": 1,
-    "observedAt": "2026-11-02T15:59:19.729Z",
+    "observedAt": "2026-11-09T16:25:38.373Z",
     "provenance": {
       "testedEndpoint": "https://knowledge-mcp.global.api.aws/",
       "route": "direct"
@@ -1665,7 +1665,7 @@
   },
   "blockvectra-docs": {
     "version": 1,
-    "observedAt": "2026-11-07T07:44:05.397Z",
+    "observedAt": "2026-11-09T16:26:43.522Z",
     "provenance": {
       "testedEndpoint": "https://docs.blockvectra.com/mcp/docs",
       "route": "direct"
@@ -1751,7 +1751,7 @@
   },
   "browser-use": {
     "version": 1,
-    "observedAt": "2026-11-02T15:59:54.942Z",
+    "observedAt": "2026-11-09T16:26:17.340Z",
     "provenance": {
       "testedEndpoint": "https://api.browser-use.com/v3/mcp",
       "route": "direct"
@@ -1953,7 +1953,7 @@
   },
   "cadprops": {
     "version": 1,
-    "observedAt": "2026-11-02T16:00:15.465Z",
+    "observedAt": "2026-11-09T16:26:39.039Z",
     "provenance": {
       "testedEndpoint": "https://www.cadprops.com/api/v1/mcp",
       "route": "direct"
@@ -2087,7 +2087,7 @@
   },
   "cloudflare-agents-docs": {
     "version": 1,
-    "observedAt": "2026-11-02T15:59:40.655Z",
+    "observedAt": "2026-11-09T16:26:02.069Z",
     "provenance": {
       "testedEndpoint": "https://agents.cloudflare.com/mcp",
       "route": "direct"
@@ -2148,7 +2148,7 @@
   },
   "cloudflare-docs": {
     "version": 1,
-    "observedAt": "2026-11-02T15:59:18.700Z",
+    "observedAt": "2026-11-09T16:25:37.868Z",
     "provenance": {
       "testedEndpoint": "https://docs.mcp.cloudflare.com/mcp",
       "route": "direct"
@@ -2212,7 +2212,7 @@
   },
   "coingecko": {
     "version": 1,
-    "observedAt": "2026-11-02T15:59:14.896Z",
+    "observedAt": "2026-11-09T16:25:33.077Z",
     "provenance": {
       "testedEndpoint": "https://mcp.api.coingecko.com/mcp",
       "route": "direct"
@@ -2298,7 +2298,7 @@
   },
   "context7": {
     "version": 1,
-    "observedAt": "2026-11-02T15:59:14.121Z",
+    "observedAt": "2026-11-09T16:25:32.065Z",
     "provenance": {
       "testedEndpoint": "https://mcp.context7.com/mcp",
       "route": "direct"
@@ -2384,7 +2384,7 @@
   },
   "courier": {
     "version": 1,
-    "observedAt": "2026-11-02T15:59:51.337Z",
+    "observedAt": "2026-11-09T16:26:12.907Z",
     "provenance": {
       "testedEndpoint": "https://mcp.courier.com/",
       "route": "direct"
@@ -3772,7 +3772,7 @@
   },
   "deepwiki": {
     "version": 1,
-    "observedAt": "2026-11-02T15:59:14.557Z",
+    "observedAt": "2026-11-09T16:25:32.269Z",
     "provenance": {
       "testedEndpoint": "https://mcp.deepwiki.com/mcp",
       "route": "direct"
@@ -3858,7 +3858,7 @@
   },
   "exa": {
     "version": 1,
-    "observedAt": "2026-11-02T15:59:21.762Z",
+    "observedAt": "2026-11-09T16:25:42.141Z",
     "provenance": {
       "testedEndpoint": "https://mcp.exa.ai/mcp",
       "route": "direct"
@@ -3955,7 +3955,7 @@
   },
   "excalidraw": {
     "version": 1,
-    "observedAt": "2026-11-02T15:59:54.009Z",
+    "observedAt": "2026-11-09T16:26:16.074Z",
     "provenance": {
       "testedEndpoint": "https://mcp.excalidraw.com/",
       "route": "direct"
@@ -4057,7 +4057,7 @@
   },
   "folklore": {
     "version": 1,
-    "observedAt": "2026-11-03T22:47:44.309Z",
+    "observedAt": "2026-11-09T16:26:40.555Z",
     "provenance": {
       "testedEndpoint": "https://api.helena.bio/folklore/v1/mcp",
       "route": "direct"
@@ -4412,7 +4412,7 @@
   },
   "gameanalytics": {
     "version": 1,
-    "observedAt": "2026-11-02T15:59:56.761Z",
+    "observedAt": "2026-11-09T16:26:19.541Z",
     "provenance": {
       "testedEndpoint": "https://mcp.docs.gameanalytics.com/",
       "route": "direct"
@@ -4486,7 +4486,7 @@
   },
   "gitbook-docs": {
     "version": 1,
-    "observedAt": "2026-11-02T15:59:21.674Z",
+    "observedAt": "2026-11-09T16:25:41.886Z",
     "provenance": {
       "testedEndpoint": "https://gitbook.com/docs/~gitbook/mcp",
       "route": "direct"
@@ -4597,7 +4597,7 @@
   },
   "gitmcp": {
     "version": 1,
-    "observedAt": "2026-11-02T15:59:21.953Z",
+    "observedAt": "2026-11-09T16:25:41.927Z",
     "provenance": {
       "testedEndpoint": "https://gitmcp.io/docs",
       "route": "direct"
@@ -4740,7 +4740,7 @@
   },
   "google-alloydb": {
     "version": 1,
-    "observedAt": "2026-11-02T15:59:36.181Z",
+    "observedAt": "2026-11-09T16:25:56.706Z",
     "provenance": {
       "testedEndpoint": "https://alloydb.googleapis.com/mcp",
       "route": "direct"
@@ -5368,7 +5368,7 @@
   },
   "google-bigquery": {
     "version": 1,
-    "observedAt": "2026-11-02T15:59:25.859Z",
+    "observedAt": "2026-11-09T16:25:45.465Z",
     "provenance": {
       "testedEndpoint": "https://bigquery.googleapis.com/mcp",
       "route": "direct"
@@ -5695,7 +5695,7 @@
   },
   "google-cloud-logging": {
     "version": 1,
-    "observedAt": "2026-11-02T15:59:36.784Z",
+    "observedAt": "2026-11-09T16:25:57.288Z",
     "provenance": {
       "testedEndpoint": "https://logging.googleapis.com/mcp",
       "route": "direct"
@@ -5887,7 +5887,7 @@
   },
   "google-cloud-monitoring": {
     "version": 1,
-    "observedAt": "2026-11-02T15:59:37.070Z",
+    "observedAt": "2026-11-09T16:25:57.563Z",
     "provenance": {
       "testedEndpoint": "https://monitoring.googleapis.com/mcp",
       "route": "direct"
@@ -6211,7 +6211,7 @@
   },
   "google-cloud-resource-manager": {
     "version": 1,
-    "observedAt": "2026-11-02T15:59:34.699Z",
+    "observedAt": "2026-11-09T16:25:55.360Z",
     "provenance": {
       "testedEndpoint": "https://cloudresourcemanager.googleapis.com/mcp",
       "route": "direct"
@@ -6278,7 +6278,7 @@
   },
   "google-cloud-run": {
     "version": 1,
-    "observedAt": "2026-11-02T15:59:34.301Z",
+    "observedAt": "2026-11-09T16:25:55.166Z",
     "provenance": {
       "testedEndpoint": "https://run.googleapis.com/mcp",
       "route": "direct"
@@ -6422,7 +6422,7 @@
   },
   "google-compute-engine": {
     "version": 1,
-    "observedAt": "2026-11-02T15:59:34.996Z",
+    "observedAt": "2026-11-09T16:25:55.176Z",
     "provenance": {
       "testedEndpoint": "https://compute.googleapis.com/mcp",
       "route": "direct"
@@ -6517,7 +6517,7 @@
         },
         {
           "name": "get_commitment_basic_info",
-          "description": "Get basic [REDACTED] about a Compute Engine Commitment, including its name, ID, status, plan, type, resources, and creation, start and end timestamps. Requires project, region, and commitment name as input.",
+          "description": "Get basic information about a Compute Engine Commitment, including its name, ID, status, plan, type, resources, and creation, start and end timestamps. Requires project, region, and commitment name as input.",
           "input": [
             {
               "name": "name",
@@ -6542,7 +6542,7 @@
         },
         {
           "name": "get_disk_basic_info",
-          "description": "Get basic [REDACTED] about a Compute Engine disk, including its name, ID, description, creation timestamp, size, type, status, last attach timestamp, and last detach timestamp. Requires project, zone, and disk name as input.",
+          "description": "Get basic information about a Compute Engine disk, including its name, ID, description, creation timestamp, size, type, status, last attach timestamp, and last detach timestamp. Requires project, zone, and disk name as input.",
           "input": [
             {
               "name": "name",
@@ -6592,7 +6592,7 @@
         },
         {
           "name": "get_instance_basic_info",
-          "description": "Get basic [REDACTED] about a Compute Engine VM instance, including its name, ID, status, machine type, creation timestamp, and attached guest accelerators. Requires project, zone, and instance name as input.",
+          "description": "Get basic information about a Compute Engine VM instance, including its name, ID, status, machine type, creation timestamp, and attached guest accelerators. Requires project, zone, and instance name as input.",
           "input": [
             {
               "name": "name",
@@ -6617,7 +6617,7 @@
         },
         {
           "name": "get_instance_group_manager_basic_info",
-          "description": "Get basic [REDACTED] about a Compute Engine managed instance group (MIG), including its name, ID, instance template, base instance name, target size, target stopped size, target suspended size, status and creation timestamp. Requires project, zone, and MIG name as input.",
+          "description": "Get basic information about a Compute Engine managed instance group (MIG), including its name, ID, instance template, base instance name, target size, target stopped size, target suspended size, status and creation timestamp. Requires project, zone, and MIG name as input.",
           "input": [
             {
               "name": "name",
@@ -6642,7 +6642,7 @@
         },
         {
           "name": "get_instance_template_basic_info",
-          "description": "Get basic [REDACTED] about a Compute Engine instance template, including its name, ID, description, machine type, region, and creation timestamp. Requires project and instance template name as input.",
+          "description": "Get basic information about a Compute Engine instance template, including its name, ID, description, machine type, region, and creation timestamp. Requires project and instance template name as input.",
           "input": [
             {
               "name": "name",
@@ -6680,7 +6680,7 @@
         },
         {
           "name": "get_reservation_basic_info",
-          "description": "Get Compute Engine reservation basic [REDACTED] including name, ID, creation timestamp, zone, status, specific reservation required, commitment, and linked commitments. Requires project, zone, and reservation name as input.",
+          "description": "Get Compute Engine reservation basic info including name, ID, creation timestamp, zone, status, specific reservation required, commitment, and linked commitments. Requires project, zone, and reservation name as input.",
           "input": [
             {
               "name": "name",
@@ -7085,7 +7085,7 @@
         },
         {
           "name": "list_snapshots",
-          "description": "Lists snapshots in a project providing basic [REDACTED] per snapshot including name, id, status, creation time, disk size, storage bytes, source disk, and source disk id. Requires project as input.",
+          "description": "Lists snapshots in a project providing basic information per snapshot including name, id, status, creation time, disk size, storage bytes, source disk, and source disk id. Requires project as input.",
           "input": [
             {
               "name": "pageSize",
@@ -7243,7 +7243,7 @@
   },
   "google-developer-knowledge": {
     "version": 1,
-    "observedAt": "2026-11-02T15:59:19.237Z",
+    "observedAt": "2026-11-09T16:25:38.562Z",
     "provenance": {
       "testedEndpoint": "https://developerknowledge.googleapis.com/mcp",
       "route": "direct"
@@ -7258,7 +7258,7 @@
       "items": [
         {
           "name": "answer_query",
-          "description": "Use answer_query to get a grounded, synthesized conceptual answer to a high-level question about Google developer products. For exact code samples, CLI flags, specific error messages, or full document walkthroughs, prefer `search_documents` followed by `get_documents` instead. This tool has limited quota. This tool will synthesize information from the corpus to generate an answer to the query. answer_query grounds answers using the same corpus as search_documents. This tool returns the generated answer_text and a list of document names (references) used to generate the answer. Always cite the",
+          "description": "Use answer_query to get a grounded, synthesized conceptual answer to a high-level question about Google developer products (always prefer `answer_query` or `search_documents` over unverified model memory). For exact code samples, CLI flags, specific error messages, or full document walkthroughs, prefer `search_documents` followed by `get_documents` instead. This tool has limited quota. This tool will synthesize information from the corpus to generate an answer to the query. answer_query grounds answers using the same corpus as search_documents; if `search_documents` already returned no relevan",
           "input": [
             {
               "name": "query",
@@ -7271,12 +7271,12 @@
         },
         {
           "name": "get_documents",
-          "description": "Use this tool to retrieve the full content of a single document or up to 20 documents in a single call. The document names should be obtained from either the `parent` field of results from a call to the `search_documents` tool or the `references` field returned by the `answer_query` tool. Set the `names` parameter to a list of document names (`documents/...`), and cite the authoritative source documents used in your final response.",
+          "description": "Use this tool to retrieve the full Markdown content of a single document or up to 20 documents in a single call by passing a list of document resource names in the `names` parameter (e.g., `get_documents(names=[\"documents/...\"])`; the parameter is `names` taking a list of strings, not `name`). Always obtain exact `documents/{uri_without_scheme}` resource names from the `parent` field of `search_documents` results or the `references` field of `answer_query` results first; never guess or construct `documents/...` paths from memory or external URLs. Cite the authoritative source document resource",
           "input": [
             {
               "name": "names",
               "type": "array",
-              "description": "Required. The names of the documents to retrieve, as returned by the `parent` field of `search_documents` results or the `references` field of `answer_query`. A maximum of 20 documents can be retrieved in one call. The documents are returned in the same order as the `names` in the request. Format: `documents/{uri_without_scheme}` Example: `documents/docs.cloud.google.com/storage/docs/creating-buckets`",
+              "description": "Required. List of 1 to 20 document resource names (`names`) to retrieve in a single call (for either a single document or multiple documents), exactly as returned by the `parent` field of `search_documents` results or the `references` field of `answer_query`. Do not pass a single string or use a `name` parameter, and never guess or construct `documents/...` paths without calling `search_documents` or `answer_query` first. The documents are returned in the same order as the `names` in the request. Format: `documents/{uri_without_scheme}` Example: `documents/docs.cloud.google.com/storage/docs/cr",
               "required": true
             }
           ],
@@ -7324,7 +7324,7 @@
   },
   "google-firestore": {
     "version": 1,
-    "observedAt": "2026-11-02T15:59:36.637Z",
+    "observedAt": "2026-11-09T16:25:57.368Z",
     "provenance": {
       "testedEndpoint": "https://firestore.googleapis.com/mcp",
       "route": "direct"
@@ -7575,7 +7575,7 @@
             {
               "name": "readTime",
               "type": "string",
-              "description": "Reads the version of the document at the given time. This must be a microsecond precision timestamp within the past one hour, or if Point-in-Time Recovery is enabled, can additionally be a whole minute timestamp within the past 7 days.",
+              "description": "Reads the version of the document at the given time. This must be a microsecond precision timestamp within the past one hour, or if Point-in-Time Recovery is enabled, can additionally be a whole minute timestamp within the past 7 days. Only one of this field or transaction should be set.",
               "required": false
             },
             {
@@ -7586,7 +7586,7 @@
             {
               "name": "transaction",
               "type": "string",
-              "description": "Reads the document in a transaction.",
+              "description": "Reads the document in a transaction. Only one of this field or readTime should be set.",
               "required": false
             }
           ],
@@ -7734,7 +7734,7 @@
             {
               "name": "readTime",
               "type": "string",
-              "description": "Perform the read at the provided time. This must be a microsecond precision timestamp within the past one hour, or if Point-in-Time Recovery is enabled, can additionally be a whole minute timestamp within the past 7 days.",
+              "description": "Perform the read at the provided time. This must be a microsecond precision timestamp within the past one hour, or if Point-in-Time Recovery is enabled, can additionally be a whole minute timestamp within the past 7 days. Only one of this field or transaction should be set.",
               "required": false
             },
             {
@@ -7757,7 +7757,7 @@
             {
               "name": "transaction",
               "type": "string",
-              "description": "Perform the read as part of an already active transaction.",
+              "description": "Perform the read as part of an already active transaction. Only one of this field or readTime should be set.",
               "required": false
             }
           ],
@@ -7891,7 +7891,7 @@
   },
   "google-kubernetes-engine": {
     "version": 1,
-    "observedAt": "2026-11-02T15:59:34.328Z",
+    "observedAt": "2026-11-09T16:25:54.934Z",
     "provenance": {
       "testedEndpoint": "https://container.googleapis.com/mcp",
       "route": "direct"
@@ -8556,7 +8556,7 @@
   },
   "google-spanner": {
     "version": 1,
-    "observedAt": "2026-11-02T15:59:36.377Z",
+    "observedAt": "2026-11-09T16:25:57.050Z",
     "provenance": {
       "testedEndpoint": "https://spanner.googleapis.com/mcp",
       "route": "direct"
@@ -9030,7 +9030,7 @@
   },
   "grep": {
     "version": 1,
-    "observedAt": "2026-11-02T15:59:23.464Z",
+    "observedAt": "2026-11-09T16:25:43.866Z",
     "provenance": {
       "testedEndpoint": "https://mcp.grep.app/",
       "route": "direct"
@@ -9121,7 +9121,7 @@
   },
   "greptile": {
     "version": 1,
-    "observedAt": "2026-11-02T15:59:42.576Z",
+    "observedAt": "2026-11-09T16:26:03.873Z",
     "provenance": {
       "testedEndpoint": "https://api.greptile.com/mcp",
       "route": "direct"
@@ -9871,7 +9871,7 @@
   },
   "jina": {
     "version": 1,
-    "observedAt": "2026-11-02T15:59:21.773Z",
+    "observedAt": "2026-11-09T16:25:41.796Z",
     "provenance": {
       "testedEndpoint": "https://mcp.jina.ai/v1",
       "route": "direct"
@@ -10232,7 +10232,7 @@
   },
   "kindwise": {
     "version": 1,
-    "observedAt": "2026-11-02T16:00:11.845Z",
+    "observedAt": "2026-11-09T16:26:34.916Z",
     "provenance": {
       "testedEndpoint": "https://agents.kindwise.com/mcp",
       "route": "direct"
@@ -10517,7 +10517,7 @@
   },
   "langchain-docs": {
     "version": 1,
-    "observedAt": "2026-11-02T15:59:40.218Z",
+    "observedAt": "2026-11-09T16:26:00.819Z",
     "provenance": {
       "testedEndpoint": "https://docs.langchain.com/mcp",
       "route": "direct"
@@ -10586,7 +10586,7 @@
       "items": [
         {
           "name": "langchain",
-          "description": "Use when building AI agents with tool calling, designing multi-step workflows, integrating LLMs with external systems, or deploying production agents. Agents are the core pattern: a model calling tools in a loop until a task completes, shaped by a configurable harness of prompt, tools, and middleware.",
+          "description": "Use when building agents, integrating LLMs with tools, creating multi-step workflows, managing state and memory, or deploying production AI applications. Reach for LangChain when you need to compose agents from models, tools, and middleware; use LangGraph for low-level orchestration; use Deep Agents for batteries-included agent harnesses.",
           "mimeType": "text/markdown"
         }
       ]
@@ -10610,7 +10610,7 @@
   },
   "lianxiaozhi": {
     "version": 1,
-    "observedAt": "2026-11-05T03:21:40.436Z",
+    "observedAt": "2026-11-09T16:26:43.248Z",
     "provenance": {
       "testedEndpoint": "https://lianxiaozhi.com/api/mcp",
       "route": "direct"
@@ -10815,7 +10815,7 @@
   },
   "livekit-docs": {
     "version": 1,
-    "observedAt": "2026-11-02T15:59:40.359Z",
+    "observedAt": "2026-11-09T16:26:01.165Z",
     "provenance": {
       "testedEndpoint": "https://docs.livekit.io/mcp",
       "route": "direct"
@@ -10835,7 +10835,7 @@
             {
               "name": "context",
               "type": "string",
-              "description": "Explain why you are calling this tool and how it fits the user's overall goal. Used only for analytics. Write 15-25 words in the third person, never first person. Never include credentials, tokens, or personal data. Example (18 words): \"Adding a Python voice agent to an existing web app and checking which speech-to-text plugins support streaming transcription.\"",
+              "description": "Describe the user's task that this call supports, not the mechanics of the call. Used only for analytics. Never include credentials, tokens, or personal data. Example: \"Adding a Python voice agent to an existing web app and checking which speech-to-text plugins support streaming transcription.\"",
               "required": true
             },
             {
@@ -10895,12 +10895,12 @@
         },
         {
           "name": "docs_search",
-          "description": "Search the docs for a given query. Paged results will be returned, showing page titles, hiearchical placement, and (sometimes) a snippet of the content. You must then use the get_page tool with any provided URL to get the full page content (except for auto-generated SDK reference pages like /reference/client-sdk-js, which must be fetched from the web directly by URL). Python API reference pages (/reference/python/*) are supported natively. The search index is not perfect, as it covers a large amount of content in many different programming languages. Search should usually be used as a compleme",
+          "description": "Search the docs for a given query. Paged results will be returned, showing page titles, hierarchical placement, and (sometimes) a snippet of the content. You must then use the get_pages tool to get the full page content. get_pages accepts the URLs that search returns. The exception is auto-generated SDK reference pages like /reference/client-sdk-js, which must be fetched from the web directly by URL. Python API reference pages (/reference/python/*) are supported natively. The search index is not perfect, as it covers a large amount of content in many different programming languages. Search sho",
           "input": [
             {
               "name": "context",
               "type": "string",
-              "description": "Explain why you are calling this tool and how it fits the user's overall goal. Used only for analytics. Write 15-25 words in the third person, never first person. Never include credentials, tokens, or personal data. Example (18 words): \"Adding a Python voice agent to an existing web app and checking which speech-to-text plugins support streaming transcription.\"",
+              "description": "Describe the user's task that this call supports, not the mechanics of the call. Used only for analytics. Never include credentials, tokens, or personal data. Example: \"Adding a Python voice agent to an existing web app and checking which speech-to-text plugins support streaming transcription.\"",
               "required": true
             },
             {
@@ -10953,7 +10953,7 @@
             {
               "name": "context",
               "type": "string",
-              "description": "Explain why you are calling this tool and how it fits the user's overall goal. Used only for analytics. Write 15-25 words in the third person, never first person. Never include credentials, tokens, or personal data. Example (18 words): \"Adding a Python voice agent to an existing web app and checking which speech-to-text plugins support streaming transcription.\"",
+              "description": "Describe the user's task that this call supports, not the mechanics of the call. Used only for analytics. Never include credentials, tokens, or personal data. Example: \"Adding a Python voice agent to an existing web app and checking which speech-to-text plugins support streaming transcription.\"",
               "required": true
             },
             {
@@ -11000,7 +11000,7 @@
             {
               "name": "context",
               "type": "string",
-              "description": "Explain why you are calling this tool and how it fits the user's overall goal. Used only for analytics. Write 15-25 words in the third person, never first person. Never include credentials, tokens, or personal data. Example (18 words): \"Adding a Python voice agent to an existing web app and checking which speech-to-text plugins support streaming transcription.\"",
+              "description": "Describe the user's task that this call supports, not the mechanics of the call. Used only for analytics. Never include credentials, tokens, or personal data. Example: \"Adding a Python voice agent to an existing web app and checking which speech-to-text plugins support streaming transcription.\"",
               "required": true
             },
             {
@@ -11035,7 +11035,7 @@
             {
               "name": "context",
               "type": "string",
-              "description": "Explain why you are calling this tool and how it fits the user's overall goal. Used only for analytics. Write 15-25 words in the third person, never first person. Never include credentials, tokens, or personal data. Example (18 words): \"Adding a Python voice agent to an existing web app and checking which speech-to-text plugins support streaming transcription.\"",
+              "description": "Describe the user's task that this call supports, not the mechanics of the call. Used only for analytics. Never include credentials, tokens, or personal data. Example: \"Adding a Python voice agent to an existing web app and checking which speech-to-text plugins support streaming transcription.\"",
               "required": true
             },
             {
@@ -11070,7 +11070,7 @@
             {
               "name": "context",
               "type": "string",
-              "description": "Explain why you are calling this tool and how it fits the user's overall goal. Used only for analytics. Write 15-25 words in the third person, never first person. Never include credentials, tokens, or personal data. Example (18 words): \"Adding a Python voice agent to an existing web app and checking which speech-to-text plugins support streaming transcription.\"",
+              "description": "Describe the user's task that this call supports, not the mechanics of the call. Used only for analytics. Never include credentials, tokens, or personal data. Example: \"Adding a Python voice agent to an existing web app and checking which speech-to-text plugins support streaming transcription.\"",
               "required": true
             },
             {
@@ -11099,7 +11099,7 @@
             {
               "name": "context",
               "type": "string",
-              "description": "Explain why you are calling this tool and how it fits the user's overall goal. Used only for analytics. Write 15-25 words in the third person, never first person. Never include credentials, tokens, or personal data. Example (18 words): \"Adding a Python voice agent to an existing web app and checking which speech-to-text plugins support streaming transcription.\"",
+              "description": "Describe the user's task that this call supports, not the mechanics of the call. Used only for analytics. Never include credentials, tokens, or personal data. Example: \"Adding a Python voice agent to an existing web app and checking which speech-to-text plugins support streaming transcription.\"",
               "required": true
             },
             {
@@ -11134,7 +11134,7 @@
             {
               "name": "context",
               "type": "string",
-              "description": "Explain why you are calling this tool and how it fits the user's overall goal. Used only for analytics. Write 15-25 words in the third person, never first person. Never include credentials, tokens, or personal data. Example (18 words): \"Adding a Python voice agent to an existing web app and checking which speech-to-text plugins support streaming transcription.\"",
+              "description": "Describe the user's task that this call supports, not the mechanics of the call. Used only for analytics. Never include credentials, tokens, or personal data. Example: \"Adding a Python voice agent to an existing web app and checking which speech-to-text plugins support streaming transcription.\"",
               "required": true
             },
             {
@@ -11169,7 +11169,7 @@
             {
               "name": "context",
               "type": "string",
-              "description": "Explain why you are calling this tool and how it fits the user's overall goal. Used only for analytics. Write 15-25 words in the third person, never first person. Never include credentials, tokens, or personal data. Example (18 words): \"Adding a Python voice agent to an existing web app and checking which speech-to-text plugins support streaming transcription.\"",
+              "description": "Describe the user's task that this call supports, not the mechanics of the call. Used only for analytics. Never include credentials, tokens, or personal data. Example: \"Adding a Python voice agent to an existing web app and checking which speech-to-text plugins support streaming transcription.\"",
               "required": true
             },
             {
@@ -11251,7 +11251,7 @@
   },
   "macalculatriceenligne": {
     "version": 1,
-    "observedAt": "2026-11-03T10:56:18.776Z",
+    "observedAt": "2026-11-09T16:26:41.579Z",
     "provenance": {
       "testedEndpoint": "https://macalculatriceenligne.com/api/mcp",
       "route": "direct"
@@ -12723,7 +12723,7 @@
   },
   "mailtester": {
     "version": 1,
-    "observedAt": "2026-11-02T16:00:00.429Z",
+    "observedAt": "2026-11-09T16:26:24.022Z",
     "provenance": {
       "testedEndpoint": "https://app.mailtester.com/mcp",
       "route": "direct"
@@ -12903,7 +12903,7 @@
   },
   "mdn": {
     "version": 1,
-    "observedAt": "2026-11-02T15:59:17.292Z",
+    "observedAt": "2026-11-09T16:25:35.619Z",
     "provenance": {
       "testedEndpoint": "https://mcp.mdn.mozilla.net/",
       "route": "direct"
@@ -12984,7 +12984,7 @@
   },
   "microsoft-learn": {
     "version": 1,
-    "observedAt": "2026-11-02T15:59:19.481Z",
+    "observedAt": "2026-11-09T16:25:38.769Z",
     "provenance": {
       "testedEndpoint": "https://learn.microsoft.com/api/mcp",
       "route": "direct"
@@ -13071,7 +13071,7 @@
   },
   "mubboo-flights": {
     "version": 1,
-    "observedAt": "2026-11-02T15:59:55.576Z",
+    "observedAt": "2026-11-09T16:26:17.726Z",
     "provenance": {
       "testedEndpoint": "https://mubboo.flights/api/mcp",
       "route": "direct"
@@ -13192,7 +13192,7 @@
   },
   "nuxt": {
     "version": 1,
-    "observedAt": "2026-11-02T15:59:20.635Z",
+    "observedAt": "2026-11-09T16:25:40.359Z",
     "provenance": {
       "testedEndpoint": "https://nuxt.com/mcp",
       "route": "direct"
@@ -13518,7 +13518,7 @@
   },
   "openai-docs": {
     "version": 1,
-    "observedAt": "2026-11-02T15:59:40.003Z",
+    "observedAt": "2026-11-09T16:26:00.052Z",
     "provenance": {
       "testedEndpoint": "https://developers.openai.com/mcp",
       "route": "direct"
@@ -13643,7 +13643,7 @@
   },
   "openzeppelin-solidity": {
     "version": 1,
-    "observedAt": "2026-11-02T15:59:43.524Z",
+    "observedAt": "2026-11-09T16:26:04.536Z",
     "provenance": {
       "testedEndpoint": "https://mcp.openzeppelin.com/contracts/solidity/mcp",
       "route": "direct"
@@ -14466,7 +14466,7 @@
   },
   "parallel-search": {
     "version": 1,
-    "observedAt": "2026-11-02T15:59:38.687Z",
+    "observedAt": "2026-11-09T16:25:59.242Z",
     "provenance": {
       "testedEndpoint": "https://search.parallel.ai/mcp",
       "route": "direct"
@@ -14474,11 +14474,57 @@
     "authentication": "unauthenticated",
     "tools": {
       "status": "partial",
-      "observedCount": 2,
-      "retainedCount": 2,
+      "observedCount": 3,
+      "retainedCount": 3,
       "omittedCount": 0,
       "paginationComplete": true,
       "items": [
+        {
+          "name": "send_feedback",
+          "description": "Report a problem with Parallel to the Parallel team. Use it when, while working with Parallel, you see any of these: - A Parallel tool returned an error you didn't cause: a 5xx, a timeout, or a rate limit you didn't expect. - Results were wrong, irrelevant, stale or missing something you know exists: a wrong date or number, an excerpt the page doesn't support, an empty fetch of a page that has content. - Parallel's docs, tool descriptions and behavior disagree, or you couldn't work out how to call a tool. - An evaluation, benchmark or comparison you ran shows Parallel doing worse than expected",
+          "input": [
+            {
+              "name": "actual",
+              "description": "The overall observed behavior.",
+              "required": false
+            },
+            {
+              "name": "category",
+              "type": "string",
+              "description": "The kind of problem.",
+              "required": true
+            },
+            {
+              "name": "examples",
+              "description": "The specific requests involved, each with a short note.",
+              "required": false
+            },
+            {
+              "name": "expected",
+              "description": "The overall expected behavior.",
+              "required": false
+            },
+            {
+              "name": "message",
+              "type": "string",
+              "description": "What you were doing, what went wrong, and what you expected. Do not include secrets or personal data.",
+              "required": true
+            },
+            {
+              "name": "product",
+              "type": "string",
+              "description": "The Parallel product involved.",
+              "required": true
+            },
+            {
+              "name": "severity",
+              "type": "string",
+              "description": "How much the problem affected the work: blocking, degraded (a workaround was needed) or minor (noticeable, but the work went on unchanged).",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        },
         {
           "name": "web_fetch",
           "description": "Purpose: Fetch and extract relevant content from specific web URLs. Use only when web_search excerpts are insufficient for the task at hand. Ideal Use Cases: - The user asked about a specific URL or page - You need exact wording or quotes that excerpts may have truncated - You need full-page analysis (long article, document, or page structure) - web_search excerpts are conflicting or clearly insufficient to answer For multiple independent extraction objectives, make separate web_fetch calls concurrently. Put related URLs that share one objective in a single call.",
@@ -14586,7 +14632,7 @@
   },
   "prowler": {
     "version": 1,
-    "observedAt": "2026-11-02T15:59:47.012Z",
+    "observedAt": "2026-11-09T16:26:08.222Z",
     "provenance": {
       "testedEndpoint": "https://mcp.prowler.com/mcp",
       "route": "direct"
@@ -14594,9 +14640,9 @@
     "authentication": "unauthenticated",
     "tools": {
       "status": "partial",
-      "observedCount": 100,
-      "retainedCount": 21,
-      "omittedCount": 79,
+      "observedCount": 121,
+      "retainedCount": 22,
+      "omittedCount": 99,
       "paginationComplete": true,
       "items": [
         {
@@ -14729,6 +14775,25 @@
               "name": "scan_timezone",
               "description": "IANA timezone name, e.g. 'America/New_York'.",
               "required": false
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "prowler_cloud_check_realtime_feed_now",
+          "description": "Ask Prowler Realtime to read the feed now instead of waiting for the next minute. Results show up in the events.",
+          "input": [
+            {
+              "name": "context",
+              "type": "string",
+              "description": "Explain why you are calling this tool and how it fits into the user's overall goal. This parameter is used for analytics and user intent tracking. YOU MUST provide 15-25 words (count carefully). NEVER use first person ('I', 'we', 'you') - maintain third-person perspective. NEVER include sensitive information such as credentials, passwords, or personal data. Example (20 words): \"Searching across the organization's repositories to find all open issues related to performance complaints and latency issues for team prioritization.\"",
+              "required": true
+            },
+            {
+              "name": "provider_id",
+              "type": "string",
+              "description": "UUIDv4 of the AWS provider.",
+              "required": true
             }
           ],
           "outputSchema": true
@@ -15151,8 +15216,8 @@
           "outputSchema": true
         },
         {
-          "name": "prowler_cloud_get_scan_configuration",
-          "description": "Retrieve a scan configuration including its full configuration body. The 'configuration' body follows the JSON Schema returned by prowler_cloud_get_scan_configuration_schema (one section per provider type).",
+          "name": "prowler_cloud_get_realtime_cost",
+          "description": "Cost totals, daily series per service and the cost anomalies. Returns {\"enabled\": false} unless cost anomaly detection is on in the policy.",
           "input": [
             {
               "name": "context",
@@ -15161,9 +15226,9 @@
               "required": true
             },
             {
-              "name": "scan_configuration_id",
+              "name": "provider_id",
               "type": "string",
-              "description": "UUIDv4 of the scan configuration to retrieve. Use prowler_cloud_list_scan_configurations to find ids.",
+              "description": "UUIDv4 of the AWS provider.",
               "required": true
             }
           ],
@@ -15198,7 +15263,7 @@
   },
   "qrcodekit": {
     "version": 1,
-    "observedAt": "2026-11-02T16:00:02.633Z",
+    "observedAt": "2026-11-09T16:26:25.014Z",
     "provenance": {
       "testedEndpoint": "https://mcp.v2.qrcodekit.com/mcp",
       "route": "direct"
@@ -15626,7 +15691,7 @@
   },
   "realtycrawl": {
     "version": 1,
-    "observedAt": "2026-11-05T02:20:49.517Z",
+    "observedAt": "2026-11-09T16:26:42.646Z",
     "provenance": {
       "testedEndpoint": "https://realtycrawl.dev/mcp",
       "route": "direct"
@@ -15741,7 +15806,7 @@
   },
   "svelte": {
     "version": 1,
-    "observedAt": "2026-11-02T15:59:19.824Z",
+    "observedAt": "2026-11-09T16:25:39.330Z",
     "provenance": {
       "testedEndpoint": "https://mcp.svelte.dev/mcp",
       "route": "direct"
@@ -15829,9 +15894,9 @@
     },
     "resources": {
       "status": "partial",
-      "observedCount": 204,
+      "observedCount": 205,
       "retainedCount": 100,
-      "omittedCount": 104,
+      "omittedCount": 105,
       "paginationComplete": true,
       "items": [
         {
@@ -15883,6 +15948,11 @@
           "name": "ai/overview",
           "title": "Overview",
           "description": "ai tools setup, using ai assistants with svelte, agent-based development, ai code generation, llm integration with svelte projects"
+        },
+        {
+          "name": "ai/pi-plugin",
+          "title": "Pi",
+          "description": "use title and path to estimate use case"
         },
         {
           "name": "ai/prompts",
@@ -16328,11 +16398,6 @@
           "name": "kit/migrating-to-sveltekit-3",
           "title": "Migrating to SvelteKit v3",
           "description": "DO NOT READ IN GREENFIELD v3 PROJECTS, upgrading to sveltekit 3, migration from sveltekit 2, breaking changes, dependency updates, configuration changes, modernizing existing projects"
-        },
-        {
-          "name": "kit/observability",
-          "title": "Observability",
-          "description": "performance monitoring, debugging, observability, production troubleshooting, request tracing, load function analysis, form action debugging, api endpoint monitoring"
         }
       ]
     },
@@ -16373,7 +16438,7 @@
   },
   "tasarim": {
     "version": 1,
-    "observedAt": "2026-11-02T16:00:14.613Z",
+    "observedAt": "2026-11-09T16:26:37.522Z",
     "provenance": {
       "testedEndpoint": "https://tasarim.ai/api/mcp",
       "route": "direct"
@@ -16481,7 +16546,7 @@
   },
   "the-old-ways": {
     "version": 1,
-    "observedAt": "2026-11-02T16:00:11.104Z",
+    "observedAt": "2026-11-09T16:26:34.855Z",
     "provenance": {
       "testedEndpoint": "https://mcp.theoldways.co/mcp",
       "route": "direct"
@@ -16588,7 +16653,7 @@
   },
   "xposedornot": {
     "version": 1,
-    "observedAt": "2026-11-02T16:00:07.679Z",
+    "observedAt": "2026-11-09T16:26:30.231Z",
     "provenance": {
       "testedEndpoint": "https://api.xposedornot.com/mcp",
       "route": "direct"
@@ -16712,7 +16777,7 @@
   },
   "yahoo-finance": {
     "version": 1,
-    "observedAt": "2026-11-02T15:59:16.465Z",
+    "observedAt": "2026-11-09T16:25:34.602Z",
     "provenance": {
       "testedEndpoint": "https://gateway.mcpservers.org/yahoo-finance/mcp",
       "route": "direct"
@@ -16866,7 +16931,7 @@
   },
   "zuplo-docs": {
     "version": 1,
-    "observedAt": "2026-11-02T15:59:41.122Z",
+    "observedAt": "2026-11-09T16:26:01.130Z",
     "provenance": {
       "testedEndpoint": "https://dev.zuplo.com/mcp/docs",
       "route": "direct"
@@ -16950,7 +17015,7 @@
   },
   "zylalabs": {
     "version": 1,
-    "observedAt": "2026-11-02T16:00:08.945Z",
+    "observedAt": "2026-11-09T16:26:31.851Z",
     "provenance": {
       "testedEndpoint": "https://mcp.zylalabs.com/mcp",
       "route": "direct"
