@@ -2382,6 +2382,74 @@
       "items": []
     }
   },
+  "cookierisk": {
+    "version": 1,
+    "observedAt": "2026-11-09T12:45:35.847Z",
+    "provenance": {
+      "testedEndpoint": "https://cookierisk.eu/mcp",
+      "route": "direct"
+    },
+    "authentication": "unauthenticated",
+    "tools": {
+      "status": "partial",
+      "observedCount": 2,
+      "retainedCount": 2,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "get_quickscan_result",
+          "description": "Use the scanId returned by start_quickscan to retrieve progress or sanitized findings, including the visible banner provider and controls, CookieRisk score, pre-consent tracking status, tag or service classifications, browser-recorded initiator hosts and consent signals when available. Page settings and scan-wide network signals are separate. A request in a tracking category alone is not confirmation. Observe pollAfterSeconds before polling and retryAfter on an error. Unknown, incomplete and failed scans do not establish absence of tracking. Accept and reject behavior is outside the scan scope",
+          "input": [
+            {
+              "name": "scanId",
+              "type": "string",
+              "description": "The scanId returned by start_quickscan.",
+              "required": true
+            }
+          ],
+          "outputSchema": false
+        },
+        {
+          "name": "start_quickscan",
+          "description": "Use this when a user asks to check a public website homepage for cookies and tracking observed before interaction. Creates a scan and visits the website. Only submit the homepage URL; do not use for private pages, legal verdicts, accept/reject testing, monitoring, or bulk scans. If reused is true, tell the user right away when the evidence was recorded (evidenceCapturedAt, if known) and when the domain cooldown ends (domainCooldownEndsAt). A new scan still depends on capacity. Poll get_quickscan_result using the returned scanId and wait pollAfterSeconds between reads.",
+          "input": [
+            {
+              "name": "url",
+              "type": "string",
+              "description": "Public HTTP(S) homepage, for example [REDACTED URI] no path, query, credentials or fragment.",
+              "required": true
+            }
+          ],
+          "outputSchema": false
+        }
+      ]
+    },
+    "resources": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "resourceTemplates": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "prompts": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    }
+  },
   "courier": {
     "version": 1,
     "observedAt": "2026-11-02T15:59:51.337Z",

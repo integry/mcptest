@@ -4177,5 +4177,17 @@
     "message": "Negotiated stateless MCP 2026-07-28 at https://docs.blockvectra.com/mcp/docs; detected transport streamable-http; authentication none",
     "validatedUrl": "https://docs.blockvectra.com/mcp/docs",
     "protocolVersion": "2026-07-28"
+  },
+  {
+    "serverId": "cookierisk",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateful",
+    "checkedAt": "2026-11-09T12:45:36.387Z",
+    "message": "Negotiated stateful MCP 2025-11-25 at https://cookierisk.eu/mcp; detected transport streamable-http; authentication none",
+    "validatedUrl": "https://cookierisk.eu/mcp",
+    "protocolVersion": "2025-11-25"
   }
 ]
