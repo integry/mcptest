@@ -4194,11 +4194,11 @@
     "serverId": "agentseo",
     "status": "online",
     "transport": "unknown",
-    "authType": "unknown",
+    "authType": "api-key",
     "requiresOAuth": false,
     "protocolEra": "unknown",
-    "checkedAt": "2026-11-09T16:48:40.131Z",
-    "message": "Authentication challenge at https://www.agentseo.dev/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication unknown",
+    "checkedAt": "2026-11-09T18:10:11.851Z",
+    "message": "Authentication challenge at https://www.agentseo.dev/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication api-key",
     "validatedUrl": "https://www.agentseo.dev/mcp"
   }
 ]

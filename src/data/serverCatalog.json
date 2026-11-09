@@ -13075,23 +13075,40 @@
     "name": "AgentSEO",
     "url": "https://www.agentseo.dev/mcp",
     "browserAccess": "proxy-required",
-    "description": "AgentSEO provides keyword research, Google SERP analysis, rank tracking, competitor and backlink research, content gap analysis, local SEO, and AI search visibility through a hosted Streamable HTTP MCP server. Connect with an AgentSEO API key using Bearer or x-api-key authentication.",
+    "description": "Keyword research, Google SERP analysis, rank tracking, backlink and content-gap analysis, and local SEO audits. Requires an AgentSEO API key sent in the x-api-key header.",
     "category": "Search",
     "tags": [
       "search",
+      "seo",
+      "api-key",
       "community-submission"
     ],
     "listingSource": {
-      "kind": "community-submission",
+      "kind": "publisher",
       "url": "https://www.agentseo.dev/seo-mcp-server"
     },
     "transport": "streamable-http",
     "requiresOAuth": false,
-    "authType": "unknown",
+    "authType": "api-key",
+    "alternativeAuthTypes": [
+      "bearer-token"
+    ],
+    "requiredHeaders": [
+      {
+        "name": "x-api-key",
+        "description": "AgentSEO API key",
+        "valueTemplate": "<AGENTSEO_API_KEY>",
+        "required": true,
+        "secret": true
+      }
+    ],
     "logoUrl": "/server-logos/agentseo.svg",
     "logoSourceKind": "generated-fallback",
     "logoRetrievedAt": "2026-11-09",
     "logoLicenseNote": "Locally generated AG monogram for a community submission; it is not an official AgentSEO mark.",
-    "homepageUrl": "https://www.agentseo.dev/seo-mcp-server"
+    "homepageUrl": "https://www.agentseo.dev/seo-mcp-server",
+    "caveats": [
+      "AgentSEO documents initialize and tools/list as public discovery methods that work without credentials; tool calls require an AgentSEO API key. The submitter reports the key is also accepted as a Bearer token."
+    ]
   }
 ]
