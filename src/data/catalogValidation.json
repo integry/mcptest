@@ -4177,5 +4177,16 @@
     "message": "Negotiated stateless MCP 2026-07-28 at https://docs.blockvectra.com/mcp/docs; detected transport streamable-http; authentication none",
     "validatedUrl": "https://docs.blockvectra.com/mcp/docs",
     "protocolVersion": "2026-07-28"
+  },
+  {
+    "serverId": "agentseo",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "unknown",
+    "requiresOAuth": false,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-09T16:48:40.131Z",
+    "message": "Authentication challenge at https://www.agentseo.dev/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication unknown",
+    "validatedUrl": "https://www.agentseo.dev/mcp"
   }
 ]

@@ -13044,5 +13044,29 @@
     "caveats": [
       "This endpoint provides documentation tools only, not JSON-RPC execution or account operations."
     ]
+  },
+  {
+    "id": "agentseo",
+    "name": "AgentSEO",
+    "url": "https://www.agentseo.dev/mcp",
+    "browserAccess": "proxy-required",
+    "description": "AgentSEO provides keyword research, Google SERP analysis, rank tracking, competitor and backlink research, content gap analysis, local SEO, and AI search visibility through a hosted Streamable HTTP MCP server. Connect with an AgentSEO API key using Bearer or x-api-key authentication.",
+    "category": "Search",
+    "tags": [
+      "search",
+      "community-submission"
+    ],
+    "listingSource": {
+      "kind": "community-submission",
+      "url": "https://www.agentseo.dev/seo-mcp-server"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "unknown",
+    "logoUrl": "/server-logos/agentseo.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-09",
+    "logoLicenseNote": "Locally generated AG monogram for a community submission; it is not an official AgentSEO mark.",
+    "homepageUrl": "https://www.agentseo.dev/seo-mcp-server"
   }
 ]
