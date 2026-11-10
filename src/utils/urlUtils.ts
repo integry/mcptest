@@ -1,3 +1,4 @@
+import type { CatalogTransport } from '../types/catalog';
 import type { Space } from '../types';
 
 // Shared with published-report redaction so connection links follow the same
@@ -195,7 +196,7 @@ const decodeEndpoint = (path: string): string => {
   return url.href.replace(/\/$/, '');
 };
 
-export const parseServerUrl = (pathname: string, search = '', hash = ''): { serverUrl: string; transportMethod?: string } | null => {
+export const parseServerUrl = (pathname: string, search = '', hash = ''): { serverUrl: string; transportMethod?: CatalogTransport } | null => {
   const match = pathname.split('?')[0].match(/^\/server\/(.+)$/);
   if (!match) return null;
   try {
@@ -206,19 +207,22 @@ export const parseServerUrl = (pathname: string, search = '', hash = ''): { serv
     const transport = params.get('transport');
     return {
       serverUrl: url.href.replace(/\/$/, ''),
-      ...(transport === 'sse' || transport === 'http' ? { transportMethod: transport } : {}),
+      ...(transport === 'sse' || transport === 'legacy-sse' ? { transportMethod: 'legacy-sse' as const }
+        : transport === 'http' || transport === 'streamable-http' ? { transportMethod: 'streamable-http' as const } : {}),
     };
   } catch { return null; }
 };
 
-export const getConnectionShareUrl = (serverUrl: string, transportMethod?: string): { url: string; queryOmitted: boolean } => {
+export const getConnectionShareUrl = (serverUrl: string, transportMethod?: CatalogTransport): { url: string; queryOmitted: boolean } => {
   const encoded = encodeEndpoint(serverUrl);
   const url = new URL(`/server/${encoded.path}`, 'https://mcptest.io');
-  if (transportMethod) url.searchParams.set('transport', transportMethod === 'sse' || transportMethod === 'legacy-sse' ? 'sse' : 'http');
+  if (transportMethod === 'legacy-sse' || transportMethod === 'streamable-http') {
+    url.searchParams.set('transport', transportMethod === 'legacy-sse' ? 'sse' : 'http');
+  }
   return { url: `${url.pathname}${url.search}${url.hash}`, queryOmitted: encoded.queryOmitted };
 };
 
-export const getServerUrl = (serverUrl: string, transportMethod?: string): string => getConnectionShareUrl(serverUrl, transportMethod).url;
+export const getServerUrl = (serverUrl: string, transportMethod?: CatalogTransport): string => getConnectionShareUrl(serverUrl, transportMethod).url;
 
 // Old /server/host/mcp and /sse links are ambiguous. Always attempt the literal
 // endpoint first; only a readable 404/405 permits trying the shorter legacy

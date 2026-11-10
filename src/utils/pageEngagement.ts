@@ -38,7 +38,9 @@ export const enhanceEngagement = (root: HTMLElement, staticPage = false): (() =>
   };
   root.addEventListener('click', click);
   root.addEventListener('submit', submit);
-  const article = root.matches('article') ? root : root.querySelector<HTMLElement>('article.reading-article, article.server-profile');
+  // Article elements share HTMLElement's type, so matches('article') narrows
+  // the false branch to never with the newer DOM type predicates.
+  const article = root.localName === 'article' ? root : root.querySelector<HTMLElement>('article.reading-article, article.server-profile');
   const depths = !staticPage && handoff?.path === window.location.pathname ? handoff.depths : new Set<number>();
   if (staticPage) handoff = { path: window.location.pathname, depths };
   else handoff = undefined;

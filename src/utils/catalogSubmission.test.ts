@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import serverCatalog from '../data/serverCatalog.json';
 import submissionSchema from '../../public/schemas/catalog-submission/v1.schema.json';
@@ -196,5 +198,31 @@ describe('submission draft validation', () => {
     );
     expect(withExtras).toMatchObject({ contactEmail: 'a@acme.dev', logoUrl: 'https://acme.dev/logo.svg', turnstileToken: 'turnstile-token' });
     expect(validateCatalogSubmission(withExtras).valid).toBe(true);
+  });
+});
+
+describe('reviewed community submission entries', () => {
+  const futureinfra = (serverCatalog as CatalogServerSeed[]).find((seed) => seed.id === 'futureinfra');
+
+  it('uses the FI monogram for FutureInfra in the logo and its license note', () => {
+    const svg = readFileSync(resolve('public/server-logos/futureinfra.svg'), 'utf8');
+    expect(svg).toMatch(/>FI<\/text>/);
+    expect(futureinfra?.logoLicenseNote).toContain('generated FI monogram');
+  });
+
+  it('keeps FutureInfra limitations in caveats and records its publisher-documented OAuth flow', () => {
+    expect(futureinfra?.description).not.toMatch(/prepaid|South Korea/);
+    expect(futureinfra?.caveats).toEqual([
+      expect.stringContaining('prepaid account credits'),
+      expect.stringContaining('limited to South Korea'),
+    ]);
+    expect(futureinfra?.transport).toBe('streamable-http');
+    expect(futureinfra?.oauthRegistration).toMatchObject({
+      mode: 'automatic',
+      clientId: { required: false },
+      clientSecret: { required: false },
+      browserPublicClientSupported: true,
+      evidenceUrl: 'https://futureinfra.ai/docs/mcp/',
+    });
   });
 });

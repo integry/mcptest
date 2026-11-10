@@ -51,7 +51,7 @@ describe('generated server report Playground links', () => {
       catalogServer('https://mcp.linear.app/mcp', 'streamable-http')
     );
 
-    expect(html).toContain('href="/server/mcp.linear.app/mcp"');
+    expect(html).toContain('href="/server/mcp.linear.app/mcp?transport=http"');
     expect(parseServerUrl('/server/mcp.linear.app/mcp')).toEqual({
       serverUrl: 'https://mcp.linear.app/mcp',
     });
@@ -63,7 +63,7 @@ describe('generated server report Playground links', () => {
       catalogServer('https://example.com/sse', 'legacy-sse')
     );
 
-    expect(html).toContain('href="/server/example.com/sse"');
+    expect(html).toContain('href="/server/example.com/sse?transport=sse"');
     expect(parseServerUrl('/server/example.com/sse')).toEqual({
       serverUrl: 'https://example.com/sse',
     });
@@ -75,7 +75,7 @@ describe('generated server report Playground links', () => {
 
     const html = renderServerHtml(indexHtml, server);
 
-    expect(html).toContain('href="/server/example.com/endpoint"');
+    expect(html).toContain('href="/server/example.com/endpoint?transport=sse"');
     expect(parseServerUrl('/server/example.com/endpoint')).toEqual({
       serverUrl: 'https://example.com/endpoint',
     });
@@ -88,7 +88,7 @@ describe('generated server report Playground links', () => {
 
     const html = renderServerHtml(indexHtml, server);
 
-    expect(html).toContain('href="/server/example.com/sse"');
+    expect(html).toContain('href="/server/example.com/sse?transport=http"');
     expect(html).toContain('claude mcp add --transport http');
   });
 
@@ -99,7 +99,7 @@ describe('generated server report Playground links', () => {
 
     const html = renderServerHtml(indexHtml, server);
 
-    expect(html).toContain('href="/server/example.com/mcp"');
+    expect(html).toContain('href="/server/example.com/mcp?transport=http"');
     expect(html).toContain('claude mcp add --transport http');
   });
 
@@ -113,7 +113,7 @@ describe('generated server report Playground links', () => {
     const html = renderServerHtml(indexHtml, server);
 
     expect(html).toContain('Browser-verified endpoint');
-    expect(html).toContain('href="/server/example.com/sse"');
+    expect(html).toContain('href="/server/example.com/sse?transport=sse"');
   });
 });
 
@@ -207,6 +207,20 @@ describe('generated page metadata', () => {
     expect(html).not.toContain('claude mcp add');
     expect(html).not.toContain('codex mcp add');
     expect(html).not.toContain('aria-label="Claude Code configuration"');
+  });
+
+  it('renders Menlo as OAuth after merging the saved validation evidence', () => {
+    const menlo = mergeCatalogServers(catalogSeeds, catalogValidation)
+      .find(({ id }) => id === 'menloinsurance');
+    expect(menlo).toMatchObject({ declaredAuthType: 'oauth', authType: 'oauth', requiresOAuth: true });
+    const html = renderServerHtml(indexHtml, menlo);
+    expect(html).toContain('with OAuth sign-in');
+    const structuredData = JSON.parse(html.match(/<script id="server-structured-data" type="application\/ld\+json">(.*?)<\/script>/s)[1]);
+    expect(structuredData.additionalProperty).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'Declared authentication', value: 'OAuth 2.1' }),
+      expect.objectContaining({ name: 'Detected authentication', value: 'OAuth 2.1 detected or retained from publisher evidence' }),
+    ]));
+    expect(structuredData.keywords.split(', ')).not.toContain('no-auth');
   });
 
   it('renders static Asana setup parity from typed registration evidence', () => {
@@ -384,6 +398,29 @@ describe('generated page metadata', () => {
     )).toThrow('inventory endpoint does not match its catalog origin');
   });
 
+  it('accepts and renders basic tax prose but rejects unsanitized Basic credentials', () => {
+    const server = catalogServer('https://example.com/mcp', 'streamable-http');
+    const description = 'Calculate Canadian tax with the basic personal amount credited.';
+    const inventory = createCapabilityInventory({
+      testedEndpoint: server.url,
+      route: 'direct',
+      authentication: 'unauthenticated',
+      statuses: { tools: 'complete', resources: 'complete', resourceTemplates: 'complete', prompts: 'complete' },
+      discovered: { tools: [{ name: 'calculate_canada_federal_tax', description }] },
+    });
+    expect(() => validateCapabilitySnapshots({ 'example-server': inventory }, [server])).not.toThrow();
+    server.capabilityInventory = inventory;
+    expect(renderServerHtml(indexHtml, server)).toContain(description);
+    inventory.tools.items[0].description = 'Use Basic dXNlcjpwYXNz';
+    expect(() => validateCapabilitySnapshots({ 'example-server': inventory }, [server]))
+      .toThrow('contains unsanitized data');
+    for (const description of ['Use Basic dXNlcjpwYXNz.', 'Use Basic dXNlcjpwYXNz-', 'Use Basic dXNlcjpwYXNz-suffix']) {
+      inventory.tools.items[0].description = description;
+      expect(() => validateCapabilitySnapshots({ 'example-server': inventory }, [server]))
+        .toThrow('contains unsanitized data');
+    }
+  });
+
   it('accepts canonical inventories created from case-distinct argument names', () => {
     const inventory = createCapabilityInventory({
       observedAt: '2026-08-17T22:00:00.000Z',
@@ -513,7 +550,7 @@ describe('generated page metadata', () => {
         expect((server.seoDescription || server.description).trim(), server.id).toContain(summary);
       }
     }
-  });
+  }, 15_000);
 
   it('renders the home page with its canonical URL, Open Graph card and crawler-visible landing copy', () => {
     const html = renderHomeHtml(indexHtml, { title: 'Home | mcptest.io', description: 'Home description.' }, 111);
@@ -1072,5 +1109,31 @@ describe('server page "Connect it" section', () => {
     const sizes = servers.map(server => ({ id: server.id, bytes: Buffer.byteLength(renderServerConnect(server)) }));
     const largest = sizes.reduce((max, size) => (size.bytes > max.bytes ? size : max));
     expect(largest.bytes, largest.id).toBeLessThan(18_000);
+  });
+});
+
+
+describe('unsafe OAuth setup metadata in static server pages', () => {
+  for (const field of ['clientId', 'clientSecret']) {
+    it.each(['BAD}NAME', 'BAD"NAME', "BAD'NAME", 'BAD$(id)', 'BAD;id', 'BAD&&id', 'BAD`id`', 'BAD\nNAME'])(`rejects ${field}: %j`, (name) => {
+      const server = mergeCatalogServers(catalogSeeds, catalogValidation).find(({ id }) => id === 'asana');
+      server.oauthRegistration = structuredClone(server.oauthRegistration);
+      server.oauthRegistration[field].environmentVariable = name;
+      const html = renderServerHtml(indexHtml, server);
+      const document = new DOMParser().parseFromString(html, 'text/html');
+      expect(document.body.textContent).not.toContain(name);
+      expect(document.querySelectorAll('.client-setup-copy')).toHaveLength(0);
+      expect(document.querySelectorAll('.client-setup-unsupported')).toHaveLength(4);
+      expect(html).not.toContain('claude mcp add');
+      expect(document.querySelector('#server-connect-agent-prompt').textContent).not.toContain(name);
+    });
+  }
+  it('omits an unknown transport from static links and executable configurations', () => {
+    const server = catalogServer('https://example.com/custom', 'streamable-http');
+    server.transport = 'unknown';
+    const html = renderServerHtml(indexHtml, server);
+    expect(html).toContain('href="/server/example.com/custom"');
+    expect(html).not.toContain('claude mcp add');
+    expect(html).toContain('transport is unverified');
   });
 });

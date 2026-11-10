@@ -195,13 +195,13 @@ describe('checkMcpDiscovery', () => {
         url: 'https://example.com/mcp',
         transport: 'streamable-http',
         sources: ['Server Card: urn:air:example.com:mcp:weather', 'Official MCP Registry', 'Server Card at https://example.com/mcp'],
-        inspectorPath: '/server/example.com/mcp',
+        inspectorPath: '/server/example.com/mcp?transport=http',
       },
       {
         url: 'https://api.example.com/mcp',
         transport: 'streamable-http',
         sources: ['mcptest.io catalog'],
-        inspectorPath: '/server/api.example.com/mcp',
+        inspectorPath: '/server/api.example.com/mcp?transport=http',
       },
     ]);
     expect(hasValidServerCard(report)).toBe(true);
@@ -367,5 +367,32 @@ describe('buildDiscoveryFixGuidance', () => {
     const guidance = buildDiscoveryFixGuidance(report);
     expect(guidance).toMatchObject({ endpoint: 'https://mcp.example.com/v1/mcp', endpointKnown: true, cardUrl: 'https://mcp.example.com/v1/mcp/server-card' });
     expect(JSON.parse(guidance.card).remotes).toEqual([{ type: 'streamable-http', url: 'https://mcp.example.com/v1/mcp' }]);
+  });
+});
+
+describe('discovery inspector transport evidence', () => {
+  it('keeps an unverified catalog endpoint free of a forced HTTP hint', async () => {
+    const { fetchDocument } = fixtureFetch({});
+    const report = await checkMcpDiscovery('example.com', {
+      fetch: fetchDocument,
+      catalog: [{ id: 'unknown', name: 'Unknown', path: '/servers/unknown/', endpoints: [{ url: 'https://example.com/custom' }] }],
+    });
+    expect(report.endpoints[0]).toMatchObject({
+      url: 'https://example.com/custom', inspectorPath: '/server/example.com/custom',
+    });
+    expect(report.endpoints[0].transport).toBeUndefined();
+  });
+
+  it('uses concrete evidence from a later source when an earlier lead has no transport', async () => {
+    const { fetchDocument } = fixtureFetch({
+      'https://example.com/.well-known/mcp.json': { body: { endpoint: 'https://example.com/custom' } },
+    });
+    const report = await checkMcpDiscovery('example.com', {
+      fetch: fetchDocument,
+      catalog: [{ id: 'sse', name: 'SSE', path: '/servers/sse/', endpoints: [{ url: 'https://example.com/custom', transport: 'sse' }] }],
+    });
+    expect(report.endpoints[0]).toMatchObject({
+      transport: 'sse', inspectorPath: '/server/example.com/custom?transport=sse',
+    });
   });
 });

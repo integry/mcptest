@@ -206,7 +206,8 @@ function validateOAuthCredentialRequirement(value, label, field) {
     throw new Error(`${label}: oauthRegistration.${field}.required must be boolean`);
   }
   if (value.environmentVariable !== undefined
-      && !/^[A-Z][A-Z0-9_]{1,63}$/.test(value.environmentVariable)) {
+      && (typeof value.environmentVariable !== 'string'
+        || !/^[A-Z][A-Z0-9_]{0,63}$/.test(value.environmentVariable))) {
     throw new Error(`${label}: oauthRegistration.${field}.environmentVariable is invalid`);
   }
   for (const key of Object.keys(value)) {
@@ -910,6 +911,9 @@ async function validateSeed(
   if (protocolProbe?.protocolVersion) result.protocolVersion = protocolProbe.protocolVersion;
   if (authorizationEvidence.authorizationServers.length > 0) {
     result.authorizationServers = authorizationEvidence.authorizationServers;
+  }
+  if (authType === 'none' && authorizationEvidence.authorizationServers.length > 0) {
+    result.message += '; WARNING: OAuth authorization servers advertised; an anonymous MCP handshake does not establish anonymous tool access';
   }
   if (errorCode) result.errorCode = errorCode;
   if (successfulProbe?.capabilityInventory) {

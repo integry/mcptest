@@ -666,6 +666,73 @@ describe('catalog protocol validation', () => {
     });
   });
 
+  it('preserves Port OS OAuth when discovery completes without an auth challenge', () => {
+    const seed = catalogSeeds.find(({ id }) => id === 'portoperatingsystem');
+
+    expect(detectedAuthType(
+      seed,
+      [{ alive: true, authChallenge: false }],
+      { oauthMetadata: true, authorizationServers: ['https://auth.portoperatingsystem.com'] }
+    )).toBe('oauth');
+  });
+
+  it.each([true, false])('records Port OS authorization servers only when discovered (metadata: %s)', async (hasMetadata) => {
+    const seed = catalogSeeds.find(({ id }) => id === 'portoperatingsystem');
+    const issuer = 'https://auth.example.com';
+    const fetchImpl = async (input, init = {}) => {
+      const url = new URL(input instanceof Request ? input.url : input);
+      if (url.pathname.startsWith('/.well-known/oauth-protected-resource') && hasMetadata) {
+        return new Response(JSON.stringify({ resource: seed.url, authorization_servers: [issuer] }), {
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.pathname === '/mcp' && init.method === 'POST') {
+        return jsonRpcResponse(JSON.parse(String(init.body)), {
+          supportedVersions: ['2026-07-28'], capabilities: {},
+        });
+      }
+      return new Response('Not found', { status: 404 });
+    };
+    const result = await validateSeed(seed, { fetchImpl, timeoutMs: 1_000 });
+
+    expect(result).toMatchObject({ status: 'online', authType: 'oauth', requiresOAuth: true });
+    if (hasMetadata) {
+      expect(result.authorizationServers).toEqual([issuer]);
+    } else {
+      expect(result).not.toHaveProperty('authorizationServers');
+    }
+    const stored = [{ serverId: seed.id, authorizationServers: ['https://stale.example.com'] }];
+    expect(mergeValidationResults([seed], stored, [result])).toEqual([result]);
+  });
+
+  it.each([
+    ['none', true, true],
+    ['none', false, false],
+    ['oauth', true, false],
+    ['bearer-token', true, false],
+  ])('flags advertised OAuth for anonymous access (auth: %s, metadata: %s)', async (authType, hasMetadata, warns) => {
+    const seed = { ...catalogSeeds.find(({ id }) => id === 'menloinsurance'), authType, requiresOAuth: authType === 'oauth' };
+    const fetchImpl = async (input, init = {}) => {
+      const url = new URL(input instanceof Request ? input.url : input);
+      if (url.pathname.startsWith('/.well-known/oauth-protected-resource') && hasMetadata) {
+        return Response.json({ resource: seed.url, authorization_servers: ['https://www.menloinsurance.com'] });
+      }
+      if (url.pathname === '/mcp' && init.method === 'POST') {
+        return jsonRpcResponse(JSON.parse(String(init.body)), {
+          supportedVersions: ['2026-07-28'], capabilities: {},
+        });
+      }
+      return new Response('Not found', { status: 404 });
+    };
+    const result = await validateSeed(seed, { fetchImpl, timeoutMs: 1_000 });
+
+    expect(result).toMatchObject({ status: 'online', authType, requiresOAuth: authType === 'oauth' });
+    expect(result.message.includes('WARNING: OAuth authorization servers advertised')).toBe(warns);
+    if (warns) expect(result.message).toContain('an anonymous MCP handshake does not establish anonymous tool access');
+    // A fresh observation replaces old evidence, including a previously stored warning.
+    expect(mergeValidationResults([seed], [{ ...result, message: 'stale warning' }], [result])).toEqual([result]);
+  });
+
   it('uses an auth challenge as bearer evidence without mislabeling it OAuth', () => {
     expect(detectedAuthType(
       { requiresOAuth: false },
@@ -1168,5 +1235,21 @@ describe('single-server validation (--only)', () => {
 
     expect(mergeValidationResults(seeds, stored, [fresh])).toEqual([stored[1], fresh, stored[0]]);
     expect(mergeValidationResults(seeds, undefined, [fresh])).toEqual([fresh]);
+  });
+});
+
+describe('OAuth environment identifier validation', () => {
+  for (const field of ['clientId', 'clientSecret']) {
+    it.each(['BAD}NAME', 'BAD"NAME', "BAD'NAME", 'BAD$(id)', 'BAD;id', 'BAD&&id', 'BAD`id`', 'BAD\nNAME', '', 'lowercase', '_NAME', 'A'.repeat(65), ['VALID_NAME']])(`rejects ${field}: %j`, (name) => {
+      const seed = structuredClone(catalogSeeds.find(({ id }) => id === 'asana'));
+      seed.oauthRegistration[field].environmentVariable = name;
+      expect(() => validateCatalogSeed(seed)).toThrow(`oauthRegistration.${field}.environmentVariable is invalid`);
+    });
+  }
+  it('accepts uppercase identifiers at both length boundaries', () => {
+    const seed = structuredClone(catalogSeeds.find(({ id }) => id === 'asana'));
+    seed.oauthRegistration.clientId.environmentVariable = 'A';
+    seed.oauthRegistration.clientSecret.environmentVariable = 'A'.repeat(64);
+    expect(() => validateCatalogSeed(seed)).not.toThrow();
   });
 });

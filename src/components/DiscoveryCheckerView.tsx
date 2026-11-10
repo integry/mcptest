@@ -14,6 +14,7 @@ import {
 } from '../utils/mcpDiscovery';
 import { createDiscoveryFetch } from '../utils/discoveryFetch';
 import { SERVER_CARD_SCHEMA_SOURCE } from '../utils/serverCardValidation';
+import { getPreferredCatalogEndpoint, resolveCatalogEndpointTransport } from '../utils/clientSetup';
 import { getCatalogServers } from '../utils/catalogUtils';
 import { getCatalogServerPath } from '../utils/catalogSeo';
 import { DISCOVERY_COPY, DISCOVERY_GUIDE_PATH } from '../content/discoveryCopy';
@@ -65,13 +66,15 @@ const SECTIONS: Array<{ id: string; title: string; kinds: DiscoveryRowKind[]; de
 ];
 
 const defaultCatalog = (): DiscoveryCatalogEntry[] => getCatalogServers().map(server => {
-  const transport = server.declaredTransport === 'legacy-sse' ? 'sse' as const : 'streamable-http' as const;
-  const urls = [server.browserUrl ?? server.url, ...(server.alternativeEndpoints ?? []).map(endpoint => endpoint.url)];
+  const urls = [getPreferredCatalogEndpoint(server).url, ...(server.alternativeEndpoints ?? []).map(endpoint => endpoint.url)];
   return {
     id: server.id,
     name: server.name,
     path: getCatalogServerPath(server.id),
-    endpoints: Array.from(new Set(urls)).map(url => ({ url, transport })),
+    endpoints: Array.from(new Set(urls)).map(url => {
+      const transport = resolveCatalogEndpointTransport(server, url);
+      return { url, transport: transport === 'legacy-sse' ? 'sse' as const : transport };
+    }),
   };
 });
 
@@ -336,7 +339,7 @@ const DiscoveryCheckerView: React.FC<DiscoveryCheckerViewProps> = ({
                     <div>
                       <code>{endpoint.url}</code>
                       <span className="discovery-endpoint-meta">
-                        {endpoint.transport === 'sse' ? 'Legacy SSE' : 'Streamable HTTP'} · from {endpoint.sources.join(', ')}
+                        {endpoint.transport === 'sse' ? 'Legacy SSE' : endpoint.transport === 'streamable-http' ? 'Streamable HTTP' : 'Transport not yet verified'} · from {endpoint.sources.join(', ')}
                       </span>
                     </div>
                     {/* A document link: the router would collapse the endpoint's "//" in the path. */}

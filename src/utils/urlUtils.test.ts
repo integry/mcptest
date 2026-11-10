@@ -25,7 +25,7 @@ describe('connection share URLs', () => {
     'preserves safe endpoint context %s separately from inspector transport', context => {
       const endpoint = `https://example.com/mcp${context}`;
       const share = getServerUrl(endpoint, 'legacy-sse');
-      expect(parse(share)).toEqual({ serverUrl: endpoint, transportMethod: 'sse' });
+      expect(parse(share)).toEqual({ serverUrl: endpoint, transportMethod: 'legacy-sse' });
     });
 
   it.each(['?token=private', '?api_key_value=private', '?nested=https%3A%2F%2Fexample.com%2F%3Faccess_token%3Dprivate', '#access_token=private'])(
@@ -61,5 +61,16 @@ describe('connection share URLs', () => {
     expect(url.pathname).not.toContain('//');
     expect(parseResultShareUrl(url.pathname, url.search)).toEqual({ serverUrl: endpoint, type: 'tool', name: 'a/b', params: { city: 'Oslo' } });
     expect(parseResultShareUrl('/call/https://example.com/mcp/tool/test')).toMatchObject({ serverUrl: 'https://example.com/mcp', name: 'test' });
+  });
+});
+
+
+describe('concrete transport URL boundaries', () => {
+  it.each(['both', 'unknown', 'garbage'])('omits invalid runtime hint %s', (transport) => {
+    // @ts-expect-error Broad catalog states are not URL transport hints.
+    const share = getConnectionShareUrl('https://example.com/endpoint', transport);
+    expect(share.url).toBe('/server/example.com/endpoint');
+    expect(parseServerUrl('/server/example.com/endpoint', `?transport=${transport}`))
+      .toEqual({ serverUrl: 'https://example.com/endpoint' });
   });
 });

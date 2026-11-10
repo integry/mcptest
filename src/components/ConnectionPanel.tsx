@@ -124,9 +124,7 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
     const normalizedUrl = serverUrl.replace(/^https?:\/\//, '');
     
     // Determine transport method based on transportType
-    const transportMethod = transportType === 'legacy-sse' ? 'sse' : 
-                          transportType === 'streamable-http' ? 'mcp' : 
-                          undefined;
+    const transportMethod = transportType ?? undefined;
     
     // Generate share URL
     const shareUrl = `${window.location.origin}${getServerUrl(normalizedUrl, transportMethod)}`;

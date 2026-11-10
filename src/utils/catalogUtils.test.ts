@@ -1,3 +1,4 @@
+import { resolveCatalogEndpointTransport } from './clientSetup';
 import { describe, expect, it } from 'vitest';
 import type { CatalogAuthType, CatalogServer } from '../types/catalog';
 import {
@@ -9,6 +10,7 @@ import {
   sortCatalogServers,
 } from './catalogUtils';
 import catalogValidation from '../data/catalogValidation.json';
+import catalogSeeds from '../data/serverCatalog.json';
 import catalogCapabilities from '../data/catalogCapabilities.json';
 
 const server = (
@@ -37,6 +39,52 @@ const server = (
 });
 
 describe('catalog authentication metadata', () => {
+  it('keeps Port OS device OAuth consistent through catalog metadata and endpoint hints', () => {
+    const seed = catalogSeeds.find(({ id }) => id === 'portoperatingsystem');
+    const validation = catalogValidation.find(({ serverId }) => serverId === 'portoperatingsystem');
+    const entry = getCatalogServers().find(({ id }) => id === 'portoperatingsystem');
+
+    expect(seed).toMatchObject({ authType: 'oauth', requiresOAuth: true });
+    expect(seed?.description).toContain('device operations require user OAuth');
+    expect(seed?.tags).toContain('oauth');
+    expect(seed?.tags).not.toContain('no-auth');
+    expect(validation).toMatchObject({
+      authType: 'oauth',
+      requiresOAuth: true,
+    });
+    expect(validation?.message).toContain('authentication oauth');
+    expect(entry).toMatchObject({
+      declaredAuthType: 'oauth', authType: 'oauth', requiresOAuth: true,
+    });
+    expect(entry?.authorizationServers).toEqual(validation?.authorizationServers);
+    expect(entry?.validationMessage).toBe(validation?.message);
+    expect(entry?.checkedAt).toBe(validation?.checkedAt);
+    expect(filterCatalogServers([entry!], { oauthFilter: 'oauth' })).toEqual([entry]);
+    expect(filterCatalogServers([entry!], { oauthFilter: 'no-auth' })).toEqual([]);
+    expect(getCatalogEndpointDiagnosticEvidence('https://api.portoperatingsystem.com/mcp'))
+      .toMatchObject({ authType: 'oauth', serverReachable: true });
+  });
+
+  it('keeps Menlo OAuth consistent in the listing, filters and connection hints', () => {
+    const seed = catalogSeeds.find(({ id }) => id === 'menloinsurance');
+    const validation = catalogValidation.find(({ serverId }) => serverId === 'menloinsurance');
+    const entry = getCatalogServers().find(({ id }) => id === 'menloinsurance');
+
+    expect(seed).toMatchObject({
+      authType: 'oauth', requiresOAuth: true,
+      listingSource: { kind: 'publisher', url: 'https://www.menloinsurance.com/ai-assistants' },
+    });
+    expect(seed?.tags).toContain('oauth');
+    expect(seed?.tags).not.toContain('no-auth');
+    expect(validation).toMatchObject({ authType: 'oauth', requiresOAuth: true });
+    expect(validation?.message).toContain('authentication oauth');
+    expect(entry).toMatchObject({ declaredAuthType: 'oauth', authType: 'oauth', requiresOAuth: true });
+    expect(filterCatalogServers([entry!], { oauthFilter: 'oauth' })).toEqual([entry]);
+    expect(filterCatalogServers([entry!], { oauthFilter: 'no-auth' })).toEqual([]);
+    expect(getCatalogEndpointDiagnosticEvidence('https://www.menloinsurance.com/mcp'))
+      .toMatchObject({ authType: 'oauth', serverReachable: true });
+  });
+
   const servers = [
     server('public', 'none'),
     server('oauth', 'oauth'),
@@ -56,12 +104,24 @@ describe('catalog authentication metadata', () => {
       .toEqual([expectedId]);
   });
 
+  it('guards against accidental catalog truncation without capping growth', () => {
+    // Lower bound only, so ordinary submissions never trip it. The baseline is independent of
+    // the seed so a truncated serverCatalog.json is caught; a few removals stay within tolerance.
+    // To bump: set reviewedCatalogSize to the current entry count after a reviewed bulk change.
+    const reviewedCatalogSize = 297;
+    const allowedShrink = 0.1;
+    expect(catalogSeeds.length).toBeGreaterThanOrEqual(reviewedCatalogSize * (1 - allowedShrink));
+  });
+
   it('merges every expanded seed into the UI-facing catalog', () => {
     const catalog = getCatalogServers();
 
-    expect(catalog).toHaveLength(284);
-    expect(catalogValidation).toHaveLength(284);
-    expect(new Set(catalogValidation.map(({ serverId }) => serverId)).size).toBe(284);
+    expect(catalog).toHaveLength(catalogSeeds.length);
+    expect(new Set(catalog.map(({ id }) => id)).size).toBe(catalogSeeds.length);
+    expect(new Set(catalog.map(({ id }) => id)))
+      .toEqual(new Set(catalogSeeds.map(({ id }) => id)));
+    expect(catalogValidation).toHaveLength(catalogSeeds.length);
+    expect(new Set(catalogValidation.map(({ serverId }) => serverId)).size).toBe(catalogSeeds.length);
     expect(new Set(catalogValidation.map(({ serverId }) => serverId)))
       .toEqual(new Set(catalog.map(({ id }) => id)));
     expect(catalog.find(({ id }) => id === 'asana')).toBeDefined();
@@ -102,6 +162,7 @@ describe('catalog authentication metadata', () => {
 
   it('resolves exact Upwork catalog transport and OAuth evidence without a provider rule', () => {
     expect(getCatalogEndpointDiagnosticEvidence('https://mcp.upwork.com/mcp')).toEqual({
+      preferredTransport: 'streamable-http',
       transport: 'streamable-http',
       authType: 'oauth',
       supportsBearerToken: false,
@@ -237,4 +298,16 @@ describe('catalog category facets', () => {
       ],
     });
   });
+});
+
+
+it('keeps diagnostic transport observations separate from concrete connection hints', () => {
+  for (const server of getCatalogServers()) {
+    for (const endpoint of [server.url, server.browserUrl, server.validatedUrl, ...(server.alternativeEndpoints ?? []).map(({ url }) => url)].filter(Boolean)) {
+      const evidence = getCatalogEndpointDiagnosticEvidence(endpoint);
+      if (!evidence) continue;
+      expect(evidence.preferredTransport).toBe(resolveCatalogEndpointTransport(server, endpoint));
+      expect(evidence.preferredTransport === undefined || evidence.preferredTransport === 'streamable-http' || evidence.preferredTransport === 'legacy-sse').toBe(true);
+    }
+  }
 });

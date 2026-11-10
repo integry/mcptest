@@ -109,7 +109,7 @@ export type DiscoveryTransport = 'streamable-http' | 'sse';
 
 export interface DiscoveredEndpoint {
   url: string;
-  transport: DiscoveryTransport;
+  transport?: DiscoveryTransport;
   /** Titles of the rows that advertise it. */
   sources: string[];
   /** The playground route that opens and connects to it. */
@@ -131,7 +131,7 @@ export interface DiscoveryCatalogEntry {
   name: string;
   /** Server page on mcptest.io. */
   path: string;
-  endpoints: Array<{ url: string; transport: DiscoveryTransport }>;
+  endpoints: Array<{ url: string; transport?: DiscoveryTransport }>;
 }
 
 export interface DiscoveryDependencies {
@@ -926,17 +926,24 @@ export const checkMcpDiscovery = async (
     for (const url of result.row.endpoints) {
       const normalized = normalizeEndpoint(url);
       if (!normalized) continue;
+      const declared = result.transports.get(normalized);
+      const transport = declared === 'sse' || declared === 'streamable-http' ? declared : undefined;
+      const inspectorPath = getServerUrl(normalized,
+        transport === 'sse' ? 'legacy-sse' : transport);
       const existing = endpoints.get(normalized);
       if (existing) {
         if (!existing.sources.includes(result.row.title)) existing.sources.push(result.row.title);
+        if (!existing.transport && transport) {
+          existing.transport = transport;
+          existing.inspectorPath = inspectorPath;
+        }
         continue;
       }
-      const transport = result.transports.get(normalized) ?? 'streamable-http';
       endpoints.set(normalized, {
         url: normalized,
         transport,
         sources: [result.row.title],
-        inspectorPath: getServerUrl(normalized, transport === 'sse' ? 'sse' : undefined),
+        inspectorPath,
       });
     }
   };
