@@ -65,6 +65,26 @@ describe('catalog authentication metadata', () => {
       .toMatchObject({ authType: 'oauth', serverReachable: true });
   });
 
+  it('keeps Menlo OAuth consistent in the listing, filters and connection hints', () => {
+    const seed = catalogSeeds.find(({ id }) => id === 'menloinsurance');
+    const validation = catalogValidation.find(({ serverId }) => serverId === 'menloinsurance');
+    const entry = getCatalogServers().find(({ id }) => id === 'menloinsurance');
+
+    expect(seed).toMatchObject({
+      authType: 'oauth', requiresOAuth: true,
+      listingSource: { kind: 'publisher', url: 'https://www.menloinsurance.com/ai-assistants' },
+    });
+    expect(seed?.tags).toContain('oauth');
+    expect(seed?.tags).not.toContain('no-auth');
+    expect(validation).toMatchObject({ authType: 'oauth', requiresOAuth: true });
+    expect(validation?.message).toContain('authentication oauth');
+    expect(entry).toMatchObject({ declaredAuthType: 'oauth', authType: 'oauth', requiresOAuth: true });
+    expect(filterCatalogServers([entry!], { oauthFilter: 'oauth' })).toEqual([entry]);
+    expect(filterCatalogServers([entry!], { oauthFilter: 'no-auth' })).toEqual([]);
+    expect(getCatalogEndpointDiagnosticEvidence('https://www.menloinsurance.com/mcp'))
+      .toMatchObject({ authType: 'oauth', serverReachable: true });
+  });
+
   const servers = [
     server('public', 'none'),
     server('oauth', 'oauth'),
@@ -82,6 +102,15 @@ describe('catalog authentication metadata', () => {
   ] as const)('filters %s servers', (authFilter, expectedId) => {
     expect(filterCatalogServers(servers, { oauthFilter: authFilter }).map(({ id }) => id))
       .toEqual([expectedId]);
+  });
+
+  it('guards against accidental catalog truncation without capping growth', () => {
+    // Lower bound only, so ordinary submissions never trip it. The baseline is independent of
+    // the seed so a truncated serverCatalog.json is caught; a few removals stay within tolerance.
+    // To bump: set reviewedCatalogSize to the current entry count after a reviewed bulk change.
+    const reviewedCatalogSize = 297;
+    const allowedShrink = 0.1;
+    expect(catalogSeeds.length).toBeGreaterThanOrEqual(reviewedCatalogSize * (1 - allowedShrink));
   });
 
   it('merges every expanded seed into the UI-facing catalog', () => {

@@ -12777,5 +12777,338 @@
     "logoRetrievedAt": "2026-11-02",
     "logoLicenseNote": "Mallary mark from the publisher's brand asset page on mallary.ai, as stated by the submitter; trademark rights remain with the publisher.",
     "homepageUrl": "https://mallary.ai/social-media-mcp-server"
+  },
+  {
+    "id": "folklore",
+    "name": "Folklore Clinical Variant Interpretation MCP",
+    "url": "https://api.helena.bio/folklore/v1/mcp",
+    "description": "Offers 11 public tools for ACMG/AMP germline variant classification, gene profiles, disease associations and literature. An optional Folklore Bearer API key adds 18 tools for case analysis, approved source files and reports.",
+    "category": "Reference",
+    "tags": [
+      "genomics",
+      "bioinformatics",
+      "germline",
+      "acmg-amp",
+      "no-auth",
+      "bearer-token"
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://folklore.helena.bio/integrations/mcp"
+    },
+    "transport": "streamable-http",
+    "exactEndpointOnly": true,
+    "requiresOAuth": false,
+    "authType": "none",
+    "alternativeAuthTypes": [
+      "bearer-token"
+    ],
+    "requiredHeaders": [
+      {
+        "name": "Authorization",
+        "description": "Optional Folklore API key for case, approved-source and report tools: Bearer <FOLKLORE_API_KEY>",
+        "valueTemplate": "Bearer <FOLKLORE_API_KEY>",
+        "required": false,
+        "secret": true
+      }
+    ],
+    "caveats": [
+      "Germline classifications are automated and GRCh38-only; they are not a substitute for clinical review.",
+      "The server also exposes support_helena, a non-scientific Helena Good campaign tool."
+    ],
+    "logoUrl": "/server-logos/folklore.png",
+    "logoSourceUrl": "https://folklore.helena.bio/images/logos/folklore.png",
+    "logoSourceKind": "official-site",
+    "logoRetrievedAt": "2026-11-03",
+    "logoLicenseNote": "Official Folklore mark from Helena Bioinformatics; trademark rights remain with Helena Bioinformatics. Submitted by the publisher.",
+    "homepageUrl": "https://folklore.helena.bio/integrations/mcp",
+    "sourceUrl": "https://github.com/helena-bioinformatics/folklore-mcp"
+  },
+  {
+    "id": "menloinsurance",
+    "name": "Menlo Insurance MCP",
+    "url": "https://www.menloinsurance.com/mcp",
+    "browserAccess": "proxy-required",
+    "description": "Connect AI assistants to Menlo insurance applications, document attachments, carrier quote requests and follow-ups. Public discovery is available without credentials; private customer actions require OAuth authorization and quote consent. Insurance purchases are a separate broker-reviewed step.",
+    "category": "Finance",
+    "tags": [
+      "finance",
+      "community-submission",
+      "oauth"
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://www.menloinsurance.com/ai-assistants"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "logoUrl": "/server-logos/menloinsurance.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-03",
+    "logoLicenseNote": "Locally generated MI monogram for a community submission; it is not an official Menlo Insurance MCP mark.",
+    "homepageUrl": "https://www.menloinsurance.com/ai-assistants"
+  },
+  {
+    "id": "macalculatriceenligne",
+    "name": "MaCalculatrice (macalc)",
+    "url": "https://macalculatriceenligne.com/api/mcp",
+    "browserAccess": "proxy-required",
+    "description": "Calculators from macalculatriceenligne.com as MCP tools: tax, salary, real estate, maths, health and unit conversions for France and other French-speaking countries. Each result links to the related page of the site. No authentication.",
+    "caveats": [
+      "Some tools, including the AI-powered calculate_anything, require a premium subscription. Pricing and rate limits are described by the pricing_policy resource."
+    ],
+    "category": "Reference",
+    "tags": [
+      "reference",
+      "community-submission",
+      "no-auth",
+      "calculator",
+      "tax",
+      "france"
+    ],
+    "listingSource": {
+      "kind": "community-submission",
+      "url": "https://macalculatriceenligne.com/mcp/"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "logoUrl": "/server-logos/macalculatriceenligne.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-03",
+    "logoLicenseNote": "Locally generated MC monogram for a community submission; it is not an official MaCalculatrice (macalc) mark.",
+    "homepageUrl": "https://macalculatriceenligne.com/mcp/"
+  },
+  {
+    "id": "pattorelay",
+    "name": "Patto",
+    "url": "https://pattorelay.com/mcp",
+    "browserAccess": "proxy-required",
+    "description": "Remote MCP server for PR and B2B outreach: contacts, organizations, campaigns, prospects, email drafts, replies and follow-up dates. Uses OAuth with protected resource metadata; bring your own AI assistant.",
+    "category": "CRM",
+    "tags": [
+      "crm",
+      "community-submission",
+      "oauth"
+    ],
+    "listingSource": {
+      "kind": "community-submission",
+      "url": "https://pattorelay.com"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "logoUrl": "/server-logos/pattorelay.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-04",
+    "logoLicenseNote": "Locally generated PA monogram for a community submission; it is not an official Patto mark.",
+    "homepageUrl": "https://pattorelay.com"
+  },
+  {
+    "id": "realtycrawl",
+    "name": "RealtyCrawl",
+    "url": "https://realtycrawl.dev/mcp",
+    "description": "Discover real estate capabilities and endpoint schemas, then retrieve source-linked observations with explicit credit budgets. Metadata is public; data calls require a RealtyCrawl API key.",
+    "category": "Search",
+    "tags": [
+      "real-estate",
+      "research",
+      "api",
+      "data"
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://github.com/realtycrawl/realtycrawl-mcp"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "alternativeAuthTypes": [
+      "bearer-token"
+    ],
+    "requiredHeaders": [
+      {
+        "name": "Authorization",
+        "description": "User-supplied RealtyCrawl API key for data calls; not required for public metadata.",
+        "valueTemplate": "Bearer <REALTYCRAWL_API_KEY>",
+        "required": false,
+        "secret": true
+      }
+    ],
+    "logoUrl": "/server-logos/realtycrawl.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-04",
+    "logoLicenseNote": "Generated R monogram for directory identification; not the official RealtyCrawl mark.",
+    "homepageUrl": "https://realtycrawl.dev",
+    "sourceUrl": "https://github.com/realtycrawl/realtycrawl-mcp",
+    "caveats": [
+      "Metadata discovery is free. Data operations require an API key, credits and explicit request budgets; eligible accounts receive 500 signup credits once.",
+      "Check current capabilities before execution. Research, unavailable and documentation-backed beta entries do not establish verified live source coverage."
+    ]
+  },
+  {
+    "id": "repostit",
+    "name": "Repostit MCP Connector",
+    "url": "https://repostit-mcp-cfjcykgqda-uc.a.run.app/mcp/v1.1",
+    "browserAccess": "proxy-required",
+    "description": "Creates and schedules social posts and carousels, manages publishing workflows, and checks delivery status. It uses OAuth2 authorization; a Repostit account is required and plan limits apply.",
+    "category": "Automation",
+    "tags": [
+      "automation",
+      "community-submission",
+      "oauth"
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://app.repostit.io/claude-connector.html"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false,
+        "redirectUrls": {}
+      },
+      "setupSteps": [],
+      "settings": [],
+      "reviewedAt": "2026-11-07",
+      "evidenceUrl": "https://app.repostit.io/claude-connector.html"
+    },
+    "logoUrl": "/server-logos/repostit.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-05",
+    "logoLicenseNote": "Locally generated RM monogram for a community submission; it is not an official Repostit MCP Connector mark.",
+    "homepageUrl": "https://app.repostit.io/claude-connector.html"
+  },
+  {
+    "id": "lianxiaozhi",
+    "name": "链小知区块链",
+    "url": "https://lianxiaozhi.com/api/mcp",
+    "browserAccess": "proxy-required",
+    "description": "Eight read-only tools for Chinese-language blockchain knowledge, tool guides, recent news (seven-day search window), event timelines and daily briefs, with source links. Anonymous Streamable HTTP; no API key or authentication.",
+    "category": "Reference",
+    "tags": [
+      "reference",
+      "community-submission",
+      "no-auth"
+    ],
+    "listingSource": {
+      "kind": "community-submission",
+      "url": "https://lianxiaozhi.com/agent"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "logoUrl": "/server-logos/lianxiaozhi.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-07",
+    "logoLicenseNote": "Locally generated LX (Lianxiaozhi) monogram for a community submission; it is not an official 链小知区块链 mark.",
+    "homepageUrl": "https://lianxiaozhi.com/agent"
+  },
+  {
+    "id": "blockvectra-docs",
+    "name": "BlockVectra Docs",
+    "url": "https://docs.blockvectra.com/mcp/docs",
+    "description": "Search and read BlockVectra RPC and Data API documentation with search_docs and read_doc. This documentation-only endpoint needs no account or API key.",
+    "category": "Documentation",
+    "tags": [
+      "docs",
+      "blockchain",
+      "developer-tools",
+      "no-auth"
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://github.com/blockvectra/mcp/blob/main/README.md"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "exactEndpointOnly": true,
+    "browserAccess": "direct",
+    "logoUrl": "/server-logos/blockvectra-docs.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-07",
+    "logoLicenseNote": "Locally generated BV monogram; it is not an official BlockVectra mark.",
+    "homepageUrl": "https://docs.blockvectra.com/en/guides/mcp-server/",
+    "sourceUrl": "https://github.com/blockvectra/mcp",
+    "caveats": [
+      "This endpoint provides documentation tools only, not JSON-RPC execution or account operations."
+    ]
+  },
+  {
+    "id": "cookierisk",
+    "name": "CookieRisk Quickscan",
+    "url": "https://cookierisk.eu/mcp",
+    "browserAccess": "proxy-required",
+    "description": "Scan a public homepage for cookies and tracking observed before consent interaction. Start a scan and retrieve its progress or findings by scan ID. The hosted Streamable HTTP server requires no sign-in or API key.",
+    "category": "Security",
+    "tags": [
+      "security",
+      "community-submission",
+      "no-auth"
+    ],
+    "listingSource": {
+      "kind": "community-submission",
+      "url": "https://cookierisk.eu/developers/mcp"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "logoUrl": "/server-logos/cookierisk.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-09",
+    "logoLicenseNote": "Locally generated CQ monogram for a community submission; it is not an official CookieRisk Quickscan mark.",
+    "homepageUrl": "https://cookierisk.eu/developers/mcp"
+  },
+  {
+    "id": "agentseo",
+    "name": "AgentSEO",
+    "url": "https://www.agentseo.dev/mcp",
+    "browserAccess": "proxy-required",
+    "description": "Keyword research, Google SERP analysis, rank tracking, backlink and content-gap analysis, and local SEO audits. Requires an AgentSEO API key sent in the x-api-key header.",
+    "category": "Search",
+    "tags": [
+      "search",
+      "seo",
+      "api-key",
+      "community-submission"
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://www.agentseo.dev/seo-mcp-server"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "api-key",
+    "alternativeAuthTypes": [
+      "bearer-token"
+    ],
+    "requiredHeaders": [
+      {
+        "name": "x-api-key",
+        "description": "AgentSEO API key",
+        "valueTemplate": "<AGENTSEO_API_KEY>",
+        "required": true,
+        "secret": true
+      }
+    ],
+    "logoUrl": "/server-logos/agentseo.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-09",
+    "logoLicenseNote": "Locally generated AG monogram for a community submission; it is not an official AgentSEO mark.",
+    "homepageUrl": "https://www.agentseo.dev/seo-mcp-server",
+    "caveats": [
+      "AgentSEO documents initialize and tools/list as public discovery methods that work without credentials; tool calls require an AgentSEO API key. The submitter reports the key is also accepted as a Bearer token."
+    ]
   }
 ]
