@@ -13044,5 +13044,71 @@
     "caveats": [
       "This endpoint provides documentation tools only, not JSON-RPC execution or account operations."
     ]
+  },
+  {
+    "id": "cookierisk",
+    "name": "CookieRisk Quickscan",
+    "url": "https://cookierisk.eu/mcp",
+    "browserAccess": "proxy-required",
+    "description": "Scan a public homepage for cookies and tracking observed before consent interaction. Start a scan and retrieve its progress or findings by scan ID. The hosted Streamable HTTP server requires no sign-in or API key.",
+    "category": "Security",
+    "tags": [
+      "security",
+      "community-submission",
+      "no-auth"
+    ],
+    "listingSource": {
+      "kind": "community-submission",
+      "url": "https://cookierisk.eu/developers/mcp"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "logoUrl": "/server-logos/cookierisk.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-09",
+    "logoLicenseNote": "Locally generated CQ monogram for a community submission; it is not an official CookieRisk Quickscan mark.",
+    "homepageUrl": "https://cookierisk.eu/developers/mcp"
+  },
+  {
+    "id": "agentseo",
+    "name": "AgentSEO",
+    "url": "https://www.agentseo.dev/mcp",
+    "browserAccess": "proxy-required",
+    "description": "Keyword research, Google SERP analysis, rank tracking, backlink and content-gap analysis, and local SEO audits. Requires an AgentSEO API key sent in the x-api-key header.",
+    "category": "Search",
+    "tags": [
+      "search",
+      "seo",
+      "api-key",
+      "community-submission"
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://www.agentseo.dev/seo-mcp-server"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "api-key",
+    "alternativeAuthTypes": [
+      "bearer-token"
+    ],
+    "requiredHeaders": [
+      {
+        "name": "x-api-key",
+        "description": "AgentSEO API key",
+        "valueTemplate": "<AGENTSEO_API_KEY>",
+        "required": true,
+        "secret": true
+      }
+    ],
+    "logoUrl": "/server-logos/agentseo.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-09",
+    "logoLicenseNote": "Locally generated AG monogram for a community submission; it is not an official AgentSEO mark.",
+    "homepageUrl": "https://www.agentseo.dev/seo-mcp-server",
+    "caveats": [
+      "AgentSEO documents initialize and tools/list as public discovery methods that work without credentials; tool calls require an AgentSEO API key. The submitter reports the key is also accepted as a Bearer token."
+    ]
   }
 ]
