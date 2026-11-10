@@ -87,41 +87,36 @@ const learnSearchIndexDevServer = () => ({
   },
 })
 
+const nodeModule = (...families) => (id) =>
+  id.includes('/node_modules/')
+  // Stylesheets are emitted as CSS; their placeholder modules must not pin a JS chunk.
+  && !/\.(css|scss|sass|less)(\?|$)/.test(id)
+  && families.some(family => id.includes(family))
+
 /**
- * Vendor chunks by library family. Only the named families are pinned; every
- * other dependency follows Rollup's own graph, so a library used only by a
+ * Pinned chunks, most shared first. Only the named families are pinned; every
+ * other dependency follows Rolldown's own graph, so a library used only by a
  * lazily loaded view (highlight.js, the JSON Schema evaluator, the MCP SDK)
  * is never bundled into a chunk the entry imports. A catch-all "vendor"
  * chunk would do exactly that and ship the inspector to every page.
+ *
+ * A Rolldown group also captures the static dependencies of the modules it
+ * matches, so a group claims what it shares with a later one: the order below
+ * is the priority. "runtime" holds Vite's own helpers (dynamic-import
+ * preloading, the modulepreload polyfill), which the entry and the vendor
+ * chunks share; claimed by a vendor chunk instead, they would make the entry
+ * import that whole chunk just for them. React comes before the Markdown
+ * renderer, which imports react/jsx-runtime.
  */
-const manualChunks = (id) => {
-  // Vite's own helpers (dynamic-import preloading, CommonJS interop) are shared
-  // by the entry and the vendor chunks; pinned so Rollup never files them under
-  // a vendor chunk, which would make the entry import that chunk just for them.
-  if (/^\0(vite\/preload-helper|vite\/modulepreload-polyfill|commonjsHelpers)\.js$/.test(id)) return 'runtime'
-  // Stylesheets are emitted as CSS; their placeholder modules must not pin a JS chunk.
-  if (!id.includes('/node_modules/') || /\.(css|scss|sass|less)(\?|$)/.test(id)) return undefined
-  if (id.includes('/firebase/') || id.includes('/@firebase/')) return 'firebase'
-  if (id.includes('/@modelcontextprotocol/') || id.includes('/zod/')) return 'mcp-sdk'
-  if (
-    id.includes('/react/')
-    || id.includes('/react-dom/')
-    || id.includes('/react-router/')
-    || id.includes('/react-router-dom/')
-    || id.includes('/scheduler/')
-  ) return 'react'
-  if (
-    id.includes('/react-markdown/')
-    || id.includes('/remark-')
-    || id.includes('/unified/')
-    || id.includes('/micromark')
-    || id.includes('/mdast-')
-    || id.includes('/hast-')
-  ) return 'markdown'
-  if (id.includes('/highlight.js/')) return 'highlight'
-  if (id.includes('/bootstrap/') || id.includes('/@popperjs/')) return 'bootstrap'
-  return undefined
-}
+const CHUNK_GROUPS = [
+  { name: 'runtime', test: /^\0vite\/(preload-helper|modulepreload-polyfill)\.js$/ },
+  { name: 'react', test: nodeModule('/react/', '/react-dom/', '/react-router/', '/react-router-dom/', '/scheduler/') },
+  { name: 'firebase', test: nodeModule('/firebase/', '/@firebase/') },
+  { name: 'mcp-sdk', test: nodeModule('/@modelcontextprotocol/', '/zod/') },
+  { name: 'markdown', test: nodeModule('/react-markdown/', '/remark-', '/unified/', '/micromark', '/mdast-', '/hast-') },
+  { name: 'highlight', test: nodeModule('/highlight.js/') },
+  { name: 'bootstrap', test: nodeModule('/bootstrap/', '/@popperjs/') },
+].map((group, index, groups) => ({ ...group, priority: groups.length - index }))
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -142,9 +137,13 @@ export default defineConfig({
     // each page's critical subset and preloads this file instead
     // (scripts/critical-css.js), so it no longer blocks the first paint.
     cssCodeSplit: false,
-    rollupOptions: {
-      output: { manualChunks }
-    }
+    rolldownOptions: {
+      output: {
+        codeSplitting: {
+          groups: CHUNK_GROUPS,
+        },
+      },
+    },
   },
   test: {
     environment: 'jsdom'

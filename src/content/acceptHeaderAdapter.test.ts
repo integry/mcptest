@@ -1,9 +1,9 @@
 // @vitest-environment node
-// Vite's esbuild service needs Node rather than the jsdom default in vite.config.js.
+// Vite's Oxc transformer needs Node rather than the jsdom default in vite.config.mjs.
 
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { transformWithEsbuild } from 'vite';
+import { transformWithOxc } from 'vite';
 import { describe, expect, it } from 'vitest';
 
 type Format = 'both' | 'json' | 'sse';
@@ -17,7 +17,7 @@ const serverFixes = article.slice(article.indexOf('### Server-side fixes'), arti
 async function loadExpressAdapter(): Promise<(request: Request) => Served> {
   const source = serverFixes.match(/```typescript\n([\s\S]*?)```/)?.[1];
   if (!source) throw new Error('406 article no longer contains the Express adapter');
-  const { code: js } = await transformWithEsbuild(source, 'adapter.ts', { target: 'es2022' });
+  const { code: js } = await transformWithOxc(source, 'adapter.ts', { target: 'es2022' });
   let route: ((req: Request, res: unknown) => void) | undefined;
   let served: Served | undefined;
   const createMcpHandler = (_factory: unknown, options?: { responseMode?: string }) => options?.responseMode;
