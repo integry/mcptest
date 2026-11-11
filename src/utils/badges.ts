@@ -26,18 +26,18 @@ interface BadgeDefinition {
 const LABEL_COLOR = '#555';
 
 export const BADGE_DEFINITIONS: Record<BadgeVariant, BadgeDefinition> = {
-  neutral: { label: 'tested on', message: 'mcptest.io', color: '#047857', file: 'mcptest' },
-  ready: { label: 'mcptest.io', message: 'ready', color: '#03664a', file: 'ready' },
-  review: { label: 'mcptest.io', message: 'review', color: '#d97706', file: 'review' },
+  neutral: { label: 'tested on', message: 'mcptest.io', color: '#167a2c', file: 'mcptest' },
+  ready: { label: 'mcptest.io', message: 'ready', color: '#167a2c', file: 'ready' },
+  review: { label: 'mcptest.io', message: 'review', color: '#975300', file: 'review' },
   'authorization-required': {
     label: 'mcptest.io',
     message: 'auth required',
-    color: '#d97706',
+    color: '#975300',
     file: 'authorization-required',
   },
-  blocked: { label: 'mcptest.io', message: 'blocked', color: '#dc2626', file: 'blocked' },
-  unknown: { label: 'mcptest.io', message: 'unknown', color: '#64748b', file: 'unknown' },
-  'breaking-change': { label: 'mcptest.io', message: 'breaking change', color: '#dc2626', file: 'breaking-change' },
+  blocked: { label: 'mcptest.io', message: 'blocked', color: '#c42b2b', file: 'blocked' },
+  unknown: { label: 'mcptest.io', message: 'unknown', color: '#6b746f', file: 'unknown' },
+  'breaking-change': { label: 'mcptest.io', message: 'breaking change', color: '#c42b2b', file: 'breaking-change' },
 };
 
 export const BADGE_VARIANTS = Object.keys(BADGE_DEFINITIONS) as BadgeVariant[];
