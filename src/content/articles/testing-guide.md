@@ -318,7 +318,7 @@ A `curl` check proves the headers are present; only a browser proves they are su
 | HTTP+SSE | 2024-11-05 transport, formally deprecated in 2026-07-28 | Browser playground (as a fallback), Inspector with `--transport sse` |
 | stdio | Local process over stdin and stdout | Locally only: Inspector, Postman, SDK tests that spawn the process |
 
-Stdio can only be tested on the machine that runs it: launch it with the Inspector or spawn it from an SDK test. A hosted web tool cannot reach your localhost, so deploy a preview or use a tunnel for browser tests. [Remote vs local MCP servers](/docs/remote-vs-local) explains the trade-offs, and [converting a stdio server to remote](/learn/convert-local-stdio-mcp-server-to-remote) covers the move. For `406`, `415` and `405` responses, see [the status-code guide](/learn/mcp-406-not-acceptable-415-and-405).
+Stdio can only be tested on the machine that runs it: launch it with the Inspector or spawn it from an SDK test. A hosted backend, such as a web tool's proxy or a cloud CI runner, cannot reach your localhost. A browser tool that connects directly from your browser, as the playground does first, can reach a local HTTP server if the server allows the page's origin in CORS and the browser permits the local-network request, which Chromium may ask you to approve. If that is blocked, deploy a preview or use a tunnel. [Remote vs local MCP servers](/docs/remote-vs-local) explains the trade-offs, and [converting a stdio server to remote](/learn/convert-local-stdio-mcp-server-to-remote) covers the move. For `406`, `415` and `405` responses, see [the status-code guide](/learn/mcp-406-not-acceptable-415-and-405).
 
 ## Validating tool schemas, output schemas and descriptions
 
@@ -357,7 +357,7 @@ For wire-level expectations use the [current specification](https://modelcontext
 3. For each capability the server advertises, `tools/list`, `resources/list` or `prompts/list` returns complete results, following `nextCursor` to the last page.
 4. Every tool that declares an `outputSchema` returns `structuredContent` that matches it.
 5. On 2026, a missing or mismatched `Mcp-Method` is rejected with `400`, and so is `Mcp-Name` on `tools/call`, `resources/read` and `prompts/get`; on every version, malformed JSON gets `-32700`.
-6. If the server is protected, unauthenticated requests get `401` with a usable `WWW-Authenticate`, OAuth completes with PKCE and the token is audience-checked; if it allows anonymous access, it works without credentials.
+6. If the server requires credentials, requests without them, or with invalid, expired or revoked ones, get `401` or `403`, never a `200`. If it uses OAuth, the `401` carries `WWW-Authenticate` with `resource_metadata`, sign-in completes with PKCE `S256` and the token is audience-checked. If it allows anonymous access, it works without credentials.
 7. The browser preflight passes from an allowed origin, and a 2025 server that issues `Mcp-Session-Id` exposes it.
 8. Sessions, if any, survive the deploy process you actually use, or fail with `404` and recover through a new `initialize`.
 9. The tool list has no unreviewed breaking changes against the last release.
@@ -368,7 +368,7 @@ For wire-level expectations use the [current specification](https://modelcontext
 
 ### How do I test an MCP server locally?
 
-For a stdio server, run it under the MCP Inspector (`npx @modelcontextprotocol/inspector`, or `uv run mcp dev server.py` with the Python SDK) and write SDK tests that call your tools in-process. For a local HTTP server, point the Inspector or `curl` at `http://localhost:<port>/mcp`. Browser-based tools cannot reach your localhost, so deploy a preview for those checks.
+For a stdio server, run it under the MCP Inspector (`npx @modelcontextprotocol/inspector`, or `uv run mcp dev server.py` with the Python SDK) and write SDK tests that call your tools in-process. For a local HTTP server, point the Inspector or `curl` at `http://localhost:<port>/mcp`. Browser-based tools can reach it only through a direct request from your browser, subject to CORS and the browser's local-network permissions; their hosted proxies cannot reach your machine. If the direct connection is blocked, deploy a preview or use a tunnel.
 
 ### Can I test an MCP server without Claude Desktop?
 
@@ -376,7 +376,7 @@ Yes. You do not need any AI client to test the protocol. The Inspector, Postman,
 
 ### How do I test an MCP server online?
 
-Open [mcptest.io](/), paste the server's full URL and connect. It runs in the browser with no install or account, handles OAuth, bearer tokens and API keys, calls tools and produces a shareable report. It tests remote servers only.
+Open [mcptest.io](/), paste the server's full URL and connect. It runs in the browser with no install or account, handles OAuth, bearer tokens and API keys, calls tools and produces a shareable report. It tests HTTP servers, not stdio; a server on localhost works only over the [direct browser connection](#transports-what-you-can-test-where).
 
 ### How do I test an MCP server with curl?
 
