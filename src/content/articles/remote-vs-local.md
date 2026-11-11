@@ -7,7 +7,7 @@ level: practitioner
 order: 2
 category: Transports
 readingTimeMinutes: 7
-lastReviewed: "2026-08-10"
+lastReviewed: "2026-11-11"
 path: /docs/remote-vs-local
 metaTitle: Remote vs. Local MCP Servers | mcptest.io
 metaDescription: Compare stdio and Streamable HTTP MCP servers. Learn how local and remote transports handle sessions, authentication, deployment, and compatibility.
@@ -23,56 +23,60 @@ sourceLinks:
     url: "https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization"
 ---
 
-MCP's standard transports are stdio for a server launched on the user's machine and Streamable HTTP for an independently deployed service. Remote MCP now spans two lifecycle eras: sessionless requests in `2026-07-28` and the stateful handshake used by every earlier stable revision. A compatible client and a production server need to be explicit about which behavior they are using.
+MCP defines two standard transports: stdio, for a server the client launches on the user's machine, and Streamable HTTP, for a server deployed as a web service. Remote MCP also spans two lifecycle eras: stateless requests in `2026-07-28`, and the stateful `initialize` handshake of every earlier revision. Clients and production servers need to know which era each connection uses.
 
 ## Local servers: stdio {#local-servers}
 
-With stdio, the client launches the server as a subprocess and exchanges newline-delimited JSON-RPC through standard input and output. Nothing except valid MCP messages may be written to stdout; diagnostic logging belongs on stderr. This transport is a strong fit for local files, developer tools, or anything that should have no network-facing endpoint.
+With stdio, the client launches the server as a subprocess and exchanges newline-delimited JSON-RPC messages over standard input and output. The server must write nothing to stdout except valid MCP messages; logs go to stderr. stdio suits local files, developer tools, and anything that should have no network-facing endpoint.
 
-Process lifetime supplies a natural isolation boundary. Credentials usually arrive through the environment, and each client gets its own process. The trade-offs are installation and runtime requirements on the user's machine, one process per client, and no shared hosted endpoint. Stdio can carry either protocol era when the SDK supports it; "local" does not by itself mean "legacy."
+Each client gets its own server process, which isolates clients from each other. Credentials usually arrive through environment variables. The trade-offs: the server and its runtime must be installed on the user's machine, every client starts its own process, and there is no shared hosted endpoint. stdio can carry either protocol era if the SDK supports it, so "local" does not mean "legacy".
 
 ## Remote servers: Streamable HTTP {#remote-servers}
 
-A remote server exposes one exact MCP endpoint, such as `https://example.com/mcp`. The endpoint accepts JSON-RPC requests over HTTP POST and can answer with `application/json` or a per-request `text/event-stream` response. One deployment can serve many clients and can sit behind standard gateways, authentication services, and load balancers.
+A remote server exposes one MCP endpoint URL, such as `https://example.com/mcp`. The endpoint accepts JSON-RPC requests as HTTP POSTs and answers each one with `application/json` or with a `text/event-stream` (SSE) response for that request. One deployment serves many clients and can sit behind ordinary gateways, authentication services and load balancers.
 
 ### 2026 stateless flow {#stateless-flow}
 
-In `2026-07-28`, every request stands alone. There is no `initialize` / `notifications/initialized` handshake and no `Mcp-Session-Id`. A server must implement `server/discover`, while a client may call it to learn the supported versions and capabilities before normal work. The official SDK's automatic mode uses that call as an era probe.
+In `2026-07-28`, every request stands alone. There is no `initialize` / `notifications/initialized` handshake and no `Mcp-Session-Id`. A server must implement `server/discover`; a client may call it first to learn the supported versions and capabilities. The TypeScript SDK's automatic negotiation mode uses that call to probe which era a server speaks.
 
-Every request includes its protocol version and client capabilities in `params._meta`. Streamable HTTP also requires `MCP-Protocol-Version` and `Mcp-Method` headers; named operations such as `tools/call`, `resources/read`, and `prompts/get` also require `Mcp-Name`. The header version must match the body metadata. This design lets a gateway route, authorize, and meter a call before parsing the JSON body, and lets any healthy server instance handle any request.
+Every request carries its protocol version and client capabilities in `params._meta`. On Streamable HTTP, every POST also needs the `MCP-Protocol-Version` and `Mcp-Method` headers, and `tools/call`, `resources/read` and `prompts/get` also need `Mcp-Name`. Header values must match the body; a mismatch is rejected with `400` and error `-32020`. Because the headers repeat what the body says, a gateway can route, authorize and meter a call without parsing JSON, and any healthy instance can handle any request.
 
-A POST request may still receive an SSE response while work runs. For continuing change notifications, 2026 uses the `subscriptions/listen` request instead of the old standalone GET stream. Closing a per-request SSE response cancels that request. Interactive tool flows use multi-round-trip `input_required` results and retries instead of server-initiated requests on a permanently open connection.
+A POST can still receive an SSE response while work runs, for example to stream progress. For ongoing change notifications, a client sends `subscriptions/listen`, which replaces the old standalone GET stream. Closing a request's SSE response cancels that request. When a tool needs input from the user mid-call, the server returns an `input_required` result and the client retries with the answers; the server no longer sends requests of its own over a long-lived connection.
 
 ### 2025 stateful flow {#stateful-flow}
 
-Revisions through `2025-11-25` start with an `initialize` POST. The server returns the selected protocol version, capabilities, and server identity; the client acknowledges with `notifications/initialized`. A server that wants transport state also returns `Mcp-Session-Id`. The client must then include that opaque ID and the negotiated `MCP-Protocol-Version` on later requests.
+Revisions through `2025-11-25` start with an `initialize` POST. The server returns the selected protocol version, its capabilities and its identity; the client acknowledges with `notifications/initialized`. A server that keeps session state also returns `Mcp-Session-Id`. The client must then send that opaque ID, and (from `2025-06-18`) the negotiated `MCP-Protocol-Version`, on every later request.
 
-- A missing required session ID normally produces `400 Bad Request`.
-- An expired or unknown session ID produces `404 Not Found`; the client creates a fresh connection rather than retrying the stale session.
-- A client may send DELETE with the session header to terminate it; a server that does not support explicit termination may answer `405 Method Not Allowed`.
-- A separate GET may open a server-to-client SSE stream. Returning `405` is valid when that optional stream is unsupported.
+- A request without a required session ID should get `400 Bad Request`.
+- An expired or unknown session ID gets `404 Not Found`. The client must then start a new session with a fresh `initialize`, not retry the old ID.
+- A client may send DELETE with the session header to end the session; a server that does not allow this answers `405 Method Not Allowed`.
+- A client may send GET to open a server-to-client SSE stream. A server that does not offer that optional stream answers `405`.
 
-Session IDs must be secure, unpredictable, and kept out of URLs and logs. Stateful servers deployed across instances need shared session storage or correct affinity; otherwise users see intermittent `404` responses as calls land on different instances.
+Session IDs must be secure and unpredictable, and must stay out of URLs and logs. A stateful server running on several instances needs shared session storage or session affinity; otherwise users see intermittent `404` responses when calls land on an instance that does not know the session.
 
 ### Streaming and compatibility {#streaming}
 
-For 2025 Streamable HTTP, clients send an `Accept` header offering both `application/json` and `text/event-stream`. A JSON-RPC request can receive one JSON response or an SSE stream that eventually contains it. Notifications and client responses normally receive `202 Accepted` with no body. SSE event IDs and `Last-Event-ID` support resumption where the server offers it.
+In both eras, clients send an `Accept` header that offers both `application/json` and `text/event-stream`, and a request gets either one JSON response or an SSE stream that ends with the response. A POST that carries a notification or a response, not a request, gets `202 Accepted` with no body. In 2025 revisions, SSE event IDs and `Last-Event-ID` let a client resume a broken stream where the server supports it. `2026-07-28` removes resumption: a client whose stream breaks re-sends the request with a new ID.
 
-The original `2024-11-05` HTTP+SSE transport uses two endpoints: a client opens a GET stream, receives an `endpoint` event, and sends messages to the advertised POST URL. It is deprecated, but mcptest.io keeps it as a final fallback for deployed servers. An explicit URL is always tested before conventional path guesses such as `/mcp` or `/sse`.
+The original `2024-11-05` HTTP+SSE transport uses two endpoints: the client opens a GET stream, receives an `endpoint` event, and sends its messages to the POST URL named in that event. The transport is deprecated, but mcptest.io still tries it last for servers that only speak it. mcptest.io always tests the exact URL you enter, and also tries the conventional `/mcp` and `/sse` sibling paths.
 
 ## Authorization
 
-Remote MCP authorization uses the OAuth 2.1 resource-server model. A protected MCP endpoint returns `401 Unauthorized` and points the client to protected-resource metadata. That metadata names the authorization server; the client discovers its metadata, identifies itself, and runs authorization code with PKCE and an RFC 8707 `resource` value bound to the MCP server.
+Authorization is optional in MCP. When a remote server uses it, the server is an OAuth 2.1 resource server:
 
-Servers must validate issuer, audience, expiry, and scopes rather than accepting any token that happens to be structurally valid. The 2026 revision requires authorization-response issuer validation when an `iss` value is returned, binds client credentials to their issuer, and deprecates Dynamic Client Registration in favor of Client ID Metadata Documents. Bearer tokens belong in the `Authorization` header, never a query string, and an MCP server must not pass a client token through to an unrelated upstream API.
+1. A request without a valid token gets `401 Unauthorized`, pointing the client to the server's protected resource metadata (RFC 9728).
+2. That metadata names the authorization server. The client fetches the authorization server's metadata and identifies itself: with a Client ID Metadata Document, a pre-registered client ID, or Dynamic Client Registration.
+3. The client runs the authorization code flow with PKCE, and sends an RFC 8707 `resource` value naming the MCP server, so the token is bound to that server.
 
-mcptest.io supports discovered OAuth with PKCE as well as explicit bearer tokens and API keys for servers that use provider-specific authentication. When its optional CORS proxy is enabled, Firebase authenticates the proxy hop and the target credential is carried through a separate internal header; the two trust boundaries are not conflated.
+Servers must validate each token's issuer, audience, expiry and scopes, not just its structure. The 2026 revision adds three client rules: validate the `iss` value in an authorization response when one is present (RFC 9207), keep client credentials tied to the authorization server that issued them, and prefer Client ID Metadata Documents, because Dynamic Client Registration is deprecated. Bearer tokens belong in the `Authorization` header, never in a query string, and an MCP server must not pass a client's token through to an upstream API. The [OAuth 2.1 reference](/learn/mcp-oauth-2-1-reference) has the details.
+
+mcptest.io supports this OAuth flow, and also accepts an explicit bearer token or an API key for servers with their own authentication. When a request goes through mcptest's CORS proxy, the proxy's own `Authorization` header carries only the optional mcptest.io sign-in, and the target server's credential travels in a separate header, so the two are never mixed.
 
 ## CORS and origin security {#cors-security}
 
-A browser client needs the server to allow `Content-Type`, `Accept`, `Authorization`, `x-api-key`, `MCP-Protocol-Version`, `Mcp-Method`, and `Mcp-Name`. A 2025 stateful endpoint must additionally allow `Mcp-Session-Id` and `Last-Event-ID`, and expose `Mcp-Session-Id` so browser code can read it. Only allow the headers and origins your deployment actually uses.
+For a browser client, the server's CORS preflight must allow the request headers `Content-Type`, `Accept`, `Authorization`, `MCP-Protocol-Version`, `Mcp-Method` and `Mcp-Name`, plus `x-api-key` if you use API keys and any `Mcp-Param-*` headers your tools declare. A 2025 stateful endpoint must also allow `Mcp-Session-Id` and `Last-Event-ID`. Expose `WWW-Authenticate` so browser code can start OAuth discovery, and on 2025 endpoints `Mcp-Session-Id` so it can read the session. Allow only the headers and origins your deployment uses; the [CORS guide](/learn/mcp-cors-headers-for-browser-clients) lists exact values.
 
-CORS is a browser control, not MCP authorization. Remote servers must still validate the incoming `Origin` and reject disallowed origins. Local HTTP servers should bind to loopback rather than all interfaces. Production endpoints need HTTPS, rate limits, careful credential redaction, request-size limits, and tool-level authorization.
+CORS is a browser control, not MCP authorization. Servers must still validate the incoming `Origin` header and answer a disallowed origin with `403 Forbidden`. Local HTTP servers should listen on loopback (`127.0.0.1`), not on all interfaces. Production endpoints need HTTPS, rate limits, careful credential redaction, request-size limits, and tool-level authorization.
 
 ## Choosing and testing a deployment {#choosing-deployment}
 
@@ -83,6 +87,6 @@ CORS is a browser control, not MCP authorization. Remote servers must still vali
 | Credentials | Usually environment or host-managed | OAuth bearer token, API key, or public endpoint | OAuth bearer token, API key, or public endpoint |
 | Best fit | Local files and developer tooling | New scalable hosted services | Compatibility with deployed clients and servers |
 
-New hosted servers should implement the stateless 2026 lifecycle. Supporting the stateful era as well broadens compatibility, but its session contract must remain isolated from the 2026 path. Continue with the [testing guide](/docs/testing-guide) to test both, or use [troubleshooting](/docs/troubleshooting) when negotiation fails.
+New hosted servers should implement the stateless 2026 lifecycle. Supporting the 2025 stateful era as well reaches more clients, but keep its session handling separate from the 2026 path, so a 2026 request never depends on a session. Continue with the [testing guide](/docs/testing-guide) to test both, or use [troubleshooting](/docs/troubleshooting) when negotiation fails.
 
 Normative references: the [2026 Streamable HTTP transport](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http), [2025 transport](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports), and [current authorization specification](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization).
