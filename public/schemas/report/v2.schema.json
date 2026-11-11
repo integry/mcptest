@@ -429,7 +429,8 @@
             "description-quality",
             "schema-quality",
             "capability-risk",
-            "prompt-like-description"
+            "prompt-like-description",
+            "annotations"
           ]
         },
         "severity": { "enum": ["critical", "high", "medium", "low", "info"] },

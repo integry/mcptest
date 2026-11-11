@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import type { EvaluationReport } from '../utils/evaluation';
 import ReleaseReadinessReport from './ReleaseReadinessReport';
 import { createCapabilityInventory } from '../utils/capabilityInventory';
+import { analyzeToolSurface } from '../utils/toolSurfaceAnalysis';
 import { HOST_IDS } from '../compatibility';
 import { getClientCompatibilityForHost } from '../data/clientCompatibility';
 
@@ -189,6 +190,49 @@ describe('ReleaseReadinessReport', () => {
     for (const item of priorities.filter((entry) => entry !== contract)) {
       expect(item.querySelector('.release-priority-meta a')).toBeNull();
     }
+  });
+
+  it('links documented tool annotation findings to their reference sections', () => {
+    const report: EvaluationReport = {
+      serverUrl: 'https://tools.example/mcp',
+      outcome: 'scored',
+      finalScore: 10,
+      sections: {
+        protocol: {
+          name: 'Protocol',
+          description: 'Protocol checks',
+          score: 10,
+          maxScore: 10,
+          details: [{ text: '✓ Connected' }],
+        },
+      },
+      toolSurfaceAnalysis: analyzeToolSurface([{
+        name: 'create_note',
+        description: 'Creates a note in the notebook.',
+        inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+        annotations: { readOnlyHint: true },
+      }]),
+    };
+    const container = document.createElement('div');
+    container.innerHTML = renderToStaticMarkup(
+      <ReleaseReadinessReport report={report} expandedItems={new Set()} onToggleItem={() => undefined} />
+    );
+
+    const findings = [...container.querySelectorAll('.tool-finding')];
+    const mismatch = findings.find((item) => item.textContent?.includes('Declared hints contradict'));
+    expect(mismatch?.querySelector('a')?.getAttribute('href'))
+      .toBe('/learn/mcp-transport-diagnostics-reference#tool-annotations-hint-name-mismatch');
+    expect(mismatch?.textContent).toContain('readOnlyHint is true, but the name "create_note" contains the token "create"');
+    const treatment = findings.find((item) => item.textContent?.includes('How clients treat each tool'));
+    expect(treatment?.querySelector('a')?.getAttribute('href'))
+      .toBe('/learn/mcp-transport-diagnostics-reference#tool-annotations-client-treatment');
+    const writeRisk = findings.find((item) => item.textContent?.includes('State-changing capability signals'));
+    expect(writeRisk?.querySelector('a')).toBeNull();
+
+    const priority = [...container.querySelectorAll('.release-priority')]
+      .find((item) => item.textContent?.includes('Declared hints contradict'));
+    expect(priority?.querySelector('.release-priority-meta a')?.getAttribute('href'))
+      .toBe('/learn/mcp-transport-diagnostics-reference#tool-annotations-hint-name-mismatch');
   });
 
   it('links an expanded transport diagnostic to its reference section', () => {

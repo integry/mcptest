@@ -18,7 +18,7 @@ import type { OAuthTraceV1 } from './oauthTrace';
 import type { ReleaseDecision } from './releaseReadiness';
 import { VERSION_INFO } from './versionInfo';
 import { getTrustedAuthorizationGuidanceForEndpoint } from './authorizationGuidanceLookup';
-import { documentedEvidenceIdFor, isCanonicalReferenceUrl, referenceUrlFor } from './referenceLinks';
+import { documentedEvidenceIdFor, isCanonicalReferenceUrl, referenceUrlFor, toolSurfaceReferenceId } from './referenceLinks';
 
 export const REPORT_SCHEMA_VERSION = '2.0.0' as const;
 export const REPORT_SCHEMA_URL = 'https://mcptest.io/schemas/report/v2.schema.json' as const;
@@ -123,6 +123,7 @@ const ToolSurfaceFindingArtifactSchema = z.object({
     'schema-quality',
     'capability-risk',
     'prompt-like-description',
+    'annotations',
   ]),
   severity: z.enum(['critical', 'high', 'medium', 'low', 'info']),
   kind: z.enum(['measurement', 'quality-signal', 'capability-signal', 'review-signal']),
@@ -2345,6 +2346,17 @@ export const serializePublicReportMarkdown = (report: PublicReport): string => {
           `  - ${markdownInline(finding.summary)}`,
           `  - Remediation: ${markdownInline(finding.remediation)}`
         );
+        // Documented findings carry per-tool evidence the summary does not repeat.
+        const referenceId = toolSurfaceReferenceId(finding.id);
+        if (referenceUrlFor(referenceId)) {
+          lines.push(`  - Reference: ${markdownFindingId(referenceId)}`);
+          for (const item of finding.evidence) {
+            lines.push(`  - Evidence: ${markdownInline(item.tool)} at ${markdownInline(item.path)}: ${markdownInline(item.detail)}`);
+          }
+          if (finding.omittedEvidenceCount > 0) {
+            lines.push(`  - ${finding.omittedEvidenceCount} more evidence items omitted.`);
+          }
+        }
       }
     }
     if (analysis.findingCount > 0) lines.push('');

@@ -11,6 +11,7 @@ import {
   type ToolSurfaceFindingsBySeverityV1,
   type ToolSurfaceSeverity,
 } from '../types/toolSurfaceAnalysis';
+import { analyzeToolAnnotations } from './toolAnnotationAnalysis';
 
 const EVIDENCE_LIMIT = 12;
 const EVIDENCE_FIELD_CHARACTER_LIMIT = 2_000;
@@ -2017,6 +2018,14 @@ export function analyzeToolSurface(input: ToolSurfaceAnalyzerInput): ToolSurface
     });
   }
 
+  const annotationAnalysis = analyzeToolAnnotations(tools.map((tool) => ({
+    displayName: tool.displayName,
+    name: tool.name,
+    description: tool.description,
+    raw: tool.raw,
+  })));
+  for (const finding of annotationAnalysis.findings) addFinding(findings, finding);
+
   for (const severity of SEVERITIES) {
     findings[severity].sort((left, right) => compareText(left.id, right.id));
   }
@@ -2075,6 +2084,7 @@ export function analyzeToolSurface(input: ToolSurfaceAnalyzerInput): ToolSurface
         destructiveCapabilityToolCount: destructiveSignals.length,
         promptLikeDescriptionCount: promptSignals.length,
       },
+      annotations: annotationAnalysis.metrics,
     },
     fingerprint: {
       algorithm: 'fnv1a-64-v1',

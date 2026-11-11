@@ -11,7 +11,22 @@ export type ToolSurfaceFindingCategory =
   | 'description-quality'
   | 'schema-quality'
   | 'capability-risk'
-  | 'prompt-like-description';
+  | 'prompt-like-description'
+  | 'annotations';
+
+/**
+ * Stable ids of the tool-annotation findings. Each has a section in the
+ * diagnostics reference under its release-priority id (`tool.<id>`).
+ */
+export const TOOL_ANNOTATION_FINDING_IDS = [
+  'annotations.coverage',
+  'annotations.missing-safety-hints',
+  'annotations.missing-title',
+  'annotations.hint-name-mismatch',
+  'annotations.client-treatment',
+] as const;
+
+export type ToolAnnotationFindingId = typeof TOOL_ANNOTATION_FINDING_IDS[number];
 
 export type ToolSurfaceFindingKind =
   | 'measurement'
@@ -77,6 +92,26 @@ export interface ToolRiskSignalMetricsV1 {
   promptLikeDescriptionCount: number;
 }
 
+/** Server-level annotation coverage: how many analyzed tools declare each field. */
+export interface ToolAnnotationMetricsV1 {
+  /** Named tool definitions the annotation checks covered. */
+  analyzedToolCount: number;
+  annotatedToolCount: number;
+  readOnlyHintCount: number;
+  destructiveHintCount: number;
+  idempotentHintCount: number;
+  openWorldHintCount: number;
+  annotationTitleCount: number;
+  titleCount: number;
+  /** Tools that declare readOnlyHint: true. */
+  readOnlyToolCount: number;
+  /** Tools that state their retry safety: readOnlyHint: true, idempotentHint: true, or both readOnlyHint and idempotentHint declared. */
+  retryHintDeclaredCount: number;
+  /** Tools with readOnlyHint: true or idempotentHint: true. */
+  retryEligibleToolCount: number;
+  hintMismatchToolCount: number;
+}
+
 export interface ToolSurfaceMetricsV1 {
   toolListStatus: 'present' | 'empty' | 'missing' | 'malformed';
   toolCount: number;
@@ -90,6 +125,8 @@ export interface ToolSurfaceMetricsV1 {
   schemas: ToolSchemaMetricsV1;
   ambiguity: ToolAmbiguityMetricsV1;
   riskSignals: ToolRiskSignalMetricsV1;
+  /** Absent on analyses produced before annotation checks existed. */
+  annotations?: ToolAnnotationMetricsV1;
 }
 
 export interface ToolSurfaceFingerprintV1 {

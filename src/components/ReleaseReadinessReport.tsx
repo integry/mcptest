@@ -23,7 +23,7 @@ import {
   createReleaseDecision,
   type ReleaseReadinessStatus,
 } from '../utils/releaseReadiness';
-import { documentedEvidenceIdFor, hasReference } from '../utils/referenceLinks';
+import { documentedEvidenceIdFor, hasReference, toolSurfaceReferenceId } from '../utils/referenceLinks';
 import { trackEvent } from '../utils/analytics';
 import { createReportDownload, saveReportDownload } from '../utils/reportDownloads';
 import { getAuthorizationGuidanceForEndpoint } from '../utils/authorizationGuidanceLookup';
@@ -420,6 +420,9 @@ const ReleaseReadinessReport: React.FC<ReleaseReadinessReportProps> = ({
                     <div>
                       <span className={`finding-severity finding-${finding.severity}`}>{finding.severity}</span>
                       <h4>{finding.title}</h4>
+                      {hasReference(toolSurfaceReferenceId(finding.id)) && (
+                        <FindingReferenceLink id={toolSurfaceReferenceId(finding.id)} showId={false} />
+                      )}
                     </div>
                     <p>{finding.summary}</p>
                     <p className="release-remediation"><strong>Remediation:</strong> {finding.remediation}</p>
