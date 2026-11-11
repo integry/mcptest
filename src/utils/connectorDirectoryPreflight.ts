@@ -190,12 +190,12 @@ const methodSelectorScan: Evaluator = ({ tools }) => {
       evidence: capped(unresolved.map((match) => `${match.tool} (${match.argument})`)),
     };
   }
-  // `$ref`, `if`/`then`/`else` and similar can declare a method argument the scan never sees.
+  // `$ref`, `if`/`then`/`else`, and scopes past the scan's size or nesting limits can hide a method argument.
   const uninterpreted = findUninterpretedSelectorScopes(definitions.tools);
   if (uninterpreted.length > 0) {
     return {
       status: 'unknown',
-      detail: `${plural(uninterpreted.length, 'tool schema')} ${uninterpreted.length === 1 ? 'uses' : 'use'} constructs this check does not follow ($ref, if/then/else, dependentSchemas), so a method argument that accepts both safe and unsafe HTTP methods could not be ruled out.`,
+      detail: `${plural(uninterpreted.length, 'tool schema')} could not be fully scanned (constructs such as $ref, if/then/else or dependentSchemas, or more properties or nesting than the check examines), so a method argument that accepts both safe and unsafe HTTP methods could not be ruled out.`,
       evidence: capped(uninterpreted.map((match) => `${match.tool} (${match.argument})`)),
     };
   }

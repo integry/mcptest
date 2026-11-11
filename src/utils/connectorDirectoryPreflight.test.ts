@@ -288,6 +288,32 @@ describe('connector directory preflight', () => {
       expect(result.status).toBe('unknown');
       expect(result.evidence).toEqual(['api_request (input schema)']);
     });
+
+    it('leaves a schema with more properties than the scan covers unknown instead of passing it', () => {
+      const filler = Object.fromEntries(Array.from({ length: 200 }, (_, index) => [`field_${index}`, { type: 'string' }]));
+      const result = item(evaluateConnectorDirectoryPreflight(withSchema({
+        properties: { ...filler, method: { enum: ['GET', 'POST'] } },
+      })), 'claude.separate-read-write');
+      expect(result.status).toBe('unknown');
+      expect(result.evidence).toEqual(['api_request (input schema)']);
+    });
+
+    it('fails a mixed method argument inside a nested object instead of passing it', () => {
+      const result = item(evaluateConnectorDirectoryPreflight(withSchema({
+        properties: { request: { type: 'object', properties: { method: { enum: ['GET', 'POST'] } } } },
+      })), 'claude.separate-read-write');
+      expect(result.status).toBe('fail');
+      expect(result.evidence).toEqual(['api_request (request.method: GET, POST)']);
+    });
+
+    it('passes a method enum narrowed to GET by an enclosing const or enum instead of failing it', () => {
+      for (const narrowing of [{ const: { method: 'GET' } }, { enum: [{ method: 'GET' }] }]) {
+        expect(statusOf(withSchema({
+          properties: { method: { enum: ['GET', 'POST'] } },
+          ...narrowing,
+        }), 'claude.separate-read-write'), JSON.stringify(narrowing)).toBe('pass');
+      }
+    });
   });
 
   describe('authentication', () => {

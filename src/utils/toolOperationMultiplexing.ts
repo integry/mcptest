@@ -18,9 +18,11 @@
  * Both scans are deliberately conservative: only arguments with a selector
  * name and an enumerated value set are considered, and values that do not
  * read as verbs are ignored. An argument's value set honours the enclosing
- * schema too (root `allOf`/`anyOf`/`oneOf`, `patternProperties`,
- * `additionalProperties`), and arguments declared only in a composed branch
- * are scanned like direct properties.
+ * schema too (root `allOf`/`anyOf`/`oneOf`, `const`/`enum`,
+ * `patternProperties`, `additionalProperties`), and arguments declared only in
+ * a composed branch are scanned like direct properties. The method check
+ * covers nested objects and array items within explicit bounds; scopes past
+ * those bounds are reported as not fully scanned rather than passed.
  */
 
 export type OperationCategory = 'read' | 'write' | 'destructive';
@@ -47,10 +49,21 @@ interface SelectorCandidate {
   /** Whether `values` is the established set of accepted values. */
   constraint: 'values' | 'any' | 'inconclusive';
   description: string;
+  /**
+   * Whether the argument is in the scope the multiplexing advisory has always
+   * covered: a top-level argument, or a field of a list-of-operations item.
+   * The HTTP method check covers every nested argument.
+   */
+  advisory: boolean;
 }
 
 const VALUE_DISPLAY_LIMIT = 8;
+/** Property names scanned per object scope; a scope declaring more is reported as not fully scanned. */
 const SCAN_PROPERTY_LIMIT = 200;
+/** Arguments scanned per tool across all nested scopes; beyond this the rest is reported as not scanned. */
+const SCAN_ARGUMENT_LIMIT = 1000;
+/** Path steps (properties and array items) the scan descends below the input schema. */
+const SCAN_NESTING_LIMIT = 6;
 
 const SELECTOR_NAMES = new Set([
   'action', 'actions', 'operation', 'operations', 'op', 'ops', 'command', 'commands', 'cmd',
@@ -204,10 +217,12 @@ const valueConstraint = (schema: unknown, depth = 0): ValueConstraint => {
   if (schema === undefined || schema === true) return 'any';
   if (schema === false) return new Set();
   if (!isRecord(schema) || depth > 8) return 'inconclusive';
-  // Arrays of selectors (`methods: { items: { enum } }`): the element constraint is what matters.
-  if (schema.type === 'array' || (schema.type === undefined && isRecord(schema.items)
-    && !('enum' in schema) && !('const' in schema))) {
-    return isRecord(schema.items) ? valueConstraint(schema.items, depth + 1) : 'inconclusive';
+  // Arrays of selectors (`methods: { items: { enum } }`): the element constraint is what matters,
+  // with the array's own enum, const and composition applied to its elements.
+  if (schema.type === 'array' || (schema.type === undefined && isRecord(schema.items))) {
+    // Without a type, an enum or const may list strings as well as arrays: neither reading is established.
+    if (schema.type === undefined && ('enum' in schema || 'const' in schema)) return 'inconclusive';
+    return isRecord(schema.items) ? constraintAt(schema, ['items'], depth + 1) : 'inconclusive';
   }
   let result: ValueConstraint = 'any';
   if ('type' in schema && !permitsStrings(schema.type)) result = 'inconclusive';
@@ -234,14 +249,48 @@ type PathStep = { property: string } | 'items';
  * a method argument may exist that the scan never sees.
  */
 const OPAQUE_SCHEMA_KEYWORDS = [
-  '$ref', '$dynamicRef', 'if', 'then', 'else', 'dependentSchemas', 'dependencies',
+  '$ref', '$dynamicRef', 'if', 'then', 'else', 'dependentSchemas', 'dependencies', 'prefixItems',
 ] as const;
 /** Keywords on an enclosing schema that can narrow a nested value in ways the walk does not model. */
 const UNINTERPRETED_ENCLOSING_KEYWORDS = [
   ...OPAQUE_SCHEMA_KEYWORDS, 'not', 'propertyNames', 'unevaluatedProperties', 'unevaluatedItems',
-  'prefixItems', 'additionalItems',
+  'additionalItems',
 ] as const;
 const PATH_DEPTH_LIMIT = 8;
+const LITERAL_LIMIT = 200;
+
+/**
+ * The strings an enclosing `const`/`enum` literal can place at `path`: the
+ * string there, or the strings inside an array there (mirroring how
+ * `valueConstraint` reads arrays of selectors). A literal without a value at
+ * the path contributes nothing, since such an object has no argument there.
+ */
+const literalStringsAt = (literal: unknown, path: readonly PathStep[], depth = 0): string[] => {
+  if (depth > PATH_DEPTH_LIMIT * 2) return [];
+  if (path.length === 0) {
+    if (typeof literal === 'string') return [literal];
+    return Array.isArray(literal) ? literal.flatMap((element) => literalStringsAt(element, path, depth + 1)) : [];
+  }
+  const [step, ...rest] = path;
+  if (step === 'items') {
+    return Array.isArray(literal) ? literal.flatMap((element) => literalStringsAt(element, rest, depth + 1)) : [];
+  }
+  return isRecord(literal) && Object.prototype.hasOwnProperty.call(literal, step.property)
+    ? literalStringsAt(literal[step.property], rest, depth + 1)
+    : [];
+};
+
+/** What an enclosing schema's own `const` and `enum` allow at `path` below it. */
+const enclosingLiteralConstraint = (schema: Record<string, unknown>, path: readonly PathStep[]): ValueConstraint => {
+  let result: ValueConstraint = 'any';
+  if ('const' in schema) result = intersect(result, new Set(literalStringsAt(schema.const, path)));
+  if ('enum' in schema) {
+    result = intersect(result, Array.isArray(schema.enum) && schema.enum.length <= LITERAL_LIMIT
+      ? new Set(schema.enum.flatMap((literal) => literalStringsAt(literal, path)))
+      : 'inconclusive');
+  }
+  return result;
+};
 
 /** The subschemas of `node` that apply to the value one `step` down. */
 const stepSchemas = (node: Record<string, unknown>, step: PathStep): unknown[] | 'inconclusive' => {
@@ -276,8 +325,9 @@ const stepSchemas = (node: Record<string, unknown>, step: PathStep): unknown[] |
 /**
  * The string values accepted at `path` below `schema`, with every enclosing
  * constraint applied: the property's own schema, but also `allOf`, `anyOf`
- * and `oneOf` on the enclosing objects, `patternProperties`, and
- * `additionalProperties` for names declared only in a composed branch.
+ * and `oneOf` on the enclosing objects, their own `const` and `enum`,
+ * `patternProperties`, and `additionalProperties` for names declared only in
+ * a composed branch.
  * Enclosing constraints the walk does not interpret make it inconclusive.
  */
 const constraintAt = (schema: unknown, path: readonly PathStep[], depth = 0): ValueConstraint => {
@@ -286,9 +336,10 @@ const constraintAt = (schema: unknown, path: readonly PathStep[], depth = 0): Va
   if (schema === false) return new Set();
   if (!isRecord(schema) || depth > PATH_DEPTH_LIMIT) return 'inconclusive';
   const [step, ...rest] = path;
-  const initial: ValueConstraint = UNINTERPRETED_ENCLOSING_KEYWORDS.some((keyword) => keyword in schema)
-    ? 'inconclusive'
-    : 'any';
+  const initial: ValueConstraint = intersect(
+    UNINTERPRETED_ENCLOSING_KEYWORDS.some((keyword) => keyword in schema) ? 'inconclusive' : 'any',
+    enclosingLiteralConstraint(schema, path)
+  );
   const applicable = stepSchemas(schema, step);
   const result = applicable === 'inconclusive'
     ? intersect(initial, 'inconclusive')
@@ -340,26 +391,39 @@ const declaredNames = (scope: SchemaScope): string[] => {
     if (!isRecord(node.properties)) continue;
     for (const name of Object.keys(node.properties)) names.add(name);
   }
-  return [...names].slice(0, SCAN_PROPERTY_LIMIT);
+  return [...names];
 };
+
+/** Whether some schema in the scope can hold nested arguments: an object or an array. */
+const mayNest = (scope: SchemaScope): boolean => scope.nodes.some((node) => (
+  !('type' in node) || ['object', 'array'].some((type) => node.type === type
+    || (Array.isArray(node.type) && node.type.includes(type)))
+));
 
 interface SchemaScan {
   candidates: SelectorCandidate[];
-  /** Scopes (`input schema`, `requests[]`) whose declarations could not all be followed. */
+  /**
+   * Scopes (`input schema`, `request`, `requests[]`) the scan could not
+   * examine completely: declarations it does not follow, or more properties,
+   * arguments or nesting than it scans.
+   */
   opaqueScopes: string[];
 }
 
 /**
- * Top-level arguments plus the fields of objects inside list-of-operation
- * arguments, wherever the schema declares them: in `properties` or in a
- * composed branch. Each candidate's values honour every enclosing constraint.
+ * Every argument the schema declares, at any depth up to the nesting limit:
+ * top-level arguments, properties of nested objects, and fields of array
+ * items, wherever each scope declares them (in `properties` or in a composed
+ * branch). Each candidate's values honour every enclosing constraint. Scopes
+ * the scan cannot examine completely are reported, never silently skipped.
  */
 const scanSchema = (inputSchema: unknown): SchemaScan => {
   const candidates: SelectorCandidate[] = [];
   const opaqueScopes: string[] = [];
-  const add = (label: string, name: string, path: readonly PathStep[]) => {
+  let remaining = SCAN_ARGUMENT_LIMIT;
+  const add = (label: string, name: string, path: readonly PathStep[], scope: SchemaScope, advisory: boolean) => {
     const constraint = constraintAt(inputSchema, path);
-    const description = scopeAt(inputSchema, path).nodes
+    const description = scope.nodes
       .map((node) => node.description)
       .find((text): text is string => typeof text === 'string') || '';
     candidates.push({
@@ -368,20 +432,52 @@ const scanSchema = (inputSchema: unknown): SchemaScan => {
       values: constraint instanceof Set ? [...constraint] : [],
       constraint: constraint instanceof Set ? 'values' : constraint,
       description,
+      advisory,
     });
   };
-  const root = scopeAt(inputSchema, []);
-  if (root.opaque) opaqueScopes.push('input schema');
-  for (const name of declaredNames(root)) {
-    add(name, name, [{ property: name }]);
-    if (!OPERATION_LIST_NAMES.has(canonicalName(name))) continue;
-    const itemsPath: PathStep[] = [{ property: name }, 'items'];
-    const items = scopeAt(inputSchema, itemsPath);
-    if (items.opaque && !root.opaque) opaqueScopes.push(`${name}[]`);
-    for (const field of declaredNames(items)) {
-      add(`${name}[].${field}`, field, [...itemsPath, { property: field }]);
+  /**
+   * Scans the object or array scope at `path`. `prefix` is the label of the
+   * scope's arguments (`''`, `request.`, `requests[].`); `parentOpaque`
+   * suppresses reports already made for an enclosing scope, whose keywords
+   * every nested scope inherits. `inOperationList` marks the items of a
+   * top-level operation list.
+   */
+  const visit = (label: string, prefix: string, path: PathStep[], scope: SchemaScope, parentOpaque: boolean,
+    inOperationList: boolean) => {
+    const report = () => {
+      if (!opaqueScopes.includes(label)) opaqueScopes.push(label);
+    };
+    if (scope.opaque && !parentOpaque && mayNest(scope)) report();
+    const names = declaredNames(scope);
+    const hasItems = scope.nodes.some((node) => 'items' in node);
+    if (names.length === 0 && !hasItems) return;
+    if (path.length >= SCAN_NESTING_LIMIT) {
+      report();
+      return;
     }
-  }
+    if (names.length > SCAN_PROPERTY_LIMIT) report();
+    for (const name of names.slice(0, SCAN_PROPERTY_LIMIT)) {
+      if (remaining <= 0) {
+        report();
+        return;
+      }
+      remaining -= 1;
+      const argumentPath: PathStep[] = [...path, { property: name }];
+      const argumentScope = scopeAt(inputSchema, argumentPath);
+      const argumentLabel = `${prefix}${name}`;
+      add(argumentLabel, name, argumentPath, argumentScope, path.length === 0 || inOperationList);
+      visit(argumentLabel, `${argumentLabel}.`, argumentPath, argumentScope, scope.opaque, false);
+    }
+    if (hasItems) {
+      const itemsPath: PathStep[] = [...path, 'items'];
+      const itemsLabel = `${label}[]`;
+      // Only the item fields of a top-level operation list belong to the advisory's scope.
+      const [first] = path;
+      const operationList = path.length === 1 && first !== 'items' && OPERATION_LIST_NAMES.has(canonicalName(first.property));
+      visit(itemsLabel, `${itemsLabel}.`, itemsPath, scopeAt(inputSchema, itemsPath), scope.opaque, operationList);
+    }
+  };
+  visit('input schema', '', [], scopeAt(inputSchema, []), false, false);
   return { candidates, opaqueScopes };
 };
 
@@ -455,11 +551,13 @@ export const findUnresolvedHttpMethodSelectors = (tools: readonly ToolLike[]): O
 );
 
 /**
- * Input schemas (or list-of-operation item schemas) that use keywords the scan
- * does not follow, such as `$ref`, `if`/`then`/`else` or `dependentSchemas`.
- * A method argument declared there is invisible to the other scans, so the
- * preflight cannot pass the check while one exists. `argument` names the
- * scope: `input schema` or `requests[]`.
+ * Schema scopes (the input schema, a nested object, or array items) the scan
+ * could not examine completely: they use keywords it does not follow, such as
+ * `$ref`, `if`/`then`/`else`, `dependentSchemas` or `prefixItems`, or they
+ * exceed its property, argument or nesting limits. A method argument there is
+ * invisible to the other scans, so the preflight cannot pass the check while
+ * one exists. `argument` names the scope: `input schema`, `request` or
+ * `requests[]`.
  */
 export const findUninterpretedSelectorScopes = (tools: readonly ToolLike[]): OperationSelectorMatch[] => (
   tools.flatMap((tool) => scanSchema(tool.inputSchema).opaqueScopes.map((scope) => ({
@@ -478,7 +576,7 @@ export const findMultiplexedOperationSelectors = (
   tools: readonly ToolLike[]
 ): OperationSelectorMatch[] => (
   tools.flatMap((tool) => selectorCandidates(tool.inputSchema).flatMap((candidate) => {
-    if (!SELECTOR_NAMES.has(candidate.name) || candidate.constraint !== 'values' || candidate.values.length < 2) return [];
+    if (!candidate.advisory || !SELECTOR_NAMES.has(candidate.name) || candidate.constraint !== 'values' || candidate.values.length < 2) return [];
     const classified = candidate.values
       .map(classifyOperation)
       .filter((category): category is OperationCategory => Boolean(category));
