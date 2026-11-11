@@ -247,29 +247,60 @@ const resolveModernEra = (message, request) => {
   };
 };
 
-const resolveLegacyEra = async (message, request, fixture) => {
+// \`id\` is the JSON-RPC id to echo in an error: the request id, or null for
+// notifications and client responses (whose id belongs to a server request).
+const resolveLegacyEra = async (request, fixture, id) => {
   const headerVersion = request.headers.get('mcp-protocol-version');
   if (headerVersion !== null && !LEGACY_PROTOCOL_VERSIONS.includes(headerVersion)) {
-    throw new HttpFailure(400, rpcError(message.id, INVALID_REQUEST, `Bad Request: unsupported MCP-Protocol-Version ${headerVersion}`));
+    throw new HttpFailure(400, rpcError(id, INVALID_REQUEST, `Bad Request: unsupported MCP-Protocol-Version ${headerVersion}`));
   }
   const sessionId = request.headers.get('mcp-session-id');
   if (!sessionId) {
-    throw new HttpFailure(400, rpcError(message.id, INVALID_REQUEST,
+    throw new HttpFailure(400, rpcError(id, INVALID_REQUEST,
       'Bad Request: Mcp-Session-Id header is required; send initialize first, or server/discover for the stateless revision'));
   }
   if (!await isFixtureSessionId(fixture.name, sessionId)) {
-    throw new HttpFailure(404, rpcError(message.id, SESSION_NOT_FOUND, 'Session not found'));
+    throw new HttpFailure(404, rpcError(id, SESSION_NOT_FOUND, 'Session not found'));
   }
   return { era: 'legacy', protocolVersion: headerVersion ?? LEGACY_PROTOCOL_VERSION };
 };
 
-const resolveEra = (message, request, fixture) => {
+const isModernMessage = (message, request) => {
   const meta = message.params?._meta;
   const headerVersion = request.headers.get('mcp-protocol-version');
-  const modern = message.method === 'server/discover'
+  return message.method === 'server/discover'
     || (isObject(meta) && META_PROTOCOL_VERSION in meta)
     || (headerVersion !== null && headerVersion >= MODERN_PROTOCOL_VERSION);
-  return modern ? resolveModernEra(message, request) : resolveLegacyEra(message, request, fixture);
+};
+
+const resolveEra = (message, request, fixture) => (isModernMessage(message, request)
+  ? resolveModernEra(message, request)
+  : resolveLegacyEra(request, fixture, message.id));
+
+/**
+ * Validates a notification or client response before it is accepted with 202.
+ * Stateless 2026 traffic needs no session but must name a supported revision
+ * (header and _meta agreeing when both are sent); anything else is stateful and
+ * must carry an Mcp-Session-Id this worker issued (400 missing, 404 unknown).
+ */
+const validateNonRequest = async (message, request, fixture) => {
+  if (!isModernMessage(message, request)) {
+    await resolveLegacyEra(request, fixture, null);
+    return;
+  }
+  const headerVersion = request.headers.get('mcp-protocol-version');
+  const meta = isObject(message.params?._meta) ? message.params._meta : undefined;
+  const metaVersion = meta?.[META_PROTOCOL_VERSION];
+  const version = typeof metaVersion === 'string' ? metaVersion : headerVersion;
+  if (!MODERN_PROTOCOL_VERSIONS.includes(version)) {
+    throw new HttpFailure(400, rpcError(null, UNSUPPORTED_PROTOCOL_VERSION, `Unsupported protocol version ${version}`, {
+      supported: [...MODERN_PROTOCOL_VERSIONS, ...LEGACY_PROTOCOL_VERSIONS],
+      requested: version,
+    }));
+  }
+  if (headerVersion !== null && headerVersion !== version) {
+    throw new HttpFailure(400, rpcError(null, HEADER_MISMATCH, 'MCP-Protocol-Version header does not match the _meta protocol version'));
+  }
 };
 
 const serverInfo = (fixture) => ({ name: `mcptest-fixture-${fixture.name}`, title: fixture.title, version: FIXTURE_SERVER_VERSION });
@@ -423,7 +454,9 @@ const handlePost = async (request, fixture, options) => {
   }
   const { message, kind } = parseMessage(await readBody(request));
   if (kind !== 'request') {
-    // Well-formed notifications (notifications/initialized, cancelled, ...) and client responses.
+    // Well-formed notifications (notifications/initialized, cancelled, ...) and
+    // client responses, once their session or stateless revision checks out.
+    await validateNonRequest(message, request, fixture);
     return respond(202, undefined);
   }
   if (message.method === 'initialize') return initialize(message, fixture);

@@ -337,12 +337,67 @@ describe('JSON-RPC and HTTP input bounds', () => {
     expect(streamed.status).toBe(413);
   });
 
-  it('answers notifications and client responses with 202', async () => {
-    expect((await post('echo', { jsonrpc: '2.0', method: 'notifications/cancelled', params: { requestId: 1 } })).status).toBe(202);
-    expect((await post('echo', { jsonrpc: '2.0', method: 'notifications/initialized' })).status).toBe(202);
-    expect((await post('echo', { jsonrpc: '2.0', id: 9, result: {} })).status).toBe(202);
-    expect((await post('echo', { jsonrpc: '2.0', id: 'r-1', error: { code: -32601, message: 'nope' } })).status).toBe(202);
-    expect((await post('echo', { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'parse' } })).status).toBe(202);
+  const nonRequests = [
+    ['notifications/initialized', { jsonrpc: '2.0', method: 'notifications/initialized' }],
+    ['notifications/cancelled', { jsonrpc: '2.0', method: 'notifications/cancelled', params: { requestId: 1 } }],
+    ['a result response', { jsonrpc: '2.0', id: 9, result: {} }],
+    ['an error response', { jsonrpc: '2.0', id: 'r-1', error: { code: -32601, message: 'nope' } }],
+    ['an error response with id null', { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'parse' } }],
+  ];
+  const stateful = (headers = {}) => ({ 'MCP-Protocol-Version': LEGACY_PROTOCOL_VERSION, ...headers });
+
+  it.each(nonRequests)('accepts %s on an issued session with 202', async (_label, message) => {
+    const session = await legacySession('echo');
+    const response = await post('echo', message, stateful({ 'Mcp-Session-Id': session }));
+    expect(response.status).toBe(202);
+    expect(await response.text()).toBe('');
+  });
+
+  it.each(nonRequests)('rejects %s without a session id with 400', async (_label, message) => {
+    for (const headers of [stateful(), {}]) {
+      const response = await post('echo', message, headers);
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({ jsonrpc: '2.0', id: null, error: { code: -32600 } });
+    }
+  });
+
+  it.each(nonRequests)('rejects %s on an unknown session with 404', async (_label, message) => {
+    const forged = createFixtureSessionId('errors');
+    for (const session of ['mcptest-fx-unknown', await forged]) {
+      const response = await post('echo', message, stateful({ 'Mcp-Session-Id': session }));
+      expect(response.status).toBe(404);
+      expect(await response.json()).toMatchObject({ jsonrpc: '2.0', id: null, error: { code: -32001 } });
+    }
+  });
+
+  it.each(nonRequests)('rejects %s on a session with an unsupported legacy header', async (_label, message) => {
+    const session = await legacySession('echo');
+    const response = await post('echo', message, { 'MCP-Protocol-Version': '2020-01-01', 'Mcp-Session-Id': session });
+    expect(response.status).toBe(400);
+  });
+
+  it.each(nonRequests)('accepts stateless 2026 %s without a session', async (_label, message) => {
+    const response = await post('echo', message, { 'MCP-Protocol-Version': MODERN_PROTOCOL_VERSION });
+    expect(response.status).toBe(202);
+  });
+
+  it('validates the stateless revision of notifications', async () => {
+    const withMeta = (version) => ({
+      jsonrpc: '2.0', method: 'notifications/cancelled', params: { requestId: 1, _meta: { ...envelope, 'io.modelcontextprotocol/protocolVersion': version } },
+    });
+    expect((await post('echo', withMeta(MODERN_PROTOCOL_VERSION), { 'MCP-Protocol-Version': MODERN_PROTOCOL_VERSION })).status).toBe(202);
+    expect((await post('echo', withMeta(MODERN_PROTOCOL_VERSION))).status).toBe(202);
+    const unsupported = await post('echo', { jsonrpc: '2.0', id: 9, result: {} }, { 'MCP-Protocol-Version': '2099-01-01' });
+    expect(unsupported.status).toBe(400);
+    expect((await unsupported.json()).error).toMatchObject({ code: -32022, data: { requested: '2099-01-01' } });
+    const mismatched = await post('echo', withMeta(MODERN_PROTOCOL_VERSION), { 'MCP-Protocol-Version': '2099-01-01' });
+    expect(mismatched.status).toBe(400);
+    expect((await mismatched.json()).error.code).toBe(-32020);
+  });
+
+  it('checks auth before the session on notifications', async () => {
+    const response = await post('auth-bearer', { jsonrpc: '2.0', method: 'notifications/initialized' }, stateful());
+    expect(response.status).toBe(401);
   });
 
   it.each([
