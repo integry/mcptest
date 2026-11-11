@@ -131,7 +131,8 @@ const JWKS = createRemoteJWKSet(new URL(`${ISSUER}/.well-known/jwks.json`));
 
 // Your MCP URL for a pre-registered client with access_token_custom_audience,
 // or your Stytch project ID for CIMD and DCR clients.
-const AUDIENCE = process.env.MCP_TOKEN_AUDIENCE!;
+const AUDIENCE = process.env.MCP_TOKEN_AUDIENCE?.trim();
+if (!AUDIENCE) throw new Error('MCP_TOKEN_AUDIENCE must be set to the required token audience');
 
 export async function verifyAccessToken(token: string, requiredScope: string) {
   const { payload } = await jwtVerify(token, JWKS, { issuer: ISSUER, audience: AUDIENCE });
@@ -140,7 +141,7 @@ export async function verifyAccessToken(token: string, requiredScope: string) {
 }
 ```
 
-`jwtVerify` checks the signature, expiry, issuer and audience. Answer a failure with `401`. When `allowed` is false, answer `403` with `error="insufficient_scope"`.
+`jwtVerify` checks the signature, expiry, issuer and audience. The startup check matters: `jose` skips the audience check when `audience` is `undefined`, and a non-null assertion such as `process.env.MCP_TOKEN_AUDIENCE!` does not stop that at runtime. Without the check, a missing variable would let tokens issued for other resources through. Answer a failure with `401`. When `allowed` is false, answer `403` with `error="insufficient_scope"`.
 
 Stytch's Node SDK offers `client.idp.introspectTokenLocal(token)`, which can also check an RBAC permission with its `authorization_check` option. It always checks the project ID as the audience and has no option for another audience. So if you require your MCP URL, check the returned audience yourself.
 
