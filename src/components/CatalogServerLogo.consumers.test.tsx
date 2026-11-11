@@ -28,9 +28,11 @@ describe('shared catalog server logo consumers', () => {
     ['ServerProfileView', () => render(<ServerProfileView server={server} onTestServer={vi.fn()} />)],
   ])('%s renders CatalogServerLogo', (_name, renderConsumer) => {
     const container = renderConsumer();
-    const sharedLogo = container.querySelector('[data-catalog-server-logo]');
+    // SuggestedServersPanel lists mcptest's own echo fixture (the site logo) before the catalog servers.
+    const sharedLogo = Array.from(container.querySelectorAll('[data-catalog-server-logo]'))
+      .find(logo => logo.querySelector('img')?.getAttribute('src') !== '/logo-96.png');
 
-    expect(sharedLogo).not.toBeNull();
+    expect(sharedLogo).not.toBeUndefined();
     expect(sharedLogo?.querySelector('img')?.getAttribute('src')).toMatch(/^\/server-logos\//);
   });
 });

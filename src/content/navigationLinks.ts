@@ -71,6 +71,8 @@ export const CI_NAVIGATION: FooterLink = { label: 'CI release gate', href: '/ci'
 
 export const FOOTER_NAVIGATION: readonly FooterLink[] = [
   CI_NAVIGATION,
+  // The public fixture servers (src/components/McpTestServersView.tsx).
+  { label: 'MCP test servers', href: '/mcp-test-servers' },
   { label: 'Submit a server', href: '/submit' },
   {
     label: 'Badges',

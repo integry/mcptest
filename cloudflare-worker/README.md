@@ -63,6 +63,11 @@ The route is `mcptest.io/fixtures/*` in `wrangler.toml`. Tests: `src/fixtures.te
 `src/fixtures.client.test.js` (the app's MCP client, release-gate CLI and session probes against a
 local HTTP instance of the worker); run them with `npm --prefix cloudflare-worker test`.
 
+The fixtures are documented publicly at [mcptest.io/mcp-test-servers](https://mcptest.io/mcp-test-servers),
+from the metadata in `../src/data/publicFixtures.ts`. When you add, rename or remove a fixture or tool,
+update that file too: `src/data/publicFixtures.test.ts` (in the root `npm test`) fails when it no longer
+matches `src/fixtureServers.js`.
+
 ## Catalog submissions
 
 `src/submissions.js` serves `POST /api/catalog/submissions` for the app's `/submit` page. It is public (no Firebase token), validates the body against `public/schemas/catalog-submission/v1.schema.json`, rate limits per client address and per endpoint host with the `SubmissionRateLimiter` Durable Object, and triggers the `catalog-submission` `repository_dispatch` event that runs `.github/workflows/catalog-submission.yml`.

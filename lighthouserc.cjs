@@ -21,6 +21,7 @@ module.exports = {
         `${origin}/learn/mcp-http-headers-reference`,
         `${origin}/ci`,
         `${origin}/tools/oauth-check`,
+        `${origin}/mcp-test-servers`,
       ],
       // The median of three runs per URL is what the assertions see.
       numberOfRuns: 3,
