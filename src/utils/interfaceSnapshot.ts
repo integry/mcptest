@@ -174,6 +174,8 @@ export const interfaceSnapshotFromReport = (report: PublicReport): InterfaceSnap
       ? { resourceTemplates: completeNames(report.capabilityInventory?.resourceTemplates) } : {}),
     ...(completeNames(report.capabilityInventory?.prompts)
       ? { prompts: completeNames(report.capabilityInventory?.prompts) } : {}),
+    ...(report.capabilityInventory?.authentication
+      ? { authentication: report.capabilityInventory.authentication } : {}),
   };
 };
 

@@ -76,6 +76,8 @@ export interface ReleaseGateRunResult {
 export interface RunReleaseGateOptions {
   clientCompatibility?: boolean;
   sessionResilience?: boolean;
+  /** `false` skips the repeated tools/list consistency check. */
+  toolListConsistency?: false;
   endpoints: readonly string[];
   headers?: HeadersInit;
   policy?: ReleaseGatePolicy;
@@ -584,7 +586,11 @@ export const runReleaseGate = async (
         null,
         options.headers,
         undefined,
-        { runtime: 'headless', ...(options.sessionResilience ? { sessionResilience: true } : {}) }
+        {
+          runtime: 'headless',
+          ...(options.sessionResilience ? { sessionResilience: true } : {}),
+          ...(options.toolListConsistency === false ? { toolListConsistency: false as const } : {}),
+        }
       );
       const evaluation = credentialedTargetOrigin
         ? await withCredentialScopedFetch(credentialedTargetOrigin, fetchFn, evaluate)

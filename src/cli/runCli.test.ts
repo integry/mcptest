@@ -8,6 +8,10 @@ import {
 import { RELEASE_GATE_EXIT_CODES } from './releaseGate';
 
 describe('release gate CLI configuration', () => {
+  it('re-lists tools by default and accepts an opt-out flag', () => {
+    expect(parseReleaseGateArgs(['https://example.com/mcp'], {}).toolListConsistency).toBeUndefined();
+    expect(parseReleaseGateArgs(['--no-tool-list-consistency', 'https://example.com/mcp'], {}).toolListConsistency).toBe(false);
+  });
   it('requires an explicit session resilience flag', () => {
     expect(parseReleaseGateArgs(['https://example.com/mcp'], {}).sessionResilience).toBeUndefined();
     expect(parseReleaseGateArgs(['--session-resilience', 'https://example.com/mcp'], {}).sessionResilience).toBe(true);
