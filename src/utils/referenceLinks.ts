@@ -10,13 +10,28 @@
  */
 
 import { SITE_URL } from '../content/contentModel';
+import { TOOL_ANNOTATION_FINDING_IDS, type ToolAnnotationFindingId } from '../types/toolSurfaceAnalysis';
 import { TRANSPORT_DIAGNOSTIC_IDS } from '../types/transportDiagnostics';
 import { OUTPUT_CONTRACT_FINDING_ID } from './outputContract';
 
 export const DIAGNOSTICS_REFERENCE_PATH = '/learn/mcp-transport-diagnostics-reference';
 
+/**
+ * Tool-surface findings appear in release priorities as `tool.<finding id>`,
+ * which is also the id of their reference section.
+ */
+export const toolSurfaceReferenceId = <T extends string>(findingId: T): `tool.${T}` => `tool.${findingId}`;
+
+const TOOL_ANNOTATION_REFERENCE_IDS = TOOL_ANNOTATION_FINDING_IDS.map(
+  (id) => toolSurfaceReferenceId<ToolAnnotationFindingId>(id)
+);
+
 /** Every id that has a section in the reference article. */
-export const REFERENCED_FINDING_IDS = [...TRANSPORT_DIAGNOSTIC_IDS, OUTPUT_CONTRACT_FINDING_ID] as const;
+export const REFERENCED_FINDING_IDS = [
+  ...TRANSPORT_DIAGNOSTIC_IDS,
+  OUTPUT_CONTRACT_FINDING_ID,
+  ...TOOL_ANNOTATION_REFERENCE_IDS,
+] as const;
 
 export type ReferencedFindingId = typeof REFERENCED_FINDING_IDS[number];
 

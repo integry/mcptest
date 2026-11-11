@@ -14,7 +14,9 @@ describe('analyzeToolSurface', () => {
     const analysis = analyzeToolSurface({
       tools: [{
         name: 'get_weather',
+        title: 'Get weather',
         description: 'Returns the current weather conditions for a specified city.',
+        annotations: { title: 'Get weather', readOnlyHint: true, openWorldHint: true },
         inputSchema: {
           type: 'object',
           additionalProperties: false,
@@ -61,7 +63,12 @@ describe('analyzeToolSurface', () => {
     expect(analysis.metrics.estimatedContextTokens).toBeGreaterThan(0);
     expect(analysis.metrics.estimatedContextTokens).toBe(analysis.contextCost?.estimatedTotal);
     expect(analysis.contextCost?.tools.map((tool) => tool.name)).toEqual(['get_weather']);
-    expect(analysis.findingCount).toBe(0);
+    // A fully annotated tool only gets the two annotation measurements.
+    expect(allFindings(analysis).map((item) => item.id)).toEqual([
+      'annotations.client-treatment',
+      'annotations.coverage',
+    ]);
+    expect(analysis.findings.info).toHaveLength(2);
     expect(() => JSON.parse(JSON.stringify(analysis))).not.toThrow();
   });
 
