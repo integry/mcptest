@@ -18,6 +18,8 @@ relatedSlugs:
   - mcp-http-headers-reference
   - best-remote-mcp-testing-tools
   - remote-vs-local
+  - test-mcp-server-with-curl-and-postman
+  - mock-mcp-servers-for-testing-clients
 sourceLinks:
   - title: MCP 2026-07-28 specification
     url: "https://modelcontextprotocol.io/specification/2026-07-28"
@@ -90,7 +92,7 @@ Unit tests stub the database and upstream APIs. Also run the deployed server aga
 
 ### Tool-selection and agent evals
 
-A server can pass every protocol check and still be hard for a model to use. Evals give a model a task and check which tool it picks and with which arguments. mcptest.io does not run a language model; [MCPJam](https://docs.mcpjam.com/cli/ci) chats with models against your tools and runs evals from its CLI, and the [testing tools comparison](/learn/best-remote-mcp-testing-tools) lists other options. Rerun evals whenever you rename tools or edit descriptions.
+A server can pass every protocol check and still be hard for a model to use. Evals give a model a task and check which tool it picks and with which arguments. mcptest.io does not run a language model; [MCPJam](https://docs.mcpjam.com/cli/ci) chats with models against your tools and runs evals from its CLI, and the [testing tools comparison](/learn/best-remote-mcp-testing-tools) lists other options. Rerun evals whenever you rename tools or edit descriptions. If you build the client side, an agent or a host app, test it against [mock MCP servers](/learn/mock-mcp-servers-for-testing-clients) that fail on purpose.
 
 ### Continuous checks in CI and after deploy
 
@@ -133,11 +135,11 @@ npx @modelcontextprotocol/inspector --cli https://your-server.example.com/mcp \
   --method tools/call --tool-name mytool --tool-arg key=value
 ```
 
-It is the best way to test a local stdio server, which a browser cannot launch, and it covers almost every protocol feature. Add `--header "X-API-Key: ..."` for key-based servers; a URL whose path ends in neither `/mcp` nor `/sse` needs `--transport http` or `--transport sse`. The CLI prints JSON with a distinct exit code per failure class. Its local Node backend makes the connections, so it does not show whether a browser could reach the server. With the Python SDK's `cli` extra, `uv run mcp dev server.py` opens a server in the Inspector, and [Postman](https://learning.postman.com/docs/use/send-requests/protocols/mcp-requests/overview/) can send MCP requests over stdio or Streamable HTTP from a workspace. See [mcptest vs MCP Inspector](/learn/mcptest-vs-mcp-inspector) for a side-by-side comparison.
+It is the best way to test a local stdio server, which a browser cannot launch, and it covers almost every protocol feature. Add `--header "X-API-Key: ..."` for key-based servers; a URL whose path ends in neither `/mcp` nor `/sse` needs `--transport http` or `--transport sse`. The CLI prints JSON with a distinct exit code per failure class. Its local Node backend makes the connections, so it does not show whether a browser could reach the server. With the Python SDK's `cli` extra, `uv run mcp dev server.py` opens a server in the Inspector, and [Postman](https://learning.postman.com/docs/use/send-requests/protocols/mcp-requests/overview/) can send MCP requests over stdio or Streamable HTTP from a workspace. See [mcptest vs MCP Inspector](/learn/mcptest-vs-mcp-inspector) for a side-by-side comparison, and [MCP Inspector alternatives](/learn/mcp-inspector-alternatives) for the browser, desktop and API-client options.
 
 ## Command-line check: stateless 2026
 
-`curl` shows exactly what goes over the wire. The examples use [Context7](/server/mcp.context7.com/mcp/mcp), a public catalog server that needs no sign-in and negotiated 2026-07-28 when this guide was reviewed; substitute your own endpoint.
+`curl` shows exactly what goes over the wire; [testing with curl and Postman](/learn/test-mcp-server-with-curl-and-postman) covers reading SSE responses, sessions, bearer tokens and the common mistakes in more depth. The examples use [Context7](/server/mcp.context7.com/mcp/mcp), a public catalog server that needs no sign-in and negotiated 2026-07-28 when this guide was reviewed; substitute your own endpoint.
 
 A 2026 server must implement `server/discover`. The client call is optional, but it is the clearest compatibility probe. Include the version and method headers plus the required per-request metadata:
 
@@ -380,7 +382,7 @@ Open [mcptest.io](/), paste the server's full URL and connect. It runs in the br
 
 ### How do I test an MCP server with curl?
 
-Send JSON-RPC `POST` requests with `Content-Type: application/json` and `Accept: application/json, text/event-stream`. For a 2026 server, add `MCP-Protocol-Version`, `Mcp-Method` and, for calls, `Mcp-Name`, and put the version and capabilities in `params._meta`. For a 2025 server, send `initialize`, then `notifications/initialized`, then carry `MCP-Protocol-Version` and any `Mcp-Session-Id`. The full commands are [above](#command-line-check-stateless-2026).
+Send JSON-RPC `POST` requests with `Content-Type: application/json` and `Accept: application/json, text/event-stream`. For a 2026 server, add `MCP-Protocol-Version`, `Mcp-Method` and, for calls, `Mcp-Name`, and put the version and capabilities in `params._meta`. For a 2025 server, send `initialize`, then `notifications/initialized`, then carry `MCP-Protocol-Version` and any `Mcp-Session-Id`. The full commands are [above](#command-line-check-stateless-2026), and [testing with curl and Postman](/learn/test-mcp-server-with-curl-and-postman) goes further.
 
 ### How do I test an MCP server in CI?
 

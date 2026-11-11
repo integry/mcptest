@@ -16,6 +16,7 @@ relatedSlugs:
   - testing-guide
   - test-mcp-server-before-deploying
   - mcp-tool-output-schemas-and-structured-content
+  - mcp-inspector-alternatives
 sourceLinks:
   - title: "MCP Inspector overview"
     url: "https://modelcontextprotocol.io/docs/tools/inspector"
@@ -193,7 +194,7 @@ mcptest.io is a browser-based inspector, playground and evaluator for remote MCP
 - **Teaching a team:** MCP Inspector to see the raw protocol locally, and mcptest.io or Glama when people cannot install anything. The [catalog](/catalog) gives everyone the same real servers to explore.
 - **Evaluating a third-party server:** mcptest.io for a report on transport, authentication and capabilities you can link to, with the [server trust checklist](/learn/mcp-server-trust-checklist) for the questions a tool cannot answer. Glama's directory shows letter grades for license, quality and maintenance.
 
-Most teams end up with two: one tool for local development and one for the deployed endpoint.
+Most teams end up with two: one tool for local development and one for the deployed endpoint. [MCP Inspector alternatives](/learn/mcp-inspector-alternatives) covers more interactive options, such as Insomnia, MCP Playground Online and Cloudflare's AI Playground. If you build an MCP client rather than a server, test it against [mock MCP servers](/learn/mock-mcp-servers-for-testing-clients); for raw requests, see [testing with curl and Postman](/learn/test-mcp-server-with-curl-and-postman).
 
 ## Try it on a real server
 
