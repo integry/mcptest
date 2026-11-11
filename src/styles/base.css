@@ -314,10 +314,16 @@ code, kbd, samp {
   border-color: var(--disabled-border);
   color: var(--disabled-text) !important;
 }
-/* URL and endpoint fields show protocol facts, so they are set in mono. */
+/* URL and endpoint fields show protocol facts, so they are set in mono. The
+   smaller size is desktop-only: on phones the 16px input size below must win
+   or iOS Safari zooms the page when the field takes focus. */
 input[type="url"].form-control {
   font-family: var(--font-family-mono);
-  font-size: var(--text-sm);
+}
+@media (min-width: 769px) {
+  input[type="url"].form-control {
+    font-size: var(--text-sm);
+  }
 }
 .form-label {
   font-weight: var(--weight-semibold);

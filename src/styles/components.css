@@ -2700,26 +2700,27 @@ pre.bg-light code {
 /* The wire: every JSON-RPC message hangs from a rail on its leading edge.
    Outbound requests carry the neutral request rail and a → marker, inbound
    responses the accent rail and a ← marker, errors the danger rail. The
-   same rail marks the result payload, so traffic reads the same everywhere. */
-.response-area > .response-entry {
+   same rail marks the result payload, so traffic reads the same everywhere.
+   ResponsePanel wraps each entry in its own spacing div, hence the hop. */
+.response-area > div > .response-entry {
   padding-left: var(--space-3) !important;
   border-left: var(--rail-width) solid var(--border-strong);
 }
 
-.response-area > .response-entry:has(.badge.bg-light) {
+.response-area > div > .response-entry:has(.badge.bg-light) {
   border-left-color: var(--wire-request);
 }
 
-.response-area > .response-entry:has(.badge.bg-success) {
+.response-area > div > .response-entry:has(.badge.bg-success) {
   border-left-color: var(--wire-response);
 }
 
-.response-area > .response-entry:has(.badge.bg-danger),
-.response-area > .response-entry.error-message {
+.response-area > div > .response-entry:has(.badge.bg-danger),
+.response-area > div > .response-entry.error-message {
   border-left-color: var(--danger-color);
 }
 
-.response-area > .response-entry:has(.badge.bg-warning) {
+.response-area > div > .response-entry:has(.badge.bg-warning) {
   border-left-color: var(--warning-color);
 }
 
