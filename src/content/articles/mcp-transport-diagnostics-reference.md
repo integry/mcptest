@@ -1,13 +1,13 @@
 ---
 title: MCP transport diagnostics reference
 navTitle: Transport diagnostics
-summary: Each mcptest diagnostic id, from transport.accept-header-406 to tool.output-contract-violation, with what was observed, severity, release impact, cause, fixes for three stacks, and the reports behind it.
+summary: Each mcptest diagnostic id, from transport.accept-header-406 and the session resilience checks to tool.output-contract-violation, with what was observed, severity, release impact, cause, fixes for three stacks, and the reports behind it.
 track: reference
 level: practitioner
 order: 24
 category: Troubleshooting
 readingTimeMinutes: 10
-lastReviewed: "2026-10-20"
+lastReviewed: "2026-11-11"
 metaTitle: MCP transport diagnostics reference (406, 405, 415, 429, CORS, Content-Type) | mcptest.io
 metaDescription: What each mcptest transport diagnostic means and how to fix it in the TypeScript SDK, Python SDK and Cloudflare Workers, including output-contract violations.
 relatedSlugs:
@@ -50,9 +50,9 @@ sourceLinks:
     url: "https://www.rfc-editor.org/rfc/rfc6585"
 ---
 
-mcptest records the HTTP exchange of each connection attempt, both direct and through its optional CORS proxy. Six transport diagnostics are defined in `src/types/transportDiagnostics.ts`, plus one tool-level finding in `src/utils/outputContract.ts`. The ids are a stable contract: connection error cards, report JSON and Markdown, and this page all use them. For general triage, start with [troubleshooting](/docs/troubleshooting).
+mcptest records the HTTP exchange of each connection attempt, both direct and through its optional CORS proxy. `src/types/transportDiagnostics.ts` defines ten transport diagnostic ids: six `transport.*` diagnostics observed during connection, and four `session.*` active checks from `src/utils/sessionResilienceDefinitions.ts`. One tool-level finding comes from `src/utils/outputContract.ts`. The ids are a stable contract: connection error cards, report JSON and Markdown, and this page all use them. For general triage, start with [troubleshooting](/docs/troubleshooting).
 
-The fixes below repeat the code hints shown in the app (`src/utils/transportDiagnostics.ts`). The Python hints use the 1.x `FastMCP` names. In Python SDK 2.x the class is `MCPServer` from `mcp.server.mcpserver`, and `json_response` moves from the constructor to `run()` and `streamable_http_app()` ([migration guide](https://github.com/modelcontextprotocol/python-sdk/blob/main/docs/migration.md)).
+The fixes below repeat the code hints shown in the app (`src/utils/transportDiagnostics.ts`). The Python hints use the 1.x `FastMCP` names. In Python SDK 2.x the class is `MCPServer` from `mcp.server.mcpserver`, and `json_response` and `stateless_http` move from the constructor to `run()` and `streamable_http_app()` ([migration guide](https://github.com/modelcontextprotocol/python-sdk/blob/main/docs/migration.md)).
 
 ## How diagnostics are graded
 
@@ -69,6 +69,10 @@ The fixes below repeat the code hints shown in the app (`src/utils/transportDiag
 | `transport.target-rate-limited-429` | error (warning if a retry recovered, or on GET) | Yes when error |
 | `transport.cors-expose-headers-missing` | error when confirmed, warning when suspected | Only when confirmed |
 | `transport.sse-content-type-mismatch` | error (warning on the optional GET stream) | Yes when error |
+| `session.unknown-id` | error on failure | Yes |
+| `session.reinitialize` | error on failure | Yes |
+| `session.stickiness` | error on session rejection | Yes |
+| `session.delete` | error if the session survives an accepted DELETE; info for `405` | Only when it survives |
 | `tool.output-contract-violation` | high-priority finding | Yes |
 
 ## transport.accept-header-406 {#transport-accept-header-406}
@@ -110,7 +114,7 @@ const ok = accept.includes('application/json') && accept.includes('text/event-st
 
 **Severity:** warning. Does not block release; the report asks for review.
 
-**Why:** the 2025 specifications allow a server to answer this GET with either an SSE stream or `405`. Without the stream, the server cannot push list-changed notifications, progress, sampling or elicitation requests outside a POST response. The 2026-07-28 revision removes the GET endpoint, and a 2026-only server SHOULD answer `405`. mcptest only opens this stream on a 2025 session, after `notifications/initialized`.
+**Why:** the 2025 specifications allow a server to answer this GET with either an SSE stream or `405`. Without the stream, the server can send list-changed notifications and sampling or elicitation requests only inside a POST response. The 2026-07-28 revision removes the GET endpoint, and a 2026-only server SHOULD answer `405`. mcptest only opens this stream on a 2025 session, after `notifications/initialized`.
 
 **Fix:** if the server sends messages on its own, handle GET and return `text/event-stream`. If it never does, keep the `405` and send `Allow`.
 
@@ -312,41 +316,59 @@ On Cloudflare Workers, `McpAgent` exposes the same SDK server as `this.server`. 
 
 **Reports:** a [Postman community thread](https://community.postman.com/t/does-mcp-client-support-output-schema/88808) where a tool's output was reported invalid against a schema the client never displayed.
 
-## Try it
+## Session resilience checks
 
-Connect [Context7 in the playground](/server/https://mcp.context7.com/mcp/mcp), then connect your own server the same way. When a connection fails, the error card shows the diagnostic id, the evidence it rests on and the fix for your stack.
+The four `session.*` ids are active probes on a 2025-era stateful server. They run only from **Check session resilience**, an opted-in report, or `--session-resilience` in the release gate, and use temporary probe sessions, never the inspector's own. Each request has a five-second deadline, and a full run makes at most 22 HTTP requests, including initialization, notifications and cleanup. Network, CORS and proxy failures make a check not checked rather than failed. Evidence records the method, status and redacted relevant headers; credentials and real session ids are never kept.
+
+All four pass as **not applicable: stateless** when the negotiated 2026 protocol has no sessions, or when a 2025 `initialize` returned no session id and a ping without one succeeded. An unreadable id followed by a rejection is not called stateless. See [why session 404s happen after deploys](/learn/mcp-session-not-found-after-deploy).
 
 ## session.unknown-id {#session-unknown-id}
 
-**Active check; error on failure, high release priority.** An isolated probe initializes a temporary session, then sends `ping` with a fabricated UUID in `Mcp-Session-Id`. Only a target HTTP 404 passes. HTTP 400, 401, 500 or even 200 fails: clients rely on 404 to discard stale sessions and re-initialize. Network/CORS/proxy failures are explicitly not checked. Evidence records the request method, status and redacted relevant headers.
+**Observed:** mcptest initialized a probe session, then sent `ping` with a fabricated UUID in `Mcp-Session-Id`. Only a target `404` passes; `400`, `401`, `500` or `200` fails.
 
-In a TypeScript SDK stateful router, guard unknown ids before routing:
+**Severity:** error on failure; high release priority.
 
-```ts
+**Why:** a server MUST answer `404` for a session it has terminated, and a client that gets `404` MUST start a new session with `initialize`. Any other status leaves clients retrying a dead session.
+
+**Fix:** answer `404` for an unknown or expired id before routing the request, and keep it distinct from authentication failures.
+
+```typescript
 const id = req.headers['mcp-session-id'];
 if (id && !transports.has(id)) return res.status(404).end();
 ```
 
-In Python/FastMCP, let `streamable_http_app()` handle session lookup; do not translate unknown-session 404 responses into authentication failures. On Workers, route to the session's owning Durable Object, and return `new Response(null, { status: 404 })` for an unknown id. Authenticate every request independently.
+In Python, let `FastMCP.streamable_http_app()` do the session lookup and do not translate its `404` into an authentication error. On Workers, route each session to its owning Durable Object and return `new Response(null, { status: 404 })` for an unknown id. Authenticate every request independently.
 
 ## session.reinitialize {#session-reinitialize}
 
-**Active check; error on failure, high release priority.** After the fabricated id receives 404, a fresh `initialize` without a session header must return a successful JSON-RPC result and a new readable session id. If no target 404 was observed, this finding is not checked. The probe never deletes the inspector's session.
+**Observed:** after the fabricated id got `404`, a fresh `initialize` without a session header did not return a successful result with a new, readable session id. Not checked when no target `404` was observed.
 
-For the TypeScript SDK, create a new `StreamableHTTPServerTransport` for an id-free initialize rather than routing it to an old transport. For Python/FastMCP, keep initialization available after expired sessions. For Workers, allocate fresh durable session ownership when initialization has no id. Browser deployments must expose `Mcp-Session-Id` using `Access-Control-Expose-Headers`.
+**Severity:** error on failure; high release priority.
+
+**Why:** recovery after a redeploy depends on an id-free `initialize` being treated as a new connection.
+
+**Fix:** in the TypeScript SDK, create a new `StreamableHTTPServerTransport` for an `initialize` without an id instead of routing it to an old transport. In Python, keep initialization available after sessions expire. On Workers, allocate fresh Durable Object ownership when `initialize` has no id. Browser deployments must also expose `Mcp-Session-Id` in `Access-Control-Expose-Headers`.
 
 ## session.stickiness {#session-stickiness}
 
-**Active check; error on session rejection, high release priority.** After initializing its own session, mcptest sends **8 sequential then 4 parallel pings**, with no tool execution. The finding reports unsuccessful requests and session rejection counts out of 12, plus a failure percentage. A valid id receiving 404 or a 400 naming an invalid/missing session fails. Other unsuccessful responses make the result not checked rather than proving a session bug.
+**Observed:** in a probe session, mcptest sent **8 sequential then 4 parallel pings**, with no tool execution. A valid id that got `404`, or a `400` naming a missing or invalid session, fails. The finding reports unsuccessful requests and session rejections out of 12, plus a failure percentage. Other unsuccessful responses make the result not checked.
 
-These observations are consistent with sessions lost during recycling or stored separately on replicas; they do not prove the infrastructure cause. The probe does not restart your server, and a clean sample cannot guarantee future restart survival. It runs only from **Check session resilience**, an opted-in report, or `--session-resilience` in the release gate. Requests have five-second deadlines; there are at most 22 HTTP requests including initialization, notifications and cleanup.
+**Severity:** error on session rejection; high release priority.
 
-For TypeScript SDK deployments, a process-local `Map` needs consistent routing to a durable owner or a stateless transport (`sessionIdGenerator: undefined`). For Python/FastMCP, use `FastMCP("server", stateless_http=True, json_response=True)` when sessions are unnecessary. On Workers, route stateful sessions to Durable Objects, such as through `McpAgent.serve('/mcp')`. A shared Redis store can hold application session state, but storing an id alone does not serialize a live SDK transport.
+**Why:** losing a valid session is consistent with sessions held in one process's memory behind several replicas, or with instance recycling. The probe does not prove the cause, does not restart your server, and a clean sample cannot guarantee that sessions survive a restart.
+
+**Fix:** a process-local `Map` of TypeScript SDK transports needs consistent routing to one owner, or a stateless transport (`sessionIdGenerator: undefined`). In Python, use `FastMCP("server", stateless_http=True, json_response=True)` when sessions are unnecessary. On Workers, route stateful sessions to Durable Objects, for example with `McpAgent.serve('/mcp')`. A shared Redis store can hold application state, but storing an id does not serialize a live SDK transport.
 
 ## session.delete {#session-delete}
 
-**Active check; error on accepted-but-not-invalidated sessions, info for HTTP 405.** DELETE is sent only for a temporary probe session. If accepted with a 2xx response, a subsequent ping using that id must get 404. HTTP 405 is permitted by the specification and is informational; it does not affect the release decision. Other DELETE failures are reported as not checked.
+**Observed:** mcptest sent DELETE for a probe session. If the server accepted it with a `2xx`, a later ping with that id must get `404`. Other DELETE failures are not checked.
 
-Route DELETE to `transport.handleRequest(req, res)` in the TypeScript SDK and remove terminated session ownership. With Python/FastMCP use the HTTP application's lifecycle management. In a custom Workers handler, delete durable session state and ensure later lookup returns 404. If termination is intentionally unsupported, return `new Response(null, { status: 405 })`.
+**Severity:** error when an accepted DELETE leaves the session usable. `405` is info and does not affect the release decision.
 
-All four checks pass as **not applicable: stateless** when the negotiated 2026 protocol uses no sessions. For older sessionless HTTP, successful initialization without an id plus a successful sessionless ping establishes this outcome. An unreadable id followed by rejection is not called stateless. Credentials and actual session ids are never retained in findings. See [why session 404s happen after deploys](/learn/mcp-session-not-found-after-deploy).
+**Why:** a client SHOULD send DELETE to end a session it no longer needs, and the server MAY answer `405` if it does not allow clients to end sessions. Accepting the DELETE but keeping the session breaks that contract.
+
+**Fix:** route DELETE to `transport.handleRequest(req, res)` in the TypeScript SDK and remove the session's entry once it succeeds. In Python, let the HTTP application's lifecycle management handle DELETE. In a custom Workers handler, delete the durable session state so later lookups return `404`. If you do not support termination, return `new Response(null, { status: 405 })`.
+
+## Try it
+
+Connect [Context7 in the playground](/server/https://mcp.context7.com/mcp/mcp), then connect your own server the same way. When a connection fails, the error card shows the diagnostic id, the evidence it rests on and the fix for your stack.

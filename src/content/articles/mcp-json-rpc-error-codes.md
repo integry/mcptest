@@ -7,7 +7,7 @@ level: practitioner
 order: 22
 category: Protocol reference
 readingTimeMinutes: 7
-lastReviewed: "2026-10-20"
+lastReviewed: "2026-11-11"
 metaTitle: MCP error codes and JSON-RPC errors reference | mcptest.io
 metaDescription: MCP error codes explained, including -32602, -32601, -32002, -32020, -32021, -32022 and -32042, with HTTP status mapping and isError versus protocol errors.
 relatedSlugs:
@@ -75,17 +75,17 @@ JSON-RPC 2.0 defines the shape:
 | `-32020` to `-32099` | Reserved for the MCP specification |
 | Outside `-32768` to `-32000` | Application-defined codes SHOULD go here |
 
-The 2026-07-28 changelog describes `-32000` to `-32019` as implementation-defined, with existing SDK usage grandfathered. The [overview](https://modelcontextprotocol.io/specification/2026-07-28/basic/index) labels the same range legacy.
+New implementations SHOULD NOT use the legacy sub-range; existing SDK usage is grandfathered. Implementations MUST NOT emit an undefined code from `-32020` to `-32099`, and MUST use defined codes only with their specified meanings ([overview](https://modelcontextprotocol.io/specification/2026-07-28/basic/index)).
 
 ## JSON-RPC 2.0 codes
 
 ### -32700 Parse error
 
-Invalid JSON was received. On Streamable HTTP the TypeScript SDK server answers HTTP `400` with "Parse error: Invalid JSON". Check the body encoding and anything that rewrites bodies in transit.
+Invalid JSON was received. The TypeScript SDK server answers HTTP `400`: "Parse error: Invalid JSON" from the 2025 Streamable HTTP transport, "Parse error: the request body is not valid JSON" from the 2026 `createMcpHandler`. The 2025 transport also uses `-32700` ("Parse error: Invalid JSON-RPC message") for valid JSON that is not a JSON-RPC message, where the 2026 handler uses `-32600`. Check the body encoding and anything that rewrites bodies in transit.
 
 ### -32600 Invalid Request
 
-The JSON is not a valid request object. In the TypeScript SDK this also covers a second `initialize` on a session, and on a 2026-07-28 endpoint a POSTed JSON-RPC response, which 2026 clients MUST NOT send. The SDK answers HTTP `400`. JSON-RPC batching was removed in 2025-06-18, so a batch array is also suspect.
+The JSON is not a valid request object. In the TypeScript SDK this also covers a second `initialize` on a session (2025), and on a 2026-07-28 endpoint a batch array or a POSTed JSON-RPC response, which 2026 clients MUST NOT send. The SDK answers HTTP `400`. JSON-RPC batching was removed in 2025-06-18, so a batch array is suspect on any modern server.
 
 ### -32601 Method not found
 
@@ -105,7 +105,7 @@ Tool argument validation failures that a model can correct should be returned as
 
 ### -32603 Internal error
 
-An unexpected server failure. Resource pages say servers SHOULD use it for internal errors. In the TypeScript SDK, handler errors stay inside an HTTP `200` response; `-32603` never becomes a blanket HTTP `500`.
+An unexpected server failure. The resources pages say servers SHOULD use it for internal errors. In the TypeScript SDK, a `-32603` produced by a request handler stays inside an HTTP `200` response. The 2026 HTTP handler answers HTTP `500` with `-32603` only when it fails outside any handler.
 
 ## MCP-defined codes
 
@@ -125,7 +125,7 @@ An unexpected server failure. Resource pages say servers SHOULD use it for inter
 
 ### -32021 MissingRequiredClientCapability
 
-2026-07-28. Serving the request needs a client capability that the request's `io.modelcontextprotocol/clientCapabilities` did not declare. `data.requiredCapabilities` lists what is missing, in `ClientCapabilities` shape. HTTP `400`. Earlier drafts numbered it `-32003`.
+2026-07-28. Serving the request needs a client capability that the request's `io.modelcontextprotocol/clientCapabilities` did not declare. `data.requiredCapabilities` lists what is missing, in `ClientCapabilities` shape. HTTP `400`, even when a handler produces it. Earlier drafts numbered it `-32003`.
 
 ```json
 {"jsonrpc":"2.0","id":9,"error":{"code":-32021,"message":"Missing required client capabilities: elicitation","data":{"requiredCapabilities":{"elicitation":{}}}}}
@@ -133,7 +133,7 @@ An unexpected server failure. Resource pages say servers SHOULD use it for inter
 
 ### -32022 UnsupportedProtocolVersion
 
-2026-07-28. The request's protocol version is unknown to the server. `data.supported` lists the server's versions and `data.requested` echoes the client's. HTTP `400`. The client SHOULD pick a mutual version and retry. Earlier drafts numbered it `-32004`.
+2026-07-28. The server does not implement the request's protocol version, either because it does not know it or because it chose not to support it. `data.supported` lists the server's versions and `data.requested` echoes the client's. HTTP `400`. The client SHOULD pick a mutual version and retry, or report that none exists. Earlier drafts numbered it `-32004`.
 
 ```json
 {"jsonrpc":"2.0","id":1,"error":{"code":-32022,"message":"Unsupported protocol version","data":{"supported":["2026-07-28","2025-11-25"],"requested":"1900-01-01"}}}
@@ -153,6 +153,8 @@ These are in the legacy range and are not defined by the specification. Read the
 | --- | --- | --- |
 | `-32000` | `400` | "Bad Request: Mcp-Session-Id header is required" |
 | `-32000` | `400` | "Bad Request: Server not initialized" |
+| `-32000` | `400` | "Bad Request: Unsupported protocol version: <version> (supported versions: …)" (2025 transport) |
+| `-32000` | `403` | "Invalid Origin header: <origin>" or "Invalid Host header: <host>", when DNS rebinding protection is on |
 | `-32000` | `405` | "Method not allowed." |
 | `-32000` | `406` | "Not Acceptable: Client must accept both application/json and text/event-stream" |
 | `-32000` | `409` | "Conflict: Only one SSE stream is allowed per session" |
@@ -166,17 +168,17 @@ The client SDK deliberately does not treat `-32001` as evidence of a protocol er
 | HTTP status | Meaning on Streamable HTTP |
 | --- | --- |
 | `200` | JSON or SSE response; JSON-RPC errors produced by request handlers travel here |
-| `202` | Accepted notification or client response; no body |
+| `202` | Accepted notification (or, through 2025-11-25, a client response); no body |
 | `400` | `-32700`, `-32600`; missing session ID (2025); invalid `MCP-Protocol-Version`; in 2026, `-32020`, `-32021`, `-32022`, and `-32602` for missing `_meta` |
 | `401` | Missing, invalid or expired token; read `WWW-Authenticate` |
 | `403` | Invalid `Origin` (2025-11-25 and later), insufficient scope, or policy denial |
-| `404` | Expired or unknown session (2025); `-32601` unknown method (2026); or wrong URL |
-| `405` | GET or DELETE not offered |
+| `404` | Terminated, expired or unknown session (2025); `-32601` unknown method (2026); or wrong URL |
+| `405` | GET or DELETE not offered (2025), or any GET or DELETE (2026) |
 | `406` | `Accept` rejected |
 | `415` | Request `Content-Type` rejected |
 | `429` | Rate limited; read `Retry-After` |
 
-The status rows for `-32601`, `-32020`, `-32021`, `-32022` and the `_meta` `-32602` come from the 2026-07-28 specification. The rule that handler-produced errors stay in an HTTP `200` is the TypeScript SDK's mapping (`LADDER_ERROR_HTTP_STATUS` in `@modelcontextprotocol/client`). For transport statuses, see the [transport diagnostics reference](/learn/mcp-transport-diagnostics-reference).
+The status rows for `-32601`, `-32020`, `-32021`, `-32022` and the `_meta` `-32602` come from the 2026-07-28 specification. The rule that handler-produced errors stay in an HTTP `200`, except `-32021`, is the TypeScript SDK's mapping (`LADDER_ERROR_HTTP_STATUS` and `httpStatusForErrorCode` in the SDK core, bundled into `@modelcontextprotocol/client`). For transport statuses, see the [transport diagnostics reference](/learn/mcp-transport-diagnostics-reference).
 
 ## isError versus protocol errors
 
