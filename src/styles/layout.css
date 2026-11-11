@@ -29,10 +29,47 @@
   min-height: 3.5rem;
   padding: var(--space-2) var(--space-4);
   color: var(--text-color);
-  background-color: var(--card-bg);
-  border-bottom: 1px solid var(--border-color);
+  background-color: var(--chrome-bg);
+  border-bottom: 1px solid var(--chrome-border);
   /* The signal line: a 2px accent edge along the top of every page. */
   box-shadow: inset 0 2px 0 var(--primary-color);
+}
+
+/* Chrome scope: the header bezel and the connect command bars (landing and
+   playground) are graphite in
+   both themes. Everything inside them reads the chrome palette through the
+   theme tokens re-declared here, so buttons, inputs, links and focus rings
+   need no scope-specific rules. The accent inside is the bright logo green
+   whatever the page theme. */
+.app-header,
+.landing-connect,
+.connection-console .input-group,
+.discovery-form-row {
+  --text-color: var(--chrome-text);
+  --text-muted: var(--chrome-muted);
+  --text-accent: var(--chrome-text);
+  --card-bg: var(--chrome-raised);
+  --card-bg-secondary: var(--chrome-raised);
+  --border-color: var(--chrome-border);
+  --border-strong: var(--chrome-control-border);
+  --input-border: var(--chrome-control-border);
+  --hover-wash: color-mix(in srgb, var(--chrome-text) 8%, transparent);
+  --active-wash: color-mix(in srgb, var(--chrome-text) 12%, transparent);
+  --primary-color: var(--chrome-accent);
+  --primary-hover: var(--chrome-accent-hover);
+  --primary-ink: var(--chrome-accent-ink);
+  --link-color: var(--chrome-accent-hover);
+  --link-hover: var(--chrome-text);
+  --focus-ring: 0 0 0 3px color-mix(in srgb, var(--chrome-accent) 45%, transparent);
+  --primary-soft: var(--chrome-accent-soft);
+  --primary-soft-border: var(--chrome-accent-soft-border);
+  --primary-soft-ink: var(--chrome-accent-soft-ink);
+  --input-bg: var(--chrome-bg);
+  --input-focus-border: var(--chrome-accent);
+  --disabled-bg: var(--chrome-raised);
+  --disabled-text: var(--chrome-muted);
+  --disabled-border: var(--chrome-border);
+  color-scheme: dark;
 }
 
 .app-header-brand,

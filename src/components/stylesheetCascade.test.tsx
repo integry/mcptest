@@ -174,3 +174,44 @@ describe('traffic rails on ResponsePanel log entries', () => {
     expect(winning(entry(type), 'border-left-color', 1280)).toBe(colour);
   });
 });
+
+describe('primary action states', () => {
+  afterEach(() => { document.body.innerHTML = ''; });
+
+  it('keeps a disabled primary on the soft accent, at full opacity', () => {
+    document.body.innerHTML = '<button type="button" class="btn btn-primary" disabled>Connect</button>';
+    const button = document.querySelector('button')!;
+
+    expect(winning(button, 'background-color', 1280)).toBe('var(--primary-soft)');
+    expect(winning(button, 'border-color', 1280)).toBe('var(--primary-soft-border)');
+    expect(winning(button, 'color', 1280)).toBe('var(--primary-soft-ink)');
+    expect(winning(button, 'opacity', 1280)).toBe('1');
+  });
+
+  it('fills the enabled primary with the solid accent', () => {
+    document.body.innerHTML = '<button type="button" class="btn btn-primary">Connect</button>';
+    const button = document.querySelector('button')!;
+
+    expect(winning(button, 'color', 1280)).toBe('var(--primary-ink)');
+    expect(winning(button, 'border-color', 1280)).toBe('var(--primary-color)');
+  });
+
+  it('keeps every other disabled variant neutral grey', () => {
+    document.body.innerHTML = '<button type="button" class="btn btn-secondary" disabled>Clear</button>';
+    const button = document.querySelector('button')!;
+
+    expect(winning(button, 'background-color', 1280)).toBe('var(--disabled-bg)');
+    expect(winning(button, 'color', 1280)).toBe('var(--disabled-text)');
+  });
+
+  it('paints the header and the landing command bar from the chrome palette', () => {
+    document.body.innerHTML = '<header class="app-header"></header><div class="landing-connect"></div>';
+    ['.app-header', '.landing-connect'].forEach((selector) => {
+      const element = document.querySelector(selector)!;
+      expect(winning(element, '--text-color', 1280), selector).toBe('var(--chrome-text)');
+      expect(winning(element, '--primary-color', 1280), selector).toBe('var(--chrome-accent)');
+      expect(winning(element, '--primary-soft', 1280), selector).toBe('var(--chrome-accent-soft)');
+    });
+    expect(winning(document.querySelector('.app-header')!, 'background-color', 1280)).toBe('var(--chrome-bg)');
+  });
+});

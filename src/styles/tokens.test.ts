@@ -129,6 +129,46 @@ describe('design language tokens (docs/design-language.md)', () => {
     expect(disabledRule?.[1]).toMatch(/opacity:\s*1;/);
   });
 
+  it('keeps the disabled primary on the accent, at reduced emphasis', () => {
+    [light, dark].forEach((palette) => {
+      // A clear label on the soft fill, and the soft fill clearly short of the solid one.
+      expect(contrast(palette['--primary-soft-ink'], palette['--primary-soft'])).toBeGreaterThanOrEqual(4.5);
+      expect(contrast(palette['--primary-color'], palette['--primary-soft'])).toBeGreaterThan(3);
+      expect(palette['--primary-soft']).not.toBe(palette['--disabled-bg']);
+    });
+    expect(light['--primary-soft']).toBe('#d3eada');
+    expect(dark['--primary-soft']).toBe('#1b3a22');
+
+    const base = readStylesheet('base');
+    const softRule = base.match(/\.btn-primary:disabled, \.btn-primary\.disabled \{([^}]*)\}/);
+    expect(softRule?.[1]).toMatch(/background-color:\s*var\(--primary-soft\)/);
+    expect(softRule?.[1]).toMatch(/color:\s*var\(--primary-soft-ink\)/);
+    expect(softRule?.[1]).toMatch(/opacity:\s*1;/);
+  });
+
+  it('frames the app in a graphite chrome bezel in both themes', () => {
+    [light, dark].forEach((palette) => {
+      expect(contrast(palette['--chrome-text'], palette['--chrome-bg'])).toBeGreaterThanOrEqual(4.5);
+      expect(contrast(palette['--chrome-muted'], palette['--chrome-bg'])).toBeGreaterThanOrEqual(4.5);
+      expect(contrast(palette['--chrome-muted'], palette['--chrome-raised'])).toBeGreaterThanOrEqual(4.5);
+      expect(contrast(palette['--chrome-control-border'], palette['--chrome-bg'])).toBeGreaterThanOrEqual(3);
+      expect(contrast(dark['--primary-color'], palette['--chrome-bg'])).toBeGreaterThanOrEqual(4.5);
+    });
+    expect(light['--chrome-bg']).toBe('#121614');
+    expect(dark['--chrome-bg']).toBe('#070908');
+    // The dark bezel sits below the dark page, not on top of it.
+    expect(contrast(dark['--body-bg'], dark['--chrome-bg'])).toBeGreaterThan(1);
+  });
+
+  it('gives the landing hero its own instrument face', () => {
+    [light, dark].forEach((palette) => {
+      ['--text-color', '--text-muted'].forEach((text) => {
+        expect(contrast(palette[text], palette['--hero-bg'])).toBeGreaterThanOrEqual(4.5);
+      });
+    });
+    expect(dark['--hero-bg']).not.toBe(dark['--body-bg']);
+  });
+
   it('zeroes the motion tokens for visitors who prefer reduced motion', () => {
     const reduced = tokens.slice(tokens.indexOf('@media (prefers-reduced-motion: reduce)'));
     expect(reduced).toMatch(/--motion-fast:\s*0ms/);

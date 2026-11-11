@@ -62,7 +62,14 @@ restyles it. Components consume tokens; they never hard-code a hex value.
 | `--border-color` | `#dce1dd` | `#2a312d` | Hairlines between and around surfaces (decorative) |
 | `--border-strong` | `#c3cac5` | `#3a423d` | Dividers that must be seen: header lockup rule, neutral pill outlines, dashed empty states |
 | `--input-border` | `#7d8781` | `#66716a` | Field and neutral outline-button borders. Holds 3:1 against the surface (WCAG 1.4.11) |
-| `--disabled-bg` / `--disabled-text` / `--disabled-border` | `#e4e8e5` / `#6b736e` / `#d3d9d5` | `#232925` / `#8a938d` / `#2f3632` | Every disabled control, whatever its variant |
+| `--disabled-bg` / `--disabled-text` / `--disabled-border` | `#e4e8e5` / `#6b736e` / `#d3d9d5` | `#232925` / `#8a938d` / `#2f3632` | Every disabled control except the primary button |
+| `--primary-soft` / `--primary-soft-border` / `--primary-soft-ink` | `#d3eada` / `#9fcfaa` / `#1d6a31` | `#1b3a22` / `#2f6a3b` / `#90dd9c` | The disabled primary button: the accent at reduced emphasis, with a label that holds 4.5:1 |
+| `--chrome-bg` / `--chrome-raised` | `#121614` / `#1b211e` | `#070908` / `#141816` | The graphite bezel (header) and the command bars, in both themes. In dark it sits below the page |
+| `--chrome-text` / `--chrome-muted` | `#eef1ee` / `#a3ada7` | `#e9ece9` / `#9aa49e` | Text inside the chrome |
+| `--chrome-border` / `--chrome-control-border` | `#2a312d` / `#66716a` | `#232925` / `#66716a` | Chrome hairlines; field borders inside the chrome (3:1) |
+| `--chrome-accent` / `-hover` / `-ink` | `#46d35a` / `#74e383` / `#04140a` | same | The accent inside the chrome is always the bright logo green |
+| `--chrome-accent-soft` / `-soft-border` / `-soft-ink` | `#1b3a22` / `#2f6a3b` / `#90dd9c` | same | The disabled primary inside the chrome |
+| `--hero-bg` / `--hero-border` | `#ffffff` / `#d3d9d5` | `#111513` / `#2a312d` | The instrument face: page heads of the server profile, tool pages and articles |
 | `--wire-request` / `--wire-response` | `#5a625d` / `#167a2c` | `#9aa49e` / `#46d35a` | Rails on outbound and inbound JSON-RPC messages |
 | `--link-color` / `--link-hover` | `#106323` / `#0a3f16` | `#74e383` / `#ffffff` | Inline links |
 | `--focus-ring` | 3px accent at 28% | 3px accent at 35% | Focus on buttons, inputs and nav items |
@@ -77,18 +84,23 @@ restyles it. Components consume tokens; they never hard-code a hex value.
 1. **Accent budget.** One solid primary button per view, for the action the
    view exists for (Connect, Run tool, Run Report, Test it live). Everything
    else is an outline, ghost or link. Never use the accent for decoration.
-2. **Disabled is neutral.** A disabled button of any variant is
-   `--disabled-bg` with `--disabled-text`, at full opacity. Never fade the
-   accent: a pale green reads as "almost enabled".
+2. **Disabled.** A disabled button of any variant but primary is
+   `--disabled-bg` with `--disabled-text`, at full opacity. A disabled
+   primary stays the primary action at reduced emphasis: `--primary-soft`
+   with a `--primary-soft-ink` label (Connect before a URL is typed), and
+   turns solid as soon as it is enabled. Never use opacity to disable.
 3. **Pressed and hover.** Hover darkens (solid) or washes (outline, ghost);
-   pressed adds a one-pixel settle. No lifts, no scale, no glow.
+   pressed adds a one-pixel settle. No lifts, no scale, no glow. The solid
+   primary carries a one-pixel inset lower edge so the fill reads as a key.
 4. **Surfaces.** Cards and panels: `--card-bg`, one `1px solid
    var(--border-color)` hairline, `--border-radius`, no shadow, no hover lift.
    Only floating surfaces use `--shadow-float`.
 5. **The signal rail.** A `--rail-width` left edge marks state, and only
-   state: the active sidebar item (accent), verdicts and callouts (status
-   colour), alerts (status colour), the result payload and every JSON-RPC log
-   entry (wire colours). If something has a rail, its colour means something.
+   state: the active sidebar item and selected category (accent), the list
+   row under the pointer (accent), the connected console (pass), verdicts,
+   discovery results and callouts (status colour), alerts (status colour),
+   endpoints, the result payload and every JSON-RPC log entry (wire
+   colours). If something has a rail, its colour means something.
 6. **Status pills.** `.badge` is a fully round, soft-tinted pill with a
    same-hue hairline. Pass, warn and fail pills (`bg-success`, `bg-warning`,
    `bg-danger`) lead with a status dot; neutral tags (`bg-secondary`,
@@ -105,9 +117,14 @@ restyles it. Components consume tokens; they never hard-code a hex value.
    2px accent underline, so selection never relies on a surface step alone.
 10. **Focus.** Every interactive element shows `--focus-ring` (or a 2px
     accent outline for native controls) on `:focus-visible`.
-11. **Brand lockup.** The header carries a 2px accent signal line on its top
-    edge, the logo, the wordmark in mono, a `--border-strong` rule and the
-    product name in muted sans.
+11. **Brand lockup and chrome.** The header is a graphite bezel
+    (`--chrome-bg`) in both themes with a 2px accent signal line on its top
+    edge, the logo, the wordmark in mono, a rule and the product name in
+    muted sans. `layout.css` re-declares the theme tokens inside the chrome
+    scope (`.app-header`, `.landing-connect`, `.connection-console
+    .input-group`, `.discovery-form-row`), so primitives inside it need no
+    special rules. Add a selector to that list rather than hand-colouring a
+    control for a dark surface.
 12. **Motion.** Use `--motion-fast` / `--motion-base`; both drop to `0ms` and
     transitions are disabled under `prefers-reduced-motion: reduce`.
 13. **Contrast.** Text tokens hold 4.5:1 on every surface in both themes;
@@ -118,3 +135,20 @@ restyles it. Components consume tokens; they never hard-code a hex value.
     `border-danger`, `bg-primary`, `btn-warning`, …) are remapped to tokens in
     `base.css`. Do not reach for `--bs-*` variables in app CSS; they ignore
     the theme.
+15. **Command bar.** Every "enter an endpoint and go" form (landing,
+    playground connection console, discovery and OAuth checkers) is a chrome
+    bar: mono field, solid primary. The landing bar leads with the wire's `→`
+    request marker.
+16. **Instrument face.** Page heads that identify a thing (server profile,
+    tool pages, Learn and Docs articles) sit on `--hero-bg` with a
+    `--hero-border` hairline and the 2px accent signal line on top. The
+    landing headline ends in an accent block caret.
+17. **Numbered rows.** Lists of next steps (the landing "where to start"
+    rows) are one surface with hairline rows, a mono `01`, `02` index, and
+    the accent rail plus a wash on the row under the pointer. The catalog
+    list uses the same rail and wash, and the selected category reads like
+    the active sidebar item.
+18. **Tables and inline code.** Table heads are a `--card-bg-secondary` band
+    with mono, muted column labels over a `--border-strong` rule. Bare inline
+    `<code>` is a small neutral chip (`--card-bg-secondary`, hairline,
+    `--text-accent`), never Bootstrap's pink.

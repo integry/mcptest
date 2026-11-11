@@ -90,6 +90,11 @@
   --primary-ink: #ffffff;
   --accent-text: #106323;
   --accent-wash: #e6f1e8;
+  /* The primary action at reduced emphasis: Connect before a URL is typed.
+     Still green, still labelled, clearly short of the solid fill. */
+  --primary-soft: #d3eada;
+  --primary-soft-border: #9fcfaa;
+  --primary-soft-ink: #1d6a31;
   /* Neutral actions */
   --secondary-color: #6b746f;
   --secondary-surface: #59615c;
@@ -122,6 +127,24 @@
   --shadow-float: 0 6px 16px -4px rgba(18, 21, 19, 0.16), 0 0 0 1px rgba(18, 21, 19, 0.05);
   --hover-wash: rgba(18, 21, 19, 0.05);
   --active-wash: rgba(18, 21, 19, 0.085);
+  /* Chrome: the header is a graphite instrument bezel in both themes, with
+     the accent signal line on top. Components inside it read these through
+     the scoped re-declarations in layout.css. */
+  --chrome-bg: #121614;
+  --chrome-raised: #1b211e;
+  --chrome-text: #eef1ee;
+  --chrome-muted: #a3ada7;
+  --chrome-border: #2a312d;
+  --chrome-control-border: #66716a;
+  --chrome-accent: #46d35a;
+  --chrome-accent-hover: #74e383;
+  --chrome-accent-ink: #04140a;
+  --chrome-accent-soft: #1b3a22;
+  --chrome-accent-soft-border: #2f6a3b;
+  --chrome-accent-soft-ink: #90dd9c;
+  /* Hero backdrop: the instrument face behind the landing headline. */
+  --hero-bg: #ffffff;
+  --hero-border: #d3d9d5;
 }
 
 /* --- Dark palette ---
@@ -146,6 +169,9 @@
   --primary-ink: #04140a;
   --accent-text: #74e383;
   --accent-wash: #15291a;
+  --primary-soft: #1b3a22;
+  --primary-soft-border: #2f6a3b;
+  --primary-soft-ink: #90dd9c;
   /* Neutral actions */
   --secondary-color: #9aa49e;
   --secondary-surface: #4a534d;
@@ -176,6 +202,21 @@
   --shadow-float: 0 10px 28px -6px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.07);
   --hover-wash: rgba(233, 236, 233, 0.06);
   --active-wash: rgba(233, 236, 233, 0.1);
+  /* Chrome: a step below the page, so the bezel frames the dark workspace. */
+  --chrome-bg: #070908;
+  --chrome-raised: #141816;
+  --chrome-text: #e9ece9;
+  --chrome-muted: #9aa49e;
+  --chrome-border: #232925;
+  --chrome-control-border: #66716a;
+  --chrome-accent: #46d35a;
+  --chrome-accent-hover: #74e383;
+  --chrome-accent-ink: #04140a;
+  --chrome-accent-soft: #1b3a22;
+  --chrome-accent-soft-border: #2f6a3b;
+  --chrome-accent-soft-ink: #90dd9c;
+  --hero-bg: #111513;
+  --hero-border: #2a312d;
 }
 
 @media (prefers-reduced-motion: reduce) {
