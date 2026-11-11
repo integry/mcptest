@@ -408,14 +408,10 @@ export const analyzeToolAnnotations = (inputs: readonly AnnotationToolInput[]): 
           `readOnlyHint is true, but ${verbEvidence(write, tool)}, which indicates a write.`
         );
       }
-      if (tool.hints.destructiveHint === true) {
-        recordMismatch(
-          '$.annotations.destructiveHint',
-          'readOnlyHint is true and destructiveHint is true; the spec ignores destructiveHint on read-only tools, so one of the two is wrong.'
-        );
-      }
     }
-    if (tool.hints.destructiveHint === false) {
+    // destructiveHint is meaningful only when readOnlyHint is false, so its
+    // value on a read-only tool never contradicts anything.
+    if (tool.hints.destructiveHint === false && tool.hints.readOnlyHint !== true) {
       const destructive = tool.writeVerbs.find((signal) => HINT_DESTRUCTIVE_VERBS.has(signal.verb));
       if (destructive) {
         recordMismatch(

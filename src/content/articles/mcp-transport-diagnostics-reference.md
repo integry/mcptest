@@ -384,9 +384,10 @@ def search_docs(query: str) -> str: ...
 **Observed:** a declared hint contradicts the tool's own name or description:
 
 - `readOnlyHint: true` on a tool whose name or description reads like a write (delete, remove, send, create, update, write, post, drop and the rest of the list).
-- `destructiveHint: false` on a tool with a destructive verb (delete, remove, drop, purge, reset, revoke, truncate, wipe and similar).
+- `destructiveHint: false` on a tool that is not marked read-only and has a destructive verb (delete, remove, drop, purge, reset, revoke, truncate, wipe and similar).
 - `idempotentHint: true` on a tool whose name suggests a repeated effect (send, create, append, post, submit, insert, reply, enqueue) when its input has no idempotency key such as `idempotencyKey` or `requestId`.
-- `readOnlyHint: true` together with `destructiveHint: true`.
+
+`destructiveHint` and `idempotentHint` are ignored on a tool with `readOnlyHint: true`, so their values on such a tool are never reported.
 
 The evidence shows the hint and the word that contradicts it.
 

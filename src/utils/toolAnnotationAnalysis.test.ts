@@ -6,7 +6,10 @@ import {
   assessHostCompatibility,
   getClientHostProfile,
   HOST_PROFILE_LIST,
+  observedFact,
   publicServerFixture,
+  unknownFact,
+  type CapabilityAvailability,
 } from '../compatibility';
 import { CLIENT_COMPATIBILITY } from '../data/clientCompatibility';
 import { TOOL_ANNOTATION_FINDING_IDS } from '../types/toolSurfaceAnalysis';
@@ -208,9 +211,18 @@ describe('tool annotation findings', () => {
       ]);
     });
 
-    it('flags readOnlyHint: true together with destructiveHint: true', () => {
-      expect(mismatches([fullyAnnotated('get_report', { readOnlyHint: true, destructiveHint: true })]))
-        .toEqual(['get_report $.annotations.destructiveHint']);
+    it('ignores destructiveHint on read-only tools, as the spec does', () => {
+      const tools = [
+        fullyAnnotated('get_report', { readOnlyHint: true, destructiveHint: true }),
+        fullyAnnotated('get_deleted_report', { readOnlyHint: true, destructiveHint: false }),
+      ];
+      expect(mismatches(tools)).toEqual([]);
+      expect(createReleaseDecisionFor(tools).priorities.filter(({ id }) => id.startsWith('tool.annotations.'))).toEqual([]);
+    });
+
+    it('reports only the readOnlyHint contradiction when a write tool is marked read-only', () => {
+      expect(mismatches([fullyAnnotated('delete_file', { readOnlyHint: true, destructiveHint: false })]))
+        .toEqual(['delete_file $.annotations.readOnlyHint']);
     });
 
     it('asks for review without blocking release or failing the default release gate', () => {
@@ -383,6 +395,60 @@ describe('tool hint host compatibility rules', () => {
     expect(publicServerFixture.tools).toBeUndefined();
     expect(ruleFinding('claude-code', 'tools.retry-hints', null)?.outcome).toBe('pass');
     expect(ruleFinding('codex-cli', 'tools.parallel-read-only', null)?.outcome).toBe('pass');
+  });
+
+  it('stays neutral when tool discovery is unknown and no tool facts were observed', () => {
+    const facts = {
+      ...publicServerFixture,
+      capabilities: {
+        ...publicServerFixture.capabilities,
+        tools: unknownFact<CapabilityAvailability>('Tool discovery did not complete.'),
+      },
+    };
+    expect(facts.tools).toBeUndefined();
+    for (const [profileId, ruleId] of [['claude-code', 'tools.retry-hints'], ['codex-cli', 'tools.parallel-read-only']]) {
+      const profile = client(profileId);
+      const assessment = assessHostCompatibility(facts, profile);
+      const withoutRule = assessHostCompatibility(facts, {
+        ...profile,
+        rules: profile.rules.filter(({ id }) => id !== ruleId),
+      });
+      expect(assessment.findings.find((item) => item.ruleId === ruleId)).toMatchObject({ outcome: 'pass' });
+      expect(assessment.findings.filter((item) => item.outcome === 'unknown').map((item) => item.ruleId)).not.toContain(ruleId);
+      expect(assessment.status).toBe(withoutRule.status);
+    }
+  });
+
+  it('applies the observed tool facts even when tool discovery is unknown', () => {
+    const bare = [{ name: 'search_docs', description: 'Search documentation by query.', inputSchema: schema }];
+    const observedFacts = createObservedServerFacts(evaluatedReport(bare));
+    const facts = {
+      ...observedFacts,
+      capabilities: {
+        ...observedFacts.capabilities,
+        tools: unknownFact<CapabilityAvailability>('Tool discovery did not complete.'),
+      },
+    };
+    expect(assessHostCompatibility(facts, client('claude-code')).findings.find((item) => item.ruleId === 'tools.retry-hints'))
+      .toMatchObject({ outcome: 'caveat' });
+    expect(assessHostCompatibility(facts, client('codex-cli')).findings.find((item) => item.ruleId === 'tools.parallel-read-only'))
+      .toMatchObject({ outcome: 'caveat' });
+  });
+
+  it('stays neutral when the server does not advertise tools', () => {
+    const bare = [{ name: 'search_docs', description: 'Search documentation by query.', inputSchema: schema }];
+    const observedFacts = createObservedServerFacts(evaluatedReport(bare));
+    const facts = {
+      ...observedFacts,
+      capabilities: {
+        ...observedFacts.capabilities,
+        tools: observedFact<CapabilityAvailability>('absent', 'tools/list was not advertised.'),
+      },
+    };
+    expect(assessHostCompatibility(facts, client('claude-code')).findings
+      .filter((item) => item.ruleId === 'tools.retry-hints' && item.outcome !== 'pass')).toEqual([]);
+    expect(assessHostCompatibility(facts, client('codex-cli')).findings
+      .filter((item) => item.ruleId === 'tools.parallel-read-only' && item.outcome !== 'pass')).toEqual([]);
   });
 
   it('leaves tool facts out when pagination was incomplete', () => {

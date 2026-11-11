@@ -702,7 +702,12 @@ const toolHintRules = (behavior: ToolHintClientBehavior): CompatibilityRuleV1[] 
   const base = {
     schemaVersion: COMPATIBILITY_SCHEMA_VERSION,
     scope: 'target-server' as const,
-    appliesWhen: observed('capabilities.tools', 'present'),
+    // No appliesWhen: the tools.* facts exist only when a complete, non-empty
+    // tool list was analyzed, so they already establish that the rule applies.
+    // Gating on capabilities.tools would leave applicability unresolved when
+    // tool discovery did not complete, and the evaluator then reports the
+    // possible caveat as an unknown finding instead of staying neutral.
+    unknownWhen: observed('capabilities.tools', 'absent'),
     assumptionSourceIds: [toolHintSourceId(behavior)],
   };
   if (behavior.behavior === 'retry-after-dropped-connection') {
@@ -721,7 +726,7 @@ const toolHintRules = (behavior: ToolHintClientBehavior): CompatibilityRuleV1[] 
         `Since ${behavior.sinceVersion}, ${behavior.clientName} retries an HTTP MCP tool call that was cut off mid-call only when the tool is read-only or idempotent. Tools that leave those hints unset fall back to the spec defaults (not read-only, not idempotent), so a dropped connection surfaces as an error instead of a retry.`,
         remediation('server-change', 'Declare readOnlyHint on every tool, and idempotentHint on every tool that is not read-only.', TOOL_ANNOTATIONS_SPEC_URL)
       ),
-      onUnknown: result('pass', 'Tool retry hints were not observed', 'The tool list was not fully analyzed, so retry hints do not affect this assessment.'),
+      onUnknown: result('pass', 'Tool retry hints were not observed', 'The server does not advertise tools, or its tool list was not fully analyzed, so retry hints do not affect this assessment.'),
       evidenceFacts: ['tools.retryHintsDeclared'],
     }];
   }
@@ -740,7 +745,7 @@ const toolHintRules = (behavior: ToolHintClientBehavior): CompatibilityRuleV1[] 
       `Since ${behavior.sinceVersion}, ${behavior.clientName} runs MCP tools concurrently only when they advertise readOnlyHint: true. Tools without readOnlyHint are treated as able to modify their environment and run one at a time, even if they only read.`,
       remediation('server-change', 'Declare readOnlyHint on every tool: true on tools that only read.', TOOL_ANNOTATIONS_SPEC_URL)
     ),
-    onUnknown: result('pass', 'Tool read-only hints were not observed', 'The tool list was not fully analyzed, so read-only hints do not affect this assessment.'),
+    onUnknown: result('pass', 'Tool read-only hints were not observed', 'The server does not advertise tools, or its tool list was not fully analyzed, so read-only hints do not affect this assessment.'),
     evidenceFacts: ['tools.readOnlyHintDeclared'],
   }];
 };

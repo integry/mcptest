@@ -154,7 +154,11 @@ only that source:
 A missing hint is a caveat, never a failure. The `tools` facts come from the
 tool surface analysis and are left out when the tool list was not fully
 analyzed (catalog facts, partial pagination, older reports); `tools.*` paths
-then read as unknown and both rules pass. Add a behaviour here only after
+then read as unknown and both rules pass. The rules have no `appliesWhen`:
+the facts exist only for a complete, non-empty tool list, so they already show
+the rules apply, and gating on `capabilities.tools` would turn an unknown
+capability into an unknown finding. A server observed not to advertise tools
+reads as unknown through `unknownWhen` and also passes. Add a behaviour here only after
 reading it in the client's official documentation or changelog.
 
 ## Canonical fixtures
