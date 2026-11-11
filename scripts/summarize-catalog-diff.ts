@@ -162,7 +162,10 @@ export function diffCatalogEvidence(input: CatalogDiffInput): CatalogDiff {
         serverId,
         from: previous.status,
         to: next.status,
-        detail: next.status === 'online' ? undefined : next.errorCode,
+        // A server online behind a 402 is reachable but not inspectable; say so.
+        detail: next.status === 'online'
+          ? next.responseClass === 'payment-required' ? 'payment required' : undefined
+          : next.errorCode,
       };
       if (next.status === 'online') diff.wentOnline.push(change);
       else if (previous.status === 'online') diff.wentOffline.push(change);

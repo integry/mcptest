@@ -48,9 +48,17 @@ sourceLinks:
     url: "https://github.com/modelcontextprotocol/python-sdk/blob/main/docs/migration.md"
   - title: "RFC 6585: 429 Too Many Requests"
     url: "https://www.rfc-editor.org/rfc/rfc6585"
+  - title: "Cloudflare: Detect a Challenge Page response"
+    url: "https://developers.cloudflare.com/cloudflare-challenges/challenge-types/challenge-pages/detect-response/"
+  - title: "Cloudflare: Error 1020 Access denied"
+    url: "https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-1xxx-errors/error-1020/"
+  - title: "Vercel: Firewall concepts (deny and challenge actions)"
+    url: "https://vercel.com/docs/vercel-firewall/firewall-concepts"
+  - title: "x402 v2: HTTP transport"
+    url: "https://github.com/coinbase/x402/blob/main/specs/transports-v2/http.md"
 ---
 
-mcptest records the HTTP exchange of each connection attempt, both direct and through its optional CORS proxy. Six transport diagnostics are defined in `src/types/transportDiagnostics.ts`, plus one tool-level finding in `src/utils/outputContract.ts`. The ids are a stable contract: connection error cards, report JSON and Markdown, and this page all use them. For general triage, start with [troubleshooting](/docs/troubleshooting).
+mcptest records the HTTP exchange of each connection attempt, both direct and through its optional CORS proxy. Eight transport diagnostics are defined in `src/types/transportDiagnostics.ts`, plus one tool-level finding in `src/utils/outputContract.ts`. The ids are a stable contract: connection error cards, report JSON and Markdown, and this page all use them. For general triage, start with [troubleshooting](/docs/troubleshooting).
 
 The fixes below repeat the code hints shown in the app (`src/utils/transportDiagnostics.ts`). The Python hints use the 1.x `FastMCP` names. In Python SDK 2.x the class is `MCPServer` from `mcp.server.mcpserver`, and `json_response` moves from the constructor to `run()` and `streamable_http_app()` ([migration guide](https://github.com/modelcontextprotocol/python-sdk/blob/main/docs/migration.md)).
 
@@ -69,6 +77,8 @@ The fixes below repeat the code hints shown in the app (`src/utils/transportDiag
 | `transport.target-rate-limited-429` | error (warning if a retry recovered, or on GET) | Yes when error |
 | `transport.cors-expose-headers-missing` | error when confirmed, warning when suspected | Only when confirmed |
 | `transport.sse-content-type-mismatch` | error (warning on the optional GET stream) | Yes when error |
+| `transport.bot-protection-challenge` | error (warning on GET); suspected without a vendor signature | Yes when detected |
+| `transport.payment-required-402` | error (warning on GET) | No: the report is not scored |
 | `tool.output-contract-violation` | high-priority finding | Yes |
 
 ## transport.accept-header-406 {#transport-accept-header-406}
@@ -272,6 +282,44 @@ return new Response(readable, {
 ```
 
 **Reports:** [postman-app-support#13885](https://github.com/postmanlabs/postman-app-support/issues/13885). After a Postman update, connecting to an HTTP MCP server failed with `SSE error: Invalid content type, expected "text/event-stream"`.
+
+## transport.bot-protection-challenge {#transport-bot-protection-challenge}
+
+**Observed:** a CDN, WAF or bot-management rule answered instead of the MCP server. mcptest only reports it as detected when the response carries a documented vendor signature, and the evidence lists the status and headers that matched:
+
+- Cloudflare: the `cf-mitigated: challenge` header, which Cloudflare sets on every challenge page; a page that loads `/cdn-cgi/challenge-platform/`; or the "Error 1020: Access denied" block page.
+- Vercel Firewall: the "Vercel Security Checkpoint" challenge page, or `x-vercel-mitigated: challenge` or `deny` on a `403` or `429`.
+
+A `403` HTML page without `WWW-Authenticate`, where JSON or an event stream was expected, matches no vendor signature and is reported as `suspected`. A `403` with `WWW-Authenticate` is an authentication challenge and never counts here. `Server: cloudflare` and `cf-ray` are not evidence: Cloudflare adds them to every response it serves, including the mcptest proxy's own.
+
+**Severity:** error; warning on the optional Streamable HTTP GET stream. mcptest does not start OAuth discovery on such a `403`, because discovery would hit the same rule.
+
+**Why:** MCP clients are programs, so they cannot solve a challenge meant for browsers. The same rules often cover `/.well-known/oauth-protected-resource`, `/.well-known/oauth-authorization-server` and the token endpoint, which breaks OAuth discovery in every client, not only in mcptest.
+
+**Fix:** exempt the MCP endpoint, the OAuth discovery documents and the token endpoint from challenge and block rules, and rate-limit them instead. On Cloudflare a WAF custom rule with the Skip action covers managed challenges and Super Bot Fight Mode; the free Bot Fight Mode cannot be skipped per path, so turn it off for the zone. On Vercel add a Firewall bypass rule for the paths and turn off Attack Challenge Mode. See [deploying a remote MCP server](/learn/deploy-remote-mcp-server) for the platform pitfalls.
+
+```text
+# Cloudflare dashboard > Security > WAF > Custom rules > Skip
+(http.request.uri.path eq "/mcp")
+  or starts_with(http.request.uri.path, "/.well-known/oauth-")
+  or (http.request.uri.path eq "/token")
+```
+
+## transport.payment-required-402 {#transport-payment-required-402}
+
+**Observed:** the server answered `402 Payment Required`. When it follows x402, the evidence includes the `PAYMENT-REQUIRED` header (x402 v2) or notes the `x402Version` body (v1).
+
+**Severity:** error, because no MCP session was established; warning on the optional GET stream. It does not mark the server as broken: the release-readiness answer is "Not scored — the server requires payment", catalog validation records the server as online with `responseClass: "payment-required"`, and its catalog badge reads "payment required".
+
+**Why:** the server charges for access. mcptest never pays, so it cannot inspect the server past the `402`.
+
+**Fix:** nothing, if charging is intended. If the endpoint should be free to inspect, stop answering `initialize` and discovery requests with `402`. Browser clients can read the x402 header only when it is listed in `Access-Control-Expose-Headers`.
+
+```typescript
+res.set('PAYMENT-REQUIRED', Buffer.from(JSON.stringify(paymentRequired)).toString('base64'));
+res.set('Access-Control-Expose-Headers', 'PAYMENT-REQUIRED, PAYMENT-RESPONSE');
+res.status(402).json({ error: 'Payment required' });
+```
 
 ## tool.output-contract-violation {#tool-output-contract-violation}
 

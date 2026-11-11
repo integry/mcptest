@@ -295,6 +295,27 @@ describe('proxy target credential forwarding', () => {
     expect(proxiedResponse.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('target');
   });
 
+  it('forwards and exposes the target headers that classify bot protection, rate limits and 402', () => {
+    const proxiedResponse = withCorsResponseHeaders(new Response('<html>blocked</html>', {
+      status: 403,
+      headers: {
+        'Content-Type': 'text/html',
+        'cf-mitigated': 'challenge',
+        'x-vercel-mitigated': 'challenge',
+        'Retry-After': '10',
+        'PAYMENT-REQUIRED': 'eyJ4NDAyVmVyc2lvbiI6Mn0=',
+      },
+    }), 'target');
+
+    expect(proxiedResponse.status).toBe(403);
+    expect(proxiedResponse.headers.get('cf-mitigated')).toBe('challenge');
+    expect(proxiedResponse.headers.get('x-vercel-mitigated')).toBe('challenge');
+    expect(proxiedResponse.headers.get('payment-required')).toBe('eyJ4NDAyVmVyc2lvbiI6Mn0=');
+    expect(proxiedResponse.headers.get('access-control-expose-headers')?.toLowerCase().split(', '))
+      .toEqual(expect.arrayContaining(['cf-mitigated', 'x-vercel-mitigated', 'retry-after', 'payment-required', 'content-type']));
+    expect(proxiedResponse.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('target');
+  });
+
   it('rejects cross-origin redirects before forwarding target credentials', async () => {
     const requests: Request[] = [];
     const fetch = async (request: Request) => {

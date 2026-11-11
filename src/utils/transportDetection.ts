@@ -20,6 +20,12 @@ import {
   type ProxyCallerLimit,
 } from './proxyLimit';
 import { parseRetryAfter } from './transportDiagnostics';
+import {
+  classifyHttpResponse,
+  readClassificationBody,
+  RESPONSE_CLASSIFICATION_STATUSES,
+  type ResponseClassification,
+} from './responseClassification';
 
 export interface TransportCandidate {
   url: string;
@@ -106,6 +112,8 @@ export interface ObservedTransportRequest {
   };
   /** Set on the single automatic retry that follows a target HTTP 429. */
   automaticRetry?: { reason: 'target-rate-limit'; waitMs: number };
+  /** Bot protection, rate limit or payment required, when the target response matched a signature. */
+  responseClass?: ResponseClassification;
   outcome?: 'started' | 'succeeded' | 'failed';
 }
 
@@ -840,6 +848,13 @@ const observeAuthenticationResponses = (
         const targetError = await inspectSafeTargetError(response, knownCredentials)
           .catch(() => undefined);
         if (targetError) attemptedRequest.targetError = targetError;
+        if (!attemptedRequest.proxyLimit) {
+          const body = RESPONSE_CLASSIFICATION_STATUSES.has(response.status)
+            ? await readClassificationBody(response).catch(() => undefined)
+            : undefined;
+          const responseClass = classifyHttpResponse({ status: response.status, headers: response.headers, body });
+          if (responseClass) attemptedRequest.responseClass = responseClass;
+        }
       }
     } catch (error) {
       attemptedRequest.durationMs = Math.max(0, Date.now() - startedAtMs);
@@ -877,7 +892,12 @@ const observeAuthenticationResponses = (
       }
     }
 
-    if (response.status === 401 || response.status === 403) {
+    // A challenge or block page from bot protection is not an authentication
+    // challenge: starting OAuth discovery would only fail on the same rule.
+    if (
+      (response.status === 401 || response.status === 403)
+      && attemptedRequest.responseClass?.kind !== 'bot-protection'
+    ) {
       const responseSource = !usesProxy
         ? 'target'
         : response.headers.get(PROXY_RESPONSE_SOURCE_HEADER) === 'target'

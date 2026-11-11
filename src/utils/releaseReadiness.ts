@@ -535,6 +535,29 @@ export const createReleaseDecision = (
     };
   }
 
+  const paymentRequired = outcome === 'failed'
+    ? detectedTransportDiagnostics(transportDiagnosticsFromSections(report.sections))
+      .find(({ id }) => id === 'transport.payment-required-402')
+    : undefined;
+  if (paymentRequired) {
+    // A 402 is a deliberate access gate, not a broken server: report it as not
+    // scored, like an authorization requirement, never as blocked.
+    const observation = paymentRequired.evidence[0]?.observation;
+    return {
+      status: 'unknown',
+      answer: 'Not scored — the server requires payment',
+      summary: 'The server answered HTTP 402 Payment Required, so it is reachable but charges for access. Its protocol and capabilities could not be assessed without paying.',
+      priorities: [{
+        id: paymentRequired.id,
+        severity: 'unknown',
+        title: paymentRequired.title,
+        detail: observation ? `${observation} ${paymentRequired.explanation}` : paymentRequired.explanation,
+        remediation: paymentRequired.remediation.summary,
+        source: 'Evaluation',
+      }],
+    };
+  }
+
   const priorities: ReleasePriority[] = [];
   if (outcome === 'failed') {
     const proxyAuthenticationFailed = metadataRecords(report).some((record) => (
@@ -544,16 +567,25 @@ export const createReleaseDecision = (
         && (failure as Record<string, unknown>).authenticationSource === 'proxy'
       ))
     ));
+    const botProtection = !proxyAuthenticationFailed && detectedTransportDiagnostics(
+      transportDiagnosticsFromSections(report.sections)
+    ).some(({ id, severity }) => id === 'transport.bot-protection-challenge' && severity === 'error');
     priorities.push({
       id: 'evaluation.negotiation-failed',
       severity: 'high',
-      title: proxyAuthenticationFailed ? 'Restore authenticated proxy access' : 'Restore MCP negotiation',
+      title: proxyAuthenticationFailed
+        ? 'Restore authenticated proxy access'
+        : botProtection ? 'Let MCP clients past bot protection' : 'Restore MCP negotiation',
       detail: proxyAuthenticationFailed
         ? 'The mcptest proxy rejected or could not validate its own authentication before the target could be evaluated.'
-        : 'The evaluator could not establish a complete MCP connection.',
+        : botProtection
+          ? 'A CDN or WAF challenge answered instead of the MCP server, so no MCP connection could be established.'
+          : 'The evaluator could not establish a complete MCP connection.',
       remediation: proxyAuthenticationFailed
         ? 'Refresh the mcptest session or proxy credential, confirm proxy access, and rerun without treating the proxy challenge as target OAuth.'
-        : 'Verify the published endpoint, transport response, protocol lifecycle, and proxy route, then rerun the full report.',
+        : botProtection
+          ? 'Exempt the MCP endpoint and its OAuth discovery and token paths from challenge rules (see the bot-protection item), then rerun the full report.'
+          : 'Verify the published endpoint, transport response, protocol lifecycle, and proxy route, then rerun the full report.',
       source: 'Evaluation',
     });
   } else if (outcome === 'partial') {

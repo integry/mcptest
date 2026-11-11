@@ -16,6 +16,7 @@ import {
   type CatalogSubmissionResponse,
 } from '../utils/catalogSubmission';
 import { probeSubmissionEndpoint } from '../utils/submissionProbe';
+import { RESPONSE_CLASS_CONTENT } from '../utils/responseClassification';
 import { useTurnstile } from '../hooks/useTurnstile';
 import './SubmitServerView.css';
 
@@ -60,7 +61,9 @@ const describeEvidence = (evidence: CatalogSubmissionEvidence): Array<[string, s
     ? 'Yes, MCP handshake completed'
     : evidence.outcome === 'auth-challenge'
       ? `Yes, authentication challenge${evidence.authStatus ? ` (HTTP ${evidence.authStatus})` : ''}`
-      : 'No'],
+      : evidence.responseClass
+        ? `Answered, but ${RESPONSE_CLASS_CONTENT[evidence.responseClass].label.toLowerCase()} stopped the check`
+        : 'No'],
   ['Transport', evidence.transport === 'streamable-http'
     ? 'Streamable HTTP'
     : evidence.transport === 'legacy-sse' ? 'Legacy SSE' : 'Not negotiated'],

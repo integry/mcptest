@@ -1,3 +1,4 @@
+import type { ResponseClass } from '../utils/responseClassification';
 /**
  * Sentinel category value used by the catalog UI to represent an unfiltered
  * category selection.
@@ -281,6 +282,13 @@ export interface CatalogValidationResult {
   authorizationServers?: string[];
   /** ISO timestamp for when validation completed. */
   checkedAt: string;
+  /**
+   * Set when bot protection, a rate limit or a 402 answered instead of an MCP
+   * handshake. `payment-required` keeps status `online`: the server works but
+   * charges for access. The others leave status `unknown` with errorCode
+   * `bot_protection` or `rate_limited`.
+   */
+  responseClass?: ResponseClass;
   /** Optional machine-readable failure code for diagnostics. */
   errorCode?: string;
   /** Optional human-readable validation detail for maintainers. */
@@ -314,6 +322,8 @@ export interface CatalogServer extends Omit<CatalogServerSeed, 'transport'> {
   checkedAt?: string;
   /** Optional validation detail surfaced to maintainers or debug views. */
   validationMessage?: string;
+  /** Bot protection, rate limit or payment wall met by the latest validation run. */
+  responseClass?: ResponseClass;
   /** Durable, public-safe capability snapshot maintained separately from reachability evidence. */
   capabilityInventory?: CapabilityInventoryV1;
 }
