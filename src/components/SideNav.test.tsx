@@ -219,6 +219,7 @@ describe('SideNav information architecture', () => {
     expect(projectLinks).toEqual([
       ['CI release gate', '/ci', null, null],
       ['MCP test servers', '/mcp-test-servers', null, null],
+      ['Test your MCP client', '/mcp-test-client', null, null],
       ['Submit a server', '/submit', null, null],
       ['Badges', 'https://github.com/integry/mcptest#embedding-a-badge', '_blank', 'noopener noreferrer'],
       ['GitHub repository', 'https://github.com/integry/mcptest', '_blank', 'noopener noreferrer'],

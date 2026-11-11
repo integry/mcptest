@@ -11,7 +11,7 @@ const {
   getTrack,
 } = require('../../src/content/contentModel.ts');
 const { PUBLIC_FIXTURES } = require('../../src/data/publicFixtures.ts');
-const { MCP_TEST_SERVERS_PATH } = require('../../src/utils/appRoutes.ts');
+const { MCP_TEST_CLIENT_PATH, MCP_TEST_SERVERS_PATH } = require('../../src/utils/appRoutes.ts');
 
 const FEED_PATH = '/learn/feed.xml';
 const FEED_URL = `${SITE_URL}${FEED_PATH}`;
@@ -30,6 +30,7 @@ const TOOL_LINKS = [
   { title: 'Server catalog', url: `${SITE_URL}/catalog`, note: 'Validated public remote MCP servers with transport, authentication, and protocol badges.' },
   { title: 'Server report', url: `${SITE_URL}/report`, note: 'Evaluate an endpoint and share a redacted compatibility report.' },
   { title: 'Public MCP test servers', url: `${SITE_URL}${MCP_TEST_SERVERS_PATH}`, note: 'Free deterministic MCP servers for testing clients, with client configs and curl examples.' },
+  { title: 'Test your MCP client', url: `${SITE_URL}${MCP_TEST_CLIENT_PATH}`, note: 'Protocol checklist for MCP clients against the public test servers, with the expected request and response for each step.' },
   // The fixture endpoints themselves (src/data/publicFixtures.ts).
   ...PUBLIC_FIXTURES.map(fixture => ({ title: `${fixture.name} MCP test server`, url: fixture.url, note: fixture.purpose })),
   { title: 'Guides feed', url: FEED_URL, note: 'RSS 2.0 feed of every guide above, most recently reviewed first.' },
