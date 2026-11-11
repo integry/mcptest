@@ -5,75 +5,86 @@ track: use
 level: practitioner
 order: 2
 category: Clients and compatibility
-readingTimeMinutes: 11
-lastReviewed: 2026-08-17
+readingTimeMinutes: 8
+lastReviewed: "2026-11-11"
 relatedSlugs:
   - connect-remote-mcp-server
+  - mcp-client-support-matrix
   - mcp-server-trust-checklist
 sourceLinks:
   - title: "Claude Code: Connect to tools via MCP"
     url: "https://code.claude.com/docs/en/mcp"
-  - title: "Anthropic: Local MCP servers on Claude Desktop"
-    url: "https://support.anthropic.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop"
-  - title: "Anthropic: Desktop and web connectors"
-    url: "https://support.anthropic.com/en/articles/11725091-when-to-use-desktop-and-web-connectors"
-  - title: "OpenAI: Developer mode and MCP apps in ChatGPT"
-    url: "https://help.openai.com/en/articles/12584461-developer-mode-and-full-mcp-connectors-in-chatgpt"
-  - title: "Cursor: Model Context Protocol"
-    url: "https://docs.cursor.com/context/model-context-protocol"
+  - title: "Claude Help Center: Get started with custom connectors using remote MCP"
+    url: "https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp"
+  - title: "Claude docs: Add a connector that isn't in the directory"
+    url: "https://claude.com/docs/connectors/custom/add-unlisted"
+  - title: "OpenAI: Add custom MCP server"
+    url: "https://developers.openai.com/api/docs/guides/custom-mcp-server"
+  - title: "ChatGPT Learn: Model Context Protocol in Codex"
+    url: "https://learn.chatgpt.com/docs/extend/mcp?surface=cli"
+  - title: "Cursor docs: Model Context Protocol (MCP)"
+    url: "https://cursor.com/docs/context/mcp"
+  - title: "Cursor help: MCP"
+    url: "https://cursor.com/help/customization/mcp"
   - title: "VS Code: Add and manage MCP servers"
     url: "https://code.visualstudio.com/docs/agent-customization/mcp-servers"
   - title: "VS Code: MCP configuration reference"
     url: "https://code.visualstudio.com/docs/agents/reference/mcp-configuration"
+  - title: "VS Code 1.146 release notes (Local harness deprecation)"
+    url: "https://code.visualstudio.com/updates/v1_146"
+  - title: "Zed docs: Model Context Protocol"
+    url: "https://zed.dev/docs/ai/mcp"
+  - title: "MCP 2026-07-28 changelog"
+    url: "https://modelcontextprotocol.io/specification/2026-07-28/changelog"
   - title: MCP Inspector
     url: "https://github.com/modelcontextprotocol/inspector"
 ---
 ## Coverage and how to read this comparison
 
-This matrix records behavior in the vendors' public documentation reviewed on **17 August 2026**. It is not a promise that every account, plan, operating system, managed-workspace policy, or older installed build exposes the same UI. A dash means the cited documentation does not establish support; it does not prove the capability is impossible. Legacy HTTP+SSE is listed separately from Streamable HTTP because they are different transports.
+This comparison records behavior in the vendors' public documentation reviewed on **11 November 2026**. It does not promise that every account, plan, operating system, managed-workspace policy or older installed build shows the same UI. Where a cell says "not documented", the cited documentation does not establish support; that does not prove the capability is impossible. Legacy HTTP+SSE is listed separately from Streamable HTTP because they are different transports.
 
 | Client | Local stdio | Remote HTTP | Documented authentication | Documented MCP surface | Approval and trust behavior | Configuration |
 | --- | --- | --- | --- | --- | --- | --- |
-| Claude Desktop | Yes, through local desktop extensions and developer-defined local servers | Yes, through remote web connectors | Extension settings can collect API keys; remote connectors can run their own authorization flow | Official Desktop guidance documents connector-provided actions; this comparison does not infer resources or prompts | Install extensions only from publishers you trust; managed plans can restrict public and custom extensions | Extensions UI; developer configuration for local servers |
-| Claude Code | Yes | Streamable HTTP (`http`) and legacy SSE | OAuth for HTTP; fixed headers such as bearer/API tokens are supported | Tools, resources, and prompts are documented | Project-scoped `.mcp.json` servers require approval; choices can be reset | CLI plus project, user, and local scopes |
-| ChatGPT | No direct local server connection | Yes; custom apps connect to remote MCP endpoints | OAuth and the authentication options offered when creating an app; no API-key claim is inferred here | Full MCP apps can expose actions; exact availability depends on plan and rollout | Workspace admins publish apps, can control actions and access, and users may be asked to confirm writes | ChatGPT web settings and workspace app management |
-| Cursor | Yes | Streamable HTTP and legacy SSE | OAuth for remote servers; environment variables can supply API keys to local servers | Tools, prompts, roots, and elicitation are explicitly listed; the cited support table does not list resources | Tool approval is on by default; auto-run is optional | `.cursor/mcp.json`, global config, one-click installs, or extension API |
-| VS Code | Yes | Streamable HTTP with SSE fallback; explicit `sse` is also configurable | Request headers/input variables and OAuth with a client ID are documented | Tools, resources, prompts, and MCP Apps | First start normally asks whether the server is trusted; tool calls can require confirmation; local stdio can be sandboxed on macOS/Linux | Workspace or profile `mcp.json`, guided command, or gallery install |
-| MCP Inspector | Yes | Streamable HTTP and legacy SSE | Custom headers/bearer tokens and interactive OAuth are documented in current Inspector guidance | A testing UI for tools, resources, prompts, protocol messages, and transport behavior | Its local proxy can spawn processes and must not be exposed to untrusted networks | Web UI, TUI/CLI flags, or an MCP configuration file |
+| Claude Desktop | Yes, through desktop extensions (`.mcpb`) and local servers in `claude_desktop_config.json` | Yes, through custom connectors on your Claude account, which connect from Anthropic's cloud | Connectors: OAuth with Claude's published client identity (CIMD), automatic registration (DCR) or your own client; request headers for API keys are a beta for some organizations. Extensions can collect API keys in their settings | Tools from connectors and extensions; this comparison does not infer resources or prompts | Install extensions only from publishers you trust; organizations can disable or restrict extensions, and only Owners add custom connectors on Team and Enterprise | **Customize > Connectors** for remote servers; **Settings > Desktop app > Extensions** (older layout: **Settings > Extensions**) and the developer config file for local servers |
+| Claude Code | Yes | Streamable HTTP (`http`, with automatic SSE fallback) and legacy SSE | OAuth with CIMD, DCR or a client ID; fixed headers such as bearer or API-key tokens, with `${VAR}` expansion | Tools, resources and prompts are documented | Project-scoped `.mcp.json` servers need approval; choices can be reset | `claude mcp add`, plus local, project (`.mcp.json`) and user scopes; claude.ai connectors also load when you sign in with a claude.ai account |
+| ChatGPT (web) | No; ChatGPT on the web connects only to remote endpoints (local Codex clients and the ChatGPT desktop app use `~/.codex/config.toml` instead) | Streamable HTTP (recommended) and SSE; private servers through Secure MCP Tunnel | OAuth with static client credentials, CIMD or DCR, or no authentication; no API-key or custom-header field | Tools; deep research and company knowledge use read and fetch actions only | Tools without `readOnlyHint` are treated as write actions and ask for confirmation by default; workspace policies such as Lockdown apply | **Plugins > Add custom MCP server** on chatgpt.com; availability depends on plan and workspace role |
+| Cursor | Yes | Streamable HTTP and legacy SSE | OAuth with DCR or a static client ID in an `auth` block; headers with `${env:NAME}` interpolation | Tools, prompts, resources, roots, elicitation and MCP Apps (via extension) are listed as supported | Cursor asks for approval before MCP tool calls by default; from Cursor 3.6 the default Auto-review mode runs allowlisted tools and routes the rest through a safety classifier | `.cursor/mcp.json` or `~/.cursor/mcp.json`, **Customize > MCPs**, marketplace **Add to Cursor**, or the extension API |
+| VS Code (GitHub Copilot) | Yes | Streamable HTTP and legacy SSE (`type: "sse"`); the older editor format falls back from HTTP to SSE automatically | OAuth with built-in GitHub and Microsoft Entra sign-in, DCR or a client ID (`oauthClientId`); headers with `${NAME}` environment references, or `${input:...}` prompts in the older format | Tools in every session; MCP Apps (experimental); resource browsing and MCP prompts as slash commands are documented for the deprecated Local harness | Workspace configurations follow Workspace Trust; tool calls can require confirmation; organization policy (`chat.mcp.access`) can block servers | `~/.copilot/mcp-config.json` or workspace `.mcp.json` (`mcpServers`), **Chat: Open Customizations > MCP Servers**, **MCP: Add Server**; `.vscode/mcp.json` (`servers`) is the deprecated Local harness format |
+| MCP Inspector | Yes | Streamable HTTP and legacy SSE | Custom headers (`--header`, or `headers` in a config file) and interactive OAuth, including DCR and a client ID | A testing UI for tools, resources, prompts, protocol messages and transport behavior | Its backend can spawn processes, binds to `127.0.0.1`, and refuses all-interfaces binding unless you set `DANGEROUSLY_BIND_ALL_INTERFACES=true`; stored secrets fall back to an unencrypted file when no OS keychain is available | Web UI, CLI and TUI modes; a writable server catalog (`--catalog`) or a read-only `--config` file |
 
-**Verified transport and authentication matrix.** The next table is generated from mcptest's sourced client data, the same data the release-readiness report uses for its host verdicts. Each row shows the date its cells were last checked against the vendor's documentation, and every cell has a source in the data file. Where a vendor does not document something, the cell says unknown instead of guessing.
+**Verified transport and authentication matrix.** The next table is generated from mcptest's sourced client data, the same data the release-readiness report uses for its host verdicts. Each row shows the date its cells were last checked against the vendor's documentation, and every cell has a source in the data file. Where a vendor does not document something, the cell says unknown instead of guessing. The [client support matrix](/learn/mcp-client-support-matrix) explains each row.
 
 <!-- compat-matrix clients="claude-ai,claude-desktop,claude-code,chatgpt,codex-cli,cursor,vscode-copilot,windsurf,gemini-cli,generic-sdk" -->
 
 ### Important product boundaries
 
-**Claude Desktop and Claude Code are different clients.** Desktop extensions are designed for locally installed integrations, while Claude Code documents CLI configuration scopes, resource mentions, prompt commands, HTTP headers, and an OAuth login flow. Do not copy a Claude Code command and assume the Desktop UI consumes it.
+**Claude Desktop and Claude Code are different clients.** Desktop extensions run integrations locally, and remote connectors are brokered through your Claude account from Anthropic's cloud. Claude Code connects from your own machine and documents CLI configuration scopes, resource mentions, prompt commands, HTTP headers and an OAuth login flow. Do not copy a Claude Code command and assume the Desktop UI uses it. Setup for both is in [How to add a remote MCP server to Claude](/learn/add-remote-mcp-server-to-claude).
 
-**ChatGPT is remote-first.** OpenAI's current guidance says ChatGPT does not directly connect to a server running only on your machine. Custom MCP apps are managed through ChatGPT web and availability varies by plan and workspace controls. Confirm current eligibility before designing distribution around it.
+**ChatGPT on the web is remote-only.** It does not connect to a server that runs only on your machine; use a public HTTPS endpoint or Secure MCP Tunnel. Custom MCP servers are created from **Plugins** on ChatGPT web. Pro accounts get read and fetch actions only; Business, Enterprise and Edu get full MCP, with creation limited by workspace role or permission. Confirm eligibility before you design distribution around it. See [How to connect a remote MCP server to ChatGPT](/learn/connect-mcp-server-to-chatgpt).
 
-**VS Code and Cursor share some configuration ideas, not one guaranteed schema.** Both accept JSON-based MCP configuration, but field names, storage locations, trust prompts, input-variable syntax, and fallback behavior are client concerns. Publish a tested example for each client instead of calling one file universal.
+**VS Code and Cursor share some configuration ideas, not one schema.** Both accept JSON-based MCP configuration, but field names, file locations, trust prompts, variable syntax and fallback behavior differ. VS Code itself now has two formats: the Copilot `mcpServers` format and the deprecated `.vscode/mcp.json` `servers` format, which the Local harness uses until its removal in February 2027. Publish a tested example for each client instead of calling one file universal.
 
 ## Transport and authentication choices
 
-Choose **stdio** when the server must run on the user's machine or reach local files and tools. The client starts the process and exchanges protocol messages over standard input/output. Distribution then includes runtime installation, environment variables, upgrades, and the risk of executing a package locally.
+Choose **stdio** when the server must run on the user's machine or reach local files and tools. The client starts the process and exchanges protocol messages over standard input and output. Distribution then includes runtime installation, environment variables, upgrades, and the risk of running a package locally.
 
-Choose **Streamable HTTP** for a shared cloud service. One deployment can serve multiple clients and users, and browser-based OAuth is practical. Legacy SSE remains present in some client configuration and compatibility paths, but new services should target the current Streamable HTTP transport and test the actual clients they intend to support.
+Choose **Streamable HTTP** for a shared cloud service. One deployment can serve many clients and users, and browser-based OAuth is practical. Legacy SSE remains in some client configuration and compatibility paths, and the `2026-07-28` specification formally lists it as deprecated, so new services should target Streamable HTTP and test the actual clients they intend to support. Clients that run in the vendor's cloud, such as claude.ai and ChatGPT, also need the server to be reachable from the public internet.
 
-API keys are configuration, not interoperability. A local process may receive a secret in its environment; a remote client may attach a header. That does not mean every client exposes a safe way to collect, store, and rotate the same secret. OAuth is a better fit when each user must grant scoped access without giving the MCP client a long-lived upstream credential.
+API keys are configuration, not interoperability. A local process may receive a secret in its environment; a remote client may attach a header. That does not mean every client offers a safe way to collect, store and rotate the same secret, and ChatGPT and JetBrains AI Assistant document no header field at all. OAuth is a better fit when each user must grant scoped access without giving the MCP client a long-lived upstream credential. For client registration, the `2026-07-28` specification prefers Client ID Metadata Documents and deprecates Dynamic Client Registration, which many clients still use.
 
 ## Capabilities are more than tools
 
-Tools are the most consistently visible primitive, but MCP also defines resources and prompts. Client UX differs: Claude Code exposes resource references and prompt commands, VS Code documents resource browsing and slash-command prompts, and Cursor's current protocol table explicitly lists prompts but not resources. Treat a capability as supported only after the client's current official docs or a versioned test establishes it.
+Tools are the most consistently visible primitive, but MCP also defines resources and prompts. Client UX differs: Claude Code exposes resource references and prompt commands; Cursor lists tools, prompts, resources, roots and elicitation as supported; VS Code documents resource browsing and prompt slash commands only for its deprecated Local harness, while Copilot sessions read resources only for MCP Apps. Zed supports tools and prompts but not resources. Treat a capability as supported only after the client's current official docs or a versioned test establishes it.
 
-Large tool catalogs also have a context cost. A client may load names and schemas into the model's working context, dynamically search them, or let users disable tools. Regardless of client, keep names distinct, descriptions decision-oriented, and schemas compact. Test whether the model selects the intended tool when several tools sound similar.
+Large tool catalogs also have a context cost. A client may load names and schemas into the model's working context, search them on demand, or let users disable tools, and some cap the number of enabled tools (VS Code allows 128 in one request). Whatever the client, keep names distinct, descriptions decision-oriented and schemas compact. Test whether the model selects the intended tool when several tools sound similar.
 
 ## A practical selection rule
 
 1. Pick the surfaces your users already work in. A technically complete integration that requires switching clients rarely wins.
 2. Eliminate clients that cannot reach your deployment model: local stdio versus public or privately tunneled HTTP.
-3. Verify the required primitive—tools, resources, prompts, or interactive UI—against current client documentation.
-4. Reproduce authentication with the exact client and account tier. Test first authorization, refresh, revocation, and insufficient scope.
+3. Verify the required primitive (tools, resources, prompts or interactive UI) against current client documentation.
+4. Reproduce authentication with the exact client and account tier. Test first authorization, refresh, revocation and insufficient scope.
 5. Review approval controls for writes. A client trust prompt at installation is not the same as per-call confirmation.
-6. Publish client-specific configuration and a review date. Avoid a single copy-paste block labeled “works everywhere.”
+6. Publish client-specific configuration and a review date. Avoid a single copy-paste block labeled "works everywhere".
 
 Next, follow [How to connect to a remote MCP server](/learn/connect-remote-mcp-server), then apply the [MCP server evaluation and trust checklist](/learn/mcp-server-trust-checklist) before granting access.
