@@ -9,10 +9,59 @@ This Cloudflare Worker provides data persistence for the MCP Test application us
 - Provides GET endpoint to retrieve user data
 - Provides POST endpoint to update user data
 - Serves public catalog badges (`/badge/server/<id>.svg`) without authentication
+- Serves public deterministic MCP fixture servers under `/fixtures/<name>/mcp` (see below)
 - Stores anonymously published, redacted report artifacts (`POST /r`, `GET /r/<id>`,
   `DELETE /r/<id>`, `GET /r/endpoint/<encoded endpoint>`) in the `PublishedReports`
   Durable Object and serves live badges for them (`/badge/report/<encoded endpoint>.svg`).
   See `../CLOUDFLARE_DEPLOYMENT.md` for the validation rules, rate limits and removal flow.
+
+## Public MCP fixture servers
+
+`src/fixtures.js` serves small, deterministic MCP test servers that any client or tester
+(including mcptest.io itself, from the browser) can point at. They are public, need no
+account, and are stateless: no Durable Object or KV access, no outbound fetches, no
+user-controlled URLs.
+
+| Endpoint | Auth | What it does |
+| --- | --- | --- |
+| `https://mcptest.io/fixtures/echo/mcp` | none | Tools `echo`, `add`, `whoami` (negotiated protocol version, era and selected request headers), `headers` (header names received, values only for MCP/content-negotiation headers); resource `mcptest://fixtures/readme`; prompt `greeting`. |
+| `https://mcptest.io/fixtures/auth-bearer/mcp` | `Authorization: Bearer mcptest-public-token` | Same tools as `echo`. Any other request gets `401` with `WWW-Authenticate: Bearer realm="mcptest.io fixtures"` (plus `error="invalid_token"` when a wrong credential was sent). The token is public on purpose. |
+| `https://mcptest.io/fixtures/errors/mcp` | none | `protocol_error` (JSON-RPC error `-32603`), `tool_error` (result with `isError: true`), `invalid_params` (`-32602`), `http_500` (HTTP 500 with a JSON-RPC error body). |
+| `https://mcptest.io/fixtures/slow/mcp` | none | `sleep` (`ms`, capped at 10 000) and `progress` (`steps` 1–10, `intervalMs` 0–1000; streams `notifications/progress` over SSE when the request has a `progressToken` and accepts `text/event-stream`). |
+| `https://mcptest.io/fixtures/schemas/mcp` | none | `create_order` (nested objects, enums, arrays, optional fields) and `classify`, both with `outputSchema` and `structuredContent`. |
+
+Any other `/fixtures/...` path answers `404` with the list of endpoints.
+
+**Protocol revisions.** Every endpoint speaks both revisions the app's client negotiates:
+
+- Stateless `2026-07-28`: probe with `server/discover`; each request carries the `_meta`
+  envelope (`io.modelcontextprotocol/protocolVersion`, `io.modelcontextprotocol/clientCapabilities`)
+  and matching `MCP-Protocol-Version` / `Mcp-Method` (and `Mcp-Name`) headers. A mismatch is
+  `400` with `-32020`; an unsupported revision is `400` with `-32022` and the supported list.
+- Stateful `2025-11-25` (and `2025-06-18`, `2025-03-26`, `2024-11-05`): `initialize` returns an
+  `Mcp-Session-Id`, which later requests must send (`400` without it). The id is self-validating
+  rather than stored, so an id this worker did not issue answers `404`, and a fresh `initialize`
+  always works. `GET` (standalone SSE stream) and `DELETE` answer the permitted `405`.
+
+**Limits.** Request bodies are capped at 16 KiB (`413`), JSON-RPC batches are rejected, delays
+are capped at 10 s, and `Authorization`, `Cookie` and other credential-shaped header values are
+never echoed back.
+
+**CORS.** `Access-Control-Allow-Origin: *` on every response (including `401`/`5xx`), with
+`Content-Type, Accept, Authorization, MCP-Protocol-Version, Mcp-Method, Mcp-Name, Mcp-Session-Id,
+Last-Event-ID` allowed and `Mcp-Session-Id, MCP-Protocol-Version, WWW-Authenticate, Retry-After`
+exposed; preflights answer `204` without authentication.
+
+```bash
+curl -s https://mcptest.io/fixtures/echo/mcp \
+  -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"curl","version":"1"}}}'
+npm run mcptest -- https://mcptest.io/fixtures/echo/mcp
+```
+
+The route is `mcptest.io/fixtures/*` in `wrangler.toml`. Tests: `src/fixtures.test.js` (unit) and
+`src/fixtures.client.test.js` (the app's MCP client, release-gate CLI and session probes against a
+local HTTP instance of the worker); run them with `npm --prefix cloudflare-worker test`.
 
 ## Catalog submissions
 
