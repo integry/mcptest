@@ -26,6 +26,7 @@ import {
   isLearnIndexPath,
 } from '../content/learnRegistry';
 import { getLandingFaqStructuredData } from '../content/landingCopy';
+import { getKeywordLandingFaqStructuredData, getKeywordLandingPage } from '../content/keywordLandingPages';
 
 const DEFAULT_IMAGE = `${SITE_URL}/logo.png`;
 
@@ -135,6 +136,7 @@ export const useMetaTags = () => {
     const categorySlug = getCatalogCategorySlugFromPath(location.pathname);
     const catalogServers = categorySlug !== null ? getCatalogServers() : [];
     const category = findCatalogCategoryBySlug(getCatalogCategoryNames(catalogServers), categorySlug);
+    const keywordLandingPage = getKeywordLandingPage(location.pathname);
 
     if (catalogServer) {
       const imageUrl = ogImage(getCatalogServerPath(catalogServer.id));
@@ -218,6 +220,14 @@ export const useMetaTags = () => {
       });
     } else if (location.pathname === OAUTH_CHECKER_PATH) {
       applyMetadata({ ...OAUTH_CHECKER_METADATA, canonicalUrl: `${SITE_URL}${OAUTH_CHECKER_PATH}`, imageUrl: ogImage(OAUTH_CHECKER_PATH) });
+    } else if (keywordLandingPage) {
+      applyMetadata({
+        title: keywordLandingPage.title,
+        description: keywordLandingPage.description,
+        canonicalUrl: `${SITE_URL}${keywordLandingPage.path}`,
+        imageUrl: ogImage(keywordLandingPage.path),
+        structuredData: getKeywordLandingFaqStructuredData(keywordLandingPage),
+      });
     } else if (location.pathname === DISCOVERY_CHECKER_PATH) {
       applyMetadata({
         ...DISCOVERY_METADATA,

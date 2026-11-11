@@ -217,6 +217,9 @@ describe('SideNav information architecture', () => {
       link.getAttribute('rel'),
     ]);
     expect(projectLinks).toEqual([
+      ['Test an MCP server', '/mcp-test-server', null, null],
+      ['MCP Inspector online', '/mcp-inspector-online', null, null],
+      ['MCP playground', '/mcp-playground', null, null],
       ['CI release gate', '/ci', null, null],
       ['Submit a server', '/submit', null, null],
       ['Badges', 'https://github.com/integry/mcptest#embedding-a-badge', '_blank', 'noopener noreferrer'],

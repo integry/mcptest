@@ -112,6 +112,29 @@ describe('checkSite', () => {
     expect(result.errors).toEqual([{ file: 'catalog.html', link: expect.any(String), reason }]);
   });
 
+  // Keyword landing pages are app routes written as <slug>/index.html, canonical without a trailing slash.
+  describe('a top-level landing page served from a directory index', () => {
+    const landing = {
+      'mcp-test-server/index.html': page('/mcp-test-server', '<section id="what-gets-tested"><a href="/mcp-playground">Playground</a></section>'),
+      'mcp-playground/index.html': page('/mcp-playground', '<a href="/mcp-test-server#what-gets-tested">What gets tested</a>'),
+      'routes.txt': '/\n/catalog\n/learn\n/mcp-playground\n/mcp-test-server\n/report\n/server/*\n/space/*\n',
+    };
+
+    it('passes its canonical path and anchors', () => {
+      const result = check(writeSite({ ...landing, 'catalog.html': page('/catalog', '<a href="/mcp-test-server">Test</a><a href="/mcp-test-server#what-gets-tested">x</a>') }));
+      expect(result.errors).toEqual([]);
+    });
+
+    it.each([
+      ['a trailing slash', '<a href="/mcp-test-server/">x</a>', 'non-canonical variant of /mcp-test-server'],
+      ['an index.html spelling', '<a href="/mcp-test-server/index.html">x</a>', 'non-canonical variant of /mcp-test-server'],
+      ['a missing anchor', '<a href="/mcp-test-server#nope">x</a>', 'missing anchor #nope in mcp-test-server/index.html'],
+    ])('fails on %s', (_label, body, reason) => {
+      const result = check(writeSite({ ...landing, 'catalog.html': page('/catalog', body) }));
+      expect(result.errors).toEqual([{ file: 'catalog.html', link: expect.any(String), reason }]);
+    });
+  });
+
   it('checks the raw Markdown exports and llms.txt', () => {
     const result = check(writeSite({
       'learn/guide.md': '# Guide\n\n[gone](/learn/gone) and [anchor](#nope)\n',

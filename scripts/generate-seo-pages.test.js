@@ -12,9 +12,14 @@ import { createCapabilityInventory } from '../src/utils/capabilityInventory';
 import { extractOutline } from '../src/content/outline';
 import { buildTrackNavigation } from '../src/content/contentModel';
 import { buildLearnTrackNavigation } from '../src/content/navigationLinks';
+import { KEYWORD_LANDING_PAGES, getKeywordLandingFaqStructuredData } from '../src/content/keywordLandingPages';
+import { landingPlainText } from '../src/content/landingCopy';
+import { renderKeywordLandingPage } from '../src/prerender/contentPages';
+import machineReadable from './content/machineReadable.js';
 
 const {
   loadArticles, mergeCatalogServers, renderCatalogHtml, renderDiscoveryHtml, renderHomeHtml, renderLearnArticleHtml,
+  renderKeywordLandingHtml, buildOgCards, getSitemapEntries,
   renderLearnIndexHtml, renderServerHtml, renderMarkdown, renderSitemap, renderStaticPageHtml,
   stripLandingFallback, validateCapabilitySnapshots, addFontPreloads, findFirstFrameFontAssets,
   addAppPreloads, findAppPreloadHrefs,
@@ -676,6 +681,53 @@ describe('generated page metadata', () => {
     expect(html).not.toContain('data-deferred-mount');
     expect(html).toContain('<a href="/tools/discovery" class="nav-link sidenav-link active" aria-current="page">');
     expect(renderDiscoveryHtml(indexHtml, metadata)).toContain('The proxy is not configured in this build');
+  });
+
+  it.each(KEYWORD_LANDING_PAGES.map(page => [page.path, page]))('prerenders the keyword landing page %s with its copy, metadata and FAQ JSON-LD in static HTML', (path, page) => {
+    const pageHtml = renderKeywordLandingPage(path);
+    const html = renderKeywordLandingHtml(indexHtml, page, { pageHtml });
+    const escapeText = value => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+    expect(html).toContain(`<title>${escapeText(page.title)}</title>`);
+    expect(html).toContain(`name="description" content="${escapeText(page.description)}"`);
+    expect(html).toContain(`rel="canonical" href="https://mcptest.io${path}"`);
+    expect(html).toContain(`property="og:url" content="https://mcptest.io${path}"`);
+    expect(html).toContain(`property="og:title" content="${escapeText(page.title)}"`);
+    expect(html).toContain(`name="twitter:title" content="${escapeText(page.title)}"`);
+    expect(html).toContain(`property="og:image" content="https://mcptest.io/og${path}.png"`);
+
+    const body = new DOMParser().parseFromString(html, 'text/html');
+    expect(body.querySelectorAll('h1')).toHaveLength(1);
+    expect(body.querySelector('h1')?.textContent).toBe(page.h1);
+    const text = body.querySelector('.keyword-landing')?.textContent.replace(/\s+/g, ' ') ?? '';
+    for (const section of page.sections) {
+      expect(body.getElementById(section.id), section.id).not.toBeNull();
+      expect(text).toContain(section.title);
+    }
+    for (const item of page.faq) {
+      expect(text).toContain(item.question);
+      expect(text).toContain(landingPlainText(item.answer));
+    }
+    // The connect form the app mounts over, in the app shell.
+    expect(body.querySelector(`#${page.key}-server-url`)).not.toBeNull();
+    expect(body.querySelector('.seo-shell-fallback .desktop-sidebar')).not.toBeNull();
+    expect(body.querySelector(`.sidenav-footer a[href="${path}"]`)).not.toBeNull();
+    // An app route: React mounts at load.
+    expect(html).not.toContain('data-deferred-mount');
+
+    const jsonLd = JSON.parse(body.getElementById('server-structured-data').textContent);
+    expect(jsonLd).toEqual(getKeywordLandingFaqStructuredData(page));
+  });
+
+  it('lists the keyword landing pages in the sitemap, llms.txt and the Open Graph cards', () => {
+    const sitemapPaths = getSitemapEntries([], articles, []).map(entry => entry.pathname);
+    const cards = buildOgCards({ servers: [], articles: [], pageMetadata: { catalog: { title: 'C', description: 'C' }, learn: { title: 'L', description: 'L' }, tools: {}, docs: {} } });
+    const llms = machineReadable.renderLlmsTxt(articles);
+    for (const page of KEYWORD_LANDING_PAGES) {
+      expect(sitemapPaths.filter(pathname => pathname === page.path)).toHaveLength(1);
+      expect(cards.find(card => card.pagePath === page.path)).toMatchObject({ title: page.h1 });
+      expect(llms).toContain(`- [${page.h1}](https://mcptest.io${page.path}): ${page.llmsNote}`);
+    }
   });
 
   it('renders unique initial metadata for documentation routes', () => {

@@ -69,7 +69,18 @@ export const buildLearnTrackNavigation = (
 /** Project links shown above the legal links in the sidebar footer. */
 export const CI_NAVIGATION: FooterLink = { label: 'CI release gate', href: '/ci', reloadDocument: true };
 
+/**
+ * The keyword landing pages (src/content/keywordLandingPages.ts); paths as
+ * in src/utils/appRoutes.ts, spelled out so this file stays import-free.
+ */
+export const LANDING_PAGE_NAVIGATION: readonly FooterLink[] = [
+  { label: 'Test an MCP server', href: '/mcp-test-server' },
+  { label: 'MCP Inspector online', href: '/mcp-inspector-online' },
+  { label: 'MCP playground', href: '/mcp-playground' },
+];
+
 export const FOOTER_NAVIGATION: readonly FooterLink[] = [
+  ...LANDING_PAGE_NAVIGATION,
   CI_NAVIGATION,
   { label: 'Submit a server', href: '/submit' },
   {

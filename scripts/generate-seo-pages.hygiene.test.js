@@ -30,8 +30,11 @@ describe('sitemap entries', () => {
 
   it('lists each page once', () => {
     expect(byPath.size).toBe(entries.length);
-    // Home, catalog, learn, CI, both tools, articles, docs, servers.
-    expect(entries).toHaveLength(7 + articles.length + 2 + servers.length);
+    // Home, the three keyword landing pages, catalog, learn, CI, the tools, articles, docs, servers.
+    expect(entries).toHaveLength(7 + 3 + articles.length + 2 + servers.length);
+    for (const pathname of ['/mcp-test-server', '/mcp-inspector-online', '/mcp-playground']) {
+      expect(byPath.get(pathname)).toEqual({ pathname });
+    }
     expect(byPath.get('/ci')).toEqual({ pathname: '/ci' });
     expect(byPath.has('/tools/breaking-changes')).toBe(true);
     expect(byPath.get('/tools/oauth-check')).toEqual({ pathname: '/tools/oauth-check' });
@@ -124,7 +127,7 @@ describe('routes.txt', () => {
   const routes = parseRoutes(renderRoutesTxt(['/', '/catalog', '/learn/what-is-mcp', '/servers/alpha/']));
 
   it('lists prerendered pages and app routes exactly, and dynamic routes as prefixes', () => {
-    for (const pathname of ['/', '/catalog', '/learn', '/report', '/submit', '/tools/discovery', '/oauth/callback', '/learn/what-is-mcp', '/servers/alpha/']) {
+    for (const pathname of ['/', '/catalog', '/learn', '/report', '/submit', '/tools/discovery', '/mcp-test-server', '/mcp-inspector-online', '/mcp-playground', '/oauth/callback', '/learn/what-is-mcp', '/servers/alpha/']) {
       expect(routes.exact.has(pathname), pathname).toBe(true);
     }
     expect(routes.prefixes).toEqual(['/server/', '/call/', '/space/', '/report/']);

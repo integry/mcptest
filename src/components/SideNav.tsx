@@ -17,7 +17,7 @@ import ContentTrackNav from './learn/ContentTrackNav';
 import GuideSearch from './learn/GuideSearch';
 import { isGuideSearchShortcutView } from './learn/guideSearchShortcut';
 
-type ActiveView = 'playground' | 'dashboards' | 'docs' | 'learn' | 'report' | 'catalog' | 'server-profile' | 'breaking-changes' | 'discovery' | 'oauth-check';
+type ActiveView = 'playground' | 'dashboards' | 'docs' | 'learn' | 'report' | 'catalog' | 'server-profile' | 'breaking-changes' | 'discovery' | 'oauth-check' | 'keyword-landing';
 
 interface SideNavProps {
   activeView: ActiveView;

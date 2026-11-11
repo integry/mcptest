@@ -91,7 +91,7 @@ export const LANDING_STEPS = [
   {
     title: 'Paste the endpoint URL',
     description: 'Enter the server\'s Streamable HTTP or SSE URL above, for example https://example.com/mcp, '
-      + 'or pick a public server from the [catalog](/catalog).',
+      + 'or pick a public server from the [catalog](/catalog); the [MCP playground](/mcp-playground) suggests a few to start with.',
   },
   {
     title: 'Pick the authentication',
@@ -101,7 +101,8 @@ export const LANDING_STEPS = [
   {
     title: 'Connect',
     description: 'mcptest.io negotiates the protocol version and transport, then lists the server\'s tools, '
-      + 'resources and prompts with the raw JSON-RPC traffic alongside.',
+      + 'resources and prompts with the raw JSON-RPC traffic alongside. '
+      + '[What gets tested](/mcp-test-server#what-gets-tested) lists every check.',
   },
   {
     title: 'Call a tool',
@@ -154,7 +155,8 @@ export const LANDING_FAQ = [
     question: 'How is this different from the official MCP Inspector?',
     answer: 'The MCP Inspector runs locally with npx and is the best choice for stdio servers. mcptest.io '
       + 'needs no install, records the CORS behaviour a real browser sees, and produces shareable reports. '
-      + 'See [mcptest.io vs MCP Inspector](/learn/mcptest-vs-mcp-inspector).',
+      + '[MCP Inspector online](/mcp-inspector-online) sums up when to use which, and '
+      + '[mcptest.io vs MCP Inspector](/learn/mcptest-vs-mcp-inspector) compares five tools in detail.',
   },
   {
     question: 'Can I run the same checks in CI?',
