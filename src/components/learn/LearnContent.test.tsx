@@ -74,7 +74,7 @@ const renderStrict = (node: React.ReactNode) => {
 const PRE_EXISTING_PAGES = [
   { path: '/docs/what-is-mcp', title: 'What is the Model Context Protocol?', metaTitle: 'What Is the Model Context Protocol? | mcptest.io' },
   { path: '/docs/remote-vs-local', title: 'Remote vs. Local MCP Servers', metaTitle: 'Remote vs. Local MCP Servers | mcptest.io' },
-  { path: '/docs/testing-guide', title: 'How to Test a Remote MCP Server (Step by Step)', metaTitle: 'How to Test a Remote MCP Server (Step by Step) | mcptest.io' },
+  { path: '/docs/testing-guide', title: 'How to Test MCP Servers: A Complete Guide', metaTitle: 'How to Test MCP Servers: Complete Guide with curl, Inspector and CI | mcptest.io' },
   { path: '/docs/troubleshooting', title: 'MCP Server Errors: Causes and Fixes', metaTitle: 'MCP Server Errors: Causes and Fixes | mcptest.io' },
   { path: '/learn/mcp-clients-compared', title: 'MCP clients compared', metaTitle: 'MCP clients compared | mcptest.io' },
   { path: '/learn/connect-remote-mcp-server', title: 'How to connect to a remote MCP server', metaTitle: 'How to connect to a remote MCP server | mcptest.io' },
@@ -180,7 +180,7 @@ describe('content registry', () => {
       expect(PAGE_COMPONENTS[page.component]).toBeTypeOf('function');
       expect(getDocsMetadata(page.path)).toEqual({ title: page.metaTitle, description: page.metaDescription });
     }
-    expect(getDocsMetadata('/docs/testing-guide')?.title).toBe('How to Test a Remote MCP Server (Step by Step) | mcptest.io');
+    expect(getDocsMetadata('/docs/testing-guide')?.title).toBe('How to Test MCP Servers: Complete Guide with curl, Inspector and CI | mcptest.io');
     expect(getDocsMetadata('/docs/missing')).toBeUndefined();
   });
 
@@ -449,7 +449,7 @@ describe('Learn article page', () => {
 
     const guide = render(<LearnArticlePage article={getLearnArticle('testing-guide')!} />);
     expect(guide.querySelector('.reading-prose blockquote strong')?.textContent).toBe('Browser clients need CORS.');
-    expect(guide.querySelectorAll('.reading-code code.language-bash')).toHaveLength(4);
+    expect(guide.querySelectorAll('.reading-code code.language-bash')).toHaveLength(8);
   });
 
   it('embeds a registered component at the marker through the component escape hatch', () => {

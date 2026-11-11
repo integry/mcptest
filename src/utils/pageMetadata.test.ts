@@ -11,8 +11,8 @@ describe('page metadata', () => {
 
   it('returns custom metadata for documentation routes', () => {
     expect(getDocsMetadata('/docs/testing-guide')).toEqual({
-      title: 'How to Test a Remote MCP Server (Step by Step) | mcptest.io',
-      description: 'Test a remote MCP server step by step: verify its URL, connect in the inspector, check authentication, list tools and diagnose HTTP or session errors.',
+      title: 'How to Test MCP Servers: Complete Guide with curl, Inspector and CI | mcptest.io',
+      description: 'How to test MCP servers: unit tests, protocol checks with curl, the browser playground and MCP Inspector, OAuth, CORS, tool schemas, security and CI, plus a checklist.',
     });
     expect(getDocsMetadata('/docs/troubleshooting/')?.title).toBe(
       'MCP Server Errors: Causes and Fixes | mcptest.io'
