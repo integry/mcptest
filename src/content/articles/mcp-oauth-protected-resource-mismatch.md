@@ -1,15 +1,15 @@
 ---
 title: "MCP OAuth protected resource does not match expected: cause and fix"
 navTitle: OAuth resource mismatch
-summary: Diagnose an OAuth resource identity mismatch, compare the endpoint path with protected-resource metadata, and decide whether the client configuration or server must change.
+summary: Diagnose an OAuth resource identity mismatch, compare the endpoint path with protected resource metadata, and decide whether the client configuration or server must change.
 track: build
 level: practitioner
 order: 446
 category: Authorization
 readingTimeMinutes: 5
-lastReviewed: "2026-10-25"
+lastReviewed: "2026-11-11"
 metaTitle: "MCP OAuth Protected Resource Mismatch: Fix | mcptest.io"
-metaDescription: "Fix SDK auth failed: protected resource does not match expected. Compare the MCP endpoint, RFC 9728 metadata resource and OAuth resource indicator."
+metaDescription: "Fix SDK auth failed: Protected resource does not match expected. Compare the MCP endpoint, RFC 9728 metadata resource and OAuth resource indicator."
 relatedSlugs:
   - troubleshooting
   - vscode-mcp-oauth-redirect-uris
@@ -20,33 +20,62 @@ sourceLinks:
     url: "https://www.rfc-editor.org/rfc/rfc9728.html#section-3.3"
   - title: "RFC 8707: resource indicators"
     url: "https://www.rfc-editor.org/rfc/rfc8707.html"
-  - title: "MCP authorization: canonical server URI"
-    url: "https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization#canonical-server-uri"
+  - title: "MCP 2026-07-28 authorization: canonical server URI"
+    url: "https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization#canonical-server-uri"
+  - title: "MCP TypeScript SDK: client auth source"
+    url: "https://github.com/modelcontextprotocol/typescript-sdk/blob/main/packages/client/src/client/auth.ts"
+  - title: "Claude Code #76096: Entra App ID URI resource rejected"
+    url: "https://github.com/anthropics/claude-code/issues/76096"
+  - title: "Obot #5939: protected resource port mismatch in Docker"
+    url: "https://github.com/obot-platform/obot/issues/5939"
+  - title: "Gemini CLI #20017: origin resource rejected for a path endpoint"
+    url: "https://github.com/google-gemini/gemini-cli/issues/20017"
 ---
 
-## sdk auth failed: protected resource https://mcp.linear.app/mcp does not match expected https://mcp.linear.app
+## SDK auth failed: Protected resource does not match expected
 
 ```text
-sdk auth failed: protected resource https://mcp.linear.app/mcp does not match expected https://mcp.linear.app
+SDK auth failed: Protected resource https://mcp.example.com/mcp does not match expected https://mcp.example.com/ (or origin)
 ```
 
-The client expected the origin, but the metadata identifies a resource with the `/mcp` path. This output is evidence of two different identifiers, not proof that Linear's current endpoint is broken. Copying only the host from a setup guide can produce this mismatch.
+**Which clients print it.** The text comes from the MCP TypeScript SDK's OAuth client, in both `@modelcontextprotocol/sdk` 1.x and `@modelcontextprotocol/client` 2.x. Claude Code adds the `SDK auth failed:` prefix. Other clients print the same sentence without it, for example `Error: Protected resource … (or origin)`. The Python SDK raises `Protected resource … does not match expected …` without `(or origin)`.
 
-## Why authentication stops before login
+**What it means.** The first URL is the `resource` value in the server's [protected resource metadata](/learn/mcp-glossary#protected-resource-metadata). The second is the resource the client derived from the URL you configured. The client stops before opening a login page, because the metadata describes a different resource.
 
-The MCP endpoint is the URL your client calls. A protected-resource metadata document describes that resource; its `resource` field is an identifier, not the metadata document's own URL. Under [RFC 9728 validation](https://www.rfc-editor.org/rfc/rfc9728.html#section-3.3), the returned resource must match the identifier used to derive the metadata request. Clients reject a mismatch to avoid accepting metadata for another resource.
+## How the client compares the two
 
-An origin, `/mcp` and `/mcp/` can identify different resources. A redirect or an application serving all three does not make their resource identifiers interchangeable. Do not fix this by disabling validation or blindly stripping paths.
+The `resource` field identifies the protected server. It is not the URL of the metadata document. Under [RFC 9728 section 3.3](https://www.rfc-editor.org/rfc/rfc9728.html#section-3.3), a client must check that this value matches the resource it asked about. Otherwise it could send tokens to the wrong server.
+
+The TypeScript and Python SDKs accept the metadata when both conditions hold:
+
+1. The scheme, host and port are the same.
+2. The path of the configured URL starts with the path of the metadata `resource`.
+
+So metadata naming `https://mcp.example.com` is accepted for an endpoint at `https://mcp.example.com/mcp`. Metadata naming `/mcp` is rejected when you configured only the origin. In the TypeScript SDK, `/mcp/` is also rejected for an endpoint at `/mcp`. Some clients compare more strictly: [Gemini CLI #20017](https://github.com/google-gemini/gemini-cli/issues/20017) reported an origin `resource` being rejected for an endpoint with a path.
+
+## Likely causes, most common first
+
+1. **The configured URL is incomplete or out of date.** You added only the host, or an old path, and the server identifies itself with the full endpoint. For example, a bundled config uses `https://mcp.example.com` while the metadata says `https://mcp.example.com/mcp`.
+2. **The metadata names an internal or non-URL identifier.** A reverse proxy or container exposes its internal address, as in [Obot #5939](https://github.com/obot-platform/obot/issues/5939), where the host port differed. Or the identity provider needs an identifier that is not the server URL, such as a Microsoft Entra App ID URI (`api://…`), as in [Claude Code #76096](https://github.com/anthropics/claude-code/issues/76096).
+3. **A trailing slash or a stricter client.** The metadata says `/mcp/` and the endpoint is `/mcp`, or the client requires an exact match.
+
+## How to confirm
+
+1. Copy both URLs from the error message.
+2. Fetch the metadata yourself and read `resource`. For an endpoint at `/mcp`, request `https://mcp.example.com/.well-known/oauth-protected-resource/mcp`. If that returns `404`, request `https://mcp.example.com/.well-known/oauth-protected-resource`.
+3. Run the endpoint through the [MCP OAuth checker](/tools/oauth-check). The **Resource indicator and URL match (RFC 8707)** row shows the expected resource and the published one, and fails when they do not match.
 
 ## Fix for client users
 
-1. Get the full endpoint from the publisher's official documentation. If it specifies `https://mcp.linear.app/mcp`, configure that complete URL rather than `https://mcp.linear.app`.
-2. Remove the stale connection or clear its cached discovery through your client's supported controls, reconnect, and inspect the new request.
-3. If the published URL still produces different resource identities, report the endpoint and metadata `resource` value to the server author. Redact tokens and authorization codes.
+1. Copy the full endpoint from the publisher's documentation. For example, Linear documents `https://mcp.linear.app/mcp`, not `https://mcp.linear.app`.
+2. Remove the old connection or clear its cached sign-in with your client's own controls. Then reconnect.
+3. If the documented URL still fails, report both URLs from the error to the server author. Redact tokens and authorization codes.
+
+Do not edit the URL until the error disappears, and do not turn off validation. The check protects your tokens.
 
 ## Fix for server authors
 
-Choose a canonical public MCP URI and align the documented endpoint, protected-resource metadata and authorization server configuration with it. For an example server whose canonical URI is `https://mcp.example.com/mcp`, metadata would identify:
+Choose one canonical public URL for the MCP endpoint, for example `https://mcp.example.com/mcp`. Use it in your documentation, the metadata `resource` and the token audience check:
 
 ```json
 {
@@ -55,12 +84,15 @@ Choose a canonical public MCP URI and align the documented endpoint, protected-r
 }
 ```
 
-Serve path-aware discovery, such as `/.well-known/oauth-protected-resource/mcp`, and point the `401` challenge's `resource_metadata` parameter at the correct document. Check reverse-proxy rewrites: internal application URLs must not leak into public metadata.
+- Serve the document at the path-aware location, `/.well-known/oauth-protected-resource/mcp`.
+- Point the `401` challenge's `resource_metadata` parameter at that document.
+- Build the `resource` value from your public URL, not from the request the app sees behind a proxy. Internal hosts and ports must not appear in public metadata.
+- Use the form without a trailing slash, as the [MCP canonical URI rules](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization#canonical-server-uri) recommend.
 
-The [MCP canonical URI rules](https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization#canonical-server-uri) and [RFC 8707](https://www.rfc-editor.org/rfc/rfc8707.html) govern the `resource` parameter in authorization and token requests. Send the intended resource consistently and issue a token with the appropriate audience; the resource server must validate that audience. An API's OAuth issuer URL is not automatically its resource identifier.
+Clients send this value as the [`resource` parameter](/learn/mcp-glossary#resource-indicator) ([RFC 8707](https://www.rfc-editor.org/rfc/rfc8707.html)) on the authorization and token requests. Your authorization server must issue a token whose audience is that resource, and your server must reject tokens with any other audience. Your authorization server's issuer URL is not your resource identifier.
 
-Change the client when it uses an incomplete or obsolete URL; change the server when the documented canonical URL receives inconsistent metadata. If both are correct, investigate the client's metadata derivation and cache rather than weakening the identity check.
+If the identity provider insists on its own identifier, as Entra does with App ID URIs, a standard MCP client cannot bridge the two. Put an authorization server or broker in front that accepts the MCP server URL as the resource.
 
 ## Check the fix
 
-Run the full endpoint through the [discovery checker](/tools/discovery). Its **OAuth metadata** result warns when `resource` does not identify the tested endpoint. Then [connect in the inspector](/) and inspect OAuth discovery and a fresh tools listing. A successful metadata check alone does not prove a token exchange or audience check will succeed. If the browser opens but connection still fails, continue with [OAuth redirect troubleshooting](/learn/vscode-mcp-oauth-redirect-uris).
+Run the endpoint through the [MCP OAuth checker](/tools/oauth-check) and confirm the resource row passes. Then [connect in the inspector](/), sign in and list tools. A passing metadata check does not prove that the token exchange or the audience check will succeed. If sign-in opens but the connection still fails, continue with [OAuth redirect troubleshooting](/learn/vscode-mcp-oauth-redirect-uris).

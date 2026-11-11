@@ -1,15 +1,15 @@
 ---
 title: "Secure a remote MCP server with Stytch Connected Apps"
 navTitle: "MCP authorization with Stytch"
-summary: "Use Stytch Connected Apps for MCP OAuth with CIMD or DCR, protected resource metadata, public-client PKCE, custom audience checks and explicit resource-binding limitations."
+summary: "Use Stytch Connected Apps for MCP OAuth with pre-registered public clients, a custom domain for issuer checks, protected resource metadata, PKCE, a required MCP-specific audience, and a broker for CIMD and DCR clients."
 track: "build"
 level: "practitioner"
 order: 407
 category: "Authorization"
-readingTimeMinutes: 7
-lastReviewed: "2026-10-24"
+readingTimeMinutes: 8
+lastReviewed: "2026-11-11"
 metaTitle: "MCP authorization with Stytch | mcptest.io"
-metaDescription: "Use Stytch Connected Apps for MCP OAuth with CIMD or DCR, protected resource metadata, public-client PKCE, custom audience checks and explicit resource-binding limitations."
+metaDescription: "Use Stytch Connected Apps for MCP OAuth with pre-registered public clients, a custom domain for issuer checks, protected resource metadata, PKCE, a required MCP-specific audience, and a broker for CIMD and DCR clients."
 relatedSlugs:
   - mcp-oauth-2-1-reference
   - mcp-server-authentication-patterns
@@ -20,6 +20,8 @@ sourceLinks:
     url: "https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization"
   - title: "Stytch: Connected Apps overview"
     url: "https://stytch.com/docs/connected-apps/overview"
+  - title: "Stytch: MCP authorization overview"
+    url: "https://stytch.com/docs/connected-apps/guides/mcp-auth-overview"
   - title: "Stytch: build the authorization and consent flow"
     url: "https://stytch.com/docs/connected-apps/build-login-flow/login-flow"
   - title: "Stytch: client types, CIMD, DCR and public clients"
@@ -28,39 +30,75 @@ sourceLinks:
     url: "https://stytch.com/docs/api-reference/b2b/api/connected-apps/tokens/connected-app-access-token-object"
   - title: "Stytch: OAuth scopes and RBAC"
     url: "https://stytch.com/docs/connected-apps/oauth-learn-more/oauth-scopes"
-  - title: "Stytch: MCP authorization guide"
-    url: "https://stytch.com/blog/MCP-authentication-and-authorization-guide/"
+  - title: "Stytch: Connected Apps custom domains"
+    url: "https://stytch.com/docs/connected-apps/resources/custom-domains"
+  - title: "Stytch: Connected Apps FAQ (issuer and RFC 9207)"
+    url: "https://stytch.com/docs/connected-apps/resources/faq"
 ---
 
-Stytch Connected Apps can turn your application into an OAuth authorization server for third-party MCP clients. It supplies client onboarding and tokens, while your app supplies the user-facing authorization experience and your MCP service enforces access to data.
+Stytch Connected Apps turns your application into an OAuth and OpenID Connect authorization server for third-party clients, including MCP clients. Stytch handles client registration and issues tokens. Your app hosts the sign-in and consent page. Your MCP server validates each token and enforces access to data.
 
-The setup below was reviewed on **24 October 2026**. It highlights a distinction easy to miss: Stytch's RBAC “resource” and MCP's RFC 8707 `resource` URL are different concepts. A permission named after a database table does not by itself restrict a token to your MCP endpoint.
+This guide was checked against Stytch's documentation on **11 November 2026**. For the protocol rules, see the [OAuth 2.1 reference](/learn/mcp-oauth-2-1-reference).
 
-## Build the authorization experience
+One distinction matters throughout. A Stytch RBAC "resource" is a permission target, such as a database table. MCP's [`resource` parameter](/learn/mcp-glossary#resource-indicator) (RFC 8707) is the URL of your MCP server. A permission named after a table does not restrict a token to your MCP endpoint.
 
-Start with [Connected Apps](https://stytch.com/docs/connected-apps/overview) in the appropriate consumer or multi-tenant project. Its [login-flow guide](https://stytch.com/docs/connected-apps/build-login-flow/login-flow) describes the authorization UI and consent integration. Configure the login/consent URLs and connect them to your existing identity flow. Do not stop after enabling a dashboard toggle: the user still needs a real way to sign in and approve the requesting client.
+## Before you start
 
-Use a separate test project or environment and synthetic data while wiring this up. Identify the exact issuer from that environment's discovery document; do not assume the API base URL is the issuer written into access tokens. If you add a custom domain, recheck the issuer and JWKS configuration together.
+- A Stytch Consumer or B2B project. Use a test environment and test data while you set this up.
+- A React or Next.js app that already signs users in with Stytch.
+- A custom auth domain for the project, such as `https://login.example.com`. Step 1 explains why MCP clients need it.
+- The exact public URL of your MCP endpoint, for example `https://mcp.example.com/mcp`.
 
-## Use the right client type
+## Step 1: Configure a custom auth domain
 
-The [client-types documentation](https://stytch.com/docs/connected-apps/oauth-learn-more/client-types) supports manual clients, DCR and CIMD. Enable automatic onboarding in Connected Apps only when intended. CIMD clients are third-party **public** clients; public clients use token-endpoint authentication `none` and require PKCE. Their refresh tokens rotate, whereas the docs describe different refresh behavior for confidential clients. Do not assume an arbitrary confidential-client setup meets the public-client requirements of a browser MCP tester.
+Configure a custom auth domain for your project, and make every Stytch call through it, including the frontend SDK.
 
-For an older client, use DCR when enabled. If your policy forbids dynamic onboarding, manually pre-register a public client and its exact callback URI instead. Advertise only the registration features actually enabled in the issuer's metadata. A client ID from a different Stytch project is not interchangeable.
+Without one, the issuer does not match. Stytch's FAQ says the authorization response's `iss` parameter then uses your project ID, such as `stytch.com/project-live-xxx`, while tokens and metadata use your default project domain, such as `https://{noun}-{verb}-{number}.customers.stytch.com`. Stytch advertises `authorization_response_iss_parameter_supported: true`, and under [RFC 9207](/learn/mcp-oauth-2-1-reference#issuer-validation-rfc-9207) clients must then reject any `iss` that differs from the issuer. A custom domain makes them the same. Stytch's MCP guide strongly recommends it.
 
-## Configure scopes and resource binding
+The issuer is the domain you call Stytch through. Read it from that domain's discovery document; do not assume the API base URL is the issuer. When you change domains, check the issuer and the JWKS URL together.
 
-Create a narrow custom scope such as `read:data`, mapping it to the RBAC actions your read tool needs. [Stytch's scope guide](https://stytch.com/docs/connected-apps/oauth-learn-more/oauth-scopes) explains that the authorizing user's permissions constrain what can be granted. Enforce the resulting permissions at the data layer too. OAuth permission to read documents does not select which customer's documents a tool argument may address.
+## Step 2: Build the authorization page
 
-Stytch's [access-token object documentation](https://stytch.com/docs/api-reference/b2b/api/connected-apps/tokens/connected-app-access-token-object) says Connected Apps access tokens are RS256 JWTs. The default audience is the project ID; `access_token_custom_audience` on a client can add another audience. For a controlled, pre-registered client, configure your MCP resource URL as the custom audience and require that exact value in the verifier. Accepting the project ID alone can accept tokens intended for other services in the same project.
+The authorization endpoint is a page in your own app.
 
-There is a limitation to verify before allowing arbitrary clients: those token docs do not establish automatic per-request RFC 8707 audience binding for all dynamically onboarded CIMD/DCR clients. [Stytch's MCP guide](https://stytch.com/blog/MCP-authentication-and-authorization-guide/) describes the requirement to send `resource` in both authorization and token requests, but a protocol description is not proof your project's token issuance implements that mapping.
+1. In the Stytch Dashboard, under **Frontend SDKs**, enable the frontend SDK for your app's domain.
+2. Mount Stytch's `<IdentityProvider />` component (Consumer, from `@stytch/react`) or `<B2BIdentityProvider />` (B2B, from `@stytch/react/b2b`) on a page, for example `/oauth/authorize`.
+3. Enter that page's URL in the **Authorization URL** field under **Connected Apps**.
 
-Check the current project configuration and real issued token. If resource binding cannot be enforced for dynamic clients, start with controlled pre-registration and a dedicated audience, or put a standards-compatible MCP authorization broker in front. The broker must issue its own resource-bound tokens and handle consent/PKCE itself, using Stytch upstream for identity. Then advertise the broker's issuer in metadata. Do not silently strip `resource` or forward an upstream session token as an MCP access token.
+The user must already have an active Stytch session when the component renders. Check for a session first. If there is none, send the user to your login page and then back to the authorization page with the same query string. You can also build this page with Stytch's API instead of the component.
 
-## Publish the resource's metadata
+## Step 3: Choose how clients register
 
-Serve this complete JSON document at `https://mcp.example.com/.well-known/oauth-protected-resource/mcp`, replacing the example endpoint and issuer with your deployment values:
+Under **Connected Apps** in the Dashboard:
+
+- **A pre-registered client.** Create a Connected App by hand, choose **Third-Party Public**, and register its exact redirect URI. This is the only kind of client that can carry your MCP server's audience (Step 5), so it is the only kind this guide's verifier accepts.
+- **Client ID Metadata Document (CIMD).** The client ID is an HTTPS URL that serves the client's metadata. Stytch fetches the document instead of asking you to register the client. Stytch labels CIMD as Beta, and creates every CIMD client as a **Third-Party Public** client. Stytch re-fetches the document periodically, which overwrites manual edits to the client.
+- **Dynamic Client Registration (DCR).** **Allow dynamic client registration** is opt-in.
+
+Tokens that Stytch issues to CIMD and DCR clients do not name your MCP server, so a correct verifier rejects them. Leave both off unless you run the authorization server described at the end of Step 5, which registers those clients itself.
+
+Public clients use token endpoint authentication `none` and must use PKCE. Their refresh tokens rotate on every use, and Stytch detects replay. Confidential clients keep the same refresh token. A client ID from another Stytch project does not work here.
+
+## Step 4: Configure scopes
+
+Stytch supports the standard OpenID scopes `openid`, `profile`, `email`, `phone` and `offline_access`. Clients get a refresh token only when `offline_access` is granted.
+
+For your data, create a custom scope such as `read:data` and map it to the RBAC permissions your read tool needs. A user can grant only the scopes whose permissions they hold; Stytch drops the rest. Check permissions inside each tool too. A scope that allows reading documents does not say which customer's documents a tool may read.
+
+## Step 5: Decide what the audience check can prove
+
+Stytch access tokens are RS256 JWTs signed with your project's JWKS. Their `aud` claim always contains your **project ID**. A client can carry one extra audience, set as `access_token_custom_audience` on the client object, which Stytch appends to `aud`.
+
+The project ID is shared by every service and client in the project, so it does not show that a token was issued for your MCP server. Never use it as the audience your server requires:
+
+- **Pre-registered clients.** Set `access_token_custom_audience` to your MCP endpoint URL on each client, and require that exact value in your verifier. A token Stytch issued for another service in the same project lacks it and fails.
+- **CIMD and DCR clients.** You cannot set a custom audience on each one, so their tokens carry only the project ID. Your verifier must reject them. A separate Stytch project per server does not fix this: the project ID still names the project, not the resource, and anything added to the project later would share it.
+
+Stytch's documentation does not say that it maps an RFC 8707 `resource` request to `aud`. To accept CIMD or DCR clients, put an MCP-facing authorization server in front of Stytch. It must issue its own resource-bound tokens, handle consent and PKCE itself, and use Stytch only to sign the user in. Then advertise that server's issuer in your metadata. Do not strip `resource`, and do not forward a Stytch session token as an MCP access token.
+
+## Step 6: Publish protected resource metadata
+
+Serve this JSON at `https://mcp.example.com/.well-known/oauth-protected-resource/mcp`. Replace the endpoint and the custom domain with your own values:
 
 ```json
 {
@@ -77,43 +115,97 @@ Serve this complete JSON document at `https://mcp.example.com/.well-known/oauth-
 }
 ```
 
-Make that GET route public. On an unauthenticated `/mcp` request, return `401` and a `WWW-Authenticate` Bearer challenge whose `resource_metadata` points to that document. The MCP server owns this document; the provider owns the authorization-server discovery document. Do not put a client secret or a registration endpoint into protected resource metadata.
+- Make the route public: no login, no cookie.
+- `authorization_servers` must equal the `issuer` in Stytch's metadata for your custom domain exactly.
+- On an unauthenticated request to `/mcp`, return `401` with `WWW-Authenticate: Bearer resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource/mcp"`.
 
-This is a configuration document, not a complete protected server. Wire it into the [complete authenticated Hono application](/learn/remote-mcp-server-with-hono), replacing that app's issuer, resource, verifier and scope settings as described below. For the full protocol flow, use the [OAuth 2.1 reference](/learn/mcp-oauth-2-1-reference); for where enforcement belongs, use [server authentication patterns](/learn/mcp-server-authentication-patterns).
+This document is configuration, not a protected server. Add it to the [complete Hono application](/learn/remote-mcp-server-with-hono) and replace that app's issuer, resource and scope settings.
 
-## Verify access tokens, not login artifacts
+## Step 7: Verify the access token
 
-Use the issuer and JWKS from your configured authorization server, validate the access-token signature and expiry, and require the MCP resource audience. Match the granted scope or its verified permission mapping before invoking a tool. Do not treat an ID token, a session JWT, or a base64-decoded payload as an authorized API credential.
+With `jose`, check the issuer and the audience you chose in Step 5:
 
-In a multi-tenant application, bind the tool's record access to the verified user/member and organization. Test a member with fewer permissions and a user from a second organization. Reject invalid tokens before the tool runs and return a scope challenge for an otherwise valid token that lacks the required permission.
+```typescript
+import { createRemoteJWKSet, jwtVerify } from 'jose';
 
-## Check discovery before opening a chat app
+const ISSUER = 'https://login.example.com';
+const JWKS = createRemoteJWKSet(new URL(`${ISSUER}/.well-known/jwks.json`));
 
-These Bash commands require only curl. Replace both example values with your deployment's exact resource and issuer, then run:
+// Your MCP endpoint URL, set as access_token_custom_audience on each
+// pre-registered client. Never the Stytch project ID.
+const AUDIENCE = process.env.MCP_TOKEN_AUDIENCE?.trim();
+if (!AUDIENCE?.startsWith('https://')) {
+  throw new Error('MCP_TOKEN_AUDIENCE must be this MCP server\'s URL, not the Stytch project ID');
+}
 
-```bash
-export MCP_ENDPOINT='https://mcp.example.com/mcp'
-export MCP_ISSUER='https://login.example.com'
-curl --fail-with-body --silent --show-error \
-  'https://mcp.example.com/.well-known/oauth-protected-resource/mcp'
-curl --fail-with-body --silent --show-error \
-  "${MCP_ISSUER%/}/.well-known/oauth-authorization-server" \
-  || curl --fail-with-body --silent --show-error \
-    "${MCP_ISSUER%/}/.well-known/openid-configuration"
-curl --silent --show-error --include \
-  -H 'Accept: application/json, text/event-stream' "$MCP_ENDPOINT"
-curl --silent --show-error --include -X OPTIONS "$MCP_ENDPOINT" \
-  -H 'Origin: https://mcptest.io' \
-  -H 'Access-Control-Request-Method: POST' \
-  -H 'Access-Control-Request-Headers: authorization, mcp-protocol-version, mcp-method'
+export async function verifyAccessToken(token: string, requiredScope: string) {
+  const { payload } = await jwtVerify(token, JWKS, { issuer: ISSUER, audience: AUDIENCE });
+  const scopes = typeof payload.scope === 'string' ? payload.scope.split(' ') : [];
+  return { payload, allowed: scopes.includes(requiredScope) };
+}
 ```
 
-Change the metadata URL as well as the endpoint when using your domain. Expect public JSON metadata, a `401` challenge for the unauthenticated MCP request, and a successful CORS preflight. Ensure error responses expose `WWW-Authenticate`. Inspect provider discovery next: its `issuer` must match exactly, `code_challenge_methods_supported` must include `S256`, and the registration/authentication method must work for your actual client. A browser public client cannot keep a secret.
+`jwtVerify` checks the signature, expiry, issuer and audience. The startup check matters: `jose` skips the audience check when `audience` is `undefined`, and a non-null assertion such as `process.env.MCP_TOKEN_AUDIENCE!` does not stop that at runtime. The check also refuses a project ID such as `project-live-xxx`, which every token in the project carries. Either mistake would let tokens issued for other services through. Answer a failure with `401`. When `allowed` is false, answer `403` with `error="insufficient_scope"`.
 
-## Test it on mcptest.io
+Stytch's Node SDK offers `client.idp.introspectTokenLocal(token)`, which can also check an RBAC permission with its `authorization_check` option. It always checks the project ID as the audience and has no option for another audience, so a passing result does not show that the token is for your MCP server. If you use it, also check that the returned audience includes your MCP URL.
 
-Open the protected `/mcp` URL in the [mcptest.io playground](/). Start authorization, inspect the discovered issuer and registration path, sign in as a test user, list tools, then call one read-only tool. If automatic registration is unavailable, pre-register a public client with the exact redirect URI `https://mcptest.io/oauth/callback` and supply its client ID. Never give a browser a client secret.
+Do not accept an ID token, a session JWT or a decoded but unverified payload as an access token. In a B2B project, tie each record lookup to the verified member and organization. Test with a member who has fewer permissions, and with a user from a second organization.
 
-Then try an expired token, a token issued for another resource, and a valid token lacking the required scope. Expect `401`, `401`, and a scope denial respectively; none should execute the protected tool. Check the user/organization boundary with two test accounts. Use the [401 troubleshooting guide](/learn/remote-mcp-server-401-unauthorized) to distinguish discovery, registration and verification failures.
+## Check discovery with curl
 
-The metadata JSON and shell syntax were checked locally. Provider tenant setup, real authorization-code exchange, refresh, consent and revocation need a configured account and were not run during authoring. Passing the transport checks alone does not establish those behaviors.
+Set the three variables to your values, then run the commands. They need only Bash and curl.
+
+```bash
+MCP_ORIGIN='https://mcp.example.com'
+MCP_PATH='/mcp'
+ISSUER='https://login.example.com'
+
+# 1. Protected resource metadata: expect public JSON.
+curl --fail-with-body --silent --show-error \
+  "${MCP_ORIGIN}/.well-known/oauth-protected-resource${MCP_PATH}"
+
+# 2. Authorization server metadata: check issuer, S256 and registration.
+curl --fail-with-body --silent --show-error \
+  "${ISSUER%/}/.well-known/oauth-authorization-server"
+
+# 3. Unauthenticated MCP request: expect 401 and a WWW-Authenticate header.
+curl --silent --show-error --include -X POST "${MCP_ORIGIN}${MCP_PATH}" \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  --data '{"jsonrpc":"2.0","id":1,"method":"ping"}'
+
+# 4. CORS preflight for browser clients: expect a 2xx response.
+curl --silent --show-error --include -X OPTIONS "${MCP_ORIGIN}${MCP_PATH}" \
+  -H 'Origin: https://mcptest.io' \
+  -H 'Access-Control-Request-Method: POST' \
+  -H 'Access-Control-Request-Headers: authorization, content-type, mcp-protocol-version'
+```
+
+In Stytch's metadata, check that:
+
+- `issuer` equals your custom domain and the value in `authorization_servers`.
+- `code_challenge_methods_supported` includes `S256`.
+- `registration_endpoint` and `client_id_metadata_document_supported` are absent or off, unless the issuer is the authorization server from Step 5 rather than Stytch.
+
+Use the RFC 8414 document above. Stytch's `/.well-known/openid-configuration` may not list `registration_endpoint`. For browser clients, the `401` and `403` responses must also expose `WWW-Authenticate` through `Access-Control-Expose-Headers`. To run the same checks in the browser, use the [MCP OAuth checker](/tools/oauth-check).
+
+## Test sign-in on mcptest.io
+
+1. Open your `/mcp` URL in the [mcptest.io playground](/).
+2. Start authorization. Check the discovered issuer and the registration method used.
+3. Sign in as a test user, approve access, list tools, then call one read-only tool.
+
+Create a **Third-Party Public** client with the exact redirect URI `https://mcptest.io/oauth/callback` and your MCP URL as `access_token_custom_audience`, and enter its client ID in the playground. Never give a browser a client secret. If the playground reports an issuer mismatch on the callback, revisit Step 1.
+
+Then test the failure paths. None of them may run the tool:
+
+| Request | Expected result |
+| --- | --- |
+| Expired token | `401` |
+| Token issued for another audience | `401` |
+| Token whose `aud` holds only the project ID, such as one from a CIMD or DCR client | `401` |
+| Valid token without `read:data` | `403` with `insufficient_scope` |
+
+Use the [401 troubleshooting guide](/learn/remote-mcp-server-401-unauthorized) to tell discovery, registration and verification failures apart.
+
+**What was checked.** The TypeScript snippet type-checks against `jose` 6, and the JSON and Bash syntax were checked locally. The `introspectTokenLocal` behavior was read from the `stytch` 14.3.0 package. The project setup, a real authorization code exchange, refresh, consent and revocation need a Stytch project and were not run.
