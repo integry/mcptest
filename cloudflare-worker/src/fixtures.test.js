@@ -339,7 +339,34 @@ describe('JSON-RPC and HTTP input bounds', () => {
 
   it('answers notifications and client responses with 202', async () => {
     expect((await post('echo', { jsonrpc: '2.0', method: 'notifications/cancelled', params: { requestId: 1 } })).status).toBe(202);
+    expect((await post('echo', { jsonrpc: '2.0', method: 'notifications/initialized' })).status).toBe(202);
     expect((await post('echo', { jsonrpc: '2.0', id: 9, result: {} })).status).toBe(202);
+    expect((await post('echo', { jsonrpc: '2.0', id: 'r-1', error: { code: -32601, message: 'nope' } })).status).toBe(202);
+    expect((await post('echo', { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'parse' } })).status).toBe(202);
+  });
+
+  it.each([
+    ['a non-string method', { jsonrpc: '2.0', id: 1, method: 42 }, 1],
+    ['a bare jsonrpc marker', { jsonrpc: '2.0' }, null],
+    ['a request with id null', { jsonrpc: '2.0', id: null, method: 'ping' }, null],
+    ['a request with an object id', { jsonrpc: '2.0', id: { x: 1 }, method: 'ping' }, null],
+    ['a request with a boolean id', { jsonrpc: '2.0', id: true, method: 'ping' }, null],
+    ['a request with an overflowing numeric id', '{"jsonrpc":"2.0","id":1e400,"method":"ping"}', null],
+    ['a request with scalar params', { jsonrpc: '2.0', id: 2, method: 'ping', params: 'x' }, 2],
+    ['a notification with a non-string method', { jsonrpc: '2.0', method: null }, null],
+    ['a message with both method and result', { jsonrpc: '2.0', id: 3, method: 'ping', result: {} }, 3],
+    ['a response with both result and error', { jsonrpc: '2.0', id: 4, result: {}, error: { code: 1, message: 'x' } }, 4],
+    ['a response without an id', { jsonrpc: '2.0', result: {} }, null],
+    ['a result response with id null', { jsonrpc: '2.0', id: null, result: {} }, null],
+    ['a response with an array id', { jsonrpc: '2.0', id: [1], result: {} }, null],
+    ['an error response with a malformed error', { jsonrpc: '2.0', id: 5, error: { code: '1', message: 'x' } }, 5],
+    ['an error response with a non-object error', { jsonrpc: '2.0', id: 6, error: 'boom' }, 6],
+    ['a non-2.0 marker with an object id', { jsonrpc: '1.0', id: { x: 1 }, method: 'ping' }, null],
+  ])('rejects %s with -32600 instead of 202', async (_label, message, echoedId) => {
+    const response = await post('echo', message);
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body).toMatchObject({ jsonrpc: '2.0', id: echoedId, error: { code: -32600 } });
   });
 
   it('answers unknown methods and tools with JSON-RPC errors', async () => {
@@ -358,6 +385,25 @@ describe('echo and auth-bearer tools', () => {
     const [add] = await bothEras(name, 'tools/call', { name: 'add', arguments: { a: 2, b: 40.5 } });
     expect(add.result.structuredContent).toEqual({ sum: 42.5 });
     expect(add.result.content).toEqual([{ type: 'text', text: '42.5' }]);
+  });
+
+  it.each(['echo', 'auth-bearer'])('%s: add answers an overflowing sum with -32602 in both eras', async (name) => {
+    const overflowing = [{ a: 1e308, b: 1e308 }, { a: -1e308, b: -1e308 }, { a: Number.MAX_VALUE, b: Number.MAX_VALUE }];
+    for (const args of overflowing) {
+      const responses = await Promise.all([
+        modern(name, 'tools/call', { name: 'add', arguments: args }),
+        legacy(name, 'tools/call', { name: 'add', arguments: args }),
+      ]);
+      for (const response of responses) {
+        expect(response.status).toBe(200);
+        const body = await response.json();
+        expect(body.result).toBeUndefined();
+        expect(body.error).toMatchObject({ code: -32602, message: expect.stringContaining('not a finite number') });
+      }
+    }
+    // Large but finite sums still succeed and match the outputSchema.
+    const [large] = await bothEras(name, 'tools/call', { name: 'add', arguments: { a: 1e308, b: -1e308 } });
+    expect(large.result.structuredContent).toEqual({ sum: 0 });
   });
 
   it('validates tool arguments with invalid params errors', async () => {

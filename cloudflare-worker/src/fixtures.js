@@ -146,10 +146,44 @@ const parseMessage = (text) => {
   if (Array.isArray(message)) {
     throw new HttpFailure(400, rpcError(null, INVALID_REQUEST, 'Invalid Request: JSON-RPC batches are not supported'));
   }
-  if (!isObject(message) || message.jsonrpc !== '2.0') {
-    throw new HttpFailure(400, rpcError(message?.id, INVALID_REQUEST, 'Invalid Request: expected a JSON-RPC 2.0 message'));
+  const kind = isObject(message) ? classifyMessage(message) : undefined;
+  if (!kind) {
+    const id = isObject(message) && isValidId(message.id) ? message.id : null;
+    throw new HttpFailure(400, rpcError(id, INVALID_REQUEST, 'Invalid Request: expected a JSON-RPC 2.0 request, notification or response'));
   }
-  return message;
+  return { message, kind };
+};
+
+// JSON-RPC ids are strings or numbers; MCP additionally forbids null for
+// requests. Infinity can only appear via an overflowing literal (1e400).
+const isValidId = (id) => typeof id === 'string' || (typeof id === 'number' && Number.isFinite(id));
+const isValidParams = (params) => params === undefined || isObject(params) || Array.isArray(params);
+const isValidErrorObject = (error) => isObject(error)
+  && Number.isInteger(error.code)
+  && typeof error.message === 'string';
+
+/**
+ * Classifies a parsed JSON-RPC 2.0 object as 'request', 'notification' or
+ * 'response', or returns undefined when the envelope is malformed (wrong
+ * jsonrpc marker, non-string method, invalid id type, bad params, or a
+ * response without exactly one well-formed result/error).
+ */
+const classifyMessage = (message) => {
+  if (message.jsonrpc !== '2.0') return undefined;
+  const hasId = Object.hasOwn(message, 'id');
+  if (Object.hasOwn(message, 'method')) {
+    if (typeof message.method !== 'string' || !isValidParams(message.params)) return undefined;
+    if (Object.hasOwn(message, 'result') || Object.hasOwn(message, 'error')) return undefined;
+    if (!hasId) return 'notification';
+    return isValidId(message.id) ? 'request' : undefined;
+  }
+  const hasResult = Object.hasOwn(message, 'result');
+  const hasError = Object.hasOwn(message, 'error');
+  if (hasResult === hasError || !hasId) return undefined;
+  if (hasResult) return isValidId(message.id) ? 'response' : undefined;
+  // An error response may carry id null when the request id was unreadable.
+  if (!isValidErrorObject(message.error)) return undefined;
+  return message.id === null || isValidId(message.id) ? 'response' : undefined;
 };
 
 // ---------------------------------------------------------------------------
@@ -387,10 +421,9 @@ const handlePost = async (request, fixture, options) => {
   if (!/^application\/json\b/i.test(contentType)) {
     return respond(415, rpcError(null, INVALID_REQUEST, 'Unsupported Media Type: send Content-Type: application/json'));
   }
-  const message = parseMessage(await readBody(request));
-  const isRequest = typeof message.method === 'string' && message.id !== undefined && message.id !== null;
-  if (!isRequest) {
-    // Notifications (notifications/initialized, cancelled, ...) and client responses.
+  const { message, kind } = parseMessage(await readBody(request));
+  if (kind !== 'request') {
+    // Well-formed notifications (notifications/initialized, cancelled, ...) and client responses.
     return respond(202, undefined);
   }
   if (message.method === 'initialize') return initialize(message, fixture);

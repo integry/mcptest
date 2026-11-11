@@ -112,6 +112,14 @@ const BASIC_TOOLS = [
     },
     run: ({ a, b }) => {
       const sum = a + b;
+      // Finite addends can still overflow (1e308 + 1e308). JSON has no
+      // Infinity, so a "successful" result would serialise sum as null and
+      // break the advertised outputSchema; answer deterministically instead.
+      if (!Number.isFinite(sum)) {
+        throw new FixtureRpcError(-32602, 'Invalid params: the sum of a and b is not a finite number', {
+          data: { errors: [{ path: '', message: 'sum overflows the IEEE 754 double range' }] },
+        });
+      }
       return { content: [{ type: 'text', text: String(sum) }], structuredContent: { sum } };
     },
   },
