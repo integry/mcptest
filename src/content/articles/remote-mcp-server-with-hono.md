@@ -7,7 +7,7 @@ level: practitioner
 order: 31
 category: Frameworks
 readingTimeMinutes: 6
-lastReviewed: "2026-10-21"
+lastReviewed: "2026-11-11"
 metaTitle: Remote MCP Server with Hono (Workers, Bun, Node) | mcptest.io
 metaDescription: Build a remote MCP server with Hono and the TypeScript SDK v2. createMcpHonoApp, requireBearerAuth on a fetch handler, CORS, and deployment notes for Cloudflare Workers and Bun.
 relatedSlugs:
@@ -31,26 +31,43 @@ sourceLinks:
     url: "https://bun.com/docs/api/http"
 ---
 
-Hono runs on every major JavaScript runtime through the web-standard `fetch(request)` interface, and so does the MCP TypeScript SDK v2. That makes it the shortest path to one MCP server you can run locally on Node.js, ship to Cloudflare Workers, or serve from Bun without touching the code. This guide builds that server with CORS and an OAuth bearer check, then covers what differs on each runtime. The same file was type-checked once and run on all three.
+Hono runs on every major JavaScript runtime through the web-standard `fetch(request)` interface, and so does the MCP TypeScript SDK v2. That makes it the shortest path to one MCP server that runs on Node.js, Cloudflare Workers, or Bun without code changes. The same file was type-checked once and run on all three.
 
-## What was tested
+## What you will build
+
+- One Hono app that serves MCP at `https://mcp.example.com/mcp` from a stateless handler, for 2026-07-28 and 2025 clients.
+- One read-only `get-order` tool with a validated `id` argument.
+- `Host` and `Origin` validation, and CORS for browser clients.
+- An OAuth bearer check for tokens from a hosted identity provider, with Protected Resource Metadata so clients can start sign-in.
+- Entry points for Node.js, Cloudflare Workers, and Bun.
+
+## Prerequisites
+
+- Node.js 20 or later, Bun, or a Cloudflare account with Wrangler, depending on where you run it.
+- An identity provider that signs JWT access tokens, publishes a JWKS, and puts your server's URL in `aud`. The test used a local provider.
+
+These versions were tested:
 
 | Package or runtime | Version |
 | --- | --- |
-| `@modelcontextprotocol/server` | 2.3.1 |
+| `@modelcontextprotocol/server` | 2.4.0 |
 | `@modelcontextprotocol/hono` | 2.0.2 |
-| `hono` | 4.13.13 |
-| `jose` | 6.2.13 |
+| `hono` | 4.13.18 |
+| `jose` | 6.2.17 |
 | `zod` | 4.6.7 |
-| Node.js with `@hono/node-server` | 22.23 with 2.1.5 |
-| Bun | 1.4.3 |
-| Cloudflare Workers, local `workerd` through `wrangler dev` | Wrangler 4.151.2 |
+| Node.js with `@hono/node-server` | 22.23 with 2.1.7 |
+| Bun | 1.4.4 |
+| Cloudflare Workers, local `workerd` through `wrangler dev` | Wrangler 4.160.1 |
+
+## Step 1: Install the packages
 
 ```bash
 npm install @modelcontextprotocol/server @modelcontextprotocol/hono hono jose zod
 ```
 
-## The complete app
+For Node.js, also install `@hono/node-server` and `tsx`.
+
+## Step 2: Write the app
 
 ```typescript
 // app.ts
@@ -158,9 +175,9 @@ export default app;
 
 ## How the pieces fit
 
-**`createMcpHonoApp`** returns a `Hono` instance with `Host` and `Origin` validation and a JSON body parser that stores the body as `parsedBody`. Like the Express adapter, its default `host` of `127.0.0.1` accepts only localhost `Host` headers. On any public deployment, set `host: '0.0.0.0'` and list the real hostname in `allowedHosts`, including the `workers.dev` hostname if clients use it.
+**`createMcpHonoApp`** returns a `Hono` instance with `Host` and `Origin` validation and a JSON body parser that stores the body as `parsedBody`. The parser answers bodies over 4 MiB with `413`. Like the Express adapter, its default `host` of `127.0.0.1` accepts only localhost `Host` headers. On any public deployment, set `host: '0.0.0.0'` and list the real hostname in `allowedHosts`, including the `workers.dev` hostname if clients use it.
 
-**The auth hook is the runtime-neutral `requireBearerAuth`** from `@modelcontextprotocol/server`, not a Hono middleware. It takes a web `Request` and resolves either to the verified `AuthInfo` or to a ready-made `Response`: `401` with a `WWW-Authenticate` challenge pointing at the metadata document, or `403 insufficient_scope`. Passing the `AuthInfo` as `{ authInfo }` makes it available to tools as `ctx.http.authInfo`. Hono's own `bearerAuth` middleware compares against fixed tokens and does not emit `resource_metadata`, so clients cannot start OAuth from its challenge.
+**The auth hook is the runtime-neutral `requireBearerAuth`** from `@modelcontextprotocol/server`, not a Hono middleware. It takes a web `Request` and resolves either to the verified `AuthInfo` or to a ready-made `Response`: `401` with a `WWW-Authenticate` challenge pointing at the metadata document, or `403 insufficient_scope`. Passing the `AuthInfo` as `{ authInfo }` makes it available to tools as `ctx.http.authInfo`. Hono's own `bearerAuth` middleware checks a fixed token or your `verifyToken` callback. Its default challenge has no `resource_metadata` or `scope`, so clients cannot start OAuth from it unless you build `wwwAuthenticateHeader` yourself.
 
 **The metadata route** is a plain JSON response. `authorization_servers` lists your identity provider's issuer, and `resource` must be the exact public URL with its path. Clients read it from `resource_metadata` in the challenge or probe `/.well-known/oauth-protected-resource/mcp` directly.
 
@@ -168,7 +185,7 @@ export default app;
 
 The handler is stateless: 2026 clients use `server/discover`, 2025 clients get a per-request `initialize`, and `GET /mcp` answers `405`.
 
-## Run it on Node.js
+## Step 3: Run it on Node.js
 
 ```typescript
 // node.ts
@@ -178,9 +195,9 @@ import app from './app.js';
 serve({ fetch: app.fetch, port: Number(process.env.PORT ?? 3000) });
 ```
 
-Run it with `npx tsx node.ts`. Behind a TLS proxy and against a local identity provider, the headless mcptest gate scored this server 89 out of 95: 15 for the 2026-07-28 lifecycle, 4 of 10 for capabilities because it offers tools but no resources or prompts, 15 for Streamable HTTP, 40 for the OAuth metadata and PKCE `S256`, and 15 for performance. The decision was **review**, driven by host-compatibility observations such as token refresh that one run cannot establish.
+Run it with `npx tsx node.ts`. When this guide was first tested, behind a TLS proxy and against a local identity provider, the headless mcptest gate scored this server 89 out of 95: 15 for the 2026-07-28 lifecycle, 4 of 10 for capabilities because it offers tools but no resources or prompts, 15 for Streamable HTTP, 40 for the OAuth metadata and PKCE `S256`, and 15 for performance. The decision was **review**, driven by host-compatibility observations such as token refresh that one run cannot establish.
 
-## Deploy to Cloudflare Workers
+## Step 4: Deploy to Cloudflare Workers
 
 The same `app.ts` is the Worker entry point. A minimal `wrangler.jsonc`:
 
@@ -192,6 +209,8 @@ The same `app.ts` is the Worker entry point. A minimal `wrangler.jsonc`:
 }
 ```
 
+Run `npx wrangler dev` to test locally, then `npx wrangler deploy`.
+
 Under `wrangler dev`, the Worker answered the 2026 `server/discover`, the 2025 `initialize`, the preflight, and the `401` challenge exactly as Node did, and an SDK client completed `tools/list` and `tools/call` with a token. Things to know on Workers:
 
 - **No `process.env`.** That is why the configuration above is in constants. To configure per environment, read `c.env` inside the route and build the verifier lazily, or keep constants and use one Worker per environment.
@@ -201,9 +220,9 @@ Under `wrangler dev`, the Worker answered the 2026 `server/discover`, the 2025 `
 
 If you want the Cloudflare-managed handler with built-in CORS and `Host` checks instead of Hono, see [Build a remote MCP server on Cloudflare Workers with the Agents SDK](/learn/remote-mcp-server-with-cloudflare-workers-agents).
 
-## Run it on Bun
+## Step 5: Run it on Bun
 
-Bun serves a module whose default export has a `fetch` method, so `bun run app.ts` starts the same app on port 3000, or on `PORT` if it is set. Bun 1.4.3 served the same requests and tool call as Node and Workers.
+Bun serves a module whose default export has a `fetch` method, so `bun run app.ts` starts the same app on port 3000, or on `PORT` if it is set. Bun served the same requests and tool call as Node and Workers.
 
 One default needs changing. `Bun.serve` closes a connection after **10 seconds** with no data. A test tool that waited 15 seconds before answering had its response cut off at about 10 seconds with no status code, while the same tool completed with `idleTimeout` raised:
 
@@ -216,7 +235,7 @@ export default { fetch: app.fetch, idleTimeout: 120 };
 
 The value is in seconds and the maximum is 255. Long tool calls should also emit progress notifications, which upgrade the response to SSE and keep bytes flowing.
 
-## Check the deployment
+## Step 6: Verify the deployment
 
 Before you give clients the URL, confirm these against the deployed host, not just locally:
 
@@ -227,6 +246,14 @@ Before you give clients the URL, confirm these against the deployed host, not ju
 
 The [CORS reference](/learn/mcp-cors-headers-for-browser-clients#check-the-headers-without-a-browser) has the exact `curl` commands.
 
-## Test it in the playground
+## Common failures
+
+- **`403 Invalid Host` after deploying.** `host` was left at its `127.0.0.1` default, or the public hostname, including any `workers.dev` name, is missing from `allowedHosts`. See [Invalid Host header](/learn/mcp-error-invalid-host-header).
+- **`resource_metadata` points at `localhost` or an internal name.** `PUBLIC_URL` does not match the deployed hostname. See [protected resource does not match](/learn/mcp-oauth-protected-resource-mismatch).
+- **Every token gets `401`.** Check `iss`, `aud` and the JWKS URL against your provider's tokens. The [401 checklist](/learn/remote-mcp-server-401-unauthorized) walks through each step.
+- **A long call on Bun is cut off with no status code.** `idleTimeout` is still at its 10-second default. See [SSE stream disconnected](/learn/mcp-error-sse-stream-disconnected).
+- **The browser reports a network error; `curl` works.** A WAF or rate-limit rule answered first, or the origin is not in `ALLOWED_ORIGINS`. See the [CORS reference](/learn/mcp-cors-headers-for-browser-clients).
+
+## Test it on mcptest.io
 
 Open the deployed endpoint in the [MCP Playground](/) to sign in through your identity provider from the browser and get the Web Client Accessibility score the headless run cannot measure, then add the [release gate](/learn/test-mcp-server-before-deploying#run-the-same-checks-in-ci) to your deploy pipeline.
