@@ -58,24 +58,47 @@ Sessions exist only in protocol revisions 2025-03-26 to 2025-11-25. The 2026-07-
 ## Likely causes {#why-a-deploy-loses-the-session}
 
 1. **A restart or deploy lost the sessions.** Most servers keep sessions in process memory. A rolling deploy, crash, cold start or scale-down removes them, while clients still hold the old ids.
-2. **Requests reach different replicas.** Initialization reached replica A, and the next request goes to replica B, which never saw the id. Results alternate between success and 404. [Appsmith #42238](https://github.com/appsmithorg/appsmith/issues/42238) and [Epydemix #24](https://github.com/epistorm/epydemix/issues/24) describe this.
+2. **Requests reach different replicas.** Initialization reached one replica and a later request reached another. See [below](#why-multiple-replicas-make-failures-intermittent).
 3. **The session expired while idle.** The Python SDK closes a stateful session after 30 minutes without HTTP activity by default (`session_idle_timeout`). Custom servers often have their own expiry.
 4. **The client does not start a new session.** The 404 is correct, but the client keeps sending the old id, so every request fails until it is restarted. [Claude Code #50450](https://github.com/anthropics/claude-code/issues/50450) and [Cline #15147](https://github.com/cline/cline/issues/15147) report this.
 5. **The URL is wrong.** A 404 from a route that does not exist. The body is then not `Session not found`.
 
+### Why multiple replicas make failures intermittent
+
+Initialization reaches replica A, and the next request goes to replica B, which keeps sessions in its own memory and never saw the id. Results alternate between success and 404. Serverless instances do the same as they start and retire. [Appsmith #42238](https://github.com/appsmithorg/appsmith/issues/42238) and [Epydemix #24](https://github.com/epistorm/epydemix/issues/24) describe this.
+
+The failure ratio alone does not prove which replica answered: idle expiry or an application bug can also lose state. Check the load balancer's routing and which replica handled each request in the server logs.
+
 ## How to confirm the cause
 
-Start a session and keep its id:
+Start a session and keep the whole response. If the server needs sign-in, add the same credentials your host sends, for example `-H 'Authorization: Bearer <token>'`; leave that line out if it does not:
 
 ```bash
-curl -si https://mcp.example.com/mcp \
+curl -sS -i https://mcp.example.com/mcp \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json, text/event-stream' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"probe","version":"1"}}}' \
-  | grep -i '^mcp-session-id'
+  -H 'Authorization: Bearer <token>' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"probe","version":"1"}}}'
 ```
 
-No `Mcp-Session-Id` header means the server is stateless, and this page does not apply. Otherwise, send `ping` with the id ten times:
+Read the status line, the `Mcp-Session-Id` header and the body. The body is JSON, or an SSE `data:` line that holds the JSON.
+
+- **Not 200, or a body with `"error"` and no `"result"`:** initialization failed, so the response says nothing about sessions yet. A missing header here does not mean the server is stateless. For 401 or 403, add or fix the credentials. For 404, check the URL (cause 5). For 406 or 415, see [406, 415 and 405](/learn/mcp-406-not-acceptable-415-and-405). Repeat until initialization succeeds.
+- **200, a `"result"`, and an `Mcp-Session-Id` header:** the server is stateful. Keep the id and test it with the loop below.
+- **200, a `"result"`, and no `Mcp-Session-Id` header:** the server may be stateless. Confirm it with a `ping` that has no session id, using the `protocolVersion` from the result:
+
+```bash
+curl -sS -i https://mcp.example.com/mcp \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -H 'Authorization: Bearer <token>' \
+  -H 'MCP-Protocol-Version: <protocolVersion>' \
+  -d '{"jsonrpc":"2.0","id":2,"method":"ping"}'
+```
+
+A 200 with `"result":{}` means the server is stateless, and this page does not apply. A 400 or 404 means the server expects a session, but the id did not reach you. A proxy or gateway may be removing the header, or, for browser clients, `Access-Control-Expose-Headers` does not list `Mcp-Session-Id`.
+
+For a stateful server, send `ping` with the id ten times, with the same credentials:
 
 ```bash
 for i in $(seq 10); do
@@ -83,11 +106,13 @@ for i in $(seq 10); do
     -H 'Content-Type: application/json' \
     -H 'Accept: application/json, text/event-stream' \
     -H 'MCP-Protocol-Version: 2025-11-25' \
+    -H 'Authorization: Bearer <token>' \
     -H 'Mcp-Session-Id: <id>' \
     -d '{"jsonrpc":"2.0","id":2,"method":"ping"}'
 done
 ```
 
+- 401 or 403: the credentials are missing or expired. Fix them before reading the other results.
 - All 200: the session works now. Repeat after a deploy. A 404 then is cause 1.
 - A mix of 200 and 404: cause 2. Check how the load balancer routes requests.
 - 200 now, 404 after a quiet period: cause 3. Compare the gap with the server's idle timeout.
