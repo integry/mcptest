@@ -28,6 +28,8 @@ sourceLinks:
 
 Obtain the exact MCP endpoint from the publisher, for example `https://mcp.example.com/mcp`. A marketing homepage, REST API base URL, SSE event URL, and MCP endpoint are not interchangeable. Also record the publisher, expected tools, authentication method, and scopes before giving the server access to data.
 
+If you only want to check that a client can reach a remote MCP server at all, connect it first to the [public echo test server](/mcp-test-servers#fixture-echo) at `https://mcptest.io/fixtures/echo/mcp`. It needs no sign-in and its tools always return the same results.
+
 For a new remote deployment, prefer **Streamable HTTP**. In the 2025 protocol family it uses one endpoint for HTTP POST and optional GET/SSE streaming. Current clients often label it `http`, `streamable-http`, or simply “remote.” An explicit `sse` option normally means the older two-endpoint HTTP+SSE transport.
 
 ## Path A: an authless endpoint

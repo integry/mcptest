@@ -45,3 +45,6 @@ export const LANDING_REPORT_COVERAGE = [
 /** The catalog link reads `Browse <count> public remote MCP servers in the catalog`. */
 export const LANDING_CATALOG_LINK_PREFIX = 'Browse';
 export const LANDING_CATALOG_LINK_SUFFIX = 'public remote MCP servers in the catalog';
+/** Link to /mcp-test-servers below the catalog link. */
+export const LANDING_TEST_SERVERS_LINK = 'Free public MCP test servers: echo, auth, errors, slow';
+export const LANDING_TEST_SERVERS_PATH = '/mcp-test-servers';

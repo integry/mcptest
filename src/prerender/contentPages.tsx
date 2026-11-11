@@ -10,6 +10,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import OAuthCheckerView from '../components/OAuthCheckerView';
 import BreakingChangesView from '../components/BreakingChangesView';
+import McpTestServersView from '../components/McpTestServersView';
 import LearnIndex from '../components/learn/LearnIndex';
 import MarkdownLearnArticle from '../components/learn/MarkdownLearnArticle';
 import { loadHighlighter } from '../components/learn/highlighter';
@@ -53,3 +54,6 @@ export const renderLearnIndexPage = (): string => renderAt('/learn', <LearnIndex
 export const renderBreakingChangesPage = (): string => renderAt('/tools/breaking-changes', <BreakingChangesView />);
 
 export const renderOAuthCheckerPage = (): string => renderAt('/tools/oauth-check', <OAuthCheckerView />);
+
+/** /mcp-test-servers, with its code blocks highlighted (prepareContentPrerender loads highlight.js). */
+export const renderMcpTestServersPage = (): string => renderAt('/mcp-test-servers', <McpTestServersView />);

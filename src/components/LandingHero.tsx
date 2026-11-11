@@ -14,8 +14,12 @@ import {
   LANDING_LEDE,
   LANDING_PATHS_LABEL,
   LANDING_REPORT_COVERAGE as REPORT_COVERAGE,
+  LANDING_TEST_SERVERS_LINK,
+  LANDING_TEST_SERVERS_PATH,
 } from '../content/landingCopy';
 import { selectLandingQuickPicks } from '../utils/landingQuickPicks';
+import { LANDING_FIXTURE_SELECTION } from '../utils/landingFixture';
+import { LANDING_FIXTURE } from '../data/publicFixtures';
 import { CatalogServerLogo } from './CatalogServerLogo';
 import type { SuggestedServerSelection } from './SuggestedServersPanel';
 import './LandingHero.css';
@@ -168,10 +172,31 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
                   ))}
                 </ul>
               </div>
-            ) : quickPicks.length > 0 && (
+            ) : (
               <div className="landing-quick-picks">
                 <span className="landing-quick-picks-label" id="landing-quick-picks-label">Try with</span>
                 <ul aria-labelledby="landing-quick-picks-label">
+                  {/* mcptest's own public echo server first: no sign-in, always answers. */}
+                  <li>
+                    <button
+                      type="button"
+                      className="landing-quick-pick"
+                      data-server-id={LANDING_FIXTURE.id}
+                      title={LANDING_FIXTURE.url}
+                      disabled={isConnecting}
+                      onClick={() => {
+                        trackEvent('landing_connect', { source: 'quick_pick', host: getAnalyticsHost(LANDING_FIXTURE.url) });
+                        onConnect(LANDING_FIXTURE_SELECTION);
+                      }}
+                    >
+                      <CatalogServerLogo
+                        name={LANDING_FIXTURE.name}
+                        logoUrl={LANDING_FIXTURE.logoUrl}
+                        className="landing-quick-pick-logo"
+                      />
+                      {LANDING_FIXTURE.name}
+                    </button>
+                  </li>
                   {quickPicks.map((server) => {
                     const endpoint = getPreferredCatalogEndpoint(server);
                     return (
@@ -252,6 +277,11 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
       <p className="landing-catalog">
         <Link to="/catalog">
           {LANDING_CATALOG_LINK_PREFIX} {catalogCount} {LANDING_CATALOG_LINK_SUFFIX} <span aria-hidden="true">&rarr;</span>
+        </Link>
+      </p>
+      <p className="landing-catalog landing-test-servers">
+        <Link to={LANDING_TEST_SERVERS_PATH}>
+          {LANDING_TEST_SERVERS_LINK} <span aria-hidden="true">&rarr;</span>
         </Link>
       </p>
     </section>

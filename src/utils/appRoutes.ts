@@ -15,6 +15,9 @@ export const DISCOVERY_CHECKER_PATH = '/tools/discovery';
 /** Paths the app serves exactly (a trailing slash is not a variant). */
 export const OAUTH_CHECKER_PATH = '/tools/oauth-check';
 
+/** The public MCP test servers page (src/components/McpTestServersView.tsx). */
+export const MCP_TEST_SERVERS_PATH = '/mcp-test-servers';
+
 export const EXACT_APP_ROUTES: readonly string[] = [
   '/',
   '/catalog',
@@ -24,6 +27,7 @@ export const EXACT_APP_ROUTES: readonly string[] = [
   '/tools/breaking-changes',
   DISCOVERY_CHECKER_PATH,
   OAUTH_CHECKER_PATH,
+  MCP_TEST_SERVERS_PATH,
   '/oauth/callback',
   '/install-integration',
 ];

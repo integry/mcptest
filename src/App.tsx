@@ -25,6 +25,7 @@ import {
   BreakingChangesView,
   DiscoveryCheckerView,
   OAuthCheckerView,
+  McpTestServersView,
   ReportView,
   SubmitServerView,
   TabContent,
@@ -58,7 +59,7 @@ import { formatErrorForDisplay } from './utils/errorHandling';
 import { getCatalogServerById } from './utils/catalogUtils';
 import { getCatalogServerIdFromPath } from './utils/catalogSeo';
 import { getPreferredCatalogEndpoint } from './utils/clientSetup';
-import { OAUTH_CHECKER_PATH, DISCOVERY_CHECKER_PATH, isKnownAppPath } from './utils/appRoutes';
+import { OAUTH_CHECKER_PATH, DISCOVERY_CHECKER_PATH, MCP_TEST_SERVERS_PATH, isKnownAppPath } from './utils/appRoutes';
 // The MCP SDK, OAuth flow and saved-card helpers load on demand; see utils/savedCardRuntime.
 import type {
   OAuthPrerequisite,
@@ -259,6 +260,8 @@ function App() {
 
     if (path === OAUTH_CHECKER_PATH) return { activeView: 'oauth-check' as const };
 
+    if (path === MCP_TEST_SERVERS_PATH) return { activeView: 'mcp-test-servers' as const };
+
     if (path === DISCOVERY_CHECKER_PATH) {
       return { activeView: 'discovery' as const };
     }
@@ -409,6 +412,8 @@ function App() {
     }
 
     if (path === OAUTH_CHECKER_PATH) { logPageView(path, 'MCP OAuth checker'); return; }
+
+    if (path === MCP_TEST_SERVERS_PATH) { logPageView(path, 'Public MCP test servers'); return; }
 
     if (path === DISCOVERY_CHECKER_PATH) {
       logPageView(path, 'MCP discovery checker');
@@ -1910,6 +1915,10 @@ function App() {
 
           {activeView === 'oauth-check' && (
             <div className="view-panel"><Suspense fallback={<ViewFallback label="Loading the OAuth checker" />}><OAuthCheckerView /></Suspense></div>
+          )}
+
+          {activeView === 'mcp-test-servers' && (
+            <div className="view-panel"><Suspense fallback={<ViewFallback label="Loading the test servers" />}><McpTestServersView /></Suspense></div>
           )}
 
           {/* MCP Discovery Checker */}

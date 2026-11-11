@@ -199,7 +199,7 @@ describe('static first frame (header, sidebar, playground landing)', () => {
     expect(shell.querySelector('.landing-connect button#connectBtn').disabled).toBe(true);
     expect(shell.querySelectorAll('[onclick], script')).toHaveLength(0);
     expect(Array.from(shell.querySelectorAll('.landing-quick-pick'), button => button.dataset.serverId))
-      .toEqual(selectLandingQuickPicks(getCatalogServers()).map(server => server.id));
+      .toEqual(['mcptest-echo', ...selectLandingQuickPicks(getCatalogServers()).map(server => server.id)]);
   });
 
   it('shows the theme icon matching data-theme and nothing else', () => {

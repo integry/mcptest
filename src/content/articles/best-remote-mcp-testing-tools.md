@@ -198,3 +198,5 @@ Most teams end up with two: one tool for local development and one for the deplo
 ## Try it on a real server
 
 [Open DeepWiki in the mcptest.io playground](/server/mcp.deepwiki.com/mcp/mcp), a public catalog server that needs no sign-in. Call one of its tools, generate the report, and then open the same URL in any of the other tools to compare what each one shows.
+
+To compare how the tools handle failures, use the [public MCP test servers](/mcp-test-servers): fixed endpoints for protocol errors, tool errors, HTTP 500s, slow calls and bearer authentication.
