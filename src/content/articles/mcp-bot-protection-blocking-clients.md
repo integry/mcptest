@@ -74,7 +74,7 @@ The client's error rarely says "firewall". Look at the raw response instead:
 
 Vercel does not document a challenge response header, so on Vercel check which firewall features are active when a non-browser request gets an HTML response.
 
-On the client side, the symptoms are the generic ones: a JSON parse error that mentions `<`, ["Failed to discover OAuth metadata"](/learn/mcp-error-failed-to-discover-oauth-metadata), ["Error POSTing to endpoint"](/learn/mcp-error-posting-to-endpoint) with an HTML body, or a `202` or `405` that the client treats as a protocol violation. A `403` that comes with no `WWW-Authenticate` header and an HTML body is the edge, not your authorization code.
+On the client side, the symptoms are the generic ones: a JSON parse error that mentions `<`, ["Failed to discover OAuth metadata"](/learn/mcp-error-failed-to-discover-oauth-metadata), ["Error POSTing to endpoint"](/learn/mcp-error-posting-to-endpoint) with an HTML body, or a `202` or `405` that the client treats as a protocol violation. None of these, nor a `403` with an HTML body and no `WWW-Authenticate` header, proves where the response came from: your origin, a framework error page or a reverse proxy can send the same thing. Treat them as reasons to look further, and attribute the failure to bot protection only when you have provider evidence: a challenge header from the table above, such as `cf-mitigated` or `x-amzn-waf-action`, or a matching entry in the edge's security log (for example, by Ray ID or request ID) with no corresponding request in your origin's logs.
 
 On Cloudflare, search Security Events for the Ray ID: "The event shows which security feature and rule blocked the request" ([Cloudflare](https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-1xxx-errors/error-1020/)).
 
@@ -163,9 +163,9 @@ curl -sS -D - -X POST https://mcp.example.com/mcp \
   --data '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
 ```
 
-The metadata request should return `200` with `application/json`. The POST should return JSON, an SSE stream, or a `401` with `WWW-Authenticate`; even a JSON-RPC error proves the request reached your server. A `text/html` body, `cf-mitigated`, `x-amzn-waf-action`, a `202` or a `405` means the edge still answered.
+The metadata request should return `200` with `application/json`. The POST should return JSON, an SSE stream, or a `401` with `WWW-Authenticate`; even a JSON-RPC error proves the request reached your server. A `cf-mitigated` or `x-amzn-waf-action` header means the edge still answered. A `text/html` body, a `202`, a `405` or a bare `403` only means something is still wrong: check the edge's security events and your origin's request logs for that request before deciding whether the edge or your server sent it.
 
-Then run the [OAuth checker](/tools/oauth-check): it lists the status and `Content-Type` of every metadata request it makes, so a block or challenge stands out as a `403`, a `429` or a `text/html` row. Finally, connect in the [playground](/) and in each client you support, and make several calls in a row to make sure no rate limit trips.
+Then run the [OAuth checker](/tools/oauth-check): it lists the status and `Content-Type` of every metadata request it makes, so a possible block or challenge stands out as a `403`, a `429` or a `text/html` row; confirm it with the response headers and logs as above. Finally, connect in the [playground](/) and in each client you support, and make several calls in a row to make sure no rate limit trips.
 
 ## FAQ
 
@@ -179,4 +179,4 @@ Exempt the paths from bot scoring and challenges, and keep everything else: auth
 
 ### My OAuth metadata URL returns 403. Is it my server?
 
-Check the headers. A `403` with an HTML body and no `WWW-Authenticate` comes from the edge. See [401 Unauthorized](/learn/remote-mcp-server-401-unauthorized) for the responses your server should send.
+Not necessarily. A `403` with an HTML body and no `WWW-Authenticate` is worth investigating, but your server, framework or proxy can send one too. It points to the edge only if the response carries a provider challenge header such as `cf-mitigated` or `x-amzn-waf-action`, or the edge's security log records the block and your origin's logs show no matching request. If the origin did receive it, fix your authorization code; see [401 Unauthorized](/learn/remote-mcp-server-401-unauthorized) for the responses your server should send.

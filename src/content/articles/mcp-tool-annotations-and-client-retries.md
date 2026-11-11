@@ -68,7 +68,7 @@ What each client does with the hints is up to that client. These are the behavio
 | Codex | The `writes` approval mode "prompts for tools that aren't marked read-only" ([Codex MCP docs](https://learn.chatgpt.com/docs/extend/mcp)) |
 | VS Code | In Local harness sessions, `readOnlyHint` affects the default confirmation before a call and `openWorldHint` affects confirmation of results. The guide also says not to assume "that readOnlyHint bypasses approval" ([VS Code MCP guide](https://code.visualstudio.com/api/extension-guides/ai/mcp)) |
 
-So a read-only tool that omits `readOnlyHint` gets confirmations on every call, no parallel execution and, in Claude Code, no retry after a dropped connection. A tool that claims `readOnlyHint: true` but writes skips the confirmation a write should have had, and may run twice.
+So a read-only tool that omits `readOnlyHint` can cost you in the clients that read it. In Claude, and in Codex's `writes` mode, it is prompted for like a write tool; in VS Code it may get the default confirmation, subject to the user's approval settings. Claude Code does not run it in parallel with read-only calls, and retries it after a dropped connection only if it sets `idempotentHint: true`; with neither hint true, there is no retry. A tool that claims `readOnlyHint: true` but writes can skip, in those same clients, the confirmation a write should have had, and Claude Code may run it twice.
 
 ## Choosing the hints for a tool
 
