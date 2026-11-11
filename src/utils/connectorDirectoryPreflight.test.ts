@@ -132,6 +132,30 @@ describe('connector directory preflight', () => {
       expect(result.evidence).toEqual(['no_hints']);
     });
 
+    it('does not accept a hint set to false as the Claude safety hint', () => {
+      const input = observations({
+        tools: toolsFrom([
+          fullyAnnotated('lone_false', { annotations: { readOnlyHint: false } }),
+          fullyAnnotated('both_false', { annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false } }),
+          fullyAnnotated('read_only'),
+          fullyAnnotated('destructive', { annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false } }),
+        ]),
+      });
+      const result = item(evaluateConnectorDirectoryPreflight(input), 'claude.tool-safety-hint');
+      expect(result.status).toBe('fail');
+      expect(result.evidence).toEqual(['both_false', 'lone_false']);
+      // Both false is still a complete set of explicit booleans for ChatGPT.
+      expect(statusOf(observations({ tools: toolsFrom([fullyAnnotated('both_false', {
+        annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+      })]) }), 'chatgpt.tool-annotations')).toBe('pass');
+    });
+
+    it('keeps the Claude safety hint unknown for a partial record without a failing tool', () => {
+      const annotations = toolsFrom([fullyAnnotated('read_only')]).annotations;
+      const input = observations({ tools: { annotations: annotations && { ...annotations, status: 'partial' } } });
+      expect(statusOf(input, 'claude.tool-safety-hint')).toBe('unknown');
+    });
+
     it('requires all three explicit hints for ChatGPT', () => {
       const input = observations({
         tools: toolsFrom([
@@ -207,6 +231,32 @@ describe('connector directory preflight', () => {
       const result = item(evaluateConnectorDirectoryPreflight(input), 'claude.separate-read-write');
       expect(result.status).toBe('unknown');
       expect(result.evidence).toEqual(['fetch_url (method: GET, POST, DELETE)']);
+    });
+  });
+
+  describe('method schemas that do not establish the accepted methods', () => {
+    const withMethod = (method: unknown) => observations({
+      tools: toolsFrom([fullyAnnotated('api_request', {
+        inputSchema: { type: 'object', properties: { method, path: { type: 'string' } } },
+      })]),
+    });
+
+    it('leaves an unconstrained method argument unknown instead of passing it', () => {
+      const result = item(evaluateConnectorDirectoryPreflight(withMethod({ type: 'string' })), 'claude.separate-read-write');
+      expect(result.status).toBe('unknown');
+      expect(result.evidence).toEqual(['api_request (method)']);
+    });
+
+    it('passes an enum narrowed by const to safe methods instead of failing it', () => {
+      expect(statusOf(withMethod({ enum: ['GET', 'POST'], const: 'GET' }), 'claude.separate-read-write')).toBe('pass');
+    });
+
+    it('leaves uninterpreted constraint combinations unknown', () => {
+      expect(statusOf(withMethod({ enum: ['GET', 'POST'], pattern: '^G' }), 'claude.separate-read-write')).toBe('unknown');
+    });
+
+    it('passes a method argument limited to safe methods', () => {
+      expect(statusOf(withMethod({ type: 'string', enum: ['GET', 'HEAD'] }), 'claude.separate-read-write')).toBe('pass');
     });
   });
 

@@ -6,8 +6,10 @@
  *   values include both safe (GET, HEAD, OPTIONS) and unsafe (POST, PUT, PATCH,
  *   DELETE) HTTP methods. Anthropic's review criteria reject this shape
  *   outright, so the preflight treats it as a checked requirement. Only an
- *   explicit schema value set can fail it; method names mentioned in a
- *   description (`findAmbiguousHttpMethodSelectors`) leave it unknown.
+ *   established schema value set can fail it; method names mentioned in a
+ *   description (`findAmbiguousHttpMethodSelectors`) and unconstrained or
+ *   uninterpreted schemas (`findUnresolvedHttpMethodSelectors`) leave it
+ *   unknown.
  * - `findMultiplexedOperationSelectors`: an `action`/`operation`-style argument
  *   (or a list of operation objects) whose values read as both read and write
  *   verbs. This is a heuristic and only ever produces an advisory.
@@ -36,7 +38,10 @@ interface ToolLike {
 interface SelectorCandidate {
   path: string;
   name: string;
+  /** The accepted values, when the schema establishes them; otherwise empty. */
   values: string[];
+  /** Whether `values` is the established set of accepted values. */
+  constraint: 'values' | 'any' | 'inconclusive';
   description: string;
 }
 
@@ -96,24 +101,86 @@ export const classifyOperation = (value: string): OperationCategory | undefined 
   return undefined;
 };
 
-/** String values a schema node allows through enum, const, or oneOf/anyOf of consts. */
-const enumeratedValues = (schema: unknown): string[] => {
-  if (!isRecord(schema)) return [];
-  if (Array.isArray(schema.enum)) {
-    return schema.enum.filter((value): value is string => typeof value === 'string');
+/**
+ * What a schema node establishes about the string values it accepts:
+ * - a `Set`: exactly these strings (every applicable constraint intersected),
+ * - `'any'`: no constraint on the value at all,
+ * - `'inconclusive'`: constraints this scanner does not interpret (pattern,
+ *   length, not, $ref, conditionals, non-string types, ...), so nothing is
+ *   claimed either way.
+ */
+type ValueConstraint = Set<string> | 'any' | 'inconclusive';
+
+/** Keywords that narrow string values in ways the scanner does not model. */
+const UNINTERPRETED_VALUE_KEYWORDS = [
+  'pattern', 'minLength', 'maxLength', 'not', '$ref', '$dynamicRef', 'if', 'then', 'else',
+] as const;
+const BRANCH_LIMIT = 50;
+
+const intersect = (left: ValueConstraint, right: ValueConstraint): ValueConstraint => {
+  if (left === 'inconclusive' || right === 'inconclusive') {
+    // An empty set stays empty whatever the other constraint says.
+    if (left instanceof Set && left.size === 0) return left;
+    if (right instanceof Set && right.size === 0) return right;
+    return 'inconclusive';
   }
-  if (typeof schema.const === 'string') return [schema.const];
-  for (const key of ['oneOf', 'anyOf'] as const) {
+  if (left === 'any') return right;
+  if (right === 'any') return left;
+  return new Set([...left].filter((value) => right.has(value)));
+};
+
+const permitsStrings = (type: unknown): boolean => (
+  type === 'string' || (Array.isArray(type) && type.includes('string'))
+);
+
+/**
+ * `anyOf` accepts a value matched by any branch; `oneOf` one matched by
+ * exactly one branch. Only finite branch sets give a conclusive answer.
+ */
+const combineBranches = (branches: unknown[], exclusive: boolean, depth: number): ValueConstraint => {
+  if (branches.length === 0 || branches.length > BRANCH_LIMIT) return 'inconclusive';
+  const results = branches.map((branch) => valueConstraint(branch, depth + 1));
+  if (results.includes('inconclusive')) return 'inconclusive';
+  if (results.includes('any')) return exclusive ? 'inconclusive' : 'any';
+  const counts = new Map<string, number>();
+  for (const result of results as Set<string>[]) {
+    for (const value of result) counts.set(value, (counts.get(value) || 0) + 1);
+  }
+  return new Set([...counts].filter(([, count]) => !exclusive || count === 1).map(([value]) => value));
+};
+
+const valueConstraint = (schema: unknown, depth = 0): ValueConstraint => {
+  if (schema === undefined || schema === true) return 'any';
+  if (schema === false) return new Set();
+  if (!isRecord(schema) || depth > 8) return 'inconclusive';
+  // Arrays of selectors (`methods: { items: { enum } }`): the element constraint is what matters.
+  if (schema.type === 'array' || (schema.type === undefined && isRecord(schema.items)
+    && !('enum' in schema) && !('const' in schema))) {
+    return isRecord(schema.items) ? valueConstraint(schema.items, depth + 1) : 'inconclusive';
+  }
+  let result: ValueConstraint = 'any';
+  if ('type' in schema && !permitsStrings(schema.type)) result = 'inconclusive';
+  if (UNINTERPRETED_VALUE_KEYWORDS.some((keyword) => keyword in schema)) result = 'inconclusive';
+  if ('enum' in schema) {
+    result = intersect(result, Array.isArray(schema.enum)
+      ? new Set(schema.enum.filter((value): value is string => typeof value === 'string'))
+      : 'inconclusive');
+  }
+  if ('const' in schema) {
+    result = intersect(result, new Set(typeof schema.const === 'string' ? [schema.const] : []));
+  }
+  for (const [key, exclusive] of [['anyOf', false], ['oneOf', true]] as const) {
+    if (!(key in schema)) continue;
     const branches = schema[key];
-    if (Array.isArray(branches)) {
-      const values = branches.flatMap((branch) => (
-        isRecord(branch) && typeof branch.const === 'string' ? [branch.const] : []
-      ));
-      if (values.length > 0) return values;
-    }
+    result = intersect(result, Array.isArray(branches) ? combineBranches(branches, exclusive, depth) : 'inconclusive');
   }
-  if (isRecord(schema.items)) return enumeratedValues(schema.items);
-  return [];
+  if ('allOf' in schema) {
+    const branches = schema.allOf;
+    result = Array.isArray(branches) && branches.length <= BRANCH_LIMIT
+      ? branches.reduce<ValueConstraint>((acc, branch) => intersect(acc, valueConstraint(branch, depth + 1)), result)
+      : intersect(result, 'inconclusive');
+  }
+  return result;
 };
 
 const properties = (schema: unknown): [string, unknown][] => (
@@ -126,10 +193,12 @@ const properties = (schema: unknown): [string, unknown][] => (
 const selectorCandidates = (inputSchema: unknown): SelectorCandidate[] => {
   const candidates: SelectorCandidate[] = [];
   const add = (path: string, name: string, schema: unknown) => {
+    const constraint = valueConstraint(schema);
     candidates.push({
       path,
       name: canonicalName(name),
-      values: [...new Set(enumeratedValues(schema))],
+      values: constraint instanceof Set ? [...constraint] : [],
+      constraint: constraint instanceof Set ? 'values' : constraint,
       description: isRecord(schema) && typeof schema.description === 'string' ? schema.description : '',
     });
   };
@@ -165,15 +234,16 @@ const mixedMethodMatch = (
 };
 
 /**
- * Tools with a method argument whose schema constraint (enum, const, or
- * oneOf/anyOf of consts) admits both safe and unsafe HTTP methods, the
- * catch-all `api_request` shape Anthropic's review criteria reject. Only an
- * explicit value set counts: descriptions are left to
- * `findAmbiguousHttpMethodSelectors`.
+ * Tools with a method argument whose schema constraints (enum, const,
+ * oneOf/anyOf/allOf, intersected) establish that it admits both safe and
+ * unsafe HTTP methods, the catch-all `api_request` shape Anthropic's review
+ * criteria reject. Only an established value set counts: descriptions are left
+ * to `findAmbiguousHttpMethodSelectors`, and unconstrained or uninterpreted
+ * schemas to `findUnresolvedHttpMethodSelectors`.
  */
 export const findMixedHttpMethodSelectors = (tools: readonly ToolLike[]): OperationSelectorMatch[] => (
   tools.flatMap((tool) => selectorCandidates(tool.inputSchema).flatMap((candidate) => {
-    if (!HTTP_METHOD_NAMES.has(candidate.name) || candidate.values.length === 0) return [];
+    if (!HTTP_METHOD_NAMES.has(candidate.name) || candidate.constraint !== 'values') return [];
     const match = mixedMethodMatch(tool.name, candidate.path, candidate.values);
     return match ? [match] : [];
   }))
@@ -187,10 +257,26 @@ export const findMixedHttpMethodSelectors = (tools: readonly ToolLike[]): Operat
  */
 export const findAmbiguousHttpMethodSelectors = (tools: readonly ToolLike[]): OperationSelectorMatch[] => (
   tools.flatMap((tool) => selectorCandidates(tool.inputSchema).flatMap((candidate) => {
-    if (!HTTP_METHOD_NAMES.has(candidate.name) || candidate.values.length > 0) return [];
+    if (!HTTP_METHOD_NAMES.has(candidate.name) || candidate.constraint === 'values') return [];
     const match = mixedMethodMatch(tool.name, candidate.path, methodsInText(candidate.description));
     return match ? [match] : [];
   }))
+);
+
+/**
+ * Method arguments whose schema does not establish the accepted methods:
+ * unconstrained (`{ type: 'string' }`) or constrained in a way the scanner
+ * does not interpret. Such an argument may accept both safe and unsafe
+ * methods, so the preflight cannot pass the check while one exists.
+ * Arguments already reported by `findAmbiguousHttpMethodSelectors` are
+ * included; callers report those first.
+ */
+export const findUnresolvedHttpMethodSelectors = (tools: readonly ToolLike[]): OperationSelectorMatch[] => (
+  tools.flatMap((tool) => selectorCandidates(tool.inputSchema).flatMap((candidate) => (
+    HTTP_METHOD_NAMES.has(candidate.name) && candidate.constraint !== 'values'
+      ? [{ tool: tool.name, argument: candidate.path, values: [], categories: [] }]
+      : []
+  )))
 );
 
 /**
@@ -204,7 +290,7 @@ export const findMultiplexedOperationSelectors = (
   tools: readonly ToolLike[]
 ): OperationSelectorMatch[] => (
   tools.flatMap((tool) => selectorCandidates(tool.inputSchema).flatMap((candidate) => {
-    if (!SELECTOR_NAMES.has(candidate.name) || candidate.values.length < 2) return [];
+    if (!SELECTOR_NAMES.has(candidate.name) || candidate.constraint !== 'values' || candidate.values.length < 2) return [];
     const classified = candidate.values
       .map(classifyOperation)
       .filter((category): category is OperationCategory => Boolean(category));

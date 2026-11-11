@@ -4,6 +4,7 @@ import {
   findAmbiguousHttpMethodSelectors,
   findMixedHttpMethodSelectors,
   findMultiplexedOperationSelectors,
+  findUnresolvedHttpMethodSelectors,
 } from './toolOperationMultiplexing';
 
 const tool = (name: string, properties: Record<string, unknown>) => ({
@@ -169,9 +170,56 @@ describe('findMixedHttpMethodSelectors', () => {
     ])).toEqual([]);
   });
 
+  it('intersects enum with const before failing', () => {
+    expect(findMixedHttpMethodSelectors([
+      tool('fetch', { method: { enum: ['GET', 'POST'], const: 'GET' } }),
+    ])).toEqual([]);
+  });
+
+  it('intersects allOf branches and honours oneOf exclusivity', () => {
+    expect(findMixedHttpMethodSelectors([
+      tool('all', { method: { allOf: [{ enum: ['GET', 'POST'] }, { enum: ['GET', 'HEAD'] }] } }),
+      tool('one', { method: { oneOf: [{ enum: ['GET', 'POST'] }, { const: 'POST' }] } }),
+    ])).toEqual([]);
+    expect(findMixedHttpMethodSelectors([
+      tool('all', { method: { allOf: [{ enum: ['GET', 'POST'] }, { type: 'string' }] } }),
+    ])).toHaveLength(1);
+  });
+
+  it('does not fail constraints it cannot interpret', () => {
+    expect(findMixedHttpMethodSelectors([
+      tool('pattern', { method: { enum: ['GET', 'POST'], pattern: '^G' } }),
+      tool('any_branch', { method: { anyOf: [{ const: 'GET' }, { type: 'string' }, { const: 'POST' }] } }),
+      tool('ref', { method: { $ref: '#/$defs/method' } }),
+    ])).toEqual([]);
+  });
+
   it('ignores HTTP-looking enums on arguments not named as a method', () => {
     expect(findMixedHttpMethodSelectors([
       tool('docs', { section: { enum: ['GET', 'POST'] } }),
+    ])).toEqual([]);
+  });
+});
+
+describe('findUnresolvedHttpMethodSelectors', () => {
+  it('reports unconstrained and uninterpreted method arguments, not established value sets', () => {
+    const matches = findUnresolvedHttpMethodSelectors([
+      tool('bare', { method: { type: 'string' } }),
+      tool('described', { method: { type: 'string', description: 'GET or POST.' } }),
+      tool('pattern', { method: { enum: ['GET', 'POST'], pattern: '^G' } }),
+      tool('any_branch', { method: { anyOf: [{ const: 'GET' }, { type: 'string' }] } }),
+      tool('enum', { method: { enum: ['GET', 'POST'] } }),
+      tool('narrowed', { method: { enum: ['GET', 'POST'], const: 'GET' } }),
+      tool('other', { query: { type: 'string' } }),
+    ]);
+    expect(matches.map((match) => match.tool)).toEqual(['bare', 'described', 'pattern', 'any_branch']);
+  });
+});
+
+describe('findMultiplexedOperationSelectors with intersecting constraints', () => {
+  it('uses the intersection of enum and const', () => {
+    expect(findMultiplexedOperationSelectors([
+      tool('records', { action: { enum: ['list_records', 'delete_record'], const: 'list_records' } }),
     ])).toEqual([]);
   });
 });

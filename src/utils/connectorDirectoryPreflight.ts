@@ -30,6 +30,7 @@ import {
   findAmbiguousHttpMethodSelectors,
   findMixedHttpMethodSelectors,
   findMultiplexedOperationSelectors,
+  findUnresolvedHttpMethodSelectors,
   type OperationSelectorMatch,
 } from './toolOperationMultiplexing';
 
@@ -179,6 +180,15 @@ const methodSelectorScan: Evaluator = ({ tools }) => {
       evidence: capped(ambiguous.map(describeMatch)),
     };
   }
+  // `{ type: 'string' }` excludes neither safe nor unsafe methods, so it cannot pass the check.
+  const unresolved = findUnresolvedHttpMethodSelectors(definitions.tools);
+  if (unresolved.length > 0) {
+    return {
+      status: 'unknown',
+      detail: `${plural(unresolved.length, 'tool argument')} take an HTTP method whose schema does not establish which methods are accepted. Declare an enum of the accepted methods; if both safe and unsafe methods are accepted, split each into a read-only tool and write tools.`,
+      evidence: capped(unresolved.map((match) => `${match.tool} (${match.argument})`)),
+    };
+  }
   if (definitions.status === 'partial') {
     return { status: 'unknown', detail: 'No catch-all method argument was found in the recorded tools, but not every tool schema could be recorded.' };
   }
@@ -293,6 +303,11 @@ const duplicateNames: Evaluator = ({ tools }) => {
   return { status: 'pass', detail: `All ${plural(summary.tools.length, 'tool name')} are unique.` };
 };
 
+/** Claude asks for the applicable hint set to true; an explicit false classifies nothing. */
+const hasAffirmativeSafetyHint = (tool: ToolAnnotationRecordV1): boolean => (
+  tool.readOnlyHint === true || tool.destructiveHint === true
+);
+
 const missingHints = (tool: ToolAnnotationRecordV1, hints: readonly (keyof ToolAnnotationRecordV1)[]) => (
   hints.filter((hint) => typeof tool[hint] !== 'boolean')
 );
@@ -305,9 +320,9 @@ const EVALUATORS: Partial<Record<ConnectorDirectoryRequirementId, Evaluator>> = 
     (count) => `All ${plural(count, 'tool')} declare a title.`
   ),
   'claude.tool-safety-hint': perTool(
-    (tool) => missingHints(tool, ['readOnlyHint', 'destructiveHint']).length === 2,
-    (count) => `${plural(count, 'tool')} declare neither readOnlyHint nor destructiveHint.`,
-    (count) => `All ${plural(count, 'tool')} declare readOnlyHint or destructiveHint.`
+    (tool) => !hasAffirmativeSafetyHint(tool),
+    (count) => `${plural(count, 'tool')} set neither readOnlyHint: true nor destructiveHint: true (a hint set to false does not classify the tool).`,
+    (count) => `All ${plural(count, 'tool')} set readOnlyHint: true or destructiveHint: true.`
   ),
   'claude.tool-name-length': perTool(
     (tool) => tool.name.length > CLAUDE_TOOL_NAME_CHARACTER_LIMIT,

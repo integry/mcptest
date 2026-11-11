@@ -145,7 +145,7 @@ export const CONNECTOR_DIRECTORY_REQUIREMENTS: readonly ConnectorDirectoryRequir
     id: 'claude.tool-safety-hint',
     directory: 'claude',
     check: 'automatic',
-    title: 'Every tool declares readOnlyHint or destructiveHint',
+    title: 'Every tool sets readOnlyHint: true or destructiveHint: true',
     requirement: 'Every tool includes the applicable hint: readOnlyHint: true for read-only tools and destructiveHint: true for tools that modify or delete data.',
     source: at(CLAUDE_REVIEW_CRITERIA, 'provide-tool-annotations'),
   },
