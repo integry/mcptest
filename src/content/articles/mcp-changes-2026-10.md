@@ -1,13 +1,13 @@
 ---
 title: "What changed in MCP, October 2026"
 navTitle: "MCP changes, Oct 2026"
-summary: "MCP changes from 2026-09-20 to 2026-10-20: the Server Cards SEP is final, six official SDKs shipped releases, and Claude connectors and Devin Desktop now negotiate 2026-07-28."
+summary: "MCP changes from 2026-09-20 to 2026-10-20: the Server Cards SEP is final, seven official SDKs shipped releases, Claude Code negotiates 2026-07-28 for more connectors, and Devin Desktop can connect to 2026-07-28 servers."
 track: reference
 level: practitioner
 order: 60
 category: Monthly digest
 readingTimeMinutes: 7
-lastReviewed: "2026-10-20"
+lastReviewed: "2026-11-11"
 metaTitle: "What changed in MCP, October 2026 | mcptest.io"
 metaDescription: "MCP changes from 2026-09-20 to 2026-10-20: SEP-2127 Server Cards, TypeScript, Python and other SDK releases, client updates, and remote server news."
 relatedSlugs:
@@ -148,7 +148,7 @@ The window has no new specification revision. 2026-07-28 is still current, and t
 | Ruby | [v1.6.0](https://github.com/modelcontextprotocol/ruby-sdk/releases/tag/v1.6.0) to [v1.8.0](https://github.com/modelcontextprotocol/ruby-sdk/releases/tag/v1.8.0) (2026-09-21 to 2026-10-16) | 1.6.0 raises an error when Protected Resource Metadata is unreachable instead of falling back to legacy discovery. 1.8.0 adds OAuth 2.1 resource server support to `StreamableHTTPTransport` (JWT or RFC 7662 introspection, RFC 9728 metadata), and its client transports reject server messages without `"jsonrpc": "2.0"`. |
 | PHP | [v0.9.0](https://github.com/modelcontextprotocol/php-sdk/releases/tag/v0.9.0) (2026-10-18) | Breaking: authorization is narrowed to the resource server role, and `structuredContent` is validated against `outputSchema`. stdio serves both protocol eras. CORS preflight passes the authorization middleware, and the default CORS headers allow `Mcp-Method`, `Mcp-Name` and `Mcp-Param-*`. |
 
-The [Go](https://github.com/modelcontextprotocol/go-sdk/releases), [C#](https://github.com/modelcontextprotocol/csharp-sdk/releases), [Kotlin](https://github.com/modelcontextprotocol/kotlin-sdk/releases) and [Swift](https://github.com/modelcontextprotocol/swift-sdk/releases) SDKs had no release in the window. Their latest releases are Go v1.8.0 (2026-09-14), C# v2.2.0 (2026-08-13), Kotlin 0.15.0 (2026-07-28) and Swift 0.12.1 (2026-05-07). The [MCP Inspector](https://github.com/modelcontextprotocol/inspector/releases) shipped 2.8.0 through 2.11.0.
+The [C#](https://github.com/modelcontextprotocol/csharp-sdk/releases) SDK published v2.3.0 at the very end of the window (2026-10-20, 23:39 UTC); it is not summarized here. The [Go](https://github.com/modelcontextprotocol/go-sdk/releases), [Kotlin](https://github.com/modelcontextprotocol/kotlin-sdk/releases) and [Swift](https://github.com/modelcontextprotocol/swift-sdk/releases) SDKs had no release in the window. Their latest releases are Go v1.8.0 (2026-09-14), Kotlin 0.15.0 (2026-07-28) and Swift 0.12.1 (2026-05-07). The [MCP Inspector](https://github.com/modelcontextprotocol/inspector/releases) shipped 2.8.0 through 2.11.0.
 
 ## Client changes
 
@@ -158,15 +158,16 @@ Only documented changes that affect remote servers are listed.
   - 2.1.281 (2026-09-23) added URL-mode elicitation on 2026-07-28 connections.
   - 2.1.287 (2026-10-01) added URL prompts for servers on 2025-11-25. A server that no longer connects after this can set `"bareElicitationCapability": true`.
   - 2.1.288 (2026-10-02) prompts the user to re-authenticate when a server asks for more OAuth scope during a tool call.
-  - 2.1.295 (2026-10-08) makes claude.ai connectors negotiate 2026-07-28 by default. 2.1.299 (2026-10-14) does the same for cloud session and Remote Control connectors and stops following HTTP redirects to claude.ai's connector proxy and Anthropic-hosted servers. `MCP_PROTOCOL_NEGOTIATION=legacy` opts out.
+  - 2.1.295 (2026-10-08) makes claude.ai connectors in Claude Code negotiate 2026-07-28 by default on installs that fetch no feature flags. 2.1.299 (2026-10-14) does the same for cloud session and Remote Control connectors. `MCP_PROTOCOL_NEGOTIATION=legacy` opts out of both.
+  - 2.1.299 also stops following HTTP redirects on requests to claude.ai's connector proxy and to Anthropic-hosted MCP servers. Redirects issued by a connector's own server are unaffected.
   - 2.1.302 (2026-10-16) fixed servers that negotiate 2026-07-28 but omit `resultType`, `ttlMs` or `cacheScope`, which had shown no tools or failed every call.
 
   The [Claude release notes](https://support.claude.com/en/articles/12138966-release-notes) have no documented connector changes in the window.
 - **ChatGPT.** No documented changes. The [Apps SDK changelog](https://developers.openai.com/apps-sdk/changelog) has no entries in the window.
 - **Cursor.** No documented changes in the [Cursor changelog](https://cursor.com/changelog).
 - **VS Code.** No changes specific to remote servers. [1.140](https://code.visualstudio.com/updates/v1_140#_add-mcp-servers-to-portable-configuration-files) (2026-09-30) can write servers to portable configuration files from **MCP: Add Server**. [1.141](https://code.visualstudio.com/updates/v1_141#_see-discovered-mcp-servers-in-customizations-editor-preview) (2026-10-07, preview) lists servers supplied by extensions and plugins in the Agent Customizations editor.
-- **Windsurf** (now Devin Desktop). In the [changelog](https://docs.devin.ai/desktop/changelog), 3.10.67 (2026-10-12) connects to servers on 2026-07-28 (`server/discover`, no `initialize`). As a private preview, it can also reach remote servers configured in Devin Cloud.
-- **Gemini CLI.** No documented changes affecting remote servers in [v0.61.0 to v0.64.0](https://github.com/google-gemini/gemini-cli/releases).
+- **Windsurf** (now Devin Desktop). In the [changelog](https://docs.devin.ai/desktop/changelog), 3.10.67 (2026-10-12) adds support for servers on 2026-07-28 (`server/discover`, no `initialize`). As a private preview, it can also reach enterprise-level remote servers configured in Devin Cloud.
+- **Gemini CLI.** [v0.61.0 to v0.65.0](https://github.com/google-gemini/gemini-cli/releases) shipped in the window. v0.65.0 (2026-10-20) aligns MCP OAuth callback `iss` validation with RFC 9207 metadata.
 - **Codex.**
   - [rust-v0.157.0](https://github.com/openai/codex/releases/tag/rust-v0.157.0) (2026-09-25) restricts MCP OAuth authorization endpoints to HTTP(S).
   - [rust-v0.158.0](https://github.com/openai/codex/releases/tag/rust-v0.158.0) (2026-09-28) connects to servers that need a pre-registered OAuth client secret (`codex mcp add --oauth-client-secret`).
@@ -182,9 +183,9 @@ Only documented changes that affect remote servers are listed.
 
 ## What to do about it
 
-- If your server sits behind a redirect to another host or port, publish the final URL. TypeScript SDK 2.3.0 and 1.32.0 clients no longer follow those redirects by default, and Claude Code no longer follows redirects to its connector proxy or Anthropic-hosted servers.
+- If your server sits behind a redirect to another host or port, publish the final URL. TypeScript SDK 2.3.0 and 1.32.0 clients no longer follow those redirects by default.
 - If you build on the TypeScript SDK 2.3.0, never call `connect()` on a server that is already connected; the second call now fails. With a stateless transport, create the server and the transport per request. With a stateful transport, keep connecting each session's server to its transport once and route that session's requests to the same transport; don't recreate them per request.
-- Test your server on 2026-07-28 now that claude.ai connectors and Devin Desktop negotiate it by default. Check that results carry the fields 2026-07-28 expects, and that every `x-mcp-header` parameter is a plain string, integer or boolean.
+- Test your server on 2026-07-28 now that Claude Code negotiates it by default for claude.ai, cloud session and Remote Control connectors, and Devin Desktop can connect with it. Check that results carry the fields 2026-07-28 expects, and that every `x-mcp-header` parameter is a plain string, integer or boolean.
 - If tokens need more scope for some tools, answer with an `insufficient_scope` challenge. Claude Code and Cloudflare's server now handle step-up instead of failing.
 - To make your remote server discoverable before connection, read [SEP-2127](https://modelcontextprotocol.io/seps/2127-mcp-server-cards) and consider serving a Server Card at `<your-endpoint>/server-card`.
 
