@@ -195,7 +195,7 @@ const methodSelectorScan: Evaluator = ({ tools }) => {
   if (uninterpreted.length > 0) {
     return {
       status: 'unknown',
-      detail: `${plural(uninterpreted.length, 'tool schema')} could not be fully scanned (constructs such as $ref, if/then/else or dependentSchemas, or more properties or nesting than the check examines), so a method argument that accepts both safe and unsafe HTTP methods could not be ruled out.`,
+      detail: `${plural(uninterpreted.length, 'tool schema')} could not be fully scanned (constructs such as $ref, if/then/else or dependentSchemas, map values declared through additionalProperties or patternProperties, or more properties or nesting than the check examines), so a method argument that accepts both safe and unsafe HTTP methods could not be ruled out.`,
       evidence: capped(uninterpreted.map((match) => `${match.tool} (${match.argument})`)),
     };
   }

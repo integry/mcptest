@@ -289,6 +289,30 @@ describe('connector directory preflight', () => {
       expect(result.evidence).toEqual(['api_request (input schema)']);
     });
 
+    it('leaves method branches a root discriminator may exclude unknown instead of failing them', () => {
+      const branch = (mode: string, method: string) => ({
+        properties: { mode: { const: mode }, method: { const: method } },
+        required: ['mode', 'method'],
+      });
+      const result = item(evaluateConnectorDirectoryPreflight(withSchema({
+        properties: { mode: { const: 'read' } },
+        oneOf: [branch('read', 'GET'), branch('write', 'POST')],
+      })), 'claude.separate-read-write');
+      expect(result.status).toBe('unknown');
+      expect(result.evidence).toEqual(['api_request (method)']);
+    });
+
+    it('leaves a request map whose values declare a method unknown instead of passing it', () => {
+      const request = { type: 'object', properties: { method: { enum: ['GET', 'POST'] } } };
+      for (const requests of [{ additionalProperties: request }, { patternProperties: { '^r': request } }]) {
+        const result = item(evaluateConnectorDirectoryPreflight(withSchema({
+          properties: { requests: { type: 'object', ...requests } },
+        })), 'claude.separate-read-write');
+        expect(result.status).toBe('unknown');
+        expect(result.evidence).toEqual(['api_request (requests)']);
+      }
+    });
+
     it('leaves a schema with more properties than the scan covers unknown instead of passing it', () => {
       const filler = Object.fromEntries(Array.from({ length: 200 }, (_, index) => [`field_${index}`, { type: 'string' }]));
       const result = item(evaluateConnectorDirectoryPreflight(withSchema({

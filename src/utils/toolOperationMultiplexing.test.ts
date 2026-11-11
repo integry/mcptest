@@ -465,3 +465,87 @@ describe('enclosing const and enum', () => {
     expect(findUnresolvedHttpMethodSelectors(tools)).toHaveLength(1);
   });
 });
+
+describe('branches excluded by sibling constraints', () => {
+  const schemaTool = (name: string, inputSchema: Record<string, unknown>) => ({
+    name,
+    inputSchema: { type: 'object', ...inputSchema },
+  });
+  const branch = (mode: string, method: string) => ({
+    properties: { mode: { const: mode }, method: { const: method } },
+    required: ['mode', 'method'],
+  });
+
+  it('does not fail a tool whose root discriminator excludes the unsafe branch', () => {
+    const tools = [
+      schemaTool('one', { properties: { mode: { const: 'read' } }, oneOf: [branch('read', 'GET'), branch('write', 'POST')] }),
+      schemaTool('any', { properties: { mode: { const: 'read' } }, anyOf: [branch('read', 'GET'), branch('write', 'POST')] }),
+      schemaTool('sibling', {
+        allOf: [{ properties: { mode: { const: 'read' } } }, { oneOf: [branch('read', 'GET'), branch('write', 'POST')] }],
+      }),
+      schemaTool('inner', {
+        oneOf: [branch('read', 'GET'), { ...branch('write', 'POST'), allOf: [{ properties: { mode: { const: 'read' } } }] }],
+      }),
+    ];
+    expect(findMixedHttpMethodSelectors(tools)).toEqual([]);
+    expect(findUnresolvedHttpMethodSelectors(tools).map((match) => match.tool)).toEqual(['one', 'any', 'sibling', 'inner']);
+  });
+
+  it('applies the same check to discriminators inside nested objects and array items', () => {
+    const request = { type: 'object', properties: { mode: { const: 'read' } }, oneOf: [branch('read', 'GET'), branch('write', 'POST')] };
+    const tools = [
+      schemaTool('nested', { properties: { request } }),
+      schemaTool('list', { properties: { requests: { type: 'array', items: request } } }),
+      schemaTool('deep', {
+        properties: { request: { properties: { mode: { const: 'read' } } } },
+        oneOf: [{ properties: { request: branch('read', 'GET') } }, { properties: { request: branch('write', 'POST') } }],
+      }),
+    ];
+    expect(findMixedHttpMethodSelectors(tools)).toEqual([]);
+    expect(findUnresolvedHttpMethodSelectors(tools).map((match) => match.argument))
+      .toEqual(['request.method', 'requests[].method', 'request.method']);
+  });
+
+  it('still fails discriminated unions whose branches nothing else constrains', () => {
+    expect(findMixedHttpMethodSelectors([
+      schemaTool('union', { oneOf: [branch('read', 'GET'), branch('write', 'POST')] }),
+      schemaTool('required', { required: ['mode'], anyOf: [branch('read', 'GET'), branch('write', 'POST')] }),
+    ]).map((match) => match.tool)).toEqual(['union', 'required']);
+  });
+});
+
+describe('map-valued scopes', () => {
+  const schemaTool = (name: string, inputSchema: Record<string, unknown>) => ({
+    name,
+    inputSchema: { type: 'object', ...inputSchema },
+  });
+  const request = { type: 'object', properties: { method: { enum: ['GET', 'POST'] } } };
+
+  it('reports additionalProperties and patternProperties values that declare a method argument', () => {
+    const tools = [
+      schemaTool('additional', { properties: { requests: { type: 'object', additionalProperties: request } } }),
+      schemaTool('pattern', { properties: { requests: { type: 'object', patternProperties: { '^req_': request } } } }),
+      schemaTool('root', { additionalProperties: request }),
+      schemaTool('nested', { properties: { requests: { additionalProperties: { properties: { batch: { type: 'array', items: request } } } } } }),
+      schemaTool('mapOfMaps', { properties: { requests: { additionalProperties: { additionalProperties: request } } } }),
+      schemaTool('opaque', { properties: { requests: { additionalProperties: { $ref: '#/$defs/request' } } } }),
+    ];
+    expect(findMixedHttpMethodSelectors(tools)).toEqual([]);
+    expect(findUninterpretedSelectorScopes(tools).map((match) => [match.tool, match.argument])).toEqual([
+      ['additional', 'requests'],
+      ['pattern', 'requests'],
+      ['root', 'input schema'],
+      ['nested', 'requests'],
+      ['mapOfMaps', 'requests'],
+      ['opaque', 'requests'],
+    ]);
+  });
+
+  it('keeps passing maps whose values hold no method argument', () => {
+    expect(findUninterpretedSelectorScopes([
+      schemaTool('headers', { properties: { headers: { type: 'object', additionalProperties: { type: 'string' } } } }),
+      schemaTool('labels', { properties: { labels: { patternProperties: { '^x-': { type: 'object', properties: { value: { type: 'string' } } } } } } }),
+      schemaTool('open', { properties: { extra: { type: 'object', additionalProperties: true } } }),
+    ])).toEqual([]);
+  });
+});

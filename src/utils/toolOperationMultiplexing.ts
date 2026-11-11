@@ -22,7 +22,10 @@
  * `patternProperties`, `additionalProperties`), and arguments declared only in
  * a composed branch are scanned like direct properties. The method check
  * covers nested objects and array items within explicit bounds; scopes past
- * those bounds are reported as not fully scanned rather than passed.
+ * those bounds, and map values that can hold a method argument, are reported
+ * as not fully scanned rather than passed. Object-level `anyOf`/`oneOf`
+ * branches only establish a value set when sibling constraints elsewhere in
+ * the schema cannot exclude a branch.
  */
 
 export type OperationCategory = 'read' | 'write' | 'destructive';
@@ -194,15 +197,19 @@ const applyComposition = (
   schema: Record<string, unknown>,
   initial: ValueConstraint,
   evaluate: (branch: unknown) => ValueConstraint,
-  oneOf: (results: readonly ValueConstraint[]) => ValueConstraint
+  oneOf: (results: readonly ValueConstraint[]) => ValueConstraint,
+  feasible: (branches: readonly unknown[], results: readonly ValueConstraint[]) => boolean = () => true
 ): ValueConstraint => {
   let result = initial;
   for (const [key, combine] of [['anyOf', unionOf], ['oneOf', oneOf]] as const) {
     if (!(key in schema)) continue;
     const branches = schema[key];
-    result = intersect(result, Array.isArray(branches) && branches.length > 0 && branches.length <= BRANCH_LIMIT
-      ? combine(branches.map(evaluate))
-      : 'inconclusive');
+    if (!Array.isArray(branches) || branches.length === 0 || branches.length > BRANCH_LIMIT) {
+      result = intersect(result, 'inconclusive');
+      continue;
+    }
+    const results = branches.map(evaluate);
+    result = intersect(result, feasible(branches, results) ? combine(results) : 'inconclusive');
   }
   if ('allOf' in schema) {
     const branches = schema.allOf;
@@ -213,7 +220,13 @@ const applyComposition = (
   return result;
 };
 
-const valueConstraint = (schema: unknown, depth = 0): ValueConstraint => {
+/** Where a schema sits: the tool's input schema and the path from it to the schema. */
+interface SchemaContext {
+  root: unknown;
+  at: readonly PathStep[];
+}
+
+const valueConstraint = (schema: unknown, context: SchemaContext, depth = 0): ValueConstraint => {
   if (schema === undefined || schema === true) return 'any';
   if (schema === false) return new Set();
   if (!isRecord(schema) || depth > 8) return 'inconclusive';
@@ -222,7 +235,7 @@ const valueConstraint = (schema: unknown, depth = 0): ValueConstraint => {
   if (schema.type === 'array' || (schema.type === undefined && isRecord(schema.items))) {
     // Without a type, an enum or const may list strings as well as arrays: neither reading is established.
     if (schema.type === undefined && ('enum' in schema || 'const' in schema)) return 'inconclusive';
-    return isRecord(schema.items) ? constraintAt(schema, ['items'], depth + 1) : 'inconclusive';
+    return isRecord(schema.items) ? constraintAt(schema, ['items'], context, depth + 1) : 'inconclusive';
   }
   let result: ValueConstraint = 'any';
   if ('type' in schema && !permitsStrings(schema.type)) result = 'inconclusive';
@@ -235,7 +248,7 @@ const valueConstraint = (schema: unknown, depth = 0): ValueConstraint => {
   if ('const' in schema) {
     result = intersect(result, new Set(typeof schema.const === 'string' ? [schema.const] : []));
   }
-  return applyComposition(schema, result, (branch) => valueConstraint(branch, depth + 1), exclusiveValues);
+  return applyComposition(schema, result, (branch) => valueConstraint(branch, context, depth + 1), exclusiveValues);
 };
 
 /**
@@ -330,8 +343,13 @@ const stepSchemas = (node: Record<string, unknown>, step: PathStep): unknown[] |
  * a composed branch.
  * Enclosing constraints the walk does not interpret make it inconclusive.
  */
-const constraintAt = (schema: unknown, path: readonly PathStep[], depth = 0): ValueConstraint => {
-  if (path.length === 0) return valueConstraint(schema);
+const constraintAt = (
+  schema: unknown,
+  path: readonly PathStep[],
+  context: SchemaContext,
+  depth = 0
+): ValueConstraint => {
+  if (path.length === 0) return valueConstraint(schema, context);
   if (schema === undefined || schema === true) return 'any';
   if (schema === false) return new Set();
   if (!isRecord(schema) || depth > PATH_DEPTH_LIMIT) return 'inconclusive';
@@ -343,8 +361,17 @@ const constraintAt = (schema: unknown, path: readonly PathStep[], depth = 0): Va
   const applicable = stepSchemas(schema, step);
   const result = applicable === 'inconclusive'
     ? intersect(initial, 'inconclusive')
-    : applicable.reduce<ValueConstraint>((acc, sub) => intersect(acc, constraintAt(sub, rest, depth + 1)), initial);
-  return applyComposition(schema, result, (branch) => constraintAt(branch, path, depth + 1), exclusiveObjects);
+    : applicable.reduce<ValueConstraint>((acc, sub) => intersect(
+      acc,
+      constraintAt(sub, rest, { root: context.root, at: [...context.at, step] }, depth + 1)
+    ), initial);
+  return applyComposition(
+    schema,
+    result,
+    (branch) => constraintAt(branch, path, context, depth + 1),
+    exclusiveObjects,
+    (branches, results) => branchesFeasible(branches, results, path, context)
+  );
 };
 
 interface SchemaScope {
@@ -352,9 +379,21 @@ interface SchemaScope {
   nodes: Record<string, unknown>[];
   /** Whether a schema on the way uses a keyword that can hide further declarations. */
   opaque: boolean;
+  /**
+   * Whether a schema enclosing the scope constrains it in ways that are not
+   * among `nodes`: an object `const`/`enum`, or a keyword the walk does not
+   * interpret.
+   */
+  coupled: boolean;
 }
 
-const collectScope = (schema: unknown, path: readonly PathStep[], scope: SchemaScope, depth = 0): SchemaScope => {
+const collectScope = (
+  schema: unknown,
+  path: readonly PathStep[],
+  scope: SchemaScope,
+  depth = 0,
+  exclude?: readonly unknown[]
+): SchemaScope => {
   if (!isRecord(schema)) return scope;
   if (depth > PATH_DEPTH_LIMIT) {
     scope.opaque = true;
@@ -364,25 +403,112 @@ const collectScope = (schema: unknown, path: readonly PathStep[], scope: SchemaS
   if (path.length === 0) {
     scope.nodes.push(schema);
   } else {
+    if ([...UNINTERPRETED_ENCLOSING_KEYWORDS, 'const', 'enum'].some((keyword) => keyword in schema)) scope.coupled = true;
     const applicable = stepSchemas(schema, path[0]);
     if (applicable === 'inconclusive') scope.opaque = true;
-    else for (const sub of applicable) collectScope(sub, path.slice(1), scope, depth + 1);
+    else for (const sub of applicable) collectScope(sub, path.slice(1), scope, depth + 1, exclude);
   }
   for (const key of ['allOf', 'anyOf', 'oneOf'] as const) {
     if (!(key in schema)) continue;
     const branches = schema[key];
+    if (branches === exclude) continue;
     if (!Array.isArray(branches) || branches.length > BRANCH_LIMIT) {
       scope.opaque = true;
       continue;
     }
-    for (const branch of branches) collectScope(branch, path, scope, depth + 1);
+    for (const branch of branches) collectScope(branch, path, scope, depth + 1, exclude);
   }
   return scope;
 };
 
-const scopeAt = (schema: unknown, path: readonly PathStep[]): SchemaScope => (
-  collectScope(schema, path, { nodes: [], opaque: false })
+/** Every schema applying at `path` below `schema`; `exclude` skips one composition's branch list. */
+const scopeAt = (schema: unknown, path: readonly PathStep[], exclude?: readonly unknown[]): SchemaScope => (
+  collectScope(schema, path, { nodes: [], opaque: false, coupled: false }, 0, exclude)
 );
+
+/** Object keywords that relate properties to each other or to the whole object. */
+const OBJECT_COUPLING_KEYWORDS = [
+  ...UNINTERPRETED_ENCLOSING_KEYWORDS, 'const', 'enum', 'minProperties', 'maxProperties', 'dependentRequired',
+] as const;
+/** Array keywords that constrain the elements jointly rather than each element. */
+const ARRAY_COUPLING_KEYWORDS = [
+  ...UNINTERPRETED_ENCLOSING_KEYWORDS, 'const', 'enum', 'minItems', 'maxItems', 'uniqueItems', 'contains',
+  'minContains', 'maxContains',
+] as const;
+
+const isTrivialSchema = (schema: unknown): boolean => schema === true || (isRecord(schema) && Object.keys(schema).length === 0);
+
+/**
+ * Whether the constraints a composed branch puts on the siblings of `step`
+ * provably leave the branch satisfiable: every sibling property it names is
+ * constrained in at most one place across the branch and the rest of the
+ * schema (`outside`), never by `false`, and nothing relates properties to each
+ * other. A sibling constrained elsewhere too (a root `mode: { const: 'read' }`
+ * against a branch's `mode: { const: 'write' }`) may exclude the branch, so its
+ * feasibility is not established.
+ */
+const siblingsFeasible = (branchNodes: readonly Record<string, unknown>[], outside: SchemaScope, step: PathStep): boolean => {
+  if (step === 'items') return !branchNodes.some((node) => ARRAY_COUPLING_KEYWORDS.some((keyword) => keyword in node));
+  const siblings = new Set<string>();
+  for (const node of branchNodes) {
+    if (OBJECT_COUPLING_KEYWORDS.some((keyword) => keyword in node)) return false;
+    // These constrain siblings the branch does not name.
+    if ('patternProperties' in node || 'additionalProperties' in node) return false;
+    if (isRecord(node.properties)) Object.keys(node.properties).forEach((name) => siblings.add(name));
+    if (Array.isArray(node.required)) node.required.forEach((name) => typeof name === 'string' && siblings.add(name));
+  }
+  siblings.delete(step.property);
+  if (siblings.size === 0) return true;
+  if (outside.opaque || outside.coupled) return false;
+  if (outside.nodes.some((node) => OBJECT_COUPLING_KEYWORDS.some((keyword) => keyword in node))) return false;
+  for (const sibling of siblings) {
+    const schemas: unknown[] = branchNodes.flatMap((node) => (
+      isRecord(node.properties) && Object.prototype.hasOwnProperty.call(node.properties, sibling)
+        ? [node.properties[sibling]]
+        : []
+    ));
+    for (const node of outside.nodes) {
+      const applicable = stepSchemas(node, { property: sibling });
+      if (applicable === 'inconclusive') return false;
+      schemas.push(...applicable);
+    }
+    if (schemas.includes(false)) return false;
+    if (schemas.filter((schema) => !isTrivialSchema(schema)).length > 1) return false;
+  }
+  return true;
+};
+
+const sameConstraint = (left: ValueConstraint, right: ValueConstraint): boolean => (
+  left instanceof Set && right instanceof Set
+    ? left.size === right.size && [...left].every((value) => right.has(value))
+    : left === right
+);
+
+/**
+ * Whether object-level `anyOf`/`oneOf` branches may be combined into one
+ * value set for `path`: each branch contributing values must be satisfiable
+ * given the constraints its siblings face elsewhere in the schema, at every
+ * level of `path` (see `siblingsFeasible`). Branches that agree need no check,
+ * since excluding one cannot change the combined set.
+ */
+const branchesFeasible = (
+  branches: readonly unknown[],
+  results: readonly ValueConstraint[],
+  path: readonly PathStep[],
+  context: SchemaContext
+): boolean => {
+  if (results.every((result) => sameConstraint(result, results[0]))) return true;
+  return branches.every((branch, index) => {
+    const result = results[index];
+    if (!(result instanceof Set) || result.size === 0) return true;
+    return path.every((step, level) => {
+      const prefix = path.slice(0, level);
+      const branchScope = scopeAt(branch, prefix);
+      if (branchScope.opaque) return false;
+      return siblingsFeasible(branchScope.nodes, scopeAt(context.root, [...context.at, ...prefix], branches), step);
+    });
+  });
+};
 
 /** Property names declared anywhere in a scope, including composed branches. */
 const declaredNames = (scope: SchemaScope): string[] => {
@@ -400,12 +526,42 @@ const mayNest = (scope: SchemaScope): boolean => scope.nodes.some((node) => (
     || (Array.isArray(node.type) && node.type.includes(type)))
 ));
 
+/**
+ * The schemas of a map scope's values: schema-valued `additionalProperties`
+ * and `patternProperties`. The scan follows declared names only, so the
+ * arguments these values declare are not scanned.
+ */
+const mapValueSchemas = (scope: SchemaScope): Record<string, unknown>[] => scope.nodes.flatMap((node) => [
+  ...(isRecord(node.additionalProperties) ? [node.additionalProperties] : []),
+  ...(isRecord(node.patternProperties) ? Object.values(node.patternProperties).filter(isRecord) : []),
+]);
+
+/**
+ * Whether a map value schema can hold a method argument: it declares one at
+ * some depth, or it has declarations this check cannot follow. Map values
+ * that declare no method argument (`headers: { additionalProperties: { type:
+ * 'string' } }`) are no more open than an undeclared object and stay passed.
+ */
+const mayHoldMethodArgument = (schema: unknown, depth = 0): boolean => {
+  if (!isRecord(schema)) return false;
+  const scope = scopeAt(schema, []);
+  if (!mayNest(scope)) return false;
+  if (scope.opaque || depth >= SCAN_NESTING_LIMIT) return true;
+  return scope.nodes.some((node) => (
+    (isRecord(node.properties) && Object.entries(node.properties).some(([name, sub]) => (
+      HTTP_METHOD_NAMES.has(canonicalName(name)) || mayHoldMethodArgument(sub, depth + 1)
+    )))
+    || ('items' in node && (Array.isArray(node.items) || mayHoldMethodArgument(node.items, depth + 1)))
+  )) || mapValueSchemas(scope).some((value) => mayHoldMethodArgument(value, depth + 1));
+};
+
 interface SchemaScan {
   candidates: SelectorCandidate[];
   /**
    * Scopes (`input schema`, `request`, `requests[]`) the scan could not
-   * examine completely: declarations it does not follow, or more properties,
-   * arguments or nesting than it scans.
+   * examine completely: declarations it does not follow, map values
+   * (`additionalProperties`/`patternProperties` schemas) that can hold a method
+   * argument, or more properties, arguments or nesting than it scans.
    */
   opaqueScopes: string[];
 }
@@ -422,7 +578,7 @@ const scanSchema = (inputSchema: unknown): SchemaScan => {
   const opaqueScopes: string[] = [];
   let remaining = SCAN_ARGUMENT_LIMIT;
   const add = (label: string, name: string, path: readonly PathStep[], scope: SchemaScope, advisory: boolean) => {
-    const constraint = constraintAt(inputSchema, path);
+    const constraint = constraintAt(inputSchema, path, { root: inputSchema, at: [] });
     const description = scope.nodes
       .map((node) => node.description)
       .find((text): text is string => typeof text === 'string') || '';
@@ -448,6 +604,8 @@ const scanSchema = (inputSchema: unknown): SchemaScan => {
       if (!opaqueScopes.includes(label)) opaqueScopes.push(label);
     };
     if (scope.opaque && !parentOpaque && mayNest(scope)) report();
+    // Values of a map (`requests: { additionalProperties: { properties: { method } } }`) are not scanned.
+    if (mapValueSchemas(scope).some((value) => mayHoldMethodArgument(value))) report();
     const names = declaredNames(scope);
     const hasItems = scope.nodes.some((node) => 'items' in node);
     if (names.length === 0 && !hasItems) return;
@@ -553,8 +711,9 @@ export const findUnresolvedHttpMethodSelectors = (tools: readonly ToolLike[]): O
 /**
  * Schema scopes (the input schema, a nested object, or array items) the scan
  * could not examine completely: they use keywords it does not follow, such as
- * `$ref`, `if`/`then`/`else`, `dependentSchemas` or `prefixItems`, or they
- * exceed its property, argument or nesting limits. A method argument there is
+ * `$ref`, `if`/`then`/`else`, `dependentSchemas` or `prefixItems`, their map
+ * values (`additionalProperties`/`patternProperties` schemas) can hold a
+ * method argument, or they exceed its property, argument or nesting limits. A method argument there is
  * invisible to the other scans, so the preflight cannot pass the check while
  * one exists. `argument` names the scope: `input schema`, `request` or
  * `requests[]`.
