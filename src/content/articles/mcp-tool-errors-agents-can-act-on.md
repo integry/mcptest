@@ -53,7 +53,7 @@ The SDKs mostly make that choice for you. Measured with TypeScript SDK 2.4.0 and
 | Unknown tool name | Protocol error `-32602`, `Tool <name> not found` | `isError` result, `Unknown tool: <name>` |
 | Tool disabled through its registration handle | Protocol error `-32602`, `Tool <name> disabled` | n/a |
 
-The Python row matters most: an unexpected exception reaches the model with no detail, by design, so nothing internal leaks. Raise `ToolError` with a message written for the model, or return an `isError` result yourself. In TypeScript, every thrown message reaches the model, so do not throw errors that carry internal detail.
+The Python row matters most: an unexpected exception reaches the model with no detail, by design, so nothing internal leaks. Raise `ToolError` with a message written for the model, or return an `isError` result yourself. In TypeScript, every thrown message reaches the model, including whatever an upstream library put in it, so catch unexpected exceptions, log them, and return a generic `isError` result, as the samples below do.
 
 ## Say how to fix it and whether to retry
 
@@ -79,11 +79,13 @@ A search that finds nothing is a successful call: return it without `isError`, a
 The reverse matters as much: when the search could not run, because the upstream service failed or the query was rejected, return `isError`. An empty list in that case is a false answer.
 
 ```typescript
+import { randomUUID } from 'node:crypto';
 import { McpServer } from '@modelcontextprotocol/server';
 import * as z from 'zod/v4';
 
 declare class UpstreamError extends Error { status: number; retryAfterSeconds?: number }
 declare function trackerSearch(query: string, status: string): Promise<{ id: string; title: string }[]>;
+declare function logError(ref: string, error: unknown): void; // strips credentials, writes the server log
 
 const toolError = (text: string) => ({ content: [{ type: 'text' as const, text }], isError: true });
 
@@ -112,7 +114,10 @@ export function buildServer(): McpServer {
         if (error instanceof UpstreamError && error.status === 401) {
           return toolError('The tracker rejected the stored credentials; they were revoked or expired. Retrying will not help. Ask the user to reconnect the tracker, then call this tool again.');
         }
-        throw error; // the SDK turns it into an isError result with the message
+        // Never rethrow: the SDK would show the exception's message, URLs and all, to the model.
+        const ref = randomUUID();
+        logError(ref, error);
+        return toolError(`The issue search failed on the server. Retry once; if it fails again, tell the user and quote reference ${ref}. Nothing was changed.`);
       }
     }
   );
@@ -143,11 +148,13 @@ The specification lets `tools/list` vary "by the authorization presented on the 
 Authorize inside every handler, against the caller and the specific object, on every call. With `createMcpHandler`, the factory receives the request's `authInfo`, so filtering the list and checking in the handler fit in one place:
 
 ```typescript
+import { randomUUID } from 'node:crypto';
 import { McpServer, type AuthInfo, type McpRequestContext } from '@modelcontextprotocol/server';
 import * as z from 'zod/v4';
 
 declare function mayCloseIssue(caller: AuthInfo, id: string): Promise<boolean>;
 declare function closeIssue(id: string): Promise<void>;
+declare function logError(ref: string, error: unknown): void; // strips credentials, writes the server log
 
 export function buildServer({ authInfo }: McpRequestContext): McpServer {
   const server = new McpServer({ name: 'tracker', version: '1.0.0' });
@@ -163,13 +170,22 @@ export function buildServer({ authInfo }: McpRequestContext): McpServer {
       },
       async ({ id }, ctx) => {
         const caller = ctx.http?.authInfo;
-        if (!caller?.scopes.includes('issues:write') || !(await mayCloseIssue(caller, id))) {
+        try {
+          if (!caller?.scopes.includes('issues:write') || !(await mayCloseIssue(caller, id))) {
+            return {
+              content: [{ type: 'text', text: `You cannot close ${id}: it does not exist or belongs to someone else. Do not retry; ask the owner.` }],
+              isError: true,
+            };
+          }
+          await closeIssue(id);
+        } catch (error) {
+          const ref = randomUUID();
+          logError(ref, error); // details stay in the server log
           return {
-            content: [{ type: 'text', text: `You cannot close ${id}: it does not exist or belongs to someone else. Do not retry; ask the owner.` }],
+            content: [{ type: 'text', text: `Closing ${id} failed on the server; it may have closed anyway. Check the issue before retrying, and quote reference ${ref} if it fails again.` }],
             isError: true,
           };
         }
-        await closeIssue(id);
         return { content: [{ type: 'text', text: `Closed ${id}` }] };
       }
     );
