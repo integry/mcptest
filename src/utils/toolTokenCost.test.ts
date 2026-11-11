@@ -267,6 +267,36 @@ describe('diffToolContextCost', () => {
     expect(delta.delta).toBe(0);
   });
 
+  it('does not invent additions or removals when a listing was incomplete', () => {
+    const full = computeToolContextCost([tool('a', 'A.'), tool('b', 'B.')]);
+    const partial = computeToolContextCost([tool('a', 'A.')], { listingComplete: false });
+    expect(partial.listingIncomplete).toBe(true);
+    expect(computeToolContextCost([tool('a', 'A.')]).listingIncomplete).toBeUndefined();
+    const delta = diffToolContextCost(full, partial)!;
+    expect(delta.complete).toBe(false);
+    expect(delta.tools).toEqual([]);
+    expect(delta.limitation).toContain('later listing did not complete');
+    expect(contextCostSummaryLines(partial)[0]).toContain('tool discovery did not complete');
+  });
+
+  it('does not list membership changes between listings obtained with different access', () => {
+    const surface = (names: string[], authentication?: 'authenticated' | 'unauthenticated') => ({
+      tools: names.map((name) => ({ name, description: `${name}.`, inputSchema: { type: 'object' } })),
+      outputSchemasObserved: true, annotationsObserved: true, titlesObserved: true,
+      ...(authentication ? { authentication } : {}),
+    });
+    const delta = diffSurfaceContextCost(surface(['public_tool', 'private_tool'], 'authenticated'), surface(['public_tool'], 'unauthenticated'))!;
+    expect(delta.tools).toEqual([]);
+    expect(delta.complete).toBe(false);
+    expect(delta.delta).toBeLessThan(0);
+    expect(delta.limitation).toContain('cover different access scopes');
+    for (const [left, right] of [['authenticated', 'authenticated'], [undefined, 'unauthenticated']] as const) {
+      const comparable = diffSurfaceContextCost(surface(['public_tool', 'private_tool'], left), surface(['public_tool'], right))!;
+      expect(comparable.tools.map((change) => `${change.name}:${change.status}`)).toEqual(['private_tool:removed']);
+      expect(comparable.complete).toBe(true);
+    }
+  });
+
   it('compares breaking-change snapshots on the fields both recorded', () => {
     const left = { tools: [{ name: 'search', description: 'Search.', inputSchema: { type: 'object' } }], outputSchemasObserved: false, annotationsObserved: false, titlesObserved: false };
     const right = {

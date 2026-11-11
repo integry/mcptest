@@ -1,6 +1,8 @@
 import type { PublicReport } from './reportArtifact';
 import type { ToolContextCostDeltaV1 } from '../types/toolContextCost';
-import { computeToolContextCost, diffToolContextCost, isToolContextCost } from './toolTokenCost';
+import {
+  computeToolContextCost, contextCostAccessLimitation, diffToolContextCost, isToolContextCost,
+} from './toolTokenCost';
 
 export type ReportDiffClassification =
   | 'breaking'
@@ -1208,13 +1210,24 @@ export const diffReportContextCost = (
   before: PublicReport,
   after: PublicReport
 ): ToolContextCostDeltaV1 | undefined => {
+  // Reports obtained with different access list different tools by design.
+  const accessLimitation = contextCostAccessLimitation(
+    before.capabilityInventory?.authentication,
+    after.capabilityInventory?.authentication
+  );
+  const accessOptions = accessLimitation ? { beforeComplete: false, afterComplete: false } : {};
+  const withAccess = (limitation?: string): { limitation?: string } => {
+    const text = [limitation, accessLimitation].filter(Boolean).join(' ');
+    return text ? { limitation: text } : {};
+  };
   const left = before.toolSurfaceAnalysis?.contextCost;
   const right = after.toolSurfaceAnalysis?.contextCost;
-  if (isToolContextCost(left) && isToolContextCost(right) && left.method.id === right.method.id) {
-    return diffToolContextCost(left, right);
-  }
   const beforeDefinitions = before.toolSurfaceAnalysis?.toolDefinitions;
   const afterDefinitions = after.toolSurfaceAnalysis?.toolDefinitions;
+  if (isToolContextCost(left) && isToolContextCost(right) && left.method.id === right.method.id) {
+    // The breakdown records an incomplete listing itself (`listingIncomplete`).
+    return diffToolContextCost(left, right, { ...withAccess(), ...accessOptions });
+  }
   if (!beforeDefinitions || !afterDefinitions
       || beforeDefinitions.status === 'unavailable' || afterDefinitions.status === 'unavailable') {
     return undefined;
@@ -1224,11 +1237,12 @@ export const diffReportContextCost = (
     computeToolContextCost(beforeDefinitions.tools, { toolLimit: Number.POSITIVE_INFINITY }),
     computeToolContextCost(afterDefinitions.tools, { toolLimit: Number.POSITIVE_INFINITY }),
     {
-      limitation: partial
+      ...withAccess(partial
         ? `${DEFINITIONS_BASIS_LIMITATION} ${PARTIAL_DEFINITIONS_LIMITATION}`
-        : DEFINITIONS_BASIS_LIMITATION,
+        : DEFINITIONS_BASIS_LIMITATION),
       beforeComplete: beforeDefinitions.status === 'complete',
       afterComplete: afterDefinitions.status === 'complete',
+      ...accessOptions,
     }
   );
 };

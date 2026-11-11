@@ -346,6 +346,8 @@ export interface ToolContextCostOptions {
   toolLimit?: number;
   /** Parameters kept per tool (heaviest first). */
   parameterLimit?: number;
+  /** False when `definitions` is not the complete tools/list (see `listingIncomplete`). */
+  listingComplete?: boolean;
 }
 
 /**
@@ -378,6 +380,7 @@ export const computeToolContextCost = (
     medianPerTool: median(measures.map((tool) => tool.estimate)),
     tools,
     omittedToolCount: measures.length - tools.length,
+    ...(options.listingComplete === false ? { listingIncomplete: true as const } : {}),
     findings: createFindings(measures, total),
   };
 };
@@ -410,8 +413,20 @@ export const diffToolContextCost = (
   if (before.method.id !== after.method.id) return undefined;
   const left = estimatesByName(before);
   const right = estimatesByName(after);
-  const beforeComplete = before.omittedToolCount === 0 && options.beforeComplete !== false;
-  const afterComplete = after.omittedToolCount === 0 && options.afterComplete !== false;
+  const beforeComplete = before.omittedToolCount === 0 && before.listingIncomplete !== true
+    && options.beforeComplete !== false;
+  const afterComplete = after.omittedToolCount === 0 && after.listingIncomplete !== true
+    && options.afterComplete !== false;
+  const incompleteSides = [
+    ...(before.listingIncomplete === true ? ['earlier'] : []),
+    ...(after.listingIncomplete === true ? ['later'] : []),
+  ];
+  const limitation = [
+    incompleteSides.length > 0
+      ? `Tool discovery for the ${incompleteSides.join(' and ')} listing did not complete, so its total covers only the tools received and added or removed tools are not listed.`
+      : '',
+    options.limitation ?? '',
+  ].filter(Boolean).join(' ');
   const changes: ToolContextCostToolDeltaV1[] = [];
   for (const name of new Set([...left.keys(), ...right.keys()])) {
     const earlier = left.get(name);
@@ -437,7 +452,7 @@ export const diffToolContextCost = (
     tools: changes.slice(0, toolLimit),
     omittedToolCount: Math.max(0, changes.length - toolLimit),
     complete: beforeComplete && afterComplete,
-    ...(options.limitation ? { limitation: options.limitation } : {}),
+    ...(limitation ? { limitation } : {}),
   };
 };
 
@@ -458,7 +473,7 @@ export const describeToolContextCostDelta = (tool: ToolContextCostToolDeltaV1): 
 
 /** Lines for terminals and Markdown: totals, then the heaviest `top` tools with their share. */
 export const contextCostSummaryLines = (cost: ToolContextCostV1, top = 5): string[] => [
-  `Total: ${formatEstimate(cost.estimatedTotal)} ${cost.method.label} across ${cost.toolCount} tool${cost.toolCount === 1 ? '' : 's'}; median ${formatEstimate(cost.medianPerTool)} per tool (method ${cost.method.id}, an estimate, not an exact count for any model).`,
+  `Total: ${formatEstimate(cost.estimatedTotal)} ${cost.method.label} across ${cost.toolCount} tool${cost.toolCount === 1 ? '' : 's'}${cost.listingIncomplete === true ? ' received (tool discovery did not complete, so the server may list more)' : ''}; median ${formatEstimate(cost.medianPerTool)} per tool (method ${cost.method.id}, an estimate, not an exact count for any model).`,
   ...cost.tools.slice(0, top).map((tool, index) => (
     `${index + 1}. ${tool.name}: ${formatEstimate(tool.estimate)} (${formatShare(tool.share)})`
   )),
@@ -494,7 +509,26 @@ export interface ContextCostSurface {
   outputSchemasObserved: boolean;
   annotationsObserved: boolean;
   titlesObserved: boolean;
+  /** How the listing was obtained, when recorded. */
+  authentication?: 'authenticated' | 'unauthenticated';
 }
+
+export type ContextCostAccess = 'authenticated' | 'unauthenticated';
+
+/**
+ * Limitation for two listings obtained with different access, or undefined
+ * when the access is the same or not recorded on both. Servers often list
+ * different tools to signed-in callers, so membership differences between
+ * such listings are not server changes.
+ */
+export const contextCostAccessLimitation = (
+  before: ContextCostAccess | undefined,
+  after: ContextCostAccess | undefined
+): string | undefined => (
+  before && after && before !== after
+    ? `The earlier listing was obtained ${before} and the later one ${after}, so the totals cover different access scopes; servers often list different tools to signed-in callers, so added and removed tools are not listed.`
+    : undefined
+);
 
 /**
  * Context-cost delta between two listings compared by the breaking-change
@@ -522,16 +556,21 @@ export const diffSurfaceContextCost = (
     ...(outputs ? [] : ['output schemas']),
     ...(annotations ? [] : ['annotations']),
   ];
+  const accessLimitation = contextCostAccessLimitation(before.authentication, after.authentication);
   const missingSchemas = [...before.tools, ...after.tools].some((tool) => tool.inputSchema === undefined);
   const limitation = [
     omitted.length > 0
       ? `Only one listing recorded ${omitted.join(' and ')}, so they are left out of both estimates.`
       : '',
     missingSchemas ? 'Some input schemas were stored only as fingerprints and are not counted.' : '',
+    accessLimitation ?? '',
   ].filter(Boolean).join(' ');
   return diffToolContextCost(
     computeToolContextCost(definitions(before), { toolLimit: Number.POSITIVE_INFINITY }),
     computeToolContextCost(definitions(after), { toolLimit: Number.POSITIVE_INFINITY }),
-    limitation ? { limitation } : {}
+    {
+      ...(limitation ? { limitation } : {}),
+      ...(accessLimitation ? { beforeComplete: false, afterComplete: false } : {}),
+    }
   );
 };

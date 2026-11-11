@@ -27,12 +27,20 @@ const searchTool = (description = 'Search records by query.') => ({
   },
 });
 
-const report = (tools: unknown[], generatedAt = '2026-11-11T10:00:00.000Z'): PublicReport => {
+const report = (
+  tools: unknown[],
+  generatedAt = '2026-11-11T10:00:00.000Z',
+  options: { incompleteTools?: boolean; authentication?: 'authenticated' | 'unauthenticated' } = {}
+): PublicReport => {
   const evaluation: EvaluationReport = {
     serverUrl: 'https://cost.example/mcp',
     outcome: 'scored',
     finalScore: 10,
-    toolSurfaceAnalysis: analyzeToolSurface({ tools, resources: [], prompts: [] }),
+    toolSurfaceAnalysis: analyzeToolSurface({
+      tools, resources: [], prompts: [],
+      ...(options.incompleteTools ? { incompleteDiscovery: ['tools' as const] } : {}),
+    }),
+
     sections: {
       capabilities: {
         name: 'Capabilities', description: 'Discovery', score: 10, maxScore: 10,
@@ -40,7 +48,11 @@ const report = (tools: unknown[], generatedAt = '2026-11-11T10:00:00.000Z'): Pub
       },
     },
   };
-  return createPublicReport(evaluation, { generatedAt });
+  const artifact = createPublicReport(evaluation, { generatedAt });
+  // Only the access state matters to these comparisons.
+  return options.authentication
+    ? { ...artifact, capabilityInventory: { authentication: options.authentication } } as unknown as PublicReport
+    : artifact;
 };
 
 /** A report as stored before the breakdown existed: bytes / 4 and no contextCost. */
@@ -49,6 +61,12 @@ const legacy = (value: PublicReport): PublicReport => {
   delete copy.toolSurfaceAnalysis.contextCost;
   copy.toolSurfaceAnalysis.metrics.estimatedContextTokens = 999;
   return parsePublicReportJson(JSON.stringify(copy));
+};
+
+const stripAccess = (value: PublicReport): PublicReport => {
+  const copy = { ...value };
+  delete copy.capabilityInventory;
+  return copy;
 };
 
 describe('context cost in public reports', () => {
@@ -112,5 +130,46 @@ describe('context cost in report diffs', () => {
     const delta = diffReportContextCost(before, report([searchTool(), { ...searchTool('Remove a record.'), name: 'remove' }]))!;
     expect(delta.delta).toBe(0);
     expect(delta.tools).toEqual([]);
+  });
+
+  it('does not report removals when a later tools/list page failed', () => {
+    const earlier = report([searchTool(), { ...searchTool('Remove a record.'), name: 'remove' }]);
+    const later = report([searchTool()], '2026-11-11T11:00:00.000Z', { incompleteTools: true });
+    expect(later.toolSurfaceAnalysis?.contextCost?.listingIncomplete).toBe(true);
+    expect(later.toolSurfaceAnalysis?.contextCost?.omittedToolCount).toBe(0);
+    expect(serializePublicReportMarkdown(later)).toContain('did not complete');
+    expect(parsePublicReportJson(serializePublicReportJson(later)).toolSurfaceAnalysis?.contextCost?.listingIncomplete).toBe(true);
+    expect(validatePublishedSchema(JSON.parse(serializePublicReportJson(later)))).toBe(true);
+    for (const delta of [diffReportContextCost(earlier, later)!, diffPublicReports(earlier, later).contextCost!]) {
+      expect(delta.complete).toBe(false);
+      expect(delta.tools).toEqual([]);
+      expect(delta.limitation).toContain('later listing did not complete');
+    }
+    // Nor additions when the earlier listing was the incomplete one.
+    const reversed = diffReportContextCost(later, earlier)!;
+    expect(reversed.tools).toEqual([]);
+    expect(reversed.limitation).toContain('earlier listing did not complete');
+  });
+
+  it('does not report additions or removals across a change in access', () => {
+    const signedIn = report([searchTool(), { ...searchTool('Private.'), name: 'private_tool' }], undefined, { authentication: 'authenticated' });
+    const anonymous = report([searchTool()], '2026-11-11T11:00:00.000Z', { authentication: 'unauthenticated' });
+    expect(anonymous.capabilityInventory?.authentication).toBe('unauthenticated');
+    const stored = diffReportContextCost(signedIn, anonymous)!;
+    const access = (value: PublicReport, from: PublicReport) => (
+      { ...value, capabilityInventory: from.capabilityInventory } as PublicReport
+    );
+    const reestimated = diffReportContextCost(
+      access(legacy(stripAccess(signedIn)), signedIn),
+      access(legacy(stripAccess(anonymous)), anonymous)
+    )!;
+    for (const delta of [stored, reestimated]) {
+      expect(delta.complete).toBe(false);
+      expect(delta.tools.filter((tool) => tool.status !== 'changed')).toEqual([]);
+      expect(delta.limitation).toContain('obtained authenticated and the later one unauthenticated');
+    }
+    expect(reestimated.limitation).toContain('predates the per-tool breakdown');
+    const sameAccess = report([searchTool()], '2026-11-11T11:00:00.000Z', { authentication: 'authenticated' });
+    expect(diffReportContextCost(signedIn, sameAccess)!.tools.map((tool) => tool.status)).toEqual(['removed']);
   });
 });

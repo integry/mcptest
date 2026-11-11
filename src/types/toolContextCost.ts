@@ -80,6 +80,13 @@ export interface ToolContextCostV1 {
   /** Heaviest first; bounded, see `omittedToolCount`. */
   tools: ToolContextCostToolV1[];
   omittedToolCount: number;
+  /**
+   * Set when the tools/list result the estimate came from was itself
+   * incomplete (a later page failed, a cursor was left unfollowed, or analysis
+   * limits dropped definitions): `estimatedTotal` covers only the tools
+   * received, and a tool missing here may still exist on the server.
+   */
+  listingIncomplete?: true;
   findings: ToolContextCostFindingV1[];
 }
 
@@ -103,7 +110,11 @@ export interface ToolContextCostDeltaV1 {
   /** Largest absolute change first; bounded, see `omittedToolCount`. */
   tools: ToolContextCostToolDeltaV1[];
   omittedToolCount: number;
-  /** False when either side kept only part of its per-tool list. */
+  /**
+   * False when either side kept only part of its per-tool list, came from an
+   * incomplete tools/list, or the two were obtained with different access;
+   * added and removed tools are then not listed.
+   */
   complete: boolean;
   /** What the estimate covers when it is narrower than full definitions. */
   limitation?: string;

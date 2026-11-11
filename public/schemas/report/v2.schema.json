@@ -455,6 +455,10 @@
           }
         },
         "omittedToolCount": { "type": "integer", "minimum": 0 },
+        "listingIncomplete": {
+          "description": "Present when the tools/list result the estimate came from was incomplete (for example a later page failed); the total then covers only the tools received.",
+          "const": true
+        },
         "findings": {
           "type": "array",
           "items": {

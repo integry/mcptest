@@ -1512,7 +1512,11 @@ export function analyzeToolSurface(input: ToolSurfaceAnalyzerInput): ToolSurface
   const serializedDefinitionBytes = canonicalDefinitions.truncationReasons.has('bytes')
     ? CANONICAL_BYTE_LIMIT
     : utf8ByteLength(serializedDefinitions);
-  const contextCost = computeToolContextCost(tools.map((tool) => tool.raw));
+  // A failed later page or the analysis limit leaves tools out of the estimate;
+  // record it so comparisons do not read the missing tools as removals.
+  const contextCost = computeToolContextCost(tools.map((tool) => tool.raw), {
+    listingComplete: !extracted.incompleteDiscovery.includes('tools') && omittedToolCount === 0,
+  });
   const estimatedContextTokens = contextCost.estimatedTotal;
 
   const fingerprintResult = canonicalizeCollection(tools

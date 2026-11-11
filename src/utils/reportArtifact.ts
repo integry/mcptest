@@ -161,6 +161,7 @@ const ToolContextCostArtifactSchema = z.object({
     omittedParameterCount: z.number().int().nonnegative(),
   }).passthrough()),
   omittedToolCount: z.number().int().nonnegative(),
+  listingIncomplete: z.literal(true).optional(),
   findings: z.array(z.object({
     id: z.string().min(1),
     severity: z.enum(['high', 'medium', 'low', 'info']),
