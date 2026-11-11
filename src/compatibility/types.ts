@@ -94,7 +94,7 @@ export interface ObservedServerFactsV1 {
   tools?: {
     /** Every listed tool declares readOnlyHint explicitly. */
     readOnlyHintDeclared: ObservedValueV1<boolean>;
-    /** Every listed tool declares readOnlyHint: true, or declares both readOnlyHint and idempotentHint. */
+    /** Every listed tool declares readOnlyHint: true, idempotentHint: true, or both readOnlyHint and idempotentHint. */
     retryHintsDeclared: ObservedValueV1<boolean>;
   };
 }

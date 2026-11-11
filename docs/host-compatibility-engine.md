@@ -145,8 +145,8 @@ only that source:
 
 - `tools.retry-hints` (Claude Code, 2.1.307): HTTP MCP tool calls cut off
   mid-call are retried only for read-only or idempotent tools. Passes when
-  every tool declares `readOnlyHint: true`, or both `readOnlyHint` and
-  `idempotentHint` (fact `tools.retryHintsDeclared`).
+  every tool declares `readOnlyHint: true`, `idempotentHint: true`, or both
+  `readOnlyHint` and `idempotentHint` (fact `tools.retryHintsDeclared`).
 - `tools.parallel-read-only` (Codex CLI, 0.134.0): MCP tools run concurrently
   only when they advertise `readOnlyHint: true`. Passes when every tool
   declares `readOnlyHint` (fact `tools.readOnlyHintDeclared`).

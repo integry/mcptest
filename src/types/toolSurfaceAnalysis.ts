@@ -105,7 +105,7 @@ export interface ToolAnnotationMetricsV1 {
   titleCount: number;
   /** Tools that declare readOnlyHint: true. */
   readOnlyToolCount: number;
-  /** Tools that state their retry safety: readOnlyHint: true, or idempotentHint declared. */
+  /** Tools that state their retry safety: readOnlyHint: true, idempotentHint: true, or both readOnlyHint and idempotentHint declared. */
   retryHintDeclaredCount: number;
   /** Tools with readOnlyHint: true or idempotentHint: true. */
   retryEligibleToolCount: number;

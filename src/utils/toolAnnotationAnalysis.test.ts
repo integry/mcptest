@@ -391,6 +391,25 @@ describe('tool hint host compatibility rules', () => {
     expect(ruleFinding('codex-cli', 'tools.parallel-read-only', annotated)?.outcome).toBe('pass');
   });
 
+  it('treats idempotentHint: true without readOnlyHint as a declared retry hint', () => {
+    const tools = [{ name: 'upsert_record', description: 'Creates or replaces one record by id.', inputSchema: schema, annotations: { idempotentHint: true } }];
+    const annotations = analyzeToolSurface(tools).metrics.annotations;
+    expect(annotations).toMatchObject({ retryHintDeclaredCount: 1, retryEligibleToolCount: 1 });
+    expect(createObservedServerFacts(evaluatedReport(tools)).tools?.retryHintsDeclared).toMatchObject({ value: true });
+    expect(ruleFinding('claude-code', 'tools.retry-hints', tools)).toMatchObject({
+      outcome: 'pass',
+      evidence: expect.arrayContaining([
+        expect.objectContaining({ description: expect.stringContaining('1 of 1 tools state their retry safety') }),
+      ]),
+    });
+  });
+
+  it('still reports a caveat when a write tool declares idempotentHint: false without readOnlyHint', () => {
+    const tools = [{ name: 'send_email', description: 'Sends one email message.', inputSchema: schema, annotations: { idempotentHint: false } }];
+    expect(analyzeToolSurface(tools).metrics.annotations).toMatchObject({ retryHintDeclaredCount: 0, retryEligibleToolCount: 0 });
+    expect(ruleFinding('claude-code', 'tools.retry-hints', tools)?.outcome).toBe('caveat');
+  });
+
   it('does not change the assessment when no tool facts were observed', () => {
     expect(publicServerFixture.tools).toBeUndefined();
     expect(ruleFinding('claude-code', 'tools.retry-hints', null)?.outcome).toBe('pass');

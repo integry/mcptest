@@ -242,7 +242,7 @@ const toolAnnotationFacts = (
     ),
     retryHintsDeclared: observed(
       annotations.retryHintDeclaredCount === total,
-      `${annotations.retryHintDeclaredCount} of ${total} tools state their retry safety (readOnlyHint: true, or both readOnlyHint and idempotentHint); ${annotations.retryEligibleToolCount} are read-only or idempotent.`
+      `${annotations.retryHintDeclaredCount} of ${total} tools state their retry safety (readOnlyHint: true, idempotentHint: true, or both readOnlyHint and idempotentHint); ${annotations.retryEligibleToolCount} are read-only or idempotent.`
     ),
   };
 };

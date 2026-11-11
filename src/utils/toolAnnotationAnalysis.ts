@@ -443,6 +443,7 @@ export const analyzeToolAnnotations = (inputs: readonly AnnotationToolInput[]): 
     readOnlyToolCount: count((tool) => tool.hints.readOnlyHint === true),
     retryHintDeclaredCount: count((tool) => (
       tool.hints.readOnlyHint === true
+      || tool.hints.idempotentHint === true
       || (tool.hints.readOnlyHint !== null && tool.hints.idempotentHint !== null)
     )),
     retryEligibleToolCount: count((tool) => tool.hints.readOnlyHint === true || tool.hints.idempotentHint === true),

@@ -718,13 +718,13 @@ const toolHintRules = (behavior: ToolHintClientBehavior): CompatibilityRuleV1[] 
       onPass: result(
         'pass',
         'Tools state whether they are safe to retry',
-        `Every tool declares readOnlyHint: true, or both readOnlyHint and idempotentHint, so ${behavior.clientName} can tell which calls to retry when an HTTP connection closes mid-call.`
+        `Every tool declares readOnlyHint: true, idempotentHint: true, or both readOnlyHint and idempotentHint, so ${behavior.clientName} can tell which calls to retry when an HTTP connection closes mid-call.`
       ),
       onFail: result(
         'caveat',
         `${behavior.clientName} will not retry some tools after a dropped connection`,
         `Since ${behavior.sinceVersion}, ${behavior.clientName} retries an HTTP MCP tool call that was cut off mid-call only when the tool is read-only or idempotent. Tools that leave those hints unset fall back to the spec defaults (not read-only, not idempotent), so a dropped connection surfaces as an error instead of a retry.`,
-        remediation('server-change', 'Declare readOnlyHint on every tool, and idempotentHint on every tool that is not read-only.', TOOL_ANNOTATIONS_SPEC_URL)
+        remediation('server-change', 'Declare readOnlyHint: true on tools that only read, and idempotentHint on every other tool (true when repeating a call with the same arguments has no additional effect).', TOOL_ANNOTATIONS_SPEC_URL)
       ),
       onUnknown: result('pass', 'Tool retry hints were not observed', 'The server does not advertise tools, or its tool list was not fully analyzed, so retry hints do not affect this assessment.'),
       evidenceFacts: ['tools.retryHintsDeclared'],
