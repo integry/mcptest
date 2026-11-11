@@ -260,6 +260,36 @@ describe('connector directory preflight', () => {
     });
   });
 
+  describe('enclosing schema constraints on method arguments', () => {
+    const withSchema = (inputSchema: Record<string, unknown>) => observations({
+      tools: toolsFrom([fullyAnnotated('api_request', { inputSchema: { type: 'object', ...inputSchema } })]),
+    });
+
+    it('passes a method enum narrowed to GET by a root allOf instead of failing it', () => {
+      expect(statusOf(withSchema({
+        properties: { method: { enum: ['GET', 'POST'] } },
+        allOf: [{ properties: { method: { const: 'GET' } } }],
+      }), 'claude.separate-read-write')).toBe('pass');
+    });
+
+    it('fails a method declared only inside a root allOf instead of passing it', () => {
+      const result = item(evaluateConnectorDirectoryPreflight(withSchema({
+        allOf: [{ properties: { method: { enum: ['GET', 'POST'] } } }],
+      })), 'claude.separate-read-write');
+      expect(result.status).toBe('fail');
+      expect(result.evidence).toEqual(['api_request (method: GET, POST)']);
+    });
+
+    it('leaves a schema whose declarations cannot be followed unknown instead of passing it', () => {
+      const result = item(evaluateConnectorDirectoryPreflight(withSchema({
+        $ref: '#/$defs/args',
+        $defs: { args: { properties: { method: { enum: ['GET', 'POST'] } } } },
+      })), 'claude.separate-read-write');
+      expect(result.status).toBe('unknown');
+      expect(result.evidence).toEqual(['api_request (input schema)']);
+    });
+  });
+
   describe('authentication', () => {
     it('passes confirmed OAuth with discovery and PKCE', () => {
       const input = oauthObservations();

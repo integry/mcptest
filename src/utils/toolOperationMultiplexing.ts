@@ -7,16 +7,20 @@
  *   DELETE) HTTP methods. Anthropic's review criteria reject this shape
  *   outright, so the preflight treats it as a checked requirement. Only an
  *   established schema value set can fail it; method names mentioned in a
- *   description (`findAmbiguousHttpMethodSelectors`) and unconstrained or
- *   uninterpreted schemas (`findUnresolvedHttpMethodSelectors`) leave it
- *   unknown.
+ *   description (`findAmbiguousHttpMethodSelectors`), unconstrained or
+ *   uninterpreted schemas (`findUnresolvedHttpMethodSelectors`), and input
+ *   schemas whose declarations the scan cannot follow
+ *   (`findUninterpretedSelectorScopes`) leave it unknown.
  * - `findMultiplexedOperationSelectors`: an `action`/`operation`-style argument
  *   (or a list of operation objects) whose values read as both read and write
  *   verbs. This is a heuristic and only ever produces an advisory.
  *
  * Both scans are deliberately conservative: only arguments with a selector
  * name and an enumerated value set are considered, and values that do not
- * read as verbs are ignored.
+ * read as verbs are ignored. An argument's value set honours the enclosing
+ * schema too (root `allOf`/`anyOf`/`oneOf`, `patternProperties`,
+ * `additionalProperties`), and arguments declared only in a composed branch
+ * are scanned like direct properties.
  */
 
 export type OperationCategory = 'read' | 'write' | 'destructive';
@@ -133,20 +137,67 @@ const permitsStrings = (type: unknown): boolean => (
   type === 'string' || (Array.isArray(type) && type.includes('string'))
 );
 
-/**
- * `anyOf` accepts a value matched by any branch; `oneOf` one matched by
- * exactly one branch. Only finite branch sets give a conclusive answer.
- */
-const combineBranches = (branches: unknown[], exclusive: boolean, depth: number): ValueConstraint => {
-  if (branches.length === 0 || branches.length > BRANCH_LIMIT) return 'inconclusive';
-  const results = branches.map((branch) => valueConstraint(branch, depth + 1));
+/** `anyOf`: a value is accepted when any branch accepts it. */
+const unionOf = (results: readonly ValueConstraint[]): ValueConstraint => {
   if (results.includes('inconclusive')) return 'inconclusive';
-  if (results.includes('any')) return exclusive ? 'inconclusive' : 'any';
+  if (results.includes('any')) return 'any';
+  return new Set((results as Set<string>[]).flatMap((result) => [...result]));
+};
+
+/** Value-level `oneOf`: a value is accepted when exactly one branch accepts it. */
+const exclusiveValues = (results: readonly ValueConstraint[]): ValueConstraint => {
+  if (results.includes('inconclusive') || results.includes('any')) return 'inconclusive';
   const counts = new Map<string, number>();
   for (const result of results as Set<string>[]) {
     for (const value of result) counts.set(value, (counts.get(value) || 0) + 1);
   }
-  return new Set([...counts].filter(([, count]) => !exclusive || count === 1).map(([value]) => value));
+  return new Set([...counts].filter(([, count]) => count === 1).map(([value]) => value));
+};
+
+/**
+ * Object-level `oneOf`: exclusivity is decided by the whole object, so other
+ * properties can tell overlapping branches apart. The accepted values of one
+ * property are only established when no branch constrains it, or when the
+ * branches' value sets are disjoint.
+ */
+const exclusiveObjects = (results: readonly ValueConstraint[]): ValueConstraint => {
+  if (results.every((result) => result === 'any')) return 'any';
+  if (!results.every((result): result is Set<string> => result instanceof Set)) return 'inconclusive';
+  const union = new Set<string>();
+  for (const result of results) {
+    for (const value of result) {
+      if (union.has(value)) return 'inconclusive';
+      union.add(value);
+    }
+  }
+  return union;
+};
+
+/**
+ * Applies `anyOf`, `oneOf` and `allOf` to `result`, evaluating each branch
+ * with `evaluate`. Only finite branch sets give a conclusive answer.
+ */
+const applyComposition = (
+  schema: Record<string, unknown>,
+  initial: ValueConstraint,
+  evaluate: (branch: unknown) => ValueConstraint,
+  oneOf: (results: readonly ValueConstraint[]) => ValueConstraint
+): ValueConstraint => {
+  let result = initial;
+  for (const [key, combine] of [['anyOf', unionOf], ['oneOf', oneOf]] as const) {
+    if (!(key in schema)) continue;
+    const branches = schema[key];
+    result = intersect(result, Array.isArray(branches) && branches.length > 0 && branches.length <= BRANCH_LIMIT
+      ? combine(branches.map(evaluate))
+      : 'inconclusive');
+  }
+  if ('allOf' in schema) {
+    const branches = schema.allOf;
+    result = Array.isArray(branches) && branches.length <= BRANCH_LIMIT
+      ? branches.reduce<ValueConstraint>((acc, branch) => intersect(acc, evaluate(branch)), result)
+      : intersect(result, 'inconclusive');
+  }
+  return result;
 };
 
 const valueConstraint = (schema: unknown, depth = 0): ValueConstraint => {
@@ -169,48 +220,172 @@ const valueConstraint = (schema: unknown, depth = 0): ValueConstraint => {
   if ('const' in schema) {
     result = intersect(result, new Set(typeof schema.const === 'string' ? [schema.const] : []));
   }
-  for (const [key, exclusive] of [['anyOf', false], ['oneOf', true]] as const) {
-    if (!(key in schema)) continue;
-    const branches = schema[key];
-    result = intersect(result, Array.isArray(branches) ? combineBranches(branches, exclusive, depth) : 'inconclusive');
-  }
-  if ('allOf' in schema) {
-    const branches = schema.allOf;
-    result = Array.isArray(branches) && branches.length <= BRANCH_LIMIT
-      ? branches.reduce<ValueConstraint>((acc, branch) => intersect(acc, valueConstraint(branch, depth + 1)), result)
-      : intersect(result, 'inconclusive');
-  }
-  return result;
+  return applyComposition(schema, result, (branch) => valueConstraint(branch, depth + 1), exclusiveValues);
 };
 
-const properties = (schema: unknown): [string, unknown][] => (
-  isRecord(schema) && isRecord(schema.properties)
-    ? Object.entries(schema.properties).slice(0, SCAN_PROPERTY_LIMIT)
-    : []
+/**
+ * A step from an object schema to a nested value: a named property, or the
+ * elements of an array.
+ */
+type PathStep = { property: string } | 'items';
+
+/**
+ * Keywords that can declare properties or items the walk does not follow, so
+ * a method argument may exist that the scan never sees.
+ */
+const OPAQUE_SCHEMA_KEYWORDS = [
+  '$ref', '$dynamicRef', 'if', 'then', 'else', 'dependentSchemas', 'dependencies',
+] as const;
+/** Keywords on an enclosing schema that can narrow a nested value in ways the walk does not model. */
+const UNINTERPRETED_ENCLOSING_KEYWORDS = [
+  ...OPAQUE_SCHEMA_KEYWORDS, 'not', 'propertyNames', 'unevaluatedProperties', 'unevaluatedItems',
+  'prefixItems', 'additionalItems',
+] as const;
+const PATH_DEPTH_LIMIT = 8;
+
+/** The subschemas of `node` that apply to the value one `step` down. */
+const stepSchemas = (node: Record<string, unknown>, step: PathStep): unknown[] | 'inconclusive' => {
+  if (step === 'items') {
+    if (Array.isArray(node.items)) return 'inconclusive';
+    return 'items' in node ? [node.items] : [];
+  }
+  const schemas: unknown[] = [];
+  const declared = isRecord(node.properties) && Object.prototype.hasOwnProperty.call(node.properties, step.property);
+  if (declared) schemas.push((node.properties as Record<string, unknown>)[step.property]);
+  let matchedPattern = false;
+  if ('patternProperties' in node) {
+    if (!isRecord(node.patternProperties)) return 'inconclusive';
+    for (const [pattern, schema] of Object.entries(node.patternProperties)) {
+      let matches: boolean;
+      try {
+        matches = new RegExp(pattern, 'u').test(step.property);
+      } catch {
+        return 'inconclusive';
+      }
+      if (matches) {
+        matchedPattern = true;
+        schemas.push(schema);
+      }
+    }
+  }
+  // `additionalProperties` covers only names this same schema neither declares nor matches.
+  if (!declared && !matchedPattern && 'additionalProperties' in node) schemas.push(node.additionalProperties);
+  return schemas;
+};
+
+/**
+ * The string values accepted at `path` below `schema`, with every enclosing
+ * constraint applied: the property's own schema, but also `allOf`, `anyOf`
+ * and `oneOf` on the enclosing objects, `patternProperties`, and
+ * `additionalProperties` for names declared only in a composed branch.
+ * Enclosing constraints the walk does not interpret make it inconclusive.
+ */
+const constraintAt = (schema: unknown, path: readonly PathStep[], depth = 0): ValueConstraint => {
+  if (path.length === 0) return valueConstraint(schema);
+  if (schema === undefined || schema === true) return 'any';
+  if (schema === false) return new Set();
+  if (!isRecord(schema) || depth > PATH_DEPTH_LIMIT) return 'inconclusive';
+  const [step, ...rest] = path;
+  const initial: ValueConstraint = UNINTERPRETED_ENCLOSING_KEYWORDS.some((keyword) => keyword in schema)
+    ? 'inconclusive'
+    : 'any';
+  const applicable = stepSchemas(schema, step);
+  const result = applicable === 'inconclusive'
+    ? intersect(initial, 'inconclusive')
+    : applicable.reduce<ValueConstraint>((acc, sub) => intersect(acc, constraintAt(sub, rest, depth + 1)), initial);
+  return applyComposition(schema, result, (branch) => constraintAt(branch, path, depth + 1), exclusiveObjects);
+};
+
+interface SchemaScope {
+  /** Every schema that applies at the path, through properties and composition. */
+  nodes: Record<string, unknown>[];
+  /** Whether a schema on the way uses a keyword that can hide further declarations. */
+  opaque: boolean;
+}
+
+const collectScope = (schema: unknown, path: readonly PathStep[], scope: SchemaScope, depth = 0): SchemaScope => {
+  if (!isRecord(schema)) return scope;
+  if (depth > PATH_DEPTH_LIMIT) {
+    scope.opaque = true;
+    return scope;
+  }
+  if (OPAQUE_SCHEMA_KEYWORDS.some((keyword) => keyword in schema)) scope.opaque = true;
+  if (path.length === 0) {
+    scope.nodes.push(schema);
+  } else {
+    const applicable = stepSchemas(schema, path[0]);
+    if (applicable === 'inconclusive') scope.opaque = true;
+    else for (const sub of applicable) collectScope(sub, path.slice(1), scope, depth + 1);
+  }
+  for (const key of ['allOf', 'anyOf', 'oneOf'] as const) {
+    if (!(key in schema)) continue;
+    const branches = schema[key];
+    if (!Array.isArray(branches) || branches.length > BRANCH_LIMIT) {
+      scope.opaque = true;
+      continue;
+    }
+    for (const branch of branches) collectScope(branch, path, scope, depth + 1);
+  }
+  return scope;
+};
+
+const scopeAt = (schema: unknown, path: readonly PathStep[]): SchemaScope => (
+  collectScope(schema, path, { nodes: [], opaque: false })
 );
 
-/** Top-level arguments plus the fields of objects inside list-of-operation arguments. */
-const selectorCandidates = (inputSchema: unknown): SelectorCandidate[] => {
+/** Property names declared anywhere in a scope, including composed branches. */
+const declaredNames = (scope: SchemaScope): string[] => {
+  const names = new Set<string>();
+  for (const node of scope.nodes) {
+    if (!isRecord(node.properties)) continue;
+    for (const name of Object.keys(node.properties)) names.add(name);
+  }
+  return [...names].slice(0, SCAN_PROPERTY_LIMIT);
+};
+
+interface SchemaScan {
+  candidates: SelectorCandidate[];
+  /** Scopes (`input schema`, `requests[]`) whose declarations could not all be followed. */
+  opaqueScopes: string[];
+}
+
+/**
+ * Top-level arguments plus the fields of objects inside list-of-operation
+ * arguments, wherever the schema declares them: in `properties` or in a
+ * composed branch. Each candidate's values honour every enclosing constraint.
+ */
+const scanSchema = (inputSchema: unknown): SchemaScan => {
   const candidates: SelectorCandidate[] = [];
-  const add = (path: string, name: string, schema: unknown) => {
-    const constraint = valueConstraint(schema);
+  const opaqueScopes: string[] = [];
+  const add = (label: string, name: string, path: readonly PathStep[]) => {
+    const constraint = constraintAt(inputSchema, path);
+    const description = scopeAt(inputSchema, path).nodes
+      .map((node) => node.description)
+      .find((text): text is string => typeof text === 'string') || '';
     candidates.push({
-      path,
+      path: label,
       name: canonicalName(name),
       values: constraint instanceof Set ? [...constraint] : [],
       constraint: constraint instanceof Set ? 'values' : constraint,
-      description: isRecord(schema) && typeof schema.description === 'string' ? schema.description : '',
+      description,
     });
   };
-  for (const [name, schema] of properties(inputSchema)) {
-    add(name, name, schema);
-    if (!OPERATION_LIST_NAMES.has(canonicalName(name)) || !isRecord(schema)) continue;
-    for (const [field, fieldSchema] of properties(schema.items)) {
-      add(`${name}[].${field}`, field, fieldSchema);
+  const root = scopeAt(inputSchema, []);
+  if (root.opaque) opaqueScopes.push('input schema');
+  for (const name of declaredNames(root)) {
+    add(name, name, [{ property: name }]);
+    if (!OPERATION_LIST_NAMES.has(canonicalName(name))) continue;
+    const itemsPath: PathStep[] = [{ property: name }, 'items'];
+    const items = scopeAt(inputSchema, itemsPath);
+    if (items.opaque && !root.opaque) opaqueScopes.push(`${name}[]`);
+    for (const field of declaredNames(items)) {
+      add(`${name}[].${field}`, field, [...itemsPath, { property: field }]);
     }
   }
-  return candidates;
+  return { candidates, opaqueScopes };
 };
+
+const selectorCandidates = (inputSchema: unknown): SelectorCandidate[] => scanSchema(inputSchema).candidates;
 
 const limitedValues = (values: readonly string[]): string[] => values.slice(0, VALUE_DISPLAY_LIMIT);
 
@@ -277,6 +452,19 @@ export const findUnresolvedHttpMethodSelectors = (tools: readonly ToolLike[]): O
       ? [{ tool: tool.name, argument: candidate.path, values: [], categories: [] }]
       : []
   )))
+);
+
+/**
+ * Input schemas (or list-of-operation item schemas) that use keywords the scan
+ * does not follow, such as `$ref`, `if`/`then`/`else` or `dependentSchemas`.
+ * A method argument declared there is invisible to the other scans, so the
+ * preflight cannot pass the check while one exists. `argument` names the
+ * scope: `input schema` or `requests[]`.
+ */
+export const findUninterpretedSelectorScopes = (tools: readonly ToolLike[]): OperationSelectorMatch[] => (
+  tools.flatMap((tool) => scanSchema(tool.inputSchema).opaqueScopes.map((scope) => ({
+    tool: tool.name, argument: scope, values: [], categories: [],
+  })))
 );
 
 /**

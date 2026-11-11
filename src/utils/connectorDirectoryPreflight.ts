@@ -30,6 +30,7 @@ import {
   findAmbiguousHttpMethodSelectors,
   findMixedHttpMethodSelectors,
   findMultiplexedOperationSelectors,
+  findUninterpretedSelectorScopes,
   findUnresolvedHttpMethodSelectors,
   type OperationSelectorMatch,
 } from './toolOperationMultiplexing';
@@ -187,6 +188,15 @@ const methodSelectorScan: Evaluator = ({ tools }) => {
       status: 'unknown',
       detail: `${plural(unresolved.length, 'tool argument')} take an HTTP method whose schema does not establish which methods are accepted. Declare an enum of the accepted methods; if both safe and unsafe methods are accepted, split each into a read-only tool and write tools.`,
       evidence: capped(unresolved.map((match) => `${match.tool} (${match.argument})`)),
+    };
+  }
+  // `$ref`, `if`/`then`/`else` and similar can declare a method argument the scan never sees.
+  const uninterpreted = findUninterpretedSelectorScopes(definitions.tools);
+  if (uninterpreted.length > 0) {
+    return {
+      status: 'unknown',
+      detail: `${plural(uninterpreted.length, 'tool schema')} ${uninterpreted.length === 1 ? 'uses' : 'use'} constructs this check does not follow ($ref, if/then/else, dependentSchemas), so a method argument that accepts both safe and unsafe HTTP methods could not be ruled out.`,
+      evidence: capped(uninterpreted.map((match) => `${match.tool} (${match.argument})`)),
     };
   }
   if (definitions.status === 'partial') {

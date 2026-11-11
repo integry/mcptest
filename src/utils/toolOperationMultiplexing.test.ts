@@ -4,6 +4,7 @@ import {
   findAmbiguousHttpMethodSelectors,
   findMixedHttpMethodSelectors,
   findMultiplexedOperationSelectors,
+  findUninterpretedSelectorScopes,
   findUnresolvedHttpMethodSelectors,
 } from './toolOperationMultiplexing';
 
@@ -221,5 +222,126 @@ describe('findMultiplexedOperationSelectors with intersecting constraints', () =
     expect(findMultiplexedOperationSelectors([
       tool('records', { action: { enum: ['list_records', 'delete_record'], const: 'list_records' } }),
     ])).toEqual([]);
+  });
+});
+
+describe('enclosing schema constraints', () => {
+  const schemaTool = (name: string, inputSchema: Record<string, unknown>) => ({
+    name,
+    inputSchema: { type: 'object', ...inputSchema },
+  });
+
+  it('narrows a direct method property by a root allOf before failing it', () => {
+    const tools = [schemaTool('fetch', {
+      properties: { method: { enum: ['GET', 'POST'] } },
+      allOf: [{ properties: { method: { const: 'GET' } } }],
+    })];
+    expect(findMixedHttpMethodSelectors(tools)).toEqual([]);
+    expect(findUnresolvedHttpMethodSelectors(tools)).toEqual([]);
+    expect(findUninterpretedSelectorScopes(tools)).toEqual([]);
+  });
+
+  it('scans method properties declared only inside root composition', () => {
+    expect(findMixedHttpMethodSelectors([
+      schemaTool('all', { allOf: [{ properties: { method: { enum: ['GET', 'POST'] } } }] }),
+      schemaTool('any', { anyOf: [{ properties: { method: { const: 'GET' } } }, { properties: { method: { const: 'POST' } } }] }),
+      schemaTool('one', {
+        oneOf: [
+          { properties: { kind: { const: 'read' }, method: { const: 'GET' } } },
+          { properties: { kind: { const: 'write' }, method: { enum: ['POST', 'DELETE'] } } },
+        ],
+      }),
+    ]).map((match) => [match.tool, match.argument])).toEqual([['all', 'method'], ['any', 'method'], ['one', 'method']]);
+  });
+
+  it('reports a composed-only method without constraints as unresolved', () => {
+    expect(findUnresolvedHttpMethodSelectors([
+      schemaTool('composed', { allOf: [{ properties: { method: { type: 'string' } } }] }),
+    ]).map((match) => match.argument)).toEqual(['method']);
+  });
+
+  it('does not decide object-level oneOf branches whose method sets overlap', () => {
+    const tools = [schemaTool('overlap', {
+      oneOf: [
+        { properties: { method: { const: 'GET' } } },
+        { properties: { method: { enum: ['GET', 'POST'] } } },
+      ],
+    })];
+    expect(findMixedHttpMethodSelectors(tools)).toEqual([]);
+    expect(findUnresolvedHttpMethodSelectors(tools)).toHaveLength(1);
+  });
+
+  it('keeps an established method set when root oneOf does not constrain it', () => {
+    expect(findMixedHttpMethodSelectors([
+      schemaTool('discriminated', {
+        properties: { method: { enum: ['GET', 'POST'] } },
+        oneOf: [{ required: ['path'] }, { required: ['url'] }],
+      }),
+    ])).toHaveLength(1);
+  });
+
+  it('applies matching patternProperties and root additionalProperties', () => {
+    const tools = [
+      schemaTool('pattern', {
+        properties: { method: { enum: ['GET', 'POST'] } },
+        patternProperties: { '^meth': { const: 'GET' } },
+      }),
+      schemaTool('closed', {
+        additionalProperties: false,
+        allOf: [{ properties: { method: { enum: ['GET', 'POST'] } } }],
+      }),
+    ];
+    expect(findMixedHttpMethodSelectors(tools)).toEqual([]);
+    expect(findUnresolvedHttpMethodSelectors(tools)).toEqual([]);
+  });
+
+  it('leaves enclosing constraints it cannot interpret unresolved instead of failing', () => {
+    const tools = [schemaTool('negated', {
+      properties: { method: { enum: ['GET', 'POST'] } },
+      not: { properties: { method: { const: 'POST' } } },
+    })];
+    expect(findMixedHttpMethodSelectors(tools)).toEqual([]);
+    expect(findUnresolvedHttpMethodSelectors(tools).map((match) => match.tool)).toEqual(['negated']);
+  });
+
+  it('reports schemas whose declarations the scan cannot follow', () => {
+    expect(findUninterpretedSelectorScopes([
+      schemaTool('ref', { $ref: '#/$defs/args', $defs: { args: { properties: { method: { enum: ['GET', 'POST'] } } } } }),
+      schemaTool('conditional', { if: { required: ['body'] }, then: { properties: { method: { const: 'POST' } } } }),
+      schemaTool('nested', { allOf: [{ $ref: '#/$defs/args' }] }),
+      schemaTool('batch', { properties: { requests: { type: 'array', items: { $ref: '#/$defs/request' } } } }),
+      schemaTool('plain', { properties: { method: { enum: ['GET'] } }, allOf: [{ required: ['method'] }] }),
+    ]).map((match) => [match.tool, match.argument])).toEqual([
+      ['ref', 'input schema'],
+      ['conditional', 'input schema'],
+      ['nested', 'input schema'],
+      ['batch', 'requests[]'],
+    ]);
+  });
+
+  it('applies enclosing constraints on operation list items', () => {
+    expect(findMixedHttpMethodSelectors([
+      schemaTool('narrowed', {
+        properties: {
+          requests: {
+            type: 'array',
+            items: { properties: { method: { enum: ['GET', 'POST'] } }, allOf: [{ properties: { method: { const: 'GET' } } }] },
+          },
+        },
+      }),
+      schemaTool('composed', {
+        properties: { requests: { type: 'array', items: { allOf: [{ properties: { method: { enum: ['GET', 'PUT'] } } }] } } },
+      }),
+    ]).map((match) => [match.tool, match.argument])).toEqual([['composed', 'requests[].method']]);
+  });
+
+  it('applies the same constraints to the multiplexing advisory', () => {
+    expect(findMultiplexedOperationSelectors([
+      schemaTool('narrowed', {
+        properties: { action: { enum: ['list_records', 'delete_record'] } },
+        allOf: [{ properties: { action: { const: 'list_records' } } }],
+      }),
+      schemaTool('composed', { allOf: [{ properties: { action: { enum: ['list_records', 'delete_record'] } } }] }),
+    ]).map((match) => match.tool)).toEqual(['composed']);
   });
 });
