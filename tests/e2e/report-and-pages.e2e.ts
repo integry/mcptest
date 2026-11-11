@@ -79,7 +79,7 @@ test.describe('mobile viewport sanity', () => {
   test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
 
   for (const { path, heading } of [
-    { path: '/', heading: 'Inspect, debug and evaluate remote MCP servers in your browser' },
+    { path: '/', heading: 'Test remote MCP servers online' },
     { path: '/catalog', heading: 'Remote MCP server catalog' },
     { path: '/catalog/developer-tools', heading: 'Developer Tools MCP servers' },
     { path: '/servers/astro-docs/', heading: 'Astro Docs MCP server' },

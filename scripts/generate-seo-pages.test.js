@@ -560,11 +560,44 @@ describe('generated page metadata', () => {
     expect(html).toContain('property="og:url" content="https://mcptest.io"');
     expect(html).toContain('property="og:image" content="https://mcptest.io/og/home.png"');
     const root = document.getElementById('root');
-    expect(root.querySelector('.landing-title').textContent).toBe('Inspect, debug and evaluate remote MCP servers in your browser');
+    expect(root.querySelector('.landing-title').textContent).toBe('Test remote MCP servers online');
     expect(root.querySelector('.landing-catalog a[href="/catalog"]').textContent).toContain('Browse 111 public remote MCP servers');
     // The whole first frame, not just the landing: header and sidebar too.
     expect(root.querySelector('.seo-shell-fallback .app-header .app-brand-title').textContent).toBe('mcptest.io');
     expect(root.querySelector('.seo-shell-fallback .desktop-sidebar .app-sidenav a.active').getAttribute('href')).toBe('/');
+  });
+
+  it('prerenders the trust line, how-to steps and FAQ, with FAQPage JSON-LD for exactly the visible questions', () => {
+    const html = renderHomeHtml(indexHtml, { title: 'Home | mcptest.io', description: 'Home description.' }, 111);
+    const document = new DOMParser().parseFromString(html, 'text/html');
+    const root = document.getElementById('root');
+
+    expect(root.querySelector('.landing-hero .landing-trust').textContent).toContain('No sign-up needed to connect and test');
+    expect(root.querySelector('.landing-steps h2').textContent).toBe('How to test an MCP server');
+    const steps = Array.from(root.querySelectorAll('.landing-steps ol > li .landing-step-title'), node => node.textContent);
+    expect(steps).toEqual(['Paste the endpoint URL', 'Pick the authentication', 'Connect', 'Call a tool', 'Share the report']);
+    expect(root.querySelector('.landing-steps a[href="/catalog"]')).not.toBeNull();
+
+    const questions = Array.from(root.querySelectorAll('.landing-faq .landing-faq-question'), node => node.textContent);
+    const answers = Array.from(root.querySelectorAll('.landing-faq .landing-faq-answer'), node => node.textContent);
+    expect(questions).toHaveLength(7);
+    for (const href of ['/docs/testing-guide', '/learn/mcptest-vs-mcp-inspector', '/ci']) {
+      expect(root.querySelector(`.landing-faq a[href="${href}"]`), href).not.toBeNull();
+    }
+    expect(root.querySelector('.landing-faq a[href^="https://"]').getAttribute('rel')).toBe('noopener noreferrer');
+
+    const scripts = document.querySelectorAll('script[type="application/ld+json"]');
+    expect(scripts).toHaveLength(1);
+    const structuredData = JSON.parse(scripts[0].textContent);
+    expect(structuredData['@type']).toBe('FAQPage');
+    expect(structuredData.mainEntity.map(entry => entry.name)).toEqual(questions);
+    expect(structuredData.mainEntity.map(entry => entry.acceptedAnswer.text)).toEqual(answers);
+    expect(structuredData.mainEntity[0].acceptedAnswer.text).not.toContain('](');
+
+    // Rerunning the generator never carries the home FAQ into other pages.
+    const shell = stripLandingFallback(html);
+    expect(shell).not.toContain('FAQPage');
+    expect(renderLearnIndexHtml(shell, learnIndex, articles)).not.toContain('application/ld+json');
   });
 
   it('removes a previous landing fallback so rerunning never copies it into other pages', () => {

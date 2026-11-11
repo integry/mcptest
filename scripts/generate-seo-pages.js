@@ -32,10 +32,18 @@ const {
   LANDING_CATALOG_LINK_PREFIX,
   LANDING_CATALOG_LINK_SUFFIX,
   LANDING_COVERAGE_TITLE,
+  LANDING_FAQ,
+  LANDING_FAQ_TITLE,
   LANDING_HEADLINE,
   LANDING_LEDE,
   LANDING_PATHS_LABEL,
   LANDING_REPORT_COVERAGE,
+  LANDING_STEPS,
+  LANDING_STEPS_TITLE,
+  LANDING_TRUST_LABEL,
+  LANDING_TRUST_POINTS,
+  getLandingFaqStructuredData,
+  parseLandingText,
 } = require('../src/content/landingCopy.ts');
 const { OG_IMAGE_HEIGHT, OG_IMAGE_WIDTH, getOgImagePath } = require('../src/utils/ogImage.ts');
 const {
@@ -923,6 +931,7 @@ function renderLearnIndexHtml(indexHtml, learnIndex, articles, options = {}) {
 
 const SHELL_FALLBACK_END = '<!-- /seo-shell-fallback -->';
 const SHELL_FALLBACK_PATTERN = /<div id="root">\s*<div class="[^"]*\bseo-shell-fallback\b[\s\S]*?<!-- \/seo-shell-fallback -->\s*<\/div>/;
+const STRUCTURED_DATA_PATTERN = /[ \t]*<script id="server-structured-data" type="application\/ld\+json">[\s\S]*?<\/script>\n?/g;
 const LANDING_FALLBACK_PATTERN = /<div id="root">\s*<section class="landing seo-landing-fallback"[\s\S]*?<\/section>\s*<\/div>/;
 
 function renderQuickPicks(quickPicks) {
@@ -939,6 +948,15 @@ function renderQuickPicks(quickPicks) {
     '      </ul>',
     '    </div>',
   ];
+}
+
+/** LandingHero's LandingText: `[label](href)` links as anchors, external ones opening in a new tab. */
+function renderLandingText(value) {
+  return parseLandingText(value).map(part => {
+    if (!part.href) return escapeHtml(part.text);
+    const external = part.href.startsWith('/') ? '' : ' target="_blank" rel="noopener noreferrer"';
+    return `<a href="${escapeHtml(part.href)}"${external}>${escapeHtml(part.text)}</a>`;
+  }).join('');
 }
 
 /**
@@ -967,7 +985,18 @@ function renderLandingFallback(catalogCount, quickPicks = [], { advancedToggle =
     ...(advancedToggle
       ? ['    <button type="button" class="landing-advanced-toggle" aria-expanded="false"><i class="bi bi-gear" aria-hidden="true"></i>Advanced options<span class="landing-advanced-hint">headers, auth, proxy</span></button>']
       : []),
+    `    <ul class="landing-trust" aria-label="${escapeHtml(LANDING_TRUST_LABEL)}">`,
+    ...LANDING_TRUST_POINTS.map(point => `      <li>${escapeHtml(point)}</li>`),
+    '    </ul>',
     '  </div>',
+    '  <section class="landing-steps" aria-labelledby="landing-steps-title">',
+    `    <h2 id="landing-steps-title" class="landing-section-title">${escapeHtml(LANDING_STEPS_TITLE)}</h2>`,
+    '    <ol>',
+    ...LANDING_STEPS.map(step => (
+      `      <li><h3 class="landing-step-title">${escapeHtml(step.title)}</h3><p class="landing-step-description">${renderLandingText(step.description)}</p></li>`
+    )),
+    '    </ol>',
+    '  </section>',
     `  <nav class="landing-paths" aria-label="${escapeHtml(LANDING_PATHS_LABEL)}">`,
     '    <ul>',
     ...LANDING_AUDIENCE_PATHS.map(item => [
@@ -989,6 +1018,12 @@ function renderLandingFallback(catalogCount, quickPicks = [], { advancedToggle =
     '  <p class="landing-catalog">',
     `    <a href="/catalog">${escapeHtml(LANDING_CATALOG_LINK_PREFIX)} ${catalogCount} ${escapeHtml(LANDING_CATALOG_LINK_SUFFIX)} <span aria-hidden="true">&rarr;</span></a>`,
     '  </p>',
+    '  <section class="landing-faq" aria-labelledby="landing-faq-title">',
+    `    <h2 id="landing-faq-title" class="landing-section-title">${escapeHtml(LANDING_FAQ_TITLE)}</h2>`,
+    ...LANDING_FAQ.map(item => (
+      `    <div class="landing-faq-item"><h3 class="landing-faq-question">${escapeHtml(item.question)}</h3><p class="landing-faq-answer">${renderLandingText(item.answer)}</p></div>`
+    )),
+    '  </section>',
     '</section>',
   ].join('\n');
 }
@@ -1276,7 +1311,9 @@ function stripLandingFallback(indexHtml) {
   const html = restoreStylesheetLinks(indexHtml)
     .replace(APP_PRELOAD_PATTERN, '')
     .replace(SHELL_FALLBACK_PATTERN, '<div id="root"></div>')
-    .replace(LANDING_FALLBACK_PATTERN, '<div id="root"></div>');
+    .replace(LANDING_FALLBACK_PATTERN, '<div id="root"></div>')
+    // The home page's FAQPage JSON-LD belongs to the home page only.
+    .replace(STRUCTURED_DATA_PATTERN, '');
   if (!html.includes('<div id="root"></div>')) {
     throw new Error('dist/index.html has no empty <div id="root"></div>; rebuild with Vite before generating SEO pages.');
   }
@@ -1285,6 +1322,7 @@ function stripLandingFallback(indexHtml) {
 
 function renderHomeHtml(indexHtml, homeMetadata, catalogCount, shellOptions = {}) {
   return renderStaticPageHtml(indexHtml, '/', homeMetadata, {
+    structuredData: getLandingFaqStructuredData(),
     fallbackHtml: renderShellFallback({ catalogCount, ...shellOptions }),
   });
 }

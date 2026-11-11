@@ -10,10 +10,17 @@ import {
   LANDING_CATALOG_LINK_PREFIX,
   LANDING_CATALOG_LINK_SUFFIX,
   LANDING_COVERAGE_TITLE,
+  LANDING_FAQ,
+  LANDING_FAQ_TITLE,
   LANDING_HEADLINE,
   LANDING_LEDE,
   LANDING_PATHS_LABEL,
   LANDING_REPORT_COVERAGE as REPORT_COVERAGE,
+  LANDING_STEPS,
+  LANDING_STEPS_TITLE,
+  LANDING_TRUST_LABEL,
+  LANDING_TRUST_POINTS,
+  parseLandingText,
 } from '../content/landingCopy';
 import { selectLandingQuickPicks } from '../utils/landingQuickPicks';
 import { CatalogServerLogo } from './CatalogServerLogo';
@@ -33,6 +40,18 @@ export const getRecentServerLabel = (url: string): string => {
     return url;
   }
 };
+
+/** Landing copy with `[label](href)` links: site paths route in the app, others open externally. */
+const LandingText: React.FC<{ value: string }> = ({ value }) => (
+  <>
+    {parseLandingText(value).map((part, index) => {
+      if (!part.href) return <React.Fragment key={index}>{part.text}</React.Fragment>;
+      return part.href.startsWith('/')
+        ? <Link key={index} to={part.href}>{part.text}</Link>
+        : <a key={index} href={part.href} target="_blank" rel="noopener noreferrer">{part.text}</a>;
+    })}
+  </>
+);
 
 export interface LandingHeroProps {
   serverUrl: string;
@@ -221,7 +240,25 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
             </span>
           </button>
         )}
+
+        <ul className="landing-trust" aria-label={LANDING_TRUST_LABEL}>
+          {LANDING_TRUST_POINTS.map((point) => (
+            <li key={point}>{point}</li>
+          ))}
+        </ul>
       </div>
+
+      <section className="landing-steps" aria-labelledby="landing-steps-title">
+        <h2 id="landing-steps-title" className="landing-section-title">{LANDING_STEPS_TITLE}</h2>
+        <ol>
+          {LANDING_STEPS.map((step) => (
+            <li key={step.title}>
+              <h3 className="landing-step-title">{step.title}</h3>
+              <p className="landing-step-description"><LandingText value={step.description} /></p>
+            </li>
+          ))}
+        </ol>
+      </section>
 
       <nav className="landing-paths" aria-label={LANDING_PATHS_LABEL}>
         <ul>
@@ -254,6 +291,16 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
           {LANDING_CATALOG_LINK_PREFIX} {catalogCount} {LANDING_CATALOG_LINK_SUFFIX} <span aria-hidden="true">&rarr;</span>
         </Link>
       </p>
+
+      <section className="landing-faq" aria-labelledby="landing-faq-title">
+        <h2 id="landing-faq-title" className="landing-section-title">{LANDING_FAQ_TITLE}</h2>
+        {LANDING_FAQ.map((item) => (
+          <div key={item.question} className="landing-faq-item">
+            <h3 className="landing-faq-question">{item.question}</h3>
+            <p className="landing-faq-answer"><LandingText value={item.answer} /></p>
+          </div>
+        ))}
+      </section>
     </section>
   );
 };

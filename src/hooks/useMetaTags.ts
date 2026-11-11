@@ -25,6 +25,7 @@ import {
   getLearnArticleMetadata,
   isLearnIndexPath,
 } from '../content/learnRegistry';
+import { getLandingFaqStructuredData } from '../content/landingCopy';
 
 const DEFAULT_IMAGE = `${SITE_URL}/logo.png`;
 
@@ -238,6 +239,7 @@ export const useMetaTags = () => {
         description: isCatalog ? CATALOG_METADATA.description : HOME_METADATA.description,
         canonicalUrl: `${SITE_URL}${location.pathname === '/' ? '' : location.pathname}`,
         imageUrl: isCatalog || isHome ? ogImage(location.pathname) : undefined,
+        structuredData: isHome ? getLandingFaqStructuredData() : undefined,
       });
     }
 

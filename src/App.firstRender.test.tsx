@@ -84,7 +84,7 @@ const FIRST_FRAME = {
   sidebarLinks: ['Playground', 'Catalog', 'Reports', 'Breaking changes', 'OAuth check', 'Discovery check'],
   dashboards: ['My first dashboard'],
   tabs: ['New Connection'],
-  landing: 'Inspect, debug and evaluate remote MCP servers in your browser',
+  landing: 'Test remote MCP servers online',
   connectionPanel: false,
 };
 

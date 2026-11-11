@@ -3,10 +3,13 @@ import { getDocsMetadata, HOME_METADATA } from './pageMetadata';
 
 describe('page metadata', () => {
   it('matches the landing hero and targets remote MCP testing searches', () => {
-    expect(HOME_METADATA.title).toBe('MCP Inspector Online & Playground: Test Remote MCP Servers | mcptest.io');
-    expect(HOME_METADATA.title.toLowerCase()).toContain('test remote mcp server');
+    expect(HOME_METADATA.title).toBe('MCP Test: MCP Inspector Online & Playground | mcptest.io');
+    expect(HOME_METADATA.title.length).toBeLessThanOrEqual(65);
+    expect(HOME_METADATA.title.toLowerCase()).toContain('mcp test');
     expect(HOME_METADATA.title.toLowerCase()).toContain('mcp inspector online');
-    expect(HOME_METADATA.description).toContain('Test remote MCP servers in an online inspector and playground');
+    expect(HOME_METADATA.title.toLowerCase()).toContain('playground');
+    expect(HOME_METADATA.description).toContain('Test remote MCP servers online');
+    expect(HOME_METADATA.description).toContain('no install or sign-up');
   });
 
   it('returns custom metadata for documentation routes', () => {
