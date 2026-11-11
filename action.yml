@@ -20,6 +20,9 @@ inputs:
   baseline:
     description: 'none, a previous JSON report path relative to the caller workspace, or published'
     default: none
+  max-context-tokens:
+    description: Fail when the estimated context cost of the tool definitions is above this number (an estimate, not an exact count for any model); empty means no limit
+    default: ''
   session-resilience:
     description: Opt in to bounded session resilience probes
     default: 'false'
@@ -74,6 +77,7 @@ runs:
         MCPTEST_ACTION_FAIL_ON: ${{ inputs.fail-on }}
         MCPTEST_ACTION_CLIENTS: ${{ inputs.clients }}
         MCPTEST_ACTION_BASELINE: ${{ inputs.baseline }}
+        MCPTEST_ACTION_MAX_CONTEXT_TOKENS: ${{ inputs.max-context-tokens }}
         MCPTEST_ACTION_SESSION: ${{ inputs.session-resilience }}
         MCPTEST_ACTION_TOOL_LIST_CONSISTENCY: ${{ inputs.tool-list-consistency }}
         MCPTEST_ACTION_COMMENT: ${{ inputs.comment }}

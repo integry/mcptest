@@ -1,4 +1,8 @@
 import type { PublicReport } from './reportArtifact';
+import type { ToolContextCostDeltaV1 } from '../types/toolContextCost';
+import {
+  computeToolContextCost, contextCostAccessLimitation, diffToolContextCost, isToolContextCost,
+} from './toolTokenCost';
 
 export type ReportDiffClassification =
   | 'breaking'
@@ -33,6 +37,8 @@ export interface ReportDiff {
   changes: ReportDiffChange[];
   counts: Record<ReportDiffClassification, number>;
   hasBreakingChanges: boolean;
+  /** Before/after estimated context cost, when both reports let it be compared. */
+  contextCost?: ToolContextCostDeltaV1;
 }
 
 type JsonRecord = Record<string, unknown>;
@@ -1192,6 +1198,55 @@ const respectAccessState = (
   ];
 };
 
+const DEFINITIONS_BASIS_LIMITATION = 'At least one report predates the per-tool breakdown, so both are estimated from the stored names, descriptions and input schemas; output schemas and annotations are not included.';
+const PARTIAL_DEFINITIONS_LIMITATION = 'Some stored definitions were redacted or omitted, so added and removed tools are not listed.';
+
+/**
+ * Context-cost delta between two reports. Uses the stored breakdowns when both
+ * have one with the same method; otherwise re-estimates both from the stored
+ * tool definitions, so the two numbers always share one method and basis.
+ */
+export const diffReportContextCost = (
+  before: PublicReport,
+  after: PublicReport
+): ToolContextCostDeltaV1 | undefined => {
+  // Reports obtained with different access list different tools by design.
+  const accessLimitation = contextCostAccessLimitation(
+    before.capabilityInventory?.authentication,
+    after.capabilityInventory?.authentication
+  );
+  const accessOptions = accessLimitation ? { beforeComplete: false, afterComplete: false } : {};
+  const withAccess = (limitation?: string): { limitation?: string } => {
+    const text = [limitation, accessLimitation].filter(Boolean).join(' ');
+    return text ? { limitation: text } : {};
+  };
+  const left = before.toolSurfaceAnalysis?.contextCost;
+  const right = after.toolSurfaceAnalysis?.contextCost;
+  const beforeDefinitions = before.toolSurfaceAnalysis?.toolDefinitions;
+  const afterDefinitions = after.toolSurfaceAnalysis?.toolDefinitions;
+  if (isToolContextCost(left) && isToolContextCost(right) && left.method.id === right.method.id) {
+    // The breakdown records an incomplete listing itself (`listingIncomplete`).
+    return diffToolContextCost(left, right, { ...withAccess(), ...accessOptions });
+  }
+  if (!beforeDefinitions || !afterDefinitions
+      || beforeDefinitions.status === 'unavailable' || afterDefinitions.status === 'unavailable') {
+    return undefined;
+  }
+  const partial = beforeDefinitions.status !== 'complete' || afterDefinitions.status !== 'complete';
+  return diffToolContextCost(
+    computeToolContextCost(beforeDefinitions.tools, { toolLimit: Number.POSITIVE_INFINITY }),
+    computeToolContextCost(afterDefinitions.tools, { toolLimit: Number.POSITIVE_INFINITY }),
+    {
+      ...withAccess(partial
+        ? `${DEFINITIONS_BASIS_LIMITATION} ${PARTIAL_DEFINITIONS_LIMITATION}`
+        : DEFINITIONS_BASIS_LIMITATION),
+      beforeComplete: beforeDefinitions.status === 'complete',
+      afterComplete: afterDefinitions.status === 'complete',
+      ...accessOptions,
+    }
+  );
+};
+
 export const diffPublicReports = (before: PublicReport, after: PublicReport): ReportDiff => {
   const changes: ReportDiffChange[] = respectAccessState(before, after, [
     ...compareOAuth(before, after),
@@ -1326,12 +1381,14 @@ export const diffPublicReports = (before: PublicReport, after: PublicReport): Re
     breaking: 0, removal: 0, risk: 0, unknown: 0, addition: 0, change: 0,
   };
   changes.forEach((change) => { counts[change.classification] += 1; });
+  const contextCost = diffReportContextCost(before, after);
   return {
     beforeGeneratedAt: before.generatedAt,
     afterGeneratedAt: after.generatedAt,
     changes,
     counts,
     hasBreakingChanges: changes.some((change) => change.breaking),
+    ...(contextCost ? { contextCost } : {}),
   };
 };
 

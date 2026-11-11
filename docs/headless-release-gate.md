@@ -149,7 +149,9 @@ npm run mcptest -- --help
 ```
 
 CLI options include `--endpoints-env`, `--api-key-env`, `--output-dir`,
-`--format json|markdown|both`, `--fail-on-result`, and `--fail-on-severity`.
+`--format json|markdown|both`, `--fail-on-result`, `--fail-on-severity`,
+`--max-context-tokens <n>` and `--context-cost-top <n>` (see
+[Context cost](#context-cost)).
 The default CLI policy remains blocked/unknown results and high/critical
 priorities. CLI exit codes remain 0 pass, 1 threshold failure, 2 browser
 authorization required, 3 invalid configuration, 4 infrastructure/artifact failure.
@@ -169,6 +171,37 @@ composite-action CI smoke job). Review `action.yml` branding, this documentation
 and `/ci`. The maintainer can then create the release and the `v1` major tag and
 choose Marketplace distribution in GitHub's release UI. This change creates no
 tags or Marketplace listing.
+
+## Context cost
+
+Every report estimates how much context the tool definitions take up, in total,
+per tool and, within a tool, per part: name and description, each top-level
+input parameter, the rest of the input schema, the output schema and
+annotations. The parts add up to the tool, and the tools add up to the total.
+The CLI prints the total, the median per tool and the heaviest tools with their
+share (`--context-cost-top <n>`, default 5); the JSON report stores the
+breakdown under `toolSurfaceAnalysis.contextCost` (optional: reports made before
+it have only `metrics.estimatedContextTokens`, computed as bytes / 4).
+
+The numbers are estimates, not exact counts for any model. The method
+(`lexical-json-v1`) counts word pieces, digit groups and punctuation in the
+compact JSON of each definition, with weights calibrated against two public BPE
+tokenizers on MCP tool schemas; on that corpus it is within about 5–10%. A
+bundled tokenizer was rejected: it adds megabytes of vocabulary data and still
+would not match every model.
+
+Findings flag a total at or above 4,000 (low), 8,000 (medium) or 20,000 (high)
+estimated tokens, a tool holding at least 25% of a total of 1,000 or more
+(servers with three or more tools), a tool of 2,000 or more on its own, a
+parameter of 300 or more that is half its tool or a tenth of the total, and
+descriptions that repeat three or more of their enum values. Each comes with
+advice: shorten descriptions, drop enum lists the prose repeats, split or defer
+rarely used tools.
+
+`--max-context-tokens <n>` (Action input `max-context-tokens`) fails the gate
+with exit code 1 when the estimated total is above `n`. Report history, the
+published-report diff, the breaking-change checker and the Action baseline
+comparison show the before/after change overall and per changed tool.
 
 ## Tool list consistency check
 

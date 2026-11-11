@@ -40,6 +40,12 @@ describe('GitHub Action inputs and release policy', () => {
     expect(changed.changes?.limitations.join(' ')).toContain('obtained authenticated and the later one unauthenticated');
     const same = classifyActionTarget(withAccess(report(), 'authenticated'), withAccess(report(['private_tool']), 'authenticated'), []);
     expect(same.decision).toBe('blocked');
+    // The context-cost comparison agrees: no removal across access scopes.
+    expect(changed.contextCost?.tools.filter(tool => tool.status !== 'changed')).toEqual([]);
+    expect(changed.contextCost?.complete).toBe(false);
+    expect(changed.contextCost?.limitation).toContain('cover different access scopes');
+    expect(renderActionSummary([changed], changed.decision)).not.toContain('private\\_tool: removed');
+    expect(same.contextCost?.tools.map(tool => `${tool.name}:${tool.status}`)).toEqual(['private_tool:removed']);
   });
   it('shows the tool list consistency result in the summary', () => {
     const toolListConsistency = {

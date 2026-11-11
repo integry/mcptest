@@ -226,12 +226,38 @@ const oauthBooleanObservation = (
   return 'unknown';
 };
 
+/**
+ * Tool annotation facts from a tool surface analysis that covered every named
+ * tool; absent when the tool list was missing, paginated incompletely, held
+ * unnamed tools, or was analyzed before annotation checks existed.
+ */
+const toolAnnotationFacts = (
+  analysis: ToolSurfaceAnalysisV1 | undefined
+): ObservedServerFactsV1['tools'] => {
+  const annotations = analysis?.metrics.annotations;
+  if (!analysis || !annotations || analysis.metrics.toolListStatus !== 'present') return undefined;
+  const paginationIncomplete = analysis.findings.medium.some(({ id }) => id === 'analysis.incomplete-pagination');
+  if (paginationIncomplete || annotations.analyzedToolCount !== analysis.metrics.toolCount) return undefined;
+  const total = annotations.analyzedToolCount;
+  return {
+    readOnlyHintDeclared: observed(
+      annotations.readOnlyHintCount === total,
+      `${annotations.readOnlyHintCount} of ${total} tools declare readOnlyHint; ${annotations.readOnlyToolCount} declare readOnlyHint: true.`
+    ),
+    retryHintsDeclared: observed(
+      annotations.retryHintDeclaredCount === total,
+      `${annotations.retryHintDeclaredCount} of ${total} tools state their retry safety (readOnlyHint: true, idempotentHint: true, or both readOnlyHint and idempotentHint); ${annotations.retryEligibleToolCount} are read-only or idempotent.`
+    ),
+  };
+};
+
 /** Converts the report's observed protocol evidence into the compatibility engine contract. */
 export const createObservedServerFacts = (
   report: EvaluationReport,
   trace?: OAuthTraceV1
 ): ObservedServerFactsV1 => {
   const records = metadataRecords(report);
+  const toolFacts = toolAnnotationFacts(report.toolSurfaceAnalysis);
   const transportType = firstString(records, 'transportType');
   const protocolVersion = firstString(records, 'protocolVersion');
   const route = firstString(records, 'route');
@@ -424,6 +450,7 @@ export const createObservedServerFacts = (
       proxyRoute: observed(direct ? 'not-used' : proxy ? 'used' : 'unknown',
         direct ? 'No proxy was used.' : proxy ? 'The authenticated proxy completed negotiation.' : 'Proxy use was not established.', 'configuration'),
     },
+    ...(toolFacts ? { tools: toolFacts } : {}),
   };
 };
 

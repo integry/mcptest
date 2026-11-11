@@ -8,6 +8,9 @@ import { parsePublicReportJson, redactReportString, serializePublicReportJson, t
 import { fetchPublishedReport, fetchPublishedReportIndex, publishReport } from '../utils/publishedReports';
 import { normalizePublishedEndpoint } from '../utils/publishedReportIdentity';
 import { describeToolListDifference, toolListConsistencyFromSections, toolListConsistencySummary } from '../utils/toolListConsistencyReport';
+import { diffReportContextCost } from '../utils/reportDiff';
+import { contextCostSummaryLines, describeContextCostDelta, describeToolContextCostDelta, isToolContextCost } from '../utils/toolTokenCost';
+import type { ToolContextCostDeltaV1 } from '../types/toolContextCost';
 import { parseReleaseGateArgs, runCli } from './runCli';
 
 type Environment = Record<string, string | undefined>;
@@ -17,6 +20,8 @@ export interface ActionTarget {
   decision: ActionDecision;
   changes?: BreakingChangeReport;
   comparison?: 'complete' | 'partial' | 'unavailable';
+  /** Estimated context cost against the baseline, when both record tools. */
+  contextCost?: ToolContextCostDeltaV1;
   url?: string;
 }
 const MARKER = '<!-- mcptest-release-gate -->';
@@ -43,6 +48,10 @@ export const parseActionInputs = (env: Environment) => {
     '--fail-on-result', failOn === 'review' ? 'blocked,unknown,review' : 'blocked,unknown', '--fail-on-severity', 'none'];
   if (value('BEARER')) argv.push('--bearer-token-env', value('BEARER'));
   if (value('API_KEY')) argv.push('--api-key-env', value('API_KEY'));
+  if (value('MAX_CONTEXT_TOKENS')) {
+    if (!/^\d+$/.test(value('MAX_CONTEXT_TOKENS'))) throw new Error('max-context-tokens must be a non-negative integer.');
+    argv.push('--max-context-tokens', value('MAX_CONTEXT_TOKENS'));
+  }
   if (bool(value('SESSION'), false)) argv.push('--session-resilience');
   if (!bool(value('TOOL_LIST_CONSISTENCY'), true)) argv.push('--no-tool-list-consistency');
   // Reuse CLI URL, credential-reference, and same-origin credential validation before any I/O.
@@ -60,6 +69,7 @@ export const classifyActionTarget = (report: PublicReport, baseline: PublicRepor
   }
   let changes: BreakingChangeReport | undefined;
   let comparison: ActionTarget['comparison'];
+  let contextCost: ToolContextCostDeltaV1 | undefined;
   if (baseline) {
     const identity = (endpoint: string) => normalizePublishedEndpoint(endpoint) || new URL(endpoint).toString();
     if (identity(baseline.target.testedEndpoint) !== identity(report.target.testedEndpoint)) {
@@ -83,13 +93,14 @@ export const classifyActionTarget = (report: PublicReport, baseline: PublicRepor
     comparison = !before || !after ? 'unavailable'
       : schemasComplete ? 'complete' : 'partial';
     if (comparison !== 'complete') decision = worst(decision, 'unknown');
+    contextCost = diffReportContextCost(baseline, report);
     if (before && after) {
       changes = classifyBreakingChanges(before, after);
       if (changes.counts.breaking) decision = 'blocked';
       else if (changes.counts.risky) decision = worst(decision, 'review');
     }
   }
-  return { report, decision, changes, comparison };
+  return { report, decision, changes, comparison, ...(contextCost ? { contextCost } : {}) };
 };
 
 const escape = (value: string): string => redactReportString(value).replace(/[\\`*_{}[\]()<>|!#]/g, '\\$&').replace(/[\r\n]+/g, ' ');
@@ -117,6 +128,19 @@ export const renderActionSummary = (targets: ActionTarget[], decision: ActionDec
       lines.push(`Tool list consistency: ${toolList.status === 'consistent' ? '✓ passed' : toolList.status === 'inconsistent' ? '⚠ finding' : 'not checked'} — ${escape(toolListConsistencySummary(toolList))}`, '');
       for (const difference of toolList.differences.slice(0, 20)) lines.push(`- ${escape(describeToolListDifference(difference))}`);
       if (toolList.differences.length > 0) lines.push('');
+    }
+    const cost = target.report.toolSurfaceAnalysis?.contextCost;
+    if (isToolContextCost(cost)) {
+      const [total, ...heaviest] = contextCostSummaryLines(cost, 5);
+      lines.push(`Context cost: ${escape(total)}`, '');
+      for (const line of heaviest) lines.push(`- ${escape(line.replace(/^\d+\. /, ''))}`);
+      if (heaviest.length > 0) lines.push('');
+    }
+    if (target.contextCost) {
+      lines.push(`Context cost vs baseline: ${escape(describeContextCostDelta(target.contextCost))}`, '');
+      for (const tool of target.contextCost.tools.slice(0, 10)) lines.push(`- ${escape(describeToolContextCostDelta(tool))}`);
+      if (target.contextCost.tools.length > 0) lines.push('');
+      if (target.contextCost.limitation) lines.push(escape(target.contextCost.limitation), '');
     }
     if (target.decision === 'unknown') {
       lines.push('Comparison could not run reliably because evaluation or baseline evidence is incomplete; breaking count is unknown.', '');
