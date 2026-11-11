@@ -11,6 +11,7 @@ import {
   type ToolSurfaceFindingsBySeverityV1,
   type ToolSurfaceSeverity,
 } from '../types/toolSurfaceAnalysis';
+import { CONTEXT_COST_METHOD, computeToolContextCost } from './toolTokenCost';
 
 const EVIDENCE_LIMIT = 12;
 const EVIDENCE_FIELD_CHARACTER_LIMIT = 2_000;
@@ -1510,9 +1511,8 @@ export function analyzeToolSurface(input: ToolSurfaceAnalyzerInput): ToolSurface
   const serializedDefinitionBytes = canonicalDefinitions.truncationReasons.has('bytes')
     ? CANONICAL_BYTE_LIMIT
     : utf8ByteLength(serializedDefinitions);
-  const estimatedContextTokens = serializedDefinitionBytes === 0
-    ? 0
-    : Math.ceil(serializedDefinitionBytes / 4);
+  const contextCost = computeToolContextCost(tools.map((tool) => tool.raw));
+  const estimatedContextTokens = contextCost.estimatedTotal;
 
   const fingerprintResult = canonicalizeCollection(tools
     .map((tool) => ({
@@ -1777,8 +1777,8 @@ export function analyzeToolSurface(input: ToolSurfaceAnalyzerInput): ToolSurface
       kind: 'measurement',
       title: 'Large tool surface increases context cost',
       summary: serializationIncomplete
-        ? `${extracted.tools.length} definitions reached ${serializedDefinitionBytes} analyzed bytes (approximately ${estimatedContextTokens} tokens at four UTF-8 bytes per token) before deterministic analysis limits were applied.`
-        : `${extracted.tools.length} definitions serialize to ${serializedDefinitionBytes} bytes (approximately ${estimatedContextTokens} tokens at four UTF-8 bytes per token).`,
+        ? `${extracted.tools.length} definitions reached ${serializedDefinitionBytes} analyzed bytes (approximately ${estimatedContextTokens} ${CONTEXT_COST_METHOD.label}, method ${CONTEXT_COST_METHOD.id}) before deterministic analysis limits were applied.`
+        : `${extracted.tools.length} definitions serialize to ${serializedDefinitionBytes} bytes (approximately ${estimatedContextTokens} ${CONTEXT_COST_METHOD.label}, method ${CONTEXT_COST_METHOD.id}).`,
       evidence: [evidence(
         '<surface>',
         '$.tools',
@@ -2087,6 +2087,7 @@ export function analyzeToolSurface(input: ToolSurfaceAnalyzerInput): ToolSurface
       extracted.incompleteDiscovery.includes('tools'),
       extracted.status
     ),
+    contextCost,
     findings,
     findingCount,
     interpretation: 'Findings describe observable context, quality, ambiguity, and capability signals. They do not prove a vulnerability, exploitation, or malicious intent.',

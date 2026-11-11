@@ -19,6 +19,7 @@ import {
   type ReleaseDecision,
   type ReleaseReadinessStatus,
 } from '../utils/releaseReadiness';
+import { formatEstimate, isToolContextCost } from '../utils/toolTokenCost';
 
 export const RELEASE_GATE_EXIT_CODES = {
   pass: 0,
@@ -34,6 +35,8 @@ export type ReleaseGateSeverityThreshold = 'critical' | 'high' | 'medium' | 'unk
 export interface ReleaseGatePolicy {
   failOnResults: ReadonlySet<ReleaseReadinessStatus>;
   failOnSeverity: ReleaseGateSeverityThreshold;
+  /** Fails when the estimated context cost of the tool definitions is above this. */
+  maxContextTokens?: number;
 }
 
 export const DEFAULT_RELEASE_GATE_POLICY: ReleaseGatePolicy = {
@@ -469,6 +472,24 @@ export const getReleaseGateThresholdReasons = (
   return [...new Set(reasons)];
 };
 
+/**
+ * Threshold reason for the optional context-cost gate. An unknown cost (no
+ * tool list) is not a failure here; the overall result already reflects it.
+ */
+export const getContextCostThresholdReason = (
+  report: PublicReport,
+  policy: ReleaseGatePolicy
+): string | undefined => {
+  const maximum = policy.maxContextTokens;
+  const metrics = report.toolSurfaceAnalysis?.metrics;
+  if (maximum === undefined || !metrics) return undefined;
+  const estimate = metrics.estimatedContextTokens;
+  if (estimate <= maximum) return undefined;
+  const cost = report.toolSurfaceAnalysis?.contextCost;
+  const method = isToolContextCost(cost) ? cost.method.id : 'bytes / 4';
+  return `estimated context cost ${formatEstimate(estimate)} exceeds the configured maximum of ${maximum.toLocaleString('en-US')} (an estimate, method ${method})`;
+};
+
 const createReleaseArtifact = (
   evaluation: EvaluationReport,
   endpoint: string,
@@ -565,8 +586,10 @@ export const runReleaseGate = async (
         status: authorizationRequired ? 'authorization-required' : 'evaluated',
         thresholdReasons: authorizationRequired
           ? []
-          : getReleaseGateThresholdReasons(decision, policy)
-            .map((reason) => redactKnownCredentialString(reason, credentials)),
+          : [
+            ...getReleaseGateThresholdReasons(decision, policy),
+            ...[getContextCostThresholdReason(report, policy)].filter((reason): reason is string => Boolean(reason)),
+          ].map((reason) => redactKnownCredentialString(reason, credentials)),
         releaseDecision: report.releaseDecision
           || redactReleaseDecisionCredentials(decision, credentials),
         report,

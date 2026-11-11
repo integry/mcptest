@@ -3,6 +3,7 @@ import { z } from 'zod';
 import packageJson from '../../package.json';
 import type { CompatibilityMatrixV1 } from '../compatibility';
 import type { ToolSurfaceAnalysisV1 } from '../types/toolSurfaceAnalysis';
+import { contextCostSummaryLines, isToolContextCost } from './toolTokenCost';
 import type { CapabilityInventoryV1 } from '../types/capabilityInventory';
 import { validateCapabilityInventory } from './capabilityInventory';
 import {
@@ -133,6 +134,42 @@ const ToolSurfaceFindingArtifactSchema = z.object({
   remediation: z.string(),
 }).strict();
 
+// Optional and passthrough: reports made before the breakdown existed have
+// none, and later versions may add fields without breaking older readers.
+const ToolContextCostArtifactSchema = z.object({
+  version: z.string().min(1),
+  method: z.object({
+    id: z.string().min(1),
+    label: z.string().min(1),
+    description: z.string(),
+  }).passthrough(),
+  estimatedTotal: z.number().nonnegative(),
+  toolCount: z.number().int().nonnegative(),
+  medianPerTool: z.number().nonnegative(),
+  tools: z.array(z.object({
+    name: z.string(),
+    estimate: z.number().nonnegative(),
+    share: z.number().nonnegative(),
+    parts: z.record(z.string(), z.number().nonnegative()),
+    parameters: z.array(z.object({
+      name: z.string(),
+      estimate: z.number().nonnegative(),
+      required: z.boolean(),
+    }).passthrough()),
+    parameterCount: z.number().int().nonnegative(),
+    omittedParameterCount: z.number().int().nonnegative(),
+  }).passthrough()),
+  omittedToolCount: z.number().int().nonnegative(),
+  findings: z.array(z.object({
+    id: z.string().min(1),
+    severity: z.enum(['high', 'medium', 'low', 'info']),
+    title: z.string(),
+    summary: z.string(),
+    subject: z.string().optional(),
+    remediation: z.string(),
+  }).passthrough()),
+}).passthrough();
+
 const ToolSurfaceArtifactSchema = z.object({
   version: z.string().min(1),
   metrics: z.object({
@@ -154,6 +191,7 @@ const ToolSurfaceArtifactSchema = z.object({
       inputSchema: JsonValueSchema,
     }).strict()),
   }).strict().optional(),
+  contextCost: ToolContextCostArtifactSchema.optional(),
   findings: z.object({
     critical: z.array(ToolSurfaceFindingArtifactSchema),
     high: z.array(ToolSurfaceFindingArtifactSchema),
@@ -2334,10 +2372,32 @@ export const serializePublicReportMarkdown = (report: PublicReport): string => {
       `- Tools: ${analysis.metrics.toolCount}`,
       `- Resources: ${analysis.metrics.resourceCount}`,
       `- Prompts: ${analysis.metrics.promptCount}`,
-      `- Estimated context tokens: ${analysis.metrics.estimatedContextTokens}`,
+      `- Estimated context tokens: ${analysis.metrics.estimatedContextTokens}${isToolContextCost(analysis.contextCost) ? '' : ' (bytes / 4)'}`,
       `- Fingerprint: ${markdownInline(analysis.fingerprint.algorithm)}:${markdownInline(analysis.fingerprint.value)}`,
       ''
     );
+    if (isToolContextCost(analysis.contextCost)) {
+      const cost = analysis.contextCost;
+      const [total, ...heaviest] = contextCostSummaryLines(cost, 10);
+      lines.push('### Context cost (estimated)', '', markdownInline(total), '', markdownInline(cost.method.description), '');
+      if (heaviest.length > 0) {
+        lines.push('Heaviest tools:', '', ...heaviest.map((line) => markdownInline(line)), '');
+      }
+      // A large total is already reported above with its tool-count context.
+      const surfaceReportsTotal = Object.values(analysis.findings).flat()
+        .some((finding) => finding.id === 'context.large-tool-surface');
+      const costFindings = cost.findings.filter((finding) => (
+        !surfaceReportsTotal || finding.id !== 'context-cost.total-above-threshold'
+      ));
+      for (const finding of costFindings) {
+        lines.push(
+          `- [${finding.severity}] ${markdownInline(finding.title)}`,
+          `  - ${markdownInline(finding.summary)}`,
+          `  - Remediation: ${markdownInline(finding.remediation)}`
+        );
+      }
+      if (costFindings.length > 0) lines.push('');
+    }
     for (const severity of ['critical', 'high', 'medium', 'low', 'info'] as const) {
       for (const finding of analysis.findings[severity]) {
         lines.push(

@@ -1,3 +1,5 @@
+import type { ToolContextCostV1 } from './toolContextCost';
+
 export const TOOL_SURFACE_ANALYSIS_VERSION = '1.0.0' as const;
 
 export type ToolSurfaceAnalysisVersion = typeof TOOL_SURFACE_ANALYSIS_VERSION;
@@ -85,6 +87,7 @@ export interface ToolSurfaceMetricsV1 {
   resourceCount: number;
   promptCount: number;
   serializedDefinitionBytes: number;
+  /** Equals `contextCost.estimatedTotal` when present; bytes / 4 in reports made before it. */
   estimatedContextTokens: number;
   descriptions: ToolDescriptionMetricsV1;
   schemas: ToolSchemaMetricsV1;
@@ -124,6 +127,8 @@ export interface ToolSurfaceAnalysisV1 {
   metrics: ToolSurfaceMetricsV1;
   fingerprint: ToolSurfaceFingerprintV1;
   toolDefinitions: ToolDefinitionSnapshotSetV1;
+  /** Per-tool and per-parameter breakdown; absent from reports made before it existed. */
+  contextCost?: ToolContextCostV1;
   findings: ToolSurfaceFindingsBySeverityV1;
   findingCount: number;
   interpretation: string;

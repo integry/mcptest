@@ -2,6 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { isOAuthSensitiveKey } from '../utils/transportDetection';
 import { redactReportString } from '../utils/reportArtifact';
+import { contextCostSummaryLines, isToolContextCost } from '../utils/toolTokenCost';
 import {
   describeToolListDifference,
   toolListConsistencyFromSections,
@@ -31,6 +32,8 @@ interface ParsedReleaseGateArgs {
   policy: ReleaseGatePolicy;
   quiet: boolean;
   help: boolean;
+  /** Heaviest tools printed under the context-cost totals. */
+  contextCostTop: number;
   consumedSecretEnvironmentVariables: string[];
 }
 
@@ -59,6 +62,11 @@ Gate options:
   --fail-on-result <list>      Comma-separated ready, review, blocked, unknown; or none
                                (default: blocked,unknown)
   --fail-on-severity <value>   critical, high, medium, unknown, or none (default: high)
+  --max-context-tokens <n>     Fail when the estimated context cost of the tool
+                               definitions is above n (an estimate, not an exact
+                               count for any model; default: no limit)
+  --context-cost-top <n>       Heaviest tools to print with their share of the
+                               estimated context cost (default: 5; 0 hides them)
   --client-compatibility       Include profiles for all documented clients
   --session-resilience         Opt in to bounded active session probes
   --no-tool-list-consistency   Skip re-listing tools (2 extra tools/list requests on
@@ -141,6 +149,13 @@ const parseSeverityThreshold = (value: string): ReleaseGateSeverityThreshold => 
   return value as ReleaseGateSeverityThreshold;
 };
 
+const parseNonNegativeInteger = (value: string, option: string): number => {
+  if (!/^\d+$/.test(value) || !Number.isSafeInteger(Number(value))) {
+    throw new ReleaseGateConfigurationError(`${option} must be a non-negative integer.`);
+  }
+  return Number(value);
+};
+
 const unknownOptionError = (argument: string): ReleaseGateConfigurationError => {
   const optionName = argument.match(/^(-{1,2}[A-Za-z0-9][A-Za-z0-9-]*)(?:[=:].*)?$/)?.[1];
   return new ReleaseGateConfigurationError(
@@ -160,6 +175,8 @@ export const parseReleaseGateArgs = (
   let format: ArtifactFormat = 'both';
   let failOnResults = DEFAULT_RELEASE_GATE_POLICY.failOnResults;
   let failOnSeverity = DEFAULT_RELEASE_GATE_POLICY.failOnSeverity;
+  let maxContextTokens: number | undefined;
+  let contextCostTop = 5;
   let quiet = false;
   let sessionResilience = false;
   let toolListConsistency = true;
@@ -204,6 +221,12 @@ export const parseReleaseGateArgs = (
     } else if (argument === '--fail-on-severity') {
       failOnSeverity = parseSeverityThreshold(requireValue(argv, index, argument));
       index += 1;
+    } else if (argument === '--max-context-tokens') {
+      maxContextTokens = parseNonNegativeInteger(requireValue(argv, index, argument), argument);
+      index += 1;
+    } else if (argument === '--context-cost-top') {
+      contextCostTop = parseNonNegativeInteger(requireValue(argv, index, argument), argument);
+      index += 1;
     } else if (argument.startsWith('-')) {
       throw unknownOptionError(argument);
     } else {
@@ -214,7 +237,7 @@ export const parseReleaseGateArgs = (
   if (help) {
     return {
       endpoints: [], outputDir, format, policy: { failOnResults, failOnSeverity }, quiet,
-      help, consumedSecretEnvironmentVariables: [],
+      help, contextCostTop, consumedSecretEnvironmentVariables: [],
     };
   }
   if (bearerEnvironment && apiKeyEnvironment) {
@@ -268,9 +291,14 @@ export const parseReleaseGateArgs = (
     outputDir,
     format,
     headers,
-    policy: { failOnResults, failOnSeverity },
+    policy: {
+      failOnResults,
+      failOnSeverity,
+      ...(maxContextTokens !== undefined ? { maxContextTokens } : {}),
+    },
     quiet,
     help,
+    contextCostTop,
     consumedSecretEnvironmentVariables,
   };
 };
@@ -372,6 +400,12 @@ export const runCli = async (
       for (const difference of toolList.differences) {
         process.stdout.write(`    ${redactReportString(describeToolListDifference(difference))}\n`);
       }
+    }
+    const contextCost = target.report?.toolSurfaceAnalysis?.contextCost;
+    if (isToolContextCost(contextCost)) {
+      const [total, ...heaviest] = contextCostSummaryLines(contextCost, configuration.contextCostTop);
+      process.stdout.write(`  context cost: ${redactReportString(total)}\n`);
+      for (const line of heaviest) process.stdout.write(`    ${redactReportString(line)}\n`);
     }
     for (const reason of target.thresholdReasons) process.stdout.write(`  threshold: ${reason}\n`);
     if (target.error) process.stderr.write(`  infrastructure: ${target.error}\n`);
