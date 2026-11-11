@@ -13,6 +13,8 @@ import {
   median,
   sumParts,
 } from './toolTokenCost';
+import { toolSurfaceFromInterfaceSnapshot } from './breakingChanges';
+import { INTERFACE_SNAPSHOT_SCHEMA_BUDGET, createInterfaceSnapshot } from './interfaceSnapshot';
 
 const searchTool = {
   name: 'search_issues',
@@ -307,6 +309,47 @@ describe('diffToolContextCost', () => {
     expect(delta.delta).toBe(0);
     expect(delta.tools).toEqual([]);
     expect(delta.limitation).toContain('titles and output schemas and annotations');
+  });
+
+  it('leaves out schemas one snapshot kept only as fingerprints for tools both list', () => {
+    // Large enough that the saved snapshot drops its schemas and keeps fingerprints.
+    const tools = Array.from({ length: 3 }, (_, index) => ({
+      name: `tool_${index}`,
+      description: `Tool ${index}.`,
+      inputSchema: {
+        type: 'object',
+        properties: Object.fromEntries(Array.from({ length: Math.ceil(INTERFACE_SNAPSHOT_SCHEMA_BUDGET / 100) }, (__, field) => (
+          [`field_${field}`, { type: 'string', description: `Field ${field} of the request, described at some length to fill the schema.` }]
+        ))),
+      },
+      outputSchema: { type: 'object', properties: { result: { type: 'string' } } },
+    }));
+    const stored = createInterfaceSnapshot({ tools, resources: [], resourceTemplates: [], prompts: [] });
+    expect(stored.tools!.every((entry) => entry.inputSchema === undefined && entry.outputSchema === undefined)).toBe(true);
+    const complete = { tools, outputSchemasObserved: true, annotationsObserved: false, titlesObserved: true };
+    const saved = toolSurfaceFromInterfaceSnapshot(stored)!;
+    for (const [left, right] of [[saved, complete], [complete, saved]] as const) {
+      const delta = diffSurfaceContextCost(left, right)!;
+      expect(delta.delta).toBe(0);
+      expect(delta.tools).toEqual([]);
+      expect(delta.limitation).toContain('stored only as fingerprints');
+    }
+    // A tool only one side lists is still counted with what that side kept.
+    const added = { name: 'extra', description: 'Extra.', inputSchema: { type: 'object', properties: { q: { type: 'string' } } } };
+    const grown = diffSurfaceContextCost(saved, { ...complete, tools: [...tools, added] })!;
+    expect(grown.tools.map((change) => `${change.name}:${change.status}`)).toEqual(['extra:added']);
+    expect(grown.delta).toBe(computeToolContextCost([added]).estimatedTotal);
+  });
+
+  it('still counts an output schema the server does not declare on one side', () => {
+    const left = { tools: [{ name: 'search', inputSchema: { type: 'object' } }], outputSchemasObserved: true, annotationsObserved: false, titlesObserved: false };
+    const right = {
+      tools: [{ name: 'search', inputSchema: { type: 'object' }, outputSchema: { type: 'object', properties: { hits: { type: 'array' } } } }],
+      outputSchemasObserved: true, annotationsObserved: false, titlesObserved: false,
+    };
+    const delta = diffSurfaceContextCost(left, right)!;
+    expect(delta.delta).toBeGreaterThan(0);
+    expect(delta.tools.map((change) => change.name)).toEqual(['search']);
   });
 });
 

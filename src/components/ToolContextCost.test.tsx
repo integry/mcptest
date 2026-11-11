@@ -50,6 +50,24 @@ describe('ToolContextCostPanel', () => {
     expect(first.textContent).toContain('required');
   });
 
+  it('says when discovery stopped part-way and qualifies the total and shares', () => {
+    const complete = render(<ToolContextCostPanel cost={computeToolContextCost(definitions)} />);
+    expect(complete.querySelector('[data-testid="context-cost-incomplete"]')).toBeNull();
+    expect(complete.textContent).toContain('Heaviest tool share');
+    expect(complete.textContent).not.toContain('received');
+
+    const partial = computeToolContextCost(definitions.slice(0, 3), { listingComplete: false });
+    expect(partial.omittedToolCount).toBe(0);
+    const container = render(<ToolContextCostPanel cost={partial} />);
+    const notice = container.querySelector('[data-testid="context-cost-incomplete"]');
+    expect(notice?.textContent).toContain('Tool discovery did not complete.');
+    expect(notice?.textContent).toContain('cover only the 3 tools received');
+    const metrics = container.querySelector('.tool-metrics')?.textContent || '';
+    expect(metrics).toContain('Total of tools received, estimated tokens');
+    expect(metrics).toContain('Heaviest tool share of tools received');
+    expect(metrics).toContain('Tools received and counted');
+  });
+
   it('lists findings with advice, and can hide a total reported elsewhere', () => {
     const big = Array.from({ length: 60 }, (_, index) => tool(`t${index}`, 'Explains the tool in detail. '.repeat(10)));
     const cost = computeToolContextCost(big);
@@ -108,6 +126,20 @@ describe('ReleaseReadinessReport context cost', () => {
     const container = render(<ReleaseReadinessReport report={report(true)} expandedItems={new Set()} onToggleItem={() => undefined} />);
     expect(container.querySelector('.tool-context-cost')).not.toBeNull();
     expect(container.textContent).toContain('Context cost by tool');
+  });
+
+  it('discloses a tool listing whose discovery did not complete', () => {
+    const partial = report(true);
+    partial.toolSurfaceAnalysis = analyzeToolSurface({
+      tools: [tool('search', 'Search records.', { query: { type: 'string' } })], resources: [], prompts: [], incompleteDiscovery: ['tools'],
+    });
+    expect(partial.toolSurfaceAnalysis.contextCost?.listingIncomplete).toBe(true);
+    const container = render(<ReleaseReadinessReport report={partial} expandedItems={new Set()} onToggleItem={() => undefined} />);
+    expect(container.querySelector('[data-testid="context-cost-incomplete"]')?.textContent).toContain('cover only the 1 tool received');
+    expect(container.textContent).toContain('Estimated context tokens, tools received only');
+    const complete = render(<ReleaseReadinessReport report={report(true)} expandedItems={new Set()} onToggleItem={() => undefined} />);
+    expect(complete.querySelector('[data-testid="context-cost-incomplete"]')).toBeNull();
+    expect(complete.textContent).not.toContain('tools received only');
   });
 
   it('labels the legacy estimate of older reports and shows no breakdown', () => {

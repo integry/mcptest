@@ -16,6 +16,13 @@
   font-size: 0.8125rem;
 }
 
+.tool-context-cost-incomplete {
+  margin: 0 0 var(--space-2);
+  padding: var(--space-2);
+  border-left: 3px solid var(--warning-color);
+  font-size: 0.875rem;
+}
+
 .tool-context-cost-columns,
 .tool-context-cost-row > details > summary {
   display: grid;

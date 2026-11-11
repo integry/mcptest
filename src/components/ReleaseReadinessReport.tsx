@@ -409,7 +409,11 @@ const ReleaseReadinessReport: React.FC<ReleaseReadinessReportProps> = ({
           <>
             <div className="tool-metrics">
               <div><strong>{toolSurface.metrics.toolCount}</strong><span>Tools</span></div>
-              <div><strong>{toolSurface.metrics.estimatedContextTokens.toLocaleString()}</strong><span>{isToolContextCost(toolSurface.contextCost) ? 'Estimated context tokens' : 'Estimated context tokens (bytes / 4)'}</span></div>
+              <div><strong>{toolSurface.metrics.estimatedContextTokens.toLocaleString()}</strong><span>{!isToolContextCost(toolSurface.contextCost)
+                ? 'Estimated context tokens (bytes / 4)'
+                : toolSurface.contextCost.listingIncomplete === true
+                  ? 'Estimated context tokens, tools received only'
+                  : 'Estimated context tokens'}</span></div>
               <div><strong>{toolSurface.metrics.descriptions.qualityScore}%</strong><span>Description quality</span></div>
               <div><strong>{toolSurface.metrics.riskSignals.destructiveCapabilityToolCount}</strong><span>Destructive signals</span></div>
             </div>

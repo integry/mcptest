@@ -504,6 +504,8 @@ export interface ContextCostSurface {
     description?: string;
     inputSchema?: unknown;
     outputSchema?: unknown;
+    /** Present when the schema was observed; the schema itself may not be stored. */
+    outputSchemaFingerprint?: string;
     annotations?: Record<string, unknown>;
   }[];
   outputSchemasObserved: boolean;
@@ -533,8 +535,9 @@ export const contextCostAccessLimitation = (
 /**
  * Context-cost delta between two listings compared by the breaking-change
  * checker. A field only one side recorded (titles, output schemas,
- * annotations) is left out of both, so the delta reflects the server and not
- * what each source happened to keep.
+ * annotations), or a schema one side kept only as a fingerprint, is left out
+ * of both, so the delta reflects the server and not what each source happened
+ * to keep.
  */
 export const diffSurfaceContextCost = (
   before: ContextCostSurface,
@@ -543,12 +546,30 @@ export const diffSurfaceContextCost = (
   const titles = before.titlesObserved && after.titlesObserved;
   const outputs = before.outputSchemasObserved && after.outputSchemasObserved;
   const annotations = before.annotationsObserved && after.annotationsObserved;
+  // A snapshot over its schema budget keeps only fingerprints. For a tool both
+  // sides list, a schema one side did not keep is left out of both, so the
+  // delta does not count the stored schema as a server change.
+  const inputUnstored = (surface: ContextCostSurface) => new Set(
+    surface.tools.filter((tool) => tool.inputSchema === undefined).map((tool) => tool.name)
+  );
+  const outputUnstored = (surface: ContextCostSurface) => new Set(
+    surface.tools
+      .filter((tool) => tool.outputSchema === undefined && tool.outputSchemaFingerprint !== undefined)
+      .map((tool) => tool.name)
+  );
+  const beforeNames = new Set(before.tools.map((tool) => tool.name));
+  const afterNames = new Set(after.tools.map((tool) => tool.name));
+  const shared = (left: Set<string>, right: Set<string>) => new Set(
+    [...left, ...right].filter((name) => beforeNames.has(name) && afterNames.has(name))
+  );
+  const skipInput = shared(inputUnstored(before), inputUnstored(after));
+  const skipOutput = shared(outputUnstored(before), outputUnstored(after));
   const definitions = (surface: ContextCostSurface) => surface.tools.map((tool) => ({
     name: tool.name,
     ...(titles && tool.title !== undefined ? { title: tool.title } : {}),
     ...(tool.description !== undefined ? { description: tool.description } : {}),
-    ...(tool.inputSchema !== undefined ? { inputSchema: tool.inputSchema } : {}),
-    ...(outputs && tool.outputSchema !== undefined ? { outputSchema: tool.outputSchema } : {}),
+    ...(tool.inputSchema !== undefined && !skipInput.has(tool.name) ? { inputSchema: tool.inputSchema } : {}),
+    ...(outputs && tool.outputSchema !== undefined && !skipOutput.has(tool.name) ? { outputSchema: tool.outputSchema } : {}),
     ...(annotations && tool.annotations !== undefined ? { annotations: tool.annotations } : {}),
   }));
   const omitted = [
@@ -557,12 +578,15 @@ export const diffSurfaceContextCost = (
     ...(annotations ? [] : ['annotations']),
   ];
   const accessLimitation = contextCostAccessLimitation(before.authentication, after.authentication);
-  const missingSchemas = [...before.tools, ...after.tools].some((tool) => tool.inputSchema === undefined);
+  const missingSchemas = skipInput.size > 0 || skipOutput.size > 0
+    || [...before.tools, ...after.tools].some((tool) => tool.inputSchema === undefined);
   const limitation = [
     omitted.length > 0
       ? `Only one listing recorded ${omitted.join(' and ')}, so they are left out of both estimates.`
       : '',
-    missingSchemas ? 'Some input schemas were stored only as fingerprints and are not counted.' : '',
+    missingSchemas
+      ? 'Some schemas were stored only as fingerprints; for tools both listings include, those schemas are left out of both estimates, so a schema change there does not show in the context cost.'
+      : '',
     accessLimitation ?? '',
   ].filter(Boolean).join(' ');
   return diffToolContextCost(

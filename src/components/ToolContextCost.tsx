@@ -120,16 +120,25 @@ export const ToolContextCostPanel: React.FC<ToolContextCostPanelProps> = ({
   const visible = cost.tools.slice(0, VISIBLE_TOOLS);
   const more = cost.tools.slice(VISIBLE_TOOLS);
   const label = cost.method.label;
+  // Discovery stopped part-way: the figures describe only the tools received.
+  const partial = cost.listingIncomplete === true;
+  const received = partial ? ' received' : '';
   return (
     <section className="tool-context-cost" aria-labelledby={headingId}>
       <h4 id={headingId}>Context cost by tool</h4>
+      {partial && (
+        <p className="tool-context-cost-incomplete" role="note" data-testid="context-cost-incomplete">
+          <strong>Tool discovery did not complete.</strong> The total and shares cover only
+          the {cost.toolCount} tool{cost.toolCount === 1 ? '' : 's'} received; the server may list more.
+        </p>
+      )}
       <div className="tool-metrics">
-        <div><strong>{formatEstimate(cost.estimatedTotal)}</strong><span>Total, {label}</span></div>
-        <div><strong>{formatEstimate(cost.medianPerTool)}</strong><span>Median per tool</span></div>
-        <div><strong>{cost.toolCount}</strong><span>Tools counted</span></div>
+        <div><strong>{formatEstimate(cost.estimatedTotal)}</strong><span>{partial ? `Total of tools received, ${label}` : `Total, ${label}`}</span></div>
+        <div><strong>{formatEstimate(cost.medianPerTool)}</strong><span>Median per tool{received}</span></div>
+        <div><strong>{cost.toolCount}</strong><span>{partial ? 'Tools received and counted' : 'Tools counted'}</span></div>
         <div>
           <strong>{heaviest ? formatShare(heaviest.share) : '—'}</strong>
-          <span>{heaviest ? `Heaviest tool share` : 'No tools'}</span>
+          <span>{heaviest ? `Heaviest tool share${partial ? ' of tools received' : ''}` : 'No tools'}</span>
         </div>
       </div>
       <p className="tool-context-cost-method">
