@@ -23,6 +23,9 @@ inputs:
   session-resilience:
     description: Opt in to bounded session resilience probes
     default: 'false'
+  tool-list-consistency:
+    description: Re-list tools twice on fresh connections to detect mixed deploys or stale replicas; set false to disable
+    default: 'true'
   comment:
     description: Post or update one sticky PR comment; requires pull-requests write permission
     default: 'true'
@@ -72,6 +75,7 @@ runs:
         MCPTEST_ACTION_CLIENTS: ${{ inputs.clients }}
         MCPTEST_ACTION_BASELINE: ${{ inputs.baseline }}
         MCPTEST_ACTION_SESSION: ${{ inputs.session-resilience }}
+        MCPTEST_ACTION_TOOL_LIST_CONSISTENCY: ${{ inputs.tool-list-consistency }}
         MCPTEST_ACTION_COMMENT: ${{ inputs.comment }}
         MCPTEST_ACTION_PUBLISH: ${{ inputs.publish }}
         MCPTEST_ACTION_GITHUB_TOKEN: ${{ github.token }}

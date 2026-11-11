@@ -7,6 +7,7 @@ import { interfaceSnapshotFromReport } from '../utils/interfaceSnapshot';
 import { parsePublicReportJson, redactReportString, serializePublicReportJson, type PublicReport } from '../utils/reportArtifact';
 import { fetchPublishedReport, fetchPublishedReportIndex, publishReport } from '../utils/publishedReports';
 import { normalizePublishedEndpoint } from '../utils/publishedReportIdentity';
+import { describeToolListDifference, toolListConsistencyFromSections, toolListConsistencySummary } from '../utils/toolListConsistencyReport';
 import { parseReleaseGateArgs, runCli } from './runCli';
 
 type Environment = Record<string, string | undefined>;
@@ -43,6 +44,7 @@ export const parseActionInputs = (env: Environment) => {
   if (value('BEARER')) argv.push('--bearer-token-env', value('BEARER'));
   if (value('API_KEY')) argv.push('--api-key-env', value('API_KEY'));
   if (bool(value('SESSION'), false)) argv.push('--session-resilience');
+  if (!bool(value('TOOL_LIST_CONSISTENCY'), true)) argv.push('--no-tool-list-consistency');
   // Reuse CLI URL, credential-reference, and same-origin credential validation before any I/O.
   parseReleaseGateArgs(argv, env);
   return { argv, clients, failOn, baseline: value('BASELINE') || 'none',
@@ -72,7 +74,8 @@ export const classifyActionTarget = (report: PublicReport, baseline: PublicRepor
       const definitions = value.toolSurfaceAnalysis?.toolDefinitions;
       return definitions && (definitions.status === 'complete' || definitions.namesComplete === true)
         ? { tools: definitions.tools.map(tool => ({ name: tool.name })), outputSchemasObserved: false,
-          annotationsObserved: false, titlesObserved: false, promptArgumentsObserved: false }
+          annotationsObserved: false, titlesObserved: false, promptArgumentsObserved: false,
+          ...(value.capabilityInventory?.authentication ? { authentication: value.capabilityInventory.authentication } : {}) }
         : undefined;
     };
     const before = surface(baseline);
@@ -109,6 +112,12 @@ export const renderActionSummary = (targets: ActionTarget[], decision: ActionDec
       lines.push(`| ${escape(id)} | ${escape(assessment.status)} |`);
     }
     lines.push('', 'Browser CORS and interactive OAuth remain unverified in headless CI; these are evidence-based verdicts, not client application launches.', '');
+    const toolList = toolListConsistencyFromSections(target.report.sections);
+    if (toolList) {
+      lines.push(`Tool list consistency: ${toolList.status === 'consistent' ? '✓ passed' : toolList.status === 'inconsistent' ? '⚠ finding' : 'not checked'} — ${escape(toolListConsistencySummary(toolList))}`, '');
+      for (const difference of toolList.differences.slice(0, 20)) lines.push(`- ${escape(describeToolListDifference(difference))}`);
+      if (toolList.differences.length > 0) lines.push('');
+    }
     if (target.decision === 'unknown') {
       lines.push('Comparison could not run reliably because evaluation or baseline evidence is incomplete; breaking count is unknown.', '');
     }

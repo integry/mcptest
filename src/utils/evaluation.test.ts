@@ -181,7 +181,11 @@ describe('dual-era server evaluation', () => {
       'https://mcp.example/custom/endpoint',
       'firebase-jwt',
       vi.fn(),
-      'oauth-access-token'
+      'oauth-access-token',
+      undefined,
+      undefined,
+      // Connection routing only; the tool-list consistency probe has its own tests.
+      { toolListConsistency: false }
     );
 
     expect(connectionMocks.attempt).toHaveBeenCalledTimes(2);
@@ -235,7 +239,9 @@ describe('dual-era server evaluation', () => {
         protocolVersion: '2025-11-25',
       });
 
-    const report = await evaluateServer(endpoint, 'firebase-jwt', vi.fn());
+    const report = await evaluateServer(endpoint, 'firebase-jwt', vi.fn(), undefined, undefined, undefined, {
+      toolListConsistency: false,
+    });
 
     expect(connectionMocks.attempt).toHaveBeenCalledTimes(2);
     expect(new URL(connectionMocks.attempt.mock.calls[1][0]).searchParams.get('target')).toBe(endpoint);
