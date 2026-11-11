@@ -11,7 +11,7 @@ for (const theme of ['light', 'dark']) {
     });
     const response = await page.goto('/tools/oauth-check');
     expect(response?.status()).toBe(200);
-    await expect(page).toHaveTitle(/MCP OAuth Checker: Test Your Server/);
+    await expect(page).toHaveTitle(/MCP OAuth Checker: Test Discovery Before Login/);
     await page.keyboard.press('Shift');
     await expect(page.locator('#root > [data-deferred-mount]')).toHaveCount(0);
     await page.getByLabel('MCP endpoint URL').fill(`http://127.0.0.1:${DISCOVERY_PORT}/oauth-mcp`);

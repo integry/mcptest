@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import pageMetadata from '../data/pageMetadata.json';
 import { getDocsMetadata, HOME_METADATA } from './pageMetadata';
 
 describe('page metadata', () => {
@@ -22,5 +23,16 @@ describe('page metadata', () => {
   it('does not assign metadata to unknown or non-documentation routes', () => {
     expect(getDocsMetadata('/docs/missing')).toBeUndefined();
     expect(getDocsMetadata('/catalog')).toBeUndefined();
+  });
+
+  it('gives every non-home page a unique title and description of a sensible length', () => {
+    const { home: _home, learn, tools, docs, ...pages } = pageMetadata;
+    const entries = [...Object.values(pages), ...Object.values(tools), ...Object.values(docs), learn];
+    expect(new Set(entries.map(({ title }) => title)).size).toBe(entries.length);
+    expect(new Set(entries.map(({ description }) => description)).size).toBe(entries.length);
+    for (const { title, description } of entries) {
+      expect(title.length, title).toBeLessThanOrEqual(65);
+      expect(description.length, description).toBeLessThanOrEqual(160);
+    }
   });
 });

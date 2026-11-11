@@ -91,7 +91,7 @@ test('opted-in release report renders and exports session findings', async ({ pa
   await page.goto('/report');
   await page.getByRole('checkbox', { name: /Check session resilience/ }).check();
   await page.getByLabel('MCP server URL').fill(mockUrl('2025'));
-  await page.getByRole('button', { name: 'Run Report', exact: true }).click();
+  await page.getByRole('button', { name: 'Run report', exact: true }).click();
   const findings = page.locator('.release-report').getByTestId('transport-diagnostic');
   await expect(findings).toHaveCount(4);
   await expect(findings.locator('.badge')).toHaveText(['Pass', 'Pass', 'Pass', 'Pass']);
