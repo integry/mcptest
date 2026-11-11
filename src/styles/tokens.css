@@ -1,23 +1,47 @@
 /* Design tokens. Imported first from src/index.css.
 
+   The mcptest.io design language ("signal"): a calm graphite instrument with
+   one strong accent, the green of the logo. docs/design-language.md lists
+   every token and the rules for using them; read it before adding a colour.
+
    Three blocks, on purpose:
-   1. scale tokens that never change with the theme (type, radius, spacing);
+   1. scale tokens that never change with the theme (type, radius, spacing,
+      motion);
    2. the light palette, which is also the default;
    3. the dark palette, which must define every variable the light palette
-      defines (src/styles/tokens.test.ts enforces the parity). */
+      defines (src/styles/tokens.test.ts enforces the parity). The dark
+      palette is designed on its own, not inverted from the light one. */
 
 /* --- Scale: theme-independent --- */
 :root {
   --font-family-sans-serif: 'Inter Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', sans-serif;
+  /* Mono carries protocol facts: URLs, method and tool names, status codes,
+     versions, counts. Never body copy. */
   --font-family-mono: 'JetBrains Mono Variable', 'Fira Code', 'SF Mono', 'Monaco', 'Inconsolata', 'Source Code Pro', monospace;
+
+  /* Type scale (14px body). Labels never go below --text-2xs (11px). */
+  --text-2xs: 0.6875rem;
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.875rem;
+  --text-md: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.375rem;
+  --text-2xl: 1.75rem;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 650;
 
   /* Radius. App chrome (cards, panels, inputs, menus) uses --border-radius;
      small controls (badges, segmented items, inline icons) use the -sm value.
-     Buttons share the chrome radius so they echo the panels they sit in. */
+     Buttons share the chrome radius so they echo the panels they sit in.
+     Only status pills are fully round. */
   --border-radius: 0.5rem;
   --border-radius-sm: 0.375rem;
   --button-radius: 0.5rem;
   --button-radius-sm: 0.375rem;
+  --radius-pill: 999px;
 
   /* 4px spacing scale. */
   --space-1: 0.25rem;
@@ -28,6 +52,15 @@
   --space-6: 1.5rem;
   --space-8: 2rem;
 
+  /* The signal rail: the 3px left edge that marks the active nav item, a
+     verdict, a JSON-RPC message on the wire and a callout. */
+  --rail-width: 3px;
+
+  /* Motion. Short and functional; zeroed under prefers-reduced-motion. */
+  --motion-fast: 120ms;
+  --motion-base: 200ms;
+  --ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
+
   /* One code block style for the inspector, the report and the reading
      layout (src/components/learn/ReadingLayout.css uses the same values). */
   --code-font-size: 0.8rem;
@@ -35,69 +68,119 @@
   --code-radius: 0.5rem;
 }
 
-/* --- Light palette (default) --- */
+/* --- Light palette (default) ---
+   Graphite neutrals with a faint green cast. Three distinct surface steps:
+   page < raised < surface, so panels lift off the page without shadows. */
 :root,
 :root[data-theme='light'] {
-  --body-bg: #f6f7f9;
+  /* Surfaces */
+  --body-bg: #eef0ee;
   --card-bg: #ffffff;
-  --card-bg-secondary: #f3f4f6;
-  --text-color: #111827;
-  --text-muted: #5b6472;
-  --text-accent: #374151;
-  --catalog-secondary-text: #4b5563;
-  --primary-color: #047857;
-  --primary-hover: #065f46;
-  --primary-light: #059669;
-  --secondary-color: #64748b;
-  --secondary-surface: #64748b;
-  --secondary-hover: #475569;
-  --success-color: #03664a;
-  --info-color: #0789a8;
-  --accent-violet: #7165e8;
-  --danger-color: #dc2626;
-  --warning-color: #d97706;
-  --border-color: #e5e7eb;
+  --card-bg-secondary: #f5f7f5;
+  --card-header-bg: #f9faf9;
+  /* Text */
+  --text-color: #121513;
+  --text-muted: #5a625d;
+  --text-accent: #343b37;
+  --catalog-secondary-text: #49514c;
+  /* Accent: the logo green, darkened until white text passes AA on it */
+  --primary-color: #167a2c;
+  --primary-hover: #106323;
+  --primary-light: #1f8f36;
+  --primary-ink: #ffffff;
+  --accent-text: #106323;
+  --accent-wash: #e6f1e8;
+  /* Neutral actions */
+  --secondary-color: #6b746f;
+  --secondary-surface: #59615c;
+  --secondary-hover: #434a46;
+  /* Status */
+  --success-color: #167a2c;
+  --info-color: #0b6f8a;
+  --accent-violet: #6550d8;
+  --danger-color: #c42b2b;
+  --warning-color: #975300;
+  /* Lines */
+  --border-color: #dce1dd;
+  --border-strong: #c3cac5;
+  /* Inputs: the border alone identifies the field, so it holds 3:1 */
   --input-bg: #ffffff;
-  --input-border: #d1d5db;
+  --input-border: #7d8781;
   --input-focus-border: var(--primary-color);
-  --link-color: #334155;
-  --link-hover: #0f172a;
-  --focus-ring: 0 0 0 3px rgba(4, 120, 87, 0.18);
+  /* Disabled is neutral, never a faded accent */
+  --disabled-bg: #e4e8e5;
+  --disabled-text: #6b736e;
+  --disabled-border: #d3d9d5;
+  /* The wire: outbound requests and inbound responses */
+  --wire-request: #5a625d;
+  --wire-response: #167a2c;
+  --link-color: #106323;
+  --link-hover: #0a3f16;
+  --focus-ring: 0 0 0 3px rgba(22, 122, 44, 0.28);
   /* The only shadow in the system: floating surfaces (menus, popovers,
      dialogs). Panels and cards use a hairline border instead. */
-  --shadow-float: 0 4px 12px -2px rgba(15, 23, 42, 0.12), 0 0 0 1px rgba(15, 23, 42, 0.04);
-  --hover-wash: rgba(15, 23, 42, 0.06);
-  --active-wash: rgba(15, 23, 42, 0.09);
+  --shadow-float: 0 6px 16px -4px rgba(18, 21, 19, 0.16), 0 0 0 1px rgba(18, 21, 19, 0.05);
+  --hover-wash: rgba(18, 21, 19, 0.05);
+  --active-wash: rgba(18, 21, 19, 0.085);
 }
 
-/* --- Dark palette --- */
+/* --- Dark palette ---
+   Near-black graphite, not inverted slate: the page is darker than any
+   surface, the accent is the logo green at full brightness, and text on it
+   is a deep green ink rather than white. */
 :root[data-theme='dark'] {
-  --body-bg: #0b1220;
-  --card-bg: #111827;
-  --card-bg-secondary: #1a2333;
-  --text-color: #f3f4f6;
-  --text-muted: #94a3b8;
-  --text-accent: #cbd5e1;
-  --catalog-secondary-text: #cbd5e1;
-  --primary-color: #34d399;
-  --primary-hover: #6ee7b7;
-  --primary-light: #a7f3d0;
-  --secondary-color: #94a3b8;
-  --secondary-surface: #475569;
-  --secondary-hover: #64748b;
-  --success-color: #34d399;
-  --info-color: #51d8f4;
-  --accent-violet: #9a91ff;
-  --danger-color: #f87171;
-  --warning-color: #fbbf24;
-  --border-color: #273244;
-  --input-bg: #0f172a;
-  --input-border: #3b4759;
+  /* Surfaces */
+  --body-bg: #0b0d0c;
+  --card-bg: #141816;
+  --card-bg-secondary: #1c211e;
+  --card-header-bg: #171b19;
+  /* Text */
+  --text-color: #e9ece9;
+  --text-muted: #9aa49e;
+  --text-accent: #c6cdc8;
+  --catalog-secondary-text: #b5bdb8;
+  /* Accent */
+  --primary-color: #46d35a;
+  --primary-hover: #74e383;
+  --primary-light: #a6efb0;
+  --primary-ink: #04140a;
+  --accent-text: #74e383;
+  --accent-wash: #15291a;
+  /* Neutral actions */
+  --secondary-color: #9aa49e;
+  --secondary-surface: #4a534d;
+  --secondary-hover: #5d6761;
+  /* Status */
+  --success-color: #46d35a;
+  --info-color: #5ccfe8;
+  --accent-violet: #a497ff;
+  --danger-color: #ff7a72;
+  --warning-color: #f2b33d;
+  /* Lines */
+  --border-color: #2a312d;
+  --border-strong: #3a423d;
+  /* Inputs */
+  --input-bg: #0f1211;
+  --input-border: #66716a;
   --input-focus-border: var(--primary-color);
-  --link-color: var(--primary-light);
+  /* Disabled */
+  --disabled-bg: #232925;
+  --disabled-text: #8a938d;
+  --disabled-border: #2f3632;
+  /* The wire */
+  --wire-request: #9aa49e;
+  --wire-response: #46d35a;
+  --link-color: #74e383;
   --link-hover: #ffffff;
-  --focus-ring: 0 0 0 3px rgba(52, 211, 153, 0.22);
-  --shadow-float: 0 8px 24px -4px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.06);
-  --hover-wash: rgba(255, 255, 255, 0.07);
-  --active-wash: rgba(255, 255, 255, 0.11);
+  --focus-ring: 0 0 0 3px rgba(70, 211, 90, 0.35);
+  --shadow-float: 0 10px 28px -6px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.07);
+  --hover-wash: rgba(233, 236, 233, 0.06);
+  --active-wash: rgba(233, 236, 233, 0.1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-fast: 0ms;
+    --motion-base: 0ms;
+  }
 }

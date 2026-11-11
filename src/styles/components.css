@@ -4,18 +4,18 @@
 .authorization-setup {
   margin: 1rem 0;
   padding: 1.25rem;
-  border: 1px solid var(--bs-border-color);
-  border-left: 3px solid var(--bs-secondary);
+  border: 1px solid var(--border-color);
+  border-left: var(--rail-width) solid var(--secondary-color);
   border-radius: var(--border-radius);
   background: var(--card-bg);
   overflow-wrap: anywhere;
 }
 
-.authorization-setup--no-registration-needed { border-left-color: var(--bs-success); }
+.authorization-setup--no-registration-needed { border-left-color: var(--success-color); }
 .authorization-setup--register-app-first,
-.authorization-setup--alternative-credential { border-left-color: var(--bs-warning); }
+.authorization-setup--alternative-credential { border-left-color: var(--warning-color); }
 .authorization-setup--operator-setup-required,
-.authorization-setup--provider-approval-required { border-left-color: var(--bs-danger); }
+.authorization-setup--provider-approval-required { border-left-color: var(--danger-color); }
 
 .authorization-setup-heading,
 .authorization-callback,
@@ -30,14 +30,15 @@
 .authorization-setup-kicker {
   margin: 0 0 0.25rem;
   color: var(--text-muted);
-  font-size: 0.875rem;
-  font-weight: 600;
+  font-family: var(--font-family-mono);
+  font-size: 0.8125rem;
+  font-weight: var(--weight-medium);
   letter-spacing: 0;
 }
 
 .authorization-setup h3 { margin: 0 0 0.75rem; }
 .authorization-setup h4 { margin: 1rem 0 0.5rem; font-size: 1rem; }
-.authorization-setup-reviewed { color: var(--bs-secondary-color); font-size: 0.875rem; }
+.authorization-setup-reviewed { color: var(--text-muted); font-size: 0.875rem; }
 .authorization-setup-freshness { padding: 0.75rem; border-radius: var(--border-radius-sm); background: var(--card-bg-secondary); }
 .authorization-setup-requirements,
 .authorization-setup-settings dl { display: grid; gap: 0.5rem; margin-bottom: 0; }
@@ -48,7 +49,7 @@
 .authorization-setup-requirements dd,
 .authorization-setup-settings dd { margin: 0; }
 .authorization-callback { align-items: center; margin: 0.5rem 0; }
-.authorization-callback code { flex: 1 1 20rem; padding: 0.5rem; background: var(--bs-tertiary-bg); }
+.authorization-callback code { flex: 1 1 20rem; padding: 0.5rem; background: var(--card-bg-secondary); }
 .authorization-setup-links { justify-content: flex-start; margin-top: 1rem; }
 .authorization-setup--compact { padding: 1rem; }
 
@@ -671,10 +672,10 @@
   word-break: break-word;
   color: var(--text-color);
 }
-.response-entry.error-message { color: #dc3545; }
+.response-entry.error-message { color: var(--danger-color); }
 .success-message { color: var(--success-color); }
-.response-entry.info-message { color: #0dcaf0; }
-.response-entry.warning-message { color: #ffc107; }
+.response-entry.info-message { color: var(--info-color); }
+.response-entry.warning-message { color: var(--warning-color); }
 /* Params Panel */
 .param-form {
   margin-bottom: var(--space-3);
@@ -703,7 +704,7 @@
 }
 
 .suggested-servers-panel .suggested-server-row:hover {
-  border-color: var(--input-border);
+  border-color: var(--border-strong);
 }
 
 /* --- Panel Deactivated State --- */
@@ -1624,7 +1625,7 @@ span.health-indicator.health-indicator-gray {
 .awaiting-connection-panel {
   overflow: hidden;
   margin-bottom: var(--space-4);
-  border: 1px dashed var(--input-border);
+  border: 1px dashed var(--border-strong);
   border-radius: var(--border-radius);
   background: var(--card-bg);
 }
@@ -1807,12 +1808,14 @@ span.health-indicator.health-indicator-gray {
   border-right: 1px solid var(--border-color);
 }
 
+/* A section label, like the sidebar's: mono, quiet, natural case. */
 .catalog-category-heading {
   margin: 0 0 var(--space-1);
   padding: 0 var(--space-2);
   color: var(--text-muted);
+  font-family: var(--font-family-mono);
   font-size: 0.8125rem;
-  font-weight: 600;
+  font-weight: var(--weight-medium);
   letter-spacing: 0;
 }
 
@@ -2124,7 +2127,7 @@ button.badge.catalog-metadata-badge--category:focus-visible {
   justify-content: center;
   padding: clamp(2rem, 6vw, 4rem);
   text-align: center;
-  border: 1px dashed var(--input-border);
+  border: 1px dashed var(--border-strong);
   border-radius: var(--border-radius);
   background: var(--card-bg);
 }
@@ -2694,6 +2697,58 @@ pre.bg-light code {
   border-bottom: 1px solid var(--border-color);
 }
 
+/* The wire: every JSON-RPC message hangs from a rail on its leading edge.
+   Outbound requests carry the neutral request rail and a → marker, inbound
+   responses the accent rail and a ← marker, errors the danger rail. The
+   same rail marks the result payload, so traffic reads the same everywhere. */
+.response-area > .response-entry {
+  padding-left: var(--space-3) !important;
+  border-left: var(--rail-width) solid var(--border-strong);
+}
+
+.response-area > .response-entry:has(.badge.bg-light) {
+  border-left-color: var(--wire-request);
+}
+
+.response-area > .response-entry:has(.badge.bg-success) {
+  border-left-color: var(--wire-response);
+}
+
+.response-area > .response-entry:has(.badge.bg-danger),
+.response-area > .response-entry.error-message {
+  border-left-color: var(--danger-color);
+}
+
+.response-area > .response-entry:has(.badge.bg-warning) {
+  border-left-color: var(--warning-color);
+}
+
+.response-entry .badge {
+  font-family: var(--font-family-mono);
+  font-weight: var(--weight-medium);
+}
+
+.response-entry .badge.bg-light::before,
+.response-entry .badge.bg-success::before {
+  width: auto;
+  height: auto;
+  border-radius: 0;
+  background: none;
+  font-weight: var(--weight-bold);
+}
+
+.response-entry .badge.bg-light::before {
+  content: '\2192' / '';
+}
+
+.response-entry .badge.bg-success::before {
+  content: '\2190' / '';
+}
+
+.tool-result-view-panel .event-data pre {
+  border-left: var(--rail-width) solid var(--wire-response);
+}
+
 .output-panel-body .response-area > div:last-child {
   border-bottom: 0;
 }
@@ -3185,6 +3240,12 @@ pre.bg-light code {
 .release-decision-review,
 .release-decision-authorization-required { border-left-color: var(--warning-color); }
 .release-decision-unknown { border-left-color: var(--secondary-color); }
+
+/* The verdict icon wears the same status hue as its rail. */
+.release-decision-ready .release-decision-main > i { color: var(--success-color); }
+.release-decision-blocked .release-decision-main > i { color: var(--danger-color); }
+.release-decision-review .release-decision-main > i,
+.release-decision-authorization-required .release-decision-main > i { color: var(--warning-color); }
 
 .release-decision-main {
   display: grid;

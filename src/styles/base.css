@@ -10,36 +10,49 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
-  transition: background-color 0.3s ease, color 0.3s ease;
+  transition: background-color var(--motion-base) ease, color var(--motion-base) ease;
 }
 
 /* ADD TRANSITIONS TO OTHER ELEMENTS */
 .card, .form-control, .btn, header, footer, .unified-panel, .mobile-sidebar, .nav-tabs, .nav-link {
-    transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease, box-shadow 0.2s ease, transform 0.2s ease;
+    transition: background-color var(--motion-base) ease, color var(--motion-base) ease, border-color var(--motion-base) ease, box-shadow var(--motion-fast) ease, transform var(--motion-fast) ease;
 }
 
+/* Type scale: tight display headings, steady section headings. */
 h1, h2, h3, h4, h5, h6 {
-  font-weight: 650;
+  font-weight: var(--weight-bold);
   color: var(--text-color);
   letter-spacing: -0.02em;
   line-height: 1.25;
 }
 
-h1 { font-size: 1.75rem; }
-h2 { font-size: 1.375rem; }
-h3 { font-size: 1.125rem; }
-h4 { font-size: 1rem; }
+h1 { font-size: var(--text-2xl); letter-spacing: -0.03em; }
+h2 { font-size: var(--text-xl); }
+h3 { font-size: var(--text-lg); }
+h4 { font-size: var(--text-md); }
 h5 { font-size: 0.9375rem; }
-h6 { font-size: 0.875rem; }
+h6 { font-size: var(--text-base); }
 
+/* Links wear the accent ink and gain an underline on hover, never Bootstrap blue. */
 a {
   color: var(--link-color);
   text-decoration: none;
-  transition: color 0.2s ease;
+  text-underline-offset: 0.18em;
+  text-decoration-thickness: 1px;
+  transition: color var(--motion-fast) ease;
 }
 a:hover {
   color: var(--link-hover);
   text-decoration: none;
+}
+
+/* Mono for protocol facts wherever the markup already marks them as code. */
+code, kbd, samp {
+  font-family: var(--font-family-mono);
+}
+
+::selection {
+  background-color: color-mix(in srgb, var(--primary-color) 28%, transparent);
 }
 
 /* --- Bootstrap Overrides --- */
@@ -58,7 +71,7 @@ a:hover {
 }
 
 .card-header {
-  background-color: var(--card-bg);
+  background-color: var(--card-header-bg);
   border-bottom: 1px solid var(--border-color);
   padding: var(--space-2) var(--space-4);
   position: relative;
@@ -71,7 +84,7 @@ a:hover {
 .card-header h5 {
   margin-bottom: 0;
   font-size: 0.9375rem;
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   color: var(--text-color);
   letter-spacing: -0.01em;
 }
@@ -113,10 +126,10 @@ a:hover {
 .btn {
   border-radius: var(--button-radius);
   padding: 0.4375rem 0.875rem;
-  font-weight: 500;
-  font-size: 0.875rem;
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-base);
   line-height: 1.25rem;
-  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+  transition: background-color var(--motion-fast) ease, border-color var(--motion-fast) ease, color var(--motion-fast) ease, box-shadow var(--motion-fast) ease, transform var(--motion-fast) ease;
   border: 1px solid transparent;
   letter-spacing: -0.01em;
   font-family: var(--font-family-sans-serif);
@@ -125,49 +138,54 @@ a:hover {
   box-shadow: var(--focus-ring);
   outline: none;
 }
-.btn:disabled, .btn.disabled {
-  opacity: 0.5;
+/* Pressed: a one-pixel settle, the only movement a button makes. */
+.btn:active:not(:disabled):not(.disabled) {
+  transform: translateY(1px);
+}
+
+/* Disabled is one neutral look for every variant: flat grey, muted label, no
+   accent. A faded accent reads as "almost enabled", so the enabled primary
+   and the disabled one must never share a hue. Bootstrap's :disabled rule
+   would otherwise repaint the button in its own blue. */
+.btn:disabled, .btn.disabled,
+.btn-primary:disabled, .btn-primary.disabled,
+.btn-success:disabled, .btn-success.disabled,
+.btn-danger:disabled, .btn-danger.disabled,
+.btn-secondary:disabled, .btn-secondary.disabled,
+.btn-info:disabled, .btn-info.disabled {
+  opacity: 1;
   cursor: not-allowed;
+  background-color: var(--disabled-bg);
+  border-color: var(--disabled-border);
+  color: var(--disabled-text);
+}
+.btn-outline-primary:disabled, .btn-outline-primary.disabled,
+.btn-outline-secondary:disabled, .btn-outline-secondary.disabled,
+.btn-outline-danger:disabled, .btn-outline-danger.disabled {
+  opacity: 1;
+  cursor: not-allowed;
+  background-color: transparent;
+  border-color: var(--disabled-border);
+  color: var(--disabled-text);
 }
 
-/* Bootstrap's :disabled rule outranks the variant rules below and would
-   repaint a disabled button in its own blue; keep the token colours. */
-.btn-primary:disabled, .btn-primary.disabled {
-  background-color: var(--primary-color);
-  border-color: var(--primary-color);
-  color: #ffffff;
-}
-.btn-success:disabled, .btn-success.disabled {
-  background-color: var(--success-color);
-  border-color: var(--success-color);
-  color: #ffffff;
-}
-.btn-danger:disabled, .btn-danger.disabled {
-  background-color: var(--danger-color);
-  border-color: var(--danger-color);
-  color: #ffffff;
-}
-.btn-secondary:disabled, .btn-secondary.disabled {
-  background-color: var(--secondary-surface);
-  border-color: var(--secondary-surface);
-  color: #ffffff;
-}
-
+/* Primary: the solid accent. One per view, for the action the view exists for. */
 .btn-primary {
   background: var(--primary-color);
   border-color: var(--primary-color);
-  color: #ffffff;
+  color: var(--primary-ink);
   box-shadow: none;
 }
 .btn-primary:hover,
 .btn-primary:focus-visible {
   background: var(--primary-hover);
   border-color: var(--primary-hover);
-  color: #ffffff;
+  color: var(--primary-ink);
 }
 .btn-primary:active {
   background: var(--primary-hover);
   border-color: var(--primary-hover);
+  color: var(--primary-ink);
 }
 
 .btn-secondary {
@@ -184,12 +202,12 @@ a:hover {
 .btn-success {
   background-color: var(--success-color);
   border-color: var(--success-color);
-  color: white;
+  color: var(--primary-ink);
 }
 .btn-success:hover {
-  background-color: #059669;
-  border-color: #059669;
-  color: white;
+  background-color: var(--primary-hover);
+  border-color: var(--primary-hover);
+  color: var(--primary-ink);
 }
 
 .btn-info {
@@ -209,8 +227,8 @@ a:hover {
   color: white;
 }
 .btn-danger:hover {
-  background-color: #dc2626;
-  border-color: #dc2626;
+  background-color: color-mix(in srgb, var(--danger-color) 86%, var(--text-color));
+  border-color: color-mix(in srgb, var(--danger-color) 86%, var(--text-color));
   color: white;
 }
 
@@ -231,6 +249,11 @@ a:hover {
   border-color: var(--primary-color);
   color: var(--primary-color);
 }
+.btn-outline-primary:active {
+  background-color: color-mix(in srgb, var(--primary-color) 16%, transparent) !important;
+  border-color: var(--primary-color) !important;
+  color: var(--primary-color) !important;
+}
 
 /* Neutral / default secondary */
 .btn-outline-secondary {
@@ -239,9 +262,14 @@ a:hover {
   background-color: transparent;
 }
 .btn-outline-secondary:hover {
-  background-color: var(--card-bg-secondary);
-  border-color: var(--secondary-color);
+  background-color: var(--hover-wash);
+  border-color: var(--text-muted);
   color: var(--text-color);
+}
+.btn-outline-secondary:active {
+  background-color: var(--active-wash) !important;
+  border-color: var(--text-muted) !important;
+  color: var(--text-color) !important;
 }
 
 .btn-outline-danger {
@@ -267,18 +295,32 @@ a:hover {
   line-height: 1.25rem;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
+.form-control:hover:not(:focus):not(:disabled), .form-select:hover:not(:focus):not(:disabled) {
+  border-color: var(--text-muted);
+}
 .form-control:focus, .form-select:focus {
   border-color: var(--input-focus-border) !important;
   box-shadow: var(--focus-ring) !important;
-  background-color: var(--card-bg) !important;
+  background-color: var(--input-bg) !important;
   color: var(--text-color) !important;
   outline: none;
 }
 .form-control::placeholder {
   color: var(--text-muted);
+  opacity: 1;
+}
+.form-control:disabled, .form-select:disabled {
+  background-color: var(--disabled-bg) !important;
+  border-color: var(--disabled-border);
+  color: var(--disabled-text) !important;
+}
+/* URL and endpoint fields show protocol facts, so they are set in mono. */
+input[type="url"].form-control {
+  font-family: var(--font-family-mono);
+  font-size: var(--text-sm);
 }
 .form-label {
-  font-weight: 500;
+  font-weight: var(--weight-semibold);
   margin-bottom: 0.5rem;
   color: var(--text-color);
   font-size: 0.875rem;
@@ -324,15 +366,22 @@ a:hover {
   cursor: pointer;
 }
 
-/* Badges
+/* Badges are status pills
    Badges are read-only status, not controls. They stay smaller, tighter and
-   softer than any button so nobody tries to click one. */
+   softer than any button so nobody tries to click one: fully round (buttons
+   never are), a soft tinted fill, and a hairline in the same hue. Status
+   pills (pass / warn / fail / info) lead with a dot; neutral tags do not. */
 .badge {
-  border-radius: var(--button-radius-sm);
-  padding: 0.22em 0.5em;
-  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  border-radius: var(--radius-pill);
+  padding: 0.24em 0.62em;
+  font-weight: var(--weight-semibold);
   font-size: 0.72rem;
+  line-height: 1.25;
   letter-spacing: 0;
+  border: 1px solid transparent;
 }
 .bg-success { 
   background-color: var(--success-color) !important; 
@@ -364,28 +413,34 @@ a:hover {
    solid button is indistinguishable from one, which invites a click that will
    never happen. Non-badge elements keep the heavy fills above. */
 .badge.bg-success {
-  background-color: color-mix(in srgb, var(--success-color) 14%, var(--card-bg)) !important;
+  background-color: color-mix(in srgb, var(--success-color) 12%, var(--card-bg)) !important;
+  border-color: color-mix(in srgb, var(--success-color) 30%, var(--card-bg)) !important;
   color: var(--success-color) !important;
 }
 .badge.bg-danger {
-  background-color: color-mix(in srgb, var(--danger-color) 14%, var(--card-bg)) !important;
+  background-color: color-mix(in srgb, var(--danger-color) 12%, var(--card-bg)) !important;
+  border-color: color-mix(in srgb, var(--danger-color) 30%, var(--card-bg)) !important;
   color: var(--danger-color) !important;
 }
 .badge.bg-primary {
-  background-color: color-mix(in srgb, var(--primary-color) 14%, var(--card-bg)) !important;
+  background-color: color-mix(in srgb, var(--primary-color) 12%, var(--card-bg)) !important;
+  border-color: color-mix(in srgb, var(--primary-color) 30%, var(--card-bg)) !important;
   color: var(--primary-color) !important;
 }
 .badge.bg-info {
-  background-color: color-mix(in srgb, var(--info-color) 14%, var(--card-bg)) !important;
+  background-color: color-mix(in srgb, var(--info-color) 12%, var(--card-bg)) !important;
+  border-color: color-mix(in srgb, var(--info-color) 30%, var(--card-bg)) !important;
   color: var(--info-color) !important;
 }
 .badge.bg-warning {
-  background-color: color-mix(in srgb, var(--warning-color) 16%, var(--card-bg)) !important;
+  background-color: color-mix(in srgb, var(--warning-color) 12%, var(--card-bg)) !important;
+  border-color: color-mix(in srgb, var(--warning-color) 32%, var(--card-bg)) !important;
   color: var(--warning-color) !important;
 }
 .badge.bg-secondary,
 .badge.bg-dark {
-  background-color: color-mix(in srgb, var(--secondary-color) 16%, var(--card-bg)) !important;
+  background-color: var(--card-bg-secondary) !important;
+  border-color: var(--border-strong) !important;
   color: var(--text-accent) !important;
 }
 .badge.bg-light {
@@ -394,32 +449,50 @@ a:hover {
   border: 1px solid var(--border-color) !important;
 }
 
-/* Alerts */
+/* The status dot: pass, fail and warn pills lead with a filled circle in
+   their own hue so status reads at a glance even in a dense row. */
+.badge.bg-success::before,
+.badge.bg-danger::before,
+.badge.bg-warning::before {
+  content: '';
+  flex: 0 0 auto;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background-color: currentColor;
+}
+
+/* Alerts: a hairline box with the signal rail in the status hue. */
 .alert {
   border-radius: var(--border-radius);
   border-width: 1px;
   border-style: solid;
+  border-left-width: var(--rail-width);
   color: var(--text-color);
 }
 .alert-info {
   color: var(--text-color);
-  background-color: rgba(6, 182, 212, 0.1);
-  border-color: var(--primary-color);
+  background-color: color-mix(in srgb, var(--info-color) 7%, var(--card-bg));
+  border-color: var(--border-color);
+  border-left-color: var(--info-color);
 }
 .alert-warning {
   color: var(--text-color);
-  background-color: rgba(245, 158, 11, 0.1);
-  border-color: var(--warning-color);
+  background-color: color-mix(in srgb, var(--warning-color) 8%, var(--card-bg));
+  border-color: var(--border-color);
+  border-left-color: var(--warning-color);
 }
 .alert-danger {
   color: var(--text-color);
-  background-color: rgba(239, 68, 68, 0.1);
-  border-color: var(--danger-color);
+  background-color: color-mix(in srgb, var(--danger-color) 7%, var(--card-bg));
+  border-color: var(--border-color);
+  border-left-color: var(--danger-color);
 }
 .alert-success {
   color: var(--text-color);
-  background-color: rgba(16, 185, 129, 0.1);
-  border-color: var(--success-color);
+  background-color: color-mix(in srgb, var(--success-color) 7%, var(--card-bg));
+  border-color: var(--border-color);
+  border-left-color: var(--success-color);
 }
 
 /* Button Loading States */
@@ -440,7 +513,7 @@ a:hover {
   margin-top: -8px;
   border: 2px solid transparent;
   border-radius: 50%;
-  border-top-color: white;
+  border-top-color: var(--primary-ink);
   animation: btn-loading-spinner 0.6s linear infinite;
 }
 
@@ -496,6 +569,39 @@ a:hover {
 
 .text-muted { color: var(--text-muted) !important; }
 
+/* Bootstrap colour utilities wear the tokens, so no Bootstrap blue, and no
+   light-theme hex, survives into either theme. */
+.text-primary { color: var(--accent-text) !important; }
+.text-success { color: var(--success-color) !important; }
+.text-danger { color: var(--danger-color) !important; }
+.text-warning { color: var(--warning-color) !important; }
+.text-info { color: var(--info-color) !important; }
+.border-primary,
+:root[data-theme='dark'] .border.border-primary { border-color: var(--primary-color) !important; }
+.border-danger,
+:root[data-theme='dark'] .border.border-danger { border-color: var(--danger-color) !important; }
+.border-warning,
+:root[data-theme='dark'] .border.border-warning { border-color: var(--warning-color) !important; }
+.border-info,
+:root[data-theme='dark'] .border.border-info { border-color: var(--info-color) !important; }
+.border-secondary,
+:root[data-theme='dark'] .border.border-secondary { border-color: var(--border-strong) !important; }
+.bg-primary:not(.badge) {
+  background-color: var(--primary-color) !important;
+  color: var(--primary-ink) !important;
+}
+.spinner-border.text-primary { color: var(--primary-color) !important; }
+.btn-warning {
+  background-color: var(--warning-color);
+  border-color: var(--warning-color);
+  color: var(--card-bg);
+}
+.btn-warning:hover {
+  background-color: color-mix(in srgb, var(--warning-color) 86%, var(--text-color));
+  border-color: color-mix(in srgb, var(--warning-color) 86%, var(--text-color));
+  color: var(--card-bg);
+}
+
 /* List Groups (Used in Tools/Resources/Prompts/History) */
 .list-group-item {
   border: none;
@@ -509,8 +615,9 @@ a:hover {
   border-bottom: none;
 }
 .list-group-item.active {
-  background: color-mix(in srgb, var(--primary-color) 10%, var(--card-bg));
+  background: var(--accent-wash);
   border-color: var(--border-color);
+  box-shadow: inset var(--rail-width) 0 0 var(--primary-color);
   color: var(--text-color);
 }
 .list-group-item-action:hover, .list-group-item-action:focus {
@@ -536,7 +643,8 @@ a:hover {
   font-weight: 600;
 }
 
-/* Tab-specific styling improvements */
+/* Tabs: a recessed track with a raised active tab, marked by an accent
+   underline so the selected view is never carried by a surface step alone. */
 .nav-tabs {
   border: 1px solid var(--border-color) !important;
   border-radius: var(--border-radius);
@@ -580,10 +688,11 @@ a:hover {
   background-color: var(--card-bg) !important;
   border-color: var(--border-color) !important;
   color: var(--text-color) !important;
+  font-weight: var(--weight-semibold);
   opacity: 1;
   z-index: 1;
   margin: 0;
-  box-shadow: none;
+  box-shadow: inset 0 -2px 0 var(--primary-color);
 }
 
 .nav-tabs .nav-link.active::after,
@@ -879,7 +988,7 @@ select {
 .btn-danger-hover:focus-visible,
 .btn-danger-hover:active {
   color: var(--danger-color) !important;
-  background-color: rgba(220, 38, 38, 0.08) !important;
+  background-color: rgba(196, 43, 43, 0.08) !important;
 }
 
 :root[data-theme='dark'] .btn-danger-hover:hover,
@@ -1048,25 +1157,22 @@ select {
   display: none;
 }
 
-:root[data-theme='dark'] .btn-primary {
-  color: #03130f;
-}
-
-:root[data-theme='dark'] .btn-primary:hover,
-:root[data-theme='dark'] .btn-primary:focus-visible {
-  color: #03130f;
-}
-
 :root[data-theme='dark'] .bg-success:not(.badge) {
-  color: #052e16 !important;
+  color: var(--primary-ink) !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .view-panel,
   .card,
-  .btn {
+  .btn,
+  .form-control,
+  .nav-link {
     animation: none !important;
     transition: none !important;
+  }
+
+  .btn:active:not(:disabled):not(.disabled) {
+    transform: none;
   }
 }
 

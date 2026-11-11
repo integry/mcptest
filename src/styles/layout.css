@@ -31,6 +31,8 @@
   color: var(--text-color);
   background-color: var(--card-bg);
   border-bottom: 1px solid var(--border-color);
+  /* The signal line: a 2px accent edge along the top of every page. */
+  box-shadow: inset 0 2px 0 var(--primary-color);
 }
 
 .app-header-brand,
@@ -71,20 +73,23 @@
   cursor: pointer;
 }
 
+/* Brand lockup: the wordmark is set in mono like the URLs it tests, then a
+   hairline, then the product name in quiet sans. */
 .app-brand-title {
   margin-bottom: 0;
-  font-size: 1.125rem;
-  font-weight: 650;
+  font-family: var(--font-family-mono);
+  font-size: 1.0625rem;
+  font-weight: 700;
   line-height: 1;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.03em;
   color: var(--text-color);
 }
 
 .app-brand-subtitle {
   margin-bottom: 0;
   color: var(--text-muted);
-  font-size: 0.8125rem;
-  font-weight: 500;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
   line-height: 1.35;
 }
 
@@ -103,12 +108,14 @@
   gap: 0.125rem;
 }
 
-/* Section labels stay natural case at body size: no uppercase, no tracking. */
+/* Section labels: natural case, no tracking, set in mono so they read as
+   structure rather than as one more link. */
 .sidenav-section-label {
   padding: var(--space-3) var(--space-2) var(--space-1);
   color: var(--text-muted);
+  font-family: var(--font-family-mono);
   font-size: 0.8125rem;
-  font-weight: 600;
+  font-weight: var(--weight-medium);
   line-height: 1.4;
   letter-spacing: 0;
 }
@@ -131,10 +138,16 @@
   background-color: var(--hover-wash);
 }
 
+/* Active item: accent wash, the signal rail on the leading edge, accent icon. */
 .app-sidenav .nav-link.active {
   color: var(--text-color);
-  background-color: var(--active-wash);
-  font-weight: 600;
+  background-color: var(--accent-wash);
+  box-shadow: inset var(--rail-width) 0 0 var(--primary-color);
+  font-weight: var(--weight-semibold);
+}
+
+.app-sidenav .nav-link.active .sidenav-icon {
+  color: var(--accent-text);
 }
 
 /* --- Responsive Mobile Menu --- */
@@ -392,13 +405,20 @@
 .app-brand-copy {
   display: grid;
   grid-template-columns: auto auto;
-  column-gap: var(--space-2);
+  column-gap: var(--space-3);
   align-items: baseline;
+}
+
+@media (min-width: 769px) {
+  .app-brand-subtitle {
+    padding-left: var(--space-3);
+    border-left: 1px solid var(--border-strong);
+  }
 }
 
 /* A circle here would be a third button shape in the header */
 .app-theme-toggle {
-  border: 1px solid var(--input-border);
+  border: 1px solid var(--border-strong);
   border-radius: var(--button-radius);
   background: var(--card-bg);
 }
@@ -439,7 +459,7 @@
   flex: 0 0 auto;
   padding-left: 0.5rem;
   color: var(--text-muted);
-  font-family: var(--font-family-sans-serif);
+  font-family: var(--font-family-mono);
   font-size: 0.75rem;
   font-weight: 500;
   white-space: nowrap;
