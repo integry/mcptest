@@ -18,6 +18,9 @@ export const OAUTH_CHECKER_PATH = '/tools/oauth-check';
 /** The public MCP test servers page (src/components/McpTestServersView.tsx). */
 export const MCP_TEST_SERVERS_PATH = '/mcp-test-servers';
 
+/** The MCP client protocol checklist page (src/components/McpTestClientView.tsx). */
+export const MCP_TEST_CLIENT_PATH = '/mcp-test-client';
+
 export const EXACT_APP_ROUTES: readonly string[] = [
   '/',
   '/catalog',
@@ -28,6 +31,7 @@ export const EXACT_APP_ROUTES: readonly string[] = [
   DISCOVERY_CHECKER_PATH,
   OAUTH_CHECKER_PATH,
   MCP_TEST_SERVERS_PATH,
+  MCP_TEST_CLIENT_PATH,
   '/oauth/callback',
   '/install-integration',
 ];

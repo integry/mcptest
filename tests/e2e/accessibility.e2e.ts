@@ -28,7 +28,7 @@ async function scan(page: Page, info: TestInfo, state: string) {
 const routes = [
   '/', '/catalog', '/catalog/databases', '/servers/context7/',
   '/learn/mcp-http-headers-reference', '/learn', '/clients', '/submit',
-  '/tools/oauth-check', '/tools/discovery', '/tools/breaking-changes', '/mcp-test-servers', '/no-such-page',
+  '/tools/oauth-check', '/tools/discovery', '/tools/breaking-changes', '/mcp-test-servers', '/mcp-test-client', '/no-such-page',
   '/docs/testing-guide', '/docs/troubleshooting',
   '/learn/mcp-session-not-found-after-deploy', '/learn/mcp-oauth-protected-resource-mismatch',
   '/learn/vscode-mcp-oauth-redirect-uris', '/learn/how-to-vet-an-mcp-server', '/learn/mcp-glossary',

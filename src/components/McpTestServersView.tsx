@@ -27,6 +27,7 @@ const Snippet: React.FC<{ snippet: SetupSnippet }> = ({ snippet }) => (
 );
 
 const RELATED_GUIDES = [
+  { path: '/mcp-test-client', label: 'Test your MCP client: a protocol checklist against these servers' },
   { path: '/docs/testing-guide', label: 'How to test a remote MCP server, step by step' },
   { path: '/learn/test-remote-mcp-server-in-ci', label: 'Test a remote MCP server in CI' },
   { path: '/learn/mcp-json-rpc-error-codes', label: 'MCP JSON-RPC error codes' },
@@ -105,7 +106,8 @@ export default function McpTestServersView() {
           <h2 id="connect-a-client">Connect a client</h2>
           <p>
             These snippets add the echo server; swap in any URL above. The formats are the ones each client documents,
-            as covered in the client setup guides.
+            as covered in the client setup guides. Building a client? <Link to="/mcp-test-client">Test your MCP
+            client</Link> lists what it should do against each server, with the expected requests and responses.
           </p>
           {CLIENT_SETUPS.map(setup => (
             <section key={setup.id} aria-labelledby={`client-${setup.id}`}>

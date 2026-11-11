@@ -11,6 +11,7 @@ import { MemoryRouter } from 'react-router-dom';
 import OAuthCheckerView from '../components/OAuthCheckerView';
 import BreakingChangesView from '../components/BreakingChangesView';
 import McpTestServersView from '../components/McpTestServersView';
+import McpTestClientView from '../components/McpTestClientView';
 import LearnIndex from '../components/learn/LearnIndex';
 import MarkdownLearnArticle from '../components/learn/MarkdownLearnArticle';
 import { loadHighlighter } from '../components/learn/highlighter';
@@ -57,3 +58,6 @@ export const renderOAuthCheckerPage = (): string => renderAt('/tools/oauth-check
 
 /** /mcp-test-servers, with its code blocks highlighted (prepareContentPrerender loads highlight.js). */
 export const renderMcpTestServersPage = (): string => renderAt('/mcp-test-servers', <McpTestServersView />);
+
+/** /mcp-test-client, with its request/response examples highlighted. */
+export const renderMcpTestClientPage = (): string => renderAt('/mcp-test-client', <McpTestClientView />);

@@ -14,11 +14,11 @@ import {
   getCatalogServerSeo,
   SITE_URL,
 } from '../utils/catalogSeo';
-import { MCP_TEST_SERVERS_METADATA, OAUTH_CHECKER_METADATA, BREAKING_CHANGES_METADATA, CATALOG_METADATA, DISCOVERY_METADATA, HOME_METADATA } from '../utils/pageMetadata';
+import { MCP_TEST_CLIENT_METADATA, MCP_TEST_SERVERS_METADATA, OAUTH_CHECKER_METADATA, BREAKING_CHANGES_METADATA, CATALOG_METADATA, DISCOVERY_METADATA, HOME_METADATA } from '../utils/pageMetadata';
 import { BREAKING_CHANGES_TOOL_PATH } from '../utils/breakingChangesRoute';
 import { OG_IMAGE_HEIGHT, OG_IMAGE_WIDTH, getOgImagePath } from '../utils/ogImage';
 import { parseResultShareUrl } from '../utils/urlUtils';
-import { OAUTH_CHECKER_PATH, DISCOVERY_CHECKER_PATH, MCP_TEST_SERVERS_PATH, isKnownAppPath } from '../utils/appRoutes';
+import { OAUTH_CHECKER_PATH, DISCOVERY_CHECKER_PATH, MCP_TEST_SERVERS_PATH, MCP_TEST_CLIENT_PATH, isKnownAppPath } from '../utils/appRoutes';
 import {
   LEARN_INDEX_METADATA,
   getContentPage,
@@ -219,6 +219,8 @@ export const useMetaTags = () => {
       applyMetadata({ ...OAUTH_CHECKER_METADATA, canonicalUrl: `${SITE_URL}${OAUTH_CHECKER_PATH}`, imageUrl: ogImage(OAUTH_CHECKER_PATH) });
     } else if (location.pathname === MCP_TEST_SERVERS_PATH) {
       applyMetadata({ ...MCP_TEST_SERVERS_METADATA, canonicalUrl: `${SITE_URL}${MCP_TEST_SERVERS_PATH}`, imageUrl: ogImage(MCP_TEST_SERVERS_PATH) });
+    } else if (location.pathname === MCP_TEST_CLIENT_PATH) {
+      applyMetadata({ ...MCP_TEST_CLIENT_METADATA, canonicalUrl: `${SITE_URL}${MCP_TEST_CLIENT_PATH}`, imageUrl: ogImage(MCP_TEST_CLIENT_PATH) });
     } else if (location.pathname === DISCOVERY_CHECKER_PATH) {
       applyMetadata({
         ...DISCOVERY_METADATA,
