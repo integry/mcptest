@@ -2,6 +2,7 @@ import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import type { ToolListConsistencyV1 } from '../types/toolListConsistency';
+import { toolListConsistencyFromSections } from '../utils/toolListConsistencyReport';
 import ToolListConsistencyPanel from './ToolListConsistencyPanel';
 
 beforeAll(() => {
@@ -69,5 +70,14 @@ describe('ToolListConsistencyPanel', () => {
     act(() => root?.unmount());
     root = undefined;
     expect(render(undefined).textContent).toBe('');
+  });
+
+  it('renders nothing for report evidence with null samples instead of throwing', () => {
+    const sections = [{ evidence: [{ metadata: { toolListConsistency: {
+      version: 1, status: 'consistent', samples: [null], differences: [],
+    } } }] }];
+    let container: HTMLElement | undefined;
+    expect(() => { container = render(toolListConsistencyFromSections(sections)); }).not.toThrow();
+    expect(container?.textContent).toBe('');
   });
 });

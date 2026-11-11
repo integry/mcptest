@@ -237,6 +237,38 @@ describe('tool list sample comparison', () => {
       .toBeUndefined();
   });
 
+  it('ignores schema-valid evidence metadata whose members are null or malformed', async () => {
+    const result = await assessToolListConsistency([
+      { connection: 'evaluation', tools: [search], instanceHeaders: { 'cf-ray': 'abc-AMS' } },
+      { connection: 'fresh', tools: [fetchTool] },
+    ], context);
+    expect(result.status).toBe('inconsistent');
+    const read = (record: unknown) => toolListConsistencyFromSections([{ evidence: [
+      { metadata: { toolListConsistency: record } },
+    ] }]);
+    expect(read(JSON.parse(JSON.stringify(result)))).toEqual(result);
+    const malformed: unknown[] = [
+      { version: 1, status: 'consistent', samples: [null], differences: [] },
+      { ...result, samples: [null] },
+      { ...result, samples: [{ ...result.samples[0], status: 7 }] },
+      { ...result, samples: [{ ...result.samples[0], connection: 'other' }] },
+      { ...result, samples: [{ ...result.samples[0], hash: 42 }] },
+      { ...result, samples: [{ ...result.samples[0], instanceHeaders: null }] },
+      { ...result, samples: [{ ...result.samples[0], instanceHeaders: { 'cf-ray': { nested: true } } }] },
+      { ...result, differences: [null] },
+      { ...result, differences: [{ ...result.differences[0], changedFields: null }] },
+      { ...result, differences: [{ ...result.differences[0], presentIn: 'all' }] },
+      { ...result, authentication: undefined },
+      { ...result, notCheckedReason: { text: 'x' } },
+    ];
+    for (const record of malformed) expect(read(record)).toBeUndefined();
+    // A malformed record does not hide a valid one recorded later.
+    expect(toolListConsistencyFromSections([{ evidence: [
+      { metadata: { toolListConsistency: malformed[0] } },
+      { metadata: { toolListConsistency: result } },
+    ] }])).toEqual(result);
+  });
+
   it('records a not-checked result without samples', () => {
     expect(notCheckedToolListConsistency(context, 'first list failed')).toMatchObject({
       status: 'not-checked', samples: [], notCheckedReason: 'first list failed',

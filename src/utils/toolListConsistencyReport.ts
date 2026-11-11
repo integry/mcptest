@@ -4,7 +4,9 @@
  * without loading the hashing or connection code.
  */
 import {
+  INSTANCE_IDENTIFYING_HEADERS,
   TOOL_LIST_CONSISTENCY_FINDING_ID,
+  TOOL_LIST_CONSISTENCY_VERSION,
   type ToolListConsistencyV1,
   type ToolListDifferenceV1,
 } from '../types/toolListConsistency';
@@ -86,13 +88,61 @@ export const toolListConsistencyReportDetail = (result: ToolListConsistencyV1): 
   },
 });
 
+const isPlainObject = (value: unknown): value is Record<string, unknown> => (
+  Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+);
+const isOptional = (value: unknown, check: (item: unknown) => boolean): boolean => value === undefined || check(value);
+const isString = (value: unknown): value is string => typeof value === 'string';
+const isCount = (value: unknown): value is number => typeof value === 'number' && Number.isInteger(value) && value >= 0;
+const isCountList = (value: unknown): boolean => Array.isArray(value) && value.every(isCount);
+const TOOL_DEFINITION_FIELDS: ReadonlySet<unknown> = new Set(['title', 'description', 'inputSchema', 'outputSchema', 'annotations']);
+const INSTANCE_HEADERS: ReadonlySet<string> = new Set(INSTANCE_IDENTIFYING_HEADERS);
+
+const isInstanceHeaders = (value: unknown): boolean => (
+  isPlainObject(value)
+  && Object.entries(value).every(([name, header]) => INSTANCE_HEADERS.has(name) && isString(header))
+);
+
+const isSample = (value: unknown): boolean => {
+  if (!isPlainObject(value)) return false;
+  return isCount(value.index)
+    && (value.connection === 'evaluation' || value.connection === 'fresh' || value.connection === 'same')
+    && (value.status === 'complete' || value.status === 'failed')
+    && isOptional(value.hash, isString)
+    && isOptional(value.toolCount, isCount)
+    && isOptional(value.pageCount, isCount)
+    && isOptional(value.error, isString)
+    && isOptional(value.instanceHeaders, isInstanceHeaders)
+    && isOptional(value.crossOrigin, (flag) => typeof flag === 'boolean');
+};
+
+const isDifference = (value: unknown): boolean => {
+  if (!isPlainObject(value)) return false;
+  return isString(value.tool)
+    && (value.kind === 'presence' || value.kind === 'definition')
+    && isCountList(value.presentIn)
+    && isCountList(value.absentIn)
+    && Array.isArray(value.changedFields)
+    && value.changedFields.every((field) => TOOL_DEFINITION_FIELDS.has(field));
+};
+
+/**
+ * Evidence metadata is unrestricted JSON in published and imported reports, so
+ * every member the views read is checked before the record is trusted.
+ */
 const isConsistencyRecord = (value: unknown): value is ToolListConsistencyV1 => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  const record = value as Record<string, unknown>;
-  return record.version === 1
-    && (record.status === 'consistent' || record.status === 'inconsistent' || record.status === 'not-checked')
-    && Array.isArray(record.samples)
-    && Array.isArray(record.differences);
+  if (!isPlainObject(value)) return false;
+  return value.version === TOOL_LIST_CONSISTENCY_VERSION
+    && (value.status === 'consistent' || value.status === 'inconsistent' || value.status === 'not-checked')
+    && (value.authentication === 'authenticated' || value.authentication === 'unauthenticated')
+    && (value.route === 'direct' || value.route === 'proxy')
+    && (value.transportType === 'streamable-http' || value.transportType === 'legacy-sse')
+    && isCount(value.requestedSamples)
+    && isCount(value.distinctHashes)
+    && Array.isArray(value.samples) && value.samples.every(isSample)
+    && Array.isArray(value.differences) && value.differences.every(isDifference)
+    && isOptional(value.notCheckedReason, isString)
+    && isOptional(value.headerNote, isString);
 };
 
 /** Reads the recorded result from evaluation sections or public report sections. */
@@ -107,7 +157,7 @@ export const toolListConsistencyFromSections = (
     ? (sections as ReadonlyArray<{ evidence?: ReadonlyArray<{ metadata?: unknown }> }>).flatMap((section) => section.evidence ?? [])
     : Object.values(sections as Record<string, { details?: ReadonlyArray<{ metadata?: unknown }> }>).flatMap((section) => section.details ?? []);
   return items
-    .map((item) => (item.metadata as { toolListConsistency?: unknown } | undefined)?.toolListConsistency)
+    .map((item) => (item?.metadata as { toolListConsistency?: unknown } | undefined)?.toolListConsistency)
     .find(isConsistencyRecord);
 };
 
