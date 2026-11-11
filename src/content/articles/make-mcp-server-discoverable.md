@@ -7,7 +7,7 @@ level: practitioner
 order: 27
 category: Discovery
 readingTimeMinutes: 8
-lastReviewed: "2026-10-24"
+lastReviewed: "2026-11-11"
 metaTitle: "Make Your MCP Server Discoverable | mcptest.io"
 metaDescription: "Make a remote MCP server discoverable: a SEP-2127 Server Card at <endpoint>/server-card, an AI Catalog in .well-known, OAuth metadata, and the official MCP Registry."
 relatedSlugs:
@@ -25,7 +25,7 @@ sourceLinks:
   - title: "Server Card extension: schema.json"
     url: "https://github.com/modelcontextprotocol/ext-server-card/blob/main/schema.json"
   - title: "AI Catalog specification"
-    url: "https://github.com/Agent-Card/ai-catalog"
+    url: "https://github.com/Agent-Card/ai-catalog/blob/main/specification/ai-catalog.md"
   - title: "MCP Registry: about"
     url: "https://modelcontextprotocol.io/registry/about"
   - title: "MCP Registry: publishing remote servers"
@@ -40,7 +40,9 @@ sourceLinks:
     url: "https://www.rfc-editor.org/rfc/rfc8414"
 ---
 
-A remote MCP server is easy to use once someone has its URL. Discovery is how they get the URL in the first place: a client, a browser extension or a registry crawler starts from a domain and finds the endpoint, its transport and how it authenticates, before anything connects. There are three places to publish that information, and they complement each other. This guide shows each one with the smallest document that passes validation. To see what your domain publishes today, run it through the free [MCP discovery checker](/tools/discovery).
+A remote MCP server is easy to use once someone has its URL. Discovery is how they get that URL. A client, a browser extension or a registry crawler starts from a domain and finds the endpoint, its transport and how it authenticates, all before connecting.
+
+There are three places to publish that information, and they complement each other. This guide shows each one with the smallest document that passes validation. To see what your domain publishes today, run it through the free [MCP discovery checker](/tools/discovery).
 
 ## The three ways a domain advertises a server
 
@@ -50,7 +52,9 @@ A remote MCP server is easy to use once someone has its URL. Discovery is how th
 | AI Catalog | `https://<domain>/.well-known/ai-catalog.json` | Clients that start from a domain and need the card's URL |
 | Official MCP Registry | `registry.modelcontextprotocol.io` | Registry clients, aggregators and subregistries |
 
-OAuth metadata is not a discovery document in the same sense, but a client that finds your endpoint still has to find your authorization server. If the server requires OAuth, that metadata has to be readable too.
+Server Cards are an optional MCP extension: SEP-2127 is a Final, Extensions Track proposal, and servers without a card keep working. The official registry is still in preview.
+
+OAuth metadata is not a discovery document in the same sense. But a client that finds your endpoint still has to find your authorization server, so if the server requires OAuth, that metadata has to be readable too.
 
 ## Write a Server Card
 
@@ -74,20 +78,25 @@ A Server Card is a static JSON document that describes one remote server: its id
 }
 ```
 
-- **`$schema`** must be exactly `https://static.modelcontextprotocol.io/schemas/v1/server-card.schema.json`. Date-versioned URLs and the registry's `server.schema.json` are rejected.
-- **`name`** is reverse-DNS with exactly one slash: `com.example/weather`. Use the namespace of a domain you control. It matches the name you would publish to the registry.
-- **`version`** is your server's version, ideally semver. Ranges such as `^1.2` are not allowed.
+- **`$schema`** must be exactly `https://static.modelcontextprotocol.io/schemas/v1/server-card.schema.json`. The schema rejects date-versioned URLs and the registry's `server.schema.json`.
+- **`name`** is reverse-DNS with exactly one slash, such as `com.example/weather`. Use the namespace of a domain you control, so it matches the name you would publish to the registry.
+- **`version`** is your server's version and should be semver. Ranges such as `^1.2.3` or `1.x` are rejected.
 - **`description`** is 1 to 100 characters.
 
-`remotes` is optional in the schema, but without it the card names a server and gives no way to reach it. Each remote has a `type` (`streamable-http`, or `sse` for the deprecated transport) and a `url`. A URL can contain `{variables}`, such as `https://{tenant}.example.com/mcp`, described in a `variables` map with a `default` where one exists. Headers the endpoint needs go in `headers`, with `isSecret: true` for credentials. Describe the header there; never put a real value in a public card.
+`remotes` is optional in the schema, but without it the card names a server and gives no way to reach it. Each remote has:
 
-The card is advisory. Once connected, a client compares it with what `server/discover` or `initialize` reports and trusts the live values. Keep `name`, `version` and the protocol versions in step with your server's runtime, or clients will see a mismatch.
+- **`type`**: `streamable-http`, or `sse` for the deprecated HTTP+SSE transport.
+- **`url`**: the endpoint. It can contain `{variables}`, such as `https://{tenant}.example.com/mcp`, described in a `variables` map with a `default` where one exists.
+- **`headers`** (optional): headers the endpoint needs, with `isSecret: true` for credentials. Describe the header; never put a real value in a public card.
+- **`supportedProtocolVersions`** (optional): lets a client tell whether it can connect before it tries.
+
+The card is advisory. If it disagrees with what the live server reports through `server/discover`, clients should prefer the live values, and they must not use the card for security or access-control decisions. Keep `name`, `version` and the protocol versions in step with your server's runtime so clients see no mismatch.
 
 ## Serve the card at your endpoint
 
-SEP-2127 reserves one location: your Streamable HTTP URL plus `/server-card`. A server at `https://example.com/mcp` serves its card at `https://example.com/mcp/server-card`. A card can live at any URL, as long as the AI Catalog points to it, but this is the default a client tries first.
+SEP-2127 reserves one recommended location: your Streamable HTTP URL plus `/server-card`. A server at `https://example.com/mcp` serves its card at `https://example.com/mcp/server-card`. A card may live at any other URL instead, as long as your AI Catalog points to it.
 
-Serve it with these headers:
+Serve it over HTTPS with these headers:
 
 ```http
 Content-Type: application/mcp-server-card+json
@@ -99,9 +108,11 @@ Cache-Control: public, max-age=3600
 ETag: "v1.4.0"
 ```
 
-The CORS headers are required, not optional. Browser-based clients can only read a cross-origin card that allows it, and the card is public metadata, so a wildcard origin is safe. Answer `If-None-Match` with `304 Not Modified` when the card has not changed. Clients send `Accept: application/mcp-server-card+json`; if your framework negotiates content, make sure that request gets the card and not an error.
+- **CORS is required.** The extension's discovery rules say hosted cards MUST send CORS headers. Browser-based clients can only read a cross-origin card that allows it, and because the card is public metadata, a wildcard origin is safe.
+- **Caching is recommended.** Send `Cache-Control` and an `ETag`, and answer `If-None-Match` with `304 Not Modified` when the card has not changed.
+- **Content negotiation.** Clients send `Accept: application/mcp-server-card+json`. If your framework negotiates content, make sure that request gets the card and not an error.
 
-Earlier drafts of the proposal used `/.well-known/mcp/server-card.json`. The final SEP chose not to use `.well-known` for individual cards, because a card is per-server rather than per-site. Some tools written against the drafts still probe that path, and serving the same card there as well does no harm.
+Earlier drafts of the proposal used `/.well-known/mcp/server-card.json`. The final design does not use `.well-known` for individual cards, because a card describes one server, not a whole site; `.well-known` is kept for the AI Catalog. Tools written against the drafts may still probe the old path, and serving the same card there as well does no harm.
 
 ## List the card in an AI Catalog
 
@@ -120,7 +131,10 @@ A client that only knows your domain cannot guess where your endpoint is. The AI
 }
 ```
 
-Each entry has an `identifier`, the `type` `application/mcp-server-card+json` and exactly one of `url` (where the card is) or `data` (the card itself, inline). One catalog can list several servers, including servers hosted on another domain on your behalf. Send the same CORS headers as on the card.
+- **`specVersion`** and **`entries`** are required at the top level.
+- Each entry has an **`identifier`** (the `urn:air:{publisher}:{namespace}:{name}` form for open systems), the **`type`** `application/mcp-server-card+json`, and exactly one of **`url`** (where the card is) or **`data`** (the card itself, inline).
+
+One catalog can list several servers, including servers that another company hosts on your behalf. Send the same CORS headers as on the card.
 
 ## Make the OAuth metadata readable
 
@@ -135,7 +149,13 @@ If the endpoint requires OAuth, a client that discovered it next fetches the pro
 }
 ```
 
-`resource` must identify the endpoint, and `authorization_servers` must name at least one server whose metadata ([RFC 8414](https://www.rfc-editor.org/rfc/rfc8414) or OpenID Connect discovery) publishes the authorization and token endpoints, `S256` in `code_challenge_methods_supported`, and either a `registration_endpoint` or `client_id_metadata_document_supported: true`. Without one of the last two, a client that has no pre-registered client ID cannot sign in. Both documents need CORS headers for browser clients. The [OAuth 2.1 reference](/learn/mcp-oauth-2-1-reference) covers the full flow.
+`resource` must identify the endpoint. `authorization_servers` must name at least one server whose metadata ([RFC 8414](https://www.rfc-editor.org/rfc/rfc8414) or OpenID Connect discovery) publishes:
+
+- the authorization and token endpoints;
+- `S256` in `code_challenge_methods_supported`;
+- either `client_id_metadata_document_supported: true` or a `registration_endpoint`.
+
+Without one of the last two, a client that has no pre-registered client ID cannot sign in. Both metadata documents need CORS headers for browser clients. The [OAuth 2.1 reference](/learn/mcp-oauth-2-1-reference) covers the full flow.
 
 ## Publish to the official MCP Registry
 
@@ -161,7 +181,13 @@ mcp-publisher login http --domain example.com --private-key "$PRIVATE_KEY"
 mcp-publisher publish
 ```
 
-The login method decides the namespace. GitHub login grants `io.github.<username>/*`. DNS login (a TXT record on the apex domain) and HTTP login (a key file at `https://example.com/.well-known/mcp-registry-auth`) grant `com.example/*`, so the name matches the domain users see in the URL. The [authentication docs](https://modelcontextprotocol.io/registry/authentication) show how to generate the key pair. The registry checks that you control the namespace, not the remote URL, and each remote URL can belong to only one server name.
+The login method decides which names you may publish:
+
+- **GitHub login** grants `io.github.<username>/*` (or your organization's name).
+- **HTTP login**, with a key file at `https://example.com/.well-known/mcp-registry-auth`, grants `com.example/*`.
+- **DNS login**, with a TXT record on `example.com`, grants `com.example/*` and also subdomain namespaces such as `com.example.api/*`.
+
+Domain-based names match the domain users see in the URL. The [authentication docs](https://modelcontextprotocol.io/registry/authentication) show how to generate the key pair. The registry verifies that you control the namespace; it does not verify that you control the remote URL, and the URL must be publicly reachable.
 
 Use the same `name` in the registry and in your Server Card. Then a client that finds the card and a client that searches the registry identify the same server.
 
@@ -169,9 +195,9 @@ Use the same `name` in the registry and in your Server Card. Then a client that 
 
 The [MCP discovery checker](/tools/discovery) takes a domain and reports each location in this guide, with the exact URL it fetched:
 
-- the draft `.well-known` card paths, the AI Catalog and every card it lists, validated against the v1 schema;
+- the draft and legacy `.well-known` card paths, the AI Catalog and every card it lists, validated against the v1 schema;
 - `<endpoint>/server-card` for every endpoint it found;
 - the protected resource metadata and authorization server metadata of each endpoint;
 - official registry entries and mcptest.io catalog listings with an endpoint on the domain.
 
-It reads each document from your browser first, so a missing CORS header shows up as a warning rather than passing silently. When nothing is found, it gives you a card and a catalog for your domain to copy. Every endpoint it finds opens in the inspector, where you can check that the live server agrees with its card.
+It reads each document from your browser first, so a missing CORS header shows up as a warning rather than passing silently. When nothing is found, it gives you a card and a catalog for your domain to copy. Every endpoint it finds links to the inspector, where you can check that the live server agrees with its card.

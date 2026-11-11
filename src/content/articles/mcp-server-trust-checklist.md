@@ -5,115 +5,199 @@ track: build
 level: practitioner
 order: 3
 category: Security and trust
-readingTimeMinutes: 9
-lastReviewed: "2026-10-25"
+readingTimeMinutes: 10
+lastReviewed: "2026-11-11"
 relatedSlugs:
   - how-to-vet-an-mcp-server
   - mcp-clients-compared
   - designing-production-mcp-server
 sourceLinks:
-  - title: "MCP specification: Security and trust principles"
-    url: "https://modelcontextprotocol.io/specification/2024-11-05/index"
-  - title: "MCP specification: Tool safety"
-    url: "https://modelcontextprotocol.io/specification/draft/server/tools"
-  - title: "MCP specification: Transport security"
-    url: "https://modelcontextprotocol.io/specification/2025-06-18/basic/transports"
-  - title: "MCP specification: Authorization"
-    url: "https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization"
+  - title: "MCP 2026-07-28 specification: Security and trust & safety"
+    url: "https://modelcontextprotocol.io/specification/2026-07-28"
+  - title: "MCP 2026-07-28 specification: Tools (tool safety, annotations)"
+    url: "https://modelcontextprotocol.io/specification/2026-07-28/server/tools"
+  - title: "MCP 2026-07-28 specification: Streamable HTTP (transport security)"
+    url: "https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http"
+  - title: "MCP 2026-07-28 specification: Authorization"
+    url: "https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization"
+  - title: MCP security best practices
+    url: "https://modelcontextprotocol.io/docs/2026-07-28/tutorials/security/security_best_practices"
   - title: VS Code MCP server trust guidance
     url: "https://code.visualstudio.com/docs/agent-customization/mcp-servers"
+  - title: "VS Code: Manage MCP servers (server trust and sandboxing)"
+    url: "https://code.visualstudio.com/docs/agents/run/manage-mcp-servers"
   - title: OpenAI MCP app safety guidance
     url: "https://help.openai.com/en/articles/12584461-developer-mode-and-full-mcp-connectors-in-chatgpt"
 ---
 
-For a repeatable approval process and organisation client controls, see [how to vet an MCP server: assessment, audit and allowlisting](/learn/how-to-vet-an-mcp-server).
+For a repeatable approval process and organisation-wide client controls, see [how to vet an MCP server: assessment, audit and allowlisting](/learn/how-to-vet-an-mcp-server).
 
 ## Trust is a chain, not a badge
 
-Connecting an MCP server can give an AI host access to local code, private data, external accounts, or write operations. “Uses MCP,” a directory listing, a familiar tool name, or a successful connection test does not establish safety. Evaluate the publisher, distributed code, runtime, hosting operator, authorization server, downstream APIs, tools, and client controls as one chain.
+Connecting an MCP server can give an AI host access to local code, private data, external accounts, or write operations. None of these establish that a server is safe:
 
-Use this checklist before connecting, after meaningful updates, and on a regular review date. Raise the evidence bar with impact: a public documentation search tool is not the same risk as a local shell, payroll writer, production database, or messaging integration.
+- it "uses MCP";
+- it is listed in a directory;
+- its tool names look familiar;
+- a connection test succeeds.
+
+Evaluate the whole chain together: the publisher, the distributed code, the runtime, the hosting operator, the authorization server, the downstream APIs, the tools, and the controls in your client.
+
+Run this checklist before connecting, after meaningful updates, and on a fixed review date. Ask for more evidence as the impact grows. A public documentation search tool is a different risk from a local shell, a payroll writer, a production database, or a messaging integration.
 
 ## 1. Publisher and distribution
 
 - Is the publisher the service owner, a known maintainer, or an unrelated third party?
-- Does the product page link to the exact repository, package, endpoint, and support channel?
-- For a package, are owner accounts protected, releases signed or provenance-attested, dependencies locked, and versions pinned?
+- Does the product page link to the exact repository, package, endpoint and support channel?
+- For a package: are the owner accounts protected, releases signed or provenance-attested, dependencies locked, and versions pinned?
 - Does a one-click install resolve to the same command and arguments you reviewed?
-- Is there a security policy, vulnerability-reporting path, release history, and response record?
-- Has the package or endpoint changed owners, domains, or behavior since the last review?
+- Is there a security policy, a way to report vulnerabilities, a release history, and a record of past responses?
+- Has the package or endpoint changed owner, domain or behavior since the last review?
 
-Typosquatting is especially dangerous for stdio examples that run `npx`, `uvx`, containers, or install scripts. Resolve the exact package owner and version. Avoid floating “latest” execution for production or sensitive work.
+Typosquatting is especially dangerous for stdio examples that run `npx`, `uvx`, containers or install scripts. Confirm the exact package owner and version. Do not run a floating "latest" version for production or sensitive work.
 
 ## 2. Code, runtime, and hosting
 
-For local stdio, inspect the command, arguments, environment variables, working directory, filesystem reach, child-process behavior, and outbound network access. Local servers execute with the user's OS permissions unless the client or operating system provides a sandbox. Open source helps review but does not prove the installed artifact matches the repository.
+**Local stdio servers** run with your operating system permissions unless the client or the OS sandboxes them. Inspect:
 
-For remote HTTP, verify TLS, the endpoint owner, hosting region/operator, data retention, subprocessors, tenant isolation, incident history, availability expectations, and deletion policy. Ask whether prompts, tool arguments, results, and tokens are stored or used for training. A remote server can change without a package update, so monitoring and review dates matter.
+- the command, arguments and environment variables;
+- the working directory and which files it can reach;
+- whether it starts child processes;
+- its outbound network access.
+
+Some clients can sandbox local servers. For example, VS Code can restrict file system and network access for stdio servers with `sandboxEnabled` on macOS and Linux, but not on Windows. Open source helps review, but does not prove that the installed artifact matches the repository.
+
+A local server that listens on HTTP instead of stdio must validate the `Origin` header and should bind only to `127.0.0.1`. The specification requires this to stop websites from reaching it through DNS rebinding.
+
+**Remote HTTP servers** need different checks:
+
+- TLS and the owner of the endpoint;
+- the hosting region and operator;
+- data retention, subprocessors and deletion policy;
+- tenant isolation, incident history and availability expectations.
+
+Ask whether prompts, tool arguments, results or tokens are stored or used for training. A remote server can change without a package update, so monitoring and review dates matter.
 
 ## 3. Requested permissions
 
-Inventory permissions in user language:
+List the permissions in terms a user would recognise:
 
 | Permission | Questions |
 | --- | --- |
 | Read | Which accounts, projects, folders, messages, records, or local paths? Are private fields filtered? |
 | Write | Can it create, edit, send, publish, merge, deploy, purchase, invite, or change access? |
-| Delete | Is deletion soft/reversible? Is bulk deletion possible? |
-| Execute | Can it run shell commands, code, browser automation, SQL, or arbitrary URLs? In which sandbox? |
+| Delete | Is deletion soft or reversible? Is bulk deletion possible? |
+| Execute | Can it run shell commands, code, browser automation, SQL, or fetch arbitrary URLs? In which sandbox? |
 | Share | Can returned data go to the model provider, other servers, third parties, or logs? |
 | Admin | Can it manage credentials, members, billing, permissions, or audit settings? |
 
-Prefer least-privilege scopes, restricted service accounts, test tenants, read-only keys, limited local directories, and short-lived credentials. Reject a generic all-access token when the documented job only needs one project or read-only search.
+Prefer the least privilege that does the job: narrow scopes, restricted service accounts, test tenants, read-only keys, limited local directories, and short-lived credentials. Reject a generic all-access token when the documented job only needs one project or read-only search.
 
 ## 4. Authentication and token handling
 
-For OAuth, verify protected-resource metadata points to the expected authorization server; the browser opens the expected issuer; requested scopes match the job; PKCE is used; the token is bound to the MCP resource; revocation works; and reauthorization makes scope changes visible. Determine where access tokens, refresh tokens, and client credentials are stored and encrypted.
+For an OAuth server, check each step of the flow:
 
-For API keys, identify who creates, rotates, revokes, and can read the key. Do not put keys in URLs, source control, shared workspace configuration, screenshots, or model prompts. For an authless server, confirm it truly serves public/non-sensitive data and cannot be used as an open relay or expensive anonymous write surface.
+- The protected resource metadata names the authorization server you expect.
+- The browser opens that authorization server, not a look-alike.
+- The requested scopes match the job.
+- PKCE is used.
+- The token is requested for this MCP server (the `resource` parameter), and the server only accepts tokens issued for it.
+- Revoking access works.
+- Reauthorization shows the user any change in scopes.
 
-A client login prompt authenticates something; inspect the issuer and scopes to know what. A valid OAuth flow does not prove the MCP publisher is safe.
+Find out where access tokens, refresh tokens and client credentials are stored, and how they are encrypted. A server that forwards your token to another API is a red flag: the specification forbids MCP servers from passing tokens through.
+
+For an API key, find out who creates, rotates, revokes and can read it. Do not put keys in URLs, source control, shared workspace configuration, screenshots or model prompts.
+
+For a server without authentication, confirm that it only serves public, non-sensitive data. Make sure it cannot be used as an open relay or as an anonymous surface for expensive writes.
+
+A login prompt proves that you authenticated to something. The issuer and the scopes tell you what. A valid OAuth flow does not prove that the publisher of the MCP server is safe.
 
 ## 5. Tool surface and write behavior
 
-Read every tool name, description, and input schema before enabling the server. Flag tools with arbitrary commands, unrestricted URLs, raw SQL, broad filesystem paths, credential inputs, hidden recipients, or combined preview-and-commit behavior. Check whether names and descriptions plainly disclose side effects.
+Read every tool name, description and input schema before you enable the server. Flag any tool that:
 
-For writes, require server-side authorization, validation, idempotency, audit IDs, and safe retry behavior. High-impact operations should offer preview/dry run, explicit target and scope, and a reversible path. Test what happens when the client times out after the server commits; a blind retry must not duplicate payments, messages, tickets, or deployments.
+- accepts arbitrary commands, URLs or raw SQL;
+- accepts broad filesystem paths;
+- takes credentials as inputs;
+- sends to recipients the user is not shown;
+- previews and commits in one call.
 
-Tool annotations and publisher descriptions are claims from the server. The MCP specification tells clients to treat annotations as untrusted unless the server itself is trusted. Confirm critical properties through code, controlled tests, and logs.
+Check that names and descriptions state side effects plainly.
+
+For write tools, require server-side authorization, input validation, idempotency, audit IDs, and safe retries. High-impact operations should offer a preview or dry run, an explicit target and scope, and a way to reverse them. Test what happens when the client times out after the server has committed: a blind retry must not duplicate a payment, message, ticket or deployment.
+
+Tool annotations such as `readOnlyHint` and the publisher's descriptions are claims made by the server. The specification says clients **MUST** treat annotations as untrusted unless the server is trusted. Confirm critical properties with code review, controlled tests and logs.
 
 ## 6. Client controls and prompt-injection exposure
 
-Confirm the client shows which server supplied a tool, its arguments, and results. Determine whether installation trust, per-tool enablement, per-call confirmation, write confirmation, and auto-run are separate controls. Keep auto-run off during evaluation. Reset stored trust after configuration or publisher changes.
+The specification says a human **SHOULD** always be able to deny a tool call. Confirm that the client shows which server supplied a tool, and shows its arguments and results.
 
-Any server that reads web pages, tickets, messages, documents, or repositories can return hostile instructions embedded in data. Test whether the host distinguishes content from instructions and whether a malicious document can cause a sensitive tool call. Limit which other tools are enabled in the same session, because prompt injection becomes more damaging when read access can trigger unrelated writes.
+Check which of these the client controls separately:
+
+- trusting the server at install or first start;
+- enabling individual tools;
+- confirming each call, and confirming writes;
+- auto-running tools without confirmation.
+
+Keep auto-run off during evaluation. Clients store trust differently, so learn how yours does. In VS Code, for example, servers configured in a trusted workspace start without a separate MCP trust prompt, even after their configuration changes. **MCP: Reset Trust** clears VS Code's own MCP trust decisions but not tool approvals. Reset stored trust yourself after a configuration or publisher change.
+
+Any server that reads web pages, tickets, messages, documents or repositories can return hostile instructions hidden in the data. This is called prompt injection. Test whether the host treats that content as data, and whether a malicious document can trigger a sensitive tool call. Limit which other tools are enabled alongside it: injection does the most damage when read access can trigger unrelated writes.
 
 ## 7. Logging, privacy, and incident response
 
-The publisher should state what it logs, retention duration, access controls, redaction, tenant boundaries, and deletion process. Logs should support request correlation and write audits without recording tokens or unnecessary content. Verify the organization can answer: who invoked which operation, against which target, under which identity, and with what outcome?
+The publisher should state:
 
-Record your own connection owner, business purpose, approved scopes, server version/endpoint, configuration hash, test evidence, review date, and revocation instructions. Define who disables the integration during an incident and how to find every installed copy.
+- what it logs, and for how long;
+- who can access logs, and what is redacted;
+- how tenants are separated;
+- how data is deleted.
+
+Logs should let you correlate requests and audit writes without recording tokens or unnecessary content. Your organization should be able to answer: who invoked which operation, against which target, under which identity, and with what outcome?
+
+Keep your own record of each connection:
+
+- owner and business purpose;
+- approved scopes;
+- server version or endpoint, and a hash of the configuration;
+- test evidence and review date;
+- how to revoke it.
+
+Decide who disables the integration during an incident, and how to find every installed copy.
 
 ## 8. Testing evidence
 
-Do not accept only a screenshot of “connected.” Look for or produce:
+Do not accept a screenshot of "connected" on its own. Look for, or produce:
 
-- exact tested endpoint/package digest and date;
+- the exact endpoint or package digest tested, and the date;
 - supported client and protocol versions;
-- discovered tools/resources/prompts compared with documentation;
+- the discovered tools, resources and prompts, compared with the documentation;
 - schema boundary and malformed-input tests;
 - cross-user and cross-tenant authorization tests;
-- OAuth first login, refresh, revocation, and insufficient-scope tests;
+- OAuth first login, refresh, revocation and insufficient-scope tests;
 - write idempotency and timeout-after-commit tests;
-- rate limits, body/output limits, cancellation, and dependency failure tests;
-- secret and sensitive-data redaction checks;
-- local sandbox or remote isolation evidence;
-- a reproducible test in the [MCP Playground](/) or official Inspector.
+- rate limit, body and output size, cancellation and dependency failure tests;
+- checks that secrets and sensitive data are redacted;
+- evidence of the local sandbox or remote isolation;
+- a reproducible test in the [MCP Playground](/) or the official Inspector.
 
-Community reports can reveal questions worth testing, but they are anecdotal. Prefer specification requirements, vendor documentation, source review, and reproducible evidence for approval decisions.
+Community reports can suggest what to test, but they are anecdotal. Base approval decisions on specification requirements, vendor documentation, source review and reproducible evidence.
 
 ## Decision record
 
-End the review with one of four explicit outcomes: **approved** for named users/data/actions; **approved with controls** such as read-only, sandbox, test tenant, or per-call confirmation; **needs evidence** with a named owner and deadline; or **rejected** with the failed requirement.
+End every review with one of four explicit outcomes:
 
-Set an expiry or next-review date. Re-review on ownership change, domain or authorization-server change, new write tools, expanded scopes, material dependency/runtime changes, client trust-policy changes, or an incident. Remove unused connections and revoke credentials—disabled UI alone may leave a valid token behind.
+- **Approved** for named users, data and actions.
+- **Approved with controls**, such as read-only access, a sandbox, a test tenant, or per-call confirmation.
+- **Needs evidence**, with a named owner and a deadline.
+- **Rejected**, naming the requirement that failed.
+
+Set an expiry or next review date. Review again when any of these happen:
+
+- the owner, domain or authorization server changes;
+- new write tools appear or scopes expand;
+- dependencies or the runtime change materially;
+- the client's trust policy changes;
+- an incident occurs.
+
+Remove connections nobody uses, and revoke their credentials. Disabling a server in the UI can leave a valid token behind.
