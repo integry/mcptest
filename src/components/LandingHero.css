@@ -336,6 +336,8 @@
 .landing-step-description a,
 .landing-faq-answer a {
   color: var(--primary-color);
+  /* Inline links need a non-color cue (axe link-in-text-block). */
+  text-decoration: underline;
   text-underline-offset: 3px;
 }
 
@@ -568,6 +570,7 @@ html[data-returning-visitor] .seo-returning-workspace { display: contents; }
 .keyword-landing-item-description a,
 .keyword-landing .landing-lede a {
   color: var(--primary-color);
+  text-decoration: underline;
   text-underline-offset: 3px;
 }
 
