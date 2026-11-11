@@ -105,40 +105,43 @@ Leave out `Mcp-Method`, or let it disagree with the body, and a 2026 server shou
 
 ## Stateful 2025 servers with curl
 
-A 2025 server starts with `initialize`. This example captures the session ID from the response headers into a shell variable. On a server that issues none, the variable stays empty:
+A 2025 server starts with `initialize`. This example saves the response headers and body, then reads the session ID and the negotiated version into shell variables. On a server that issues no session ID, `SESSION_ID` stays empty:
 
 ```bash
 URL=https://your-server.example.com/mcp
 
-SESSION_ID=$(curl -s -D - -o /dev/null "$URL" \
+curl -s -D init-headers.txt -o init-body.txt "$URL" \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"curl-check","version":"1.0.0"}}}' \
-  | awk 'tolower($1) == "mcp-session-id:" { print $2 }' | tr -d '\r')
-echo "session: ${SESSION_ID:-none}"
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"curl-check","version":"1.0.0"}}}'
+
+SESSION_ID=$(awk 'tolower($1) == "mcp-session-id:" { print $2 }' init-headers.txt | tr -d '\r')
+PROTOCOL_VERSION=$( (grep -q '^data: ' init-body.txt && sed -n 's/^data: //p' init-body.txt || cat init-body.txt) \
+  | jq -r 'select(.id == 1) | .result.protocolVersion // empty')
+echo "session: ${SESSION_ID:-none}, version: ${PROTOCOL_VERSION:-none}"
 ```
 
-Run it once with `-i` instead of `-s -D - -o /dev/null` to read the result too: check `protocolVersion` and `capabilities`. Then finish the handshake and make requests, carrying the version and the session:
+The client proposes `2025-11-25`, but the server may answer with an older version it supports, such as `2025-03-26`. Later requests must send the version the server returned, so they use `$PROTOCOL_VERSION` rather than a fixed string. If it prints `none`, read `init-body.txt`: the server returned an error instead of a result. Check `capabilities` there too. Then finish the handshake and make requests, carrying the version and the session:
 
 ```bash
 curl -i "$URL" \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
-  -H "MCP-Protocol-Version: 2025-11-25" \
+  -H "MCP-Protocol-Version: $PROTOCOL_VERSION" \
   -H "Mcp-Session-Id: $SESSION_ID" \
   -d '{"jsonrpc":"2.0","method":"notifications/initialized"}'
 
 curl -i "$URL" \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
-  -H "MCP-Protocol-Version: 2025-11-25" \
+  -H "MCP-Protocol-Version: $PROTOCOL_VERSION" \
   -H "Mcp-Session-Id: $SESSION_ID" \
   -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
 
 curl -i "$URL" \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
-  -H "MCP-Protocol-Version: 2025-11-25" \
+  -H "MCP-Protocol-Version: $PROTOCOL_VERSION" \
   -H "Mcp-Session-Id: $SESSION_ID" \
   -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"echo","arguments":{"text":"hello"}}}'
 ```
@@ -162,7 +165,7 @@ Progress notifications or server requests may arrive as earlier `data:` lines be
 curl -sN "$URL" \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
-  -H "MCP-Protocol-Version: 2025-11-25" \
+  -H "MCP-Protocol-Version: $PROTOCOL_VERSION" \
   -H "Mcp-Session-Id: $SESSION_ID" \
   -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
   | sed -n 's/^data: //p' | jq '.result.tools[].name'
@@ -223,7 +226,7 @@ The `Accept` header is missing or lists only one type. Send `Accept: application
 
 ### Do I need to send `initialize` before every request?
 
-Only to a 2025 server, and only once per session: send `initialize`, then `notifications/initialized`, then reuse the session ID and version. A 2026 server has no handshake; every request carries its version and method headers on its own.
+Only to a 2025 server, and only once per session: send `initialize`, then `notifications/initialized`, then reuse the session ID and the version the server returned in `initialize`. A 2026 server has no handshake; every request carries its version and method headers on its own.
 
 ### How do I read an SSE response from curl?
 
