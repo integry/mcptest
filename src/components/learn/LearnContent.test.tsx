@@ -452,6 +452,23 @@ describe('Learn article page', () => {
     expect(guide.querySelectorAll('.reading-code code.language-bash')).toHaveLength(8);
   });
 
+  it('scopes testing-guide checklist items to the capabilities a server actually offers', () => {
+    const guide = render(<LearnArticlePage article={getLearnArticle('testing-guide')!} />);
+    const heading = guide.querySelector('.reading-prose h2[id="pre-release-checklist"]');
+    let list = heading?.nextElementSibling;
+    while (list && list.tagName !== 'OL') list = list.nextElementSibling;
+    const items = Array.from(list?.querySelectorAll('li') ?? [], item => item.textContent ?? '');
+
+    expect(items).toHaveLength(11);
+    expect(items[2]).toMatch(/^For each capability the server advertises/);
+    expect(items[3]).toMatch(/^Every tool that declares an outputSchema/);
+    expect(items[4]).toMatch(/^On 2026, a missing or mismatched Mcp-Method/);
+    expect(items[4]).toContain('Mcp-Name on tools/call, resources/read and prompts/get');
+    expect(items[5]).toMatch(/^If the server is protected, unauthenticated requests get 401/);
+    expect(items[5]).toContain('if it allows anonymous access, it works without credentials');
+    expect(items[6]).toContain('a 2025 server that issues Mcp-Session-Id exposes it');
+  });
+
   it('embeds a registered component at the marker through the component escape hatch', () => {
     const base = getLearnArticle('testing-guide')!;
     const article = {

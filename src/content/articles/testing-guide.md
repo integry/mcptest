@@ -354,11 +354,11 @@ For wire-level expectations use the [current specification](https://modelcontext
 
 1. Unit tests call every tool in-process, including documented errors and schema-rejected arguments.
 2. `server/discover` (2026) or `initialize` (2025) succeeds against the deployed URL, with the expected version and capabilities.
-3. `tools/list`, `resources/list` and `prompts/list` return complete results, following `nextCursor` to the last page.
-4. Every tool's `structuredContent` matches its `outputSchema`.
-5. Missing or mismatched `Mcp-Method` and `Mcp-Name` headers are rejected with `400`; malformed JSON gets `-32700`.
-6. Unauthenticated requests get `401` with a usable `WWW-Authenticate`; OAuth completes with PKCE and the token is audience-checked.
-7. The browser preflight passes from an allowed origin, and a 2025 session ID is exposed.
+3. For each capability the server advertises, `tools/list`, `resources/list` or `prompts/list` returns complete results, following `nextCursor` to the last page.
+4. Every tool that declares an `outputSchema` returns `structuredContent` that matches it.
+5. On 2026, a missing or mismatched `Mcp-Method` is rejected with `400`, and so is `Mcp-Name` on `tools/call`, `resources/read` and `prompts/get`; on every version, malformed JSON gets `-32700`.
+6. If the server is protected, unauthenticated requests get `401` with a usable `WWW-Authenticate`, OAuth completes with PKCE and the token is audience-checked; if it allows anonymous access, it works without credentials.
+7. The browser preflight passes from an allowed origin, and a 2025 server that issues `Mcp-Session-Id` exposes it.
 8. Sessions, if any, survive the deploy process you actually use, or fail with `404` and recover through a new `initialize`.
 9. The tool list has no unreviewed breaking changes against the last release.
 10. The CI gate passes against the preview deployment, and the browser report has no blocking findings.
