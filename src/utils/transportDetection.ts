@@ -5,6 +5,7 @@ import {
   type ProtocolEra,
 } from '@modelcontextprotocol/client';
 import { TransportType } from '../types';
+import { INSTANCE_IDENTIFYING_HEADERS } from '../types/toolListConsistency';
 import { CorsAwareStreamableHTTPTransport } from './corsAwareTransport';
 import { CorsAwareSSETransport } from './corsAwareSseTransport';
 import {
@@ -96,6 +97,8 @@ export interface ObservedTransportRequest {
   retryAfter?: string;
   /** Diagnostic header names the browser could read on this response. */
   readableResponseHeaders?: readonly string[];
+  /** Bounded values of instance-identifying headers (cf-ray, server, ...) the caller could read. */
+  instanceHeaders?: Record<string, string>;
   /** True when the browser enforced CORS on this response (direct, other origin). */
   crossOrigin?: boolean;
   /** Set on a target HTTP 429: whether mcptest retried once, and after how long. */
@@ -828,6 +831,11 @@ const observeAuthenticationResponses = (
       if (readableResponseHeaders.length > 0) {
         attemptedRequest.readableResponseHeaders = readableResponseHeaders;
       }
+      const instanceHeaders = Object.fromEntries(INSTANCE_IDENTIFYING_HEADERS.flatMap((header) => {
+        const value = boundHeaderValue(response.headers.get(header));
+        return value ? [[header, value]] : [];
+      }));
+      if (Object.keys(instanceHeaders).length > 0) attemptedRequest.instanceHeaders = instanceHeaders;
       if (response.status === 429) {
         const retryAfter = boundHeaderValue(response.headers.get('retry-after'));
         if (retryAfter) attemptedRequest.retryAfter = retryAfter;

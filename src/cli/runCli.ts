@@ -3,6 +3,11 @@ import { resolve } from 'node:path';
 import { isOAuthSensitiveKey } from '../utils/transportDetection';
 import { redactReportString } from '../utils/reportArtifact';
 import {
+  describeToolListDifference,
+  toolListConsistencyFromSections,
+  toolListConsistencySummary,
+} from '../utils/toolListConsistencyReport';
+import {
   DEFAULT_RELEASE_GATE_POLICY,
   RELEASE_GATE_EXIT_CODES,
   credentialedEndpointConfigurationError,
@@ -17,6 +22,8 @@ type ArtifactFormat = 'json' | 'markdown' | 'both';
 interface ParsedReleaseGateArgs {
   clientCompatibility?: boolean;
   sessionResilience?: boolean;
+  /** `false` when --no-tool-list-consistency disabled the repeated tools/list check. */
+  toolListConsistency?: false;
   endpoints: string[];
   outputDir: string;
   format: ArtifactFormat;
@@ -54,6 +61,8 @@ Gate options:
   --fail-on-severity <value>   critical, high, medium, unknown, or none (default: high)
   --client-compatibility       Include profiles for all documented clients
   --session-resilience         Opt in to bounded active session probes
+  --no-tool-list-consistency   Skip re-listing tools (2 extra tools/list requests on
+                               fresh connections) that detects mixed deploys
   --quiet                      Hide evaluator progress
   -h, --help                   Show this help
 
@@ -153,6 +162,7 @@ export const parseReleaseGateArgs = (
   let failOnSeverity = DEFAULT_RELEASE_GATE_POLICY.failOnSeverity;
   let quiet = false;
   let sessionResilience = false;
+  let toolListConsistency = true;
   let clientCompatibility = false;
   let help = false;
 
@@ -165,6 +175,8 @@ export const parseReleaseGateArgs = (
       clientCompatibility = true;
     } else if (argument === '--session-resilience') {
       sessionResilience = true;
+    } else if (argument === '--no-tool-list-consistency') {
+      toolListConsistency = false;
     } else if (argument === '--quiet') {
       quiet = true;
     } else if (argument === '--endpoints-env') {
@@ -252,6 +264,7 @@ export const parseReleaseGateArgs = (
     endpoints,
     clientCompatibility,
     ...(sessionResilience ? { sessionResilience } : {}),
+    ...(!toolListConsistency ? { toolListConsistency: false as const } : {}),
     outputDir,
     format,
     headers,
@@ -308,6 +321,7 @@ export const runCli = async (
     endpoints: configuration.endpoints,
     clientCompatibility: configuration.clientCompatibility,
     ...(configuration.sessionResilience ? { sessionResilience: true } : {}),
+    ...(configuration.toolListConsistency === false ? { toolListConsistency: false as const } : {}),
     headers: configuration.headers,
     policy: configuration.policy,
     generatedAt: new Date(),
@@ -351,6 +365,14 @@ export const runCli = async (
 
     const decision = target.releaseDecision?.status || target.status;
     process.stdout.write(`${target.endpoint}: ${decision}\n`);
+    const toolList = target.report ? toolListConsistencyFromSections(target.report.sections) : undefined;
+    if (toolList) {
+      const mark = toolList.status === 'consistent' ? 'pass' : toolList.status === 'inconsistent' ? 'finding' : 'not checked';
+      process.stdout.write(`  tool list consistency (${mark}): ${redactReportString(toolListConsistencySummary(toolList))}\n`);
+      for (const difference of toolList.differences) {
+        process.stdout.write(`    ${redactReportString(describeToolListDifference(difference))}\n`);
+      }
+    }
     for (const reason of target.thresholdReasons) process.stdout.write(`  threshold: ${reason}\n`);
     if (target.error) process.stderr.write(`  infrastructure: ${target.error}\n`);
     for (const path of written) process.stdout.write(`  artifact: ${path}\n`);

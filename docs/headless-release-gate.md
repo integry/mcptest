@@ -169,3 +169,35 @@ composite-action CI smoke job). Review `action.yml` branding, this documentation
 and `/ci`. The maintainer can then create the release and the `v1` major tag and
 choose Marketplace distribution in GitHub's release UI. This change creates no
 tags or Marketplace listing.
+
+## Tool list consistency check
+
+Every evaluation lists tools two more times, each on a fresh connection to the
+same route, transport and credentials, about 250 ms apart. Servers behind
+blue/green deploys or stale replicas can return different `tools/list` results
+from request to request; a single snapshot cannot see that, and drift checks
+turn it into noise.
+
+Each complete result (all pages, following `nextCursor`) gets a canonical hash
+covering the full definition: name, title, description, `inputSchema`,
+`outputSchema` and annotations, with sorted keys, so key or tool order never
+changes the hash. When hashes differ the report has the finding
+`tools.list-nondeterministic` ("Tool list is not deterministic (likely mixed
+deploy or stale replica)", medium priority, review), listing which tools appear
+in only some responses and which fields changed. Any `cf-ray`,
+`fly-request-id`, `x-vercel-id`, `x-served-by`, `via` and `server` response
+headers are recorded for each request. In the browser, CORS hides headers the
+server does not list in `Access-Control-Expose-Headers`, and the report says so.
+A matching result is shown as a passed check.
+
+The check sends no extra requests when the first `tools/list` fails, stops at
+the first failed repeat, and never calls tools. Disable it with
+`--no-tool-list-consistency`, `tool-list-consistency: 'false'` in the Action, or
+`tool_list_consistency: false` in the reusable workflow.
+
+Reports record whether tools were listed authenticated or unauthenticated
+(`capabilityInventory.authentication`, also in the consistency evidence). Report
+history, the published-report diff, the breaking-change checker and the Action
+baseline comparison do not count a tool missing after a change between
+authenticated and unauthenticated runs as a breaking removal; they show it as
+not comparable instead.

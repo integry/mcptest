@@ -30,6 +30,8 @@ import { getAuthorizationGuidanceForEndpoint } from '../utils/authorizationGuida
 import AuthorizationSetup from './AuthorizationSetup';
 import CapabilitiesProvided from './CapabilitiesProvided';
 import FindingReferenceLink from './FindingReferenceLink';
+import ToolListConsistencyPanel from './ToolListConsistencyPanel';
+import { toolListConsistencyFromSections } from '../utils/toolListConsistencyReport';
 
 interface ReleaseReadinessReportProps {
   authorizationActions?: React.ReactNode;
@@ -385,6 +387,8 @@ const ReleaseReadinessReport: React.FC<ReleaseReadinessReportProps> = ({
           />
         </section>
       )}
+
+      <ToolListConsistencyPanel result={toolListConsistencyFromSections(report.sections)} />
 
       <section className="release-section" aria-labelledby="tool-surface-title">
         <div className="release-section-heading">

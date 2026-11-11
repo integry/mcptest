@@ -23,6 +23,39 @@ describe('GitHub Action inputs and release policy', () => {
     expect(parsed.clients).toEqual(['claude-code', 'codex-cli', 'chatgpt']);
     expect(parseActionInputs(env)).toMatchObject({ baseline: 'none', failOn: 'blocked', publish: false, comment: true });
   });
+  it('re-lists tools by default and passes the opt-out to the CLI', () => {
+    expect(parseActionInputs(env).argv).not.toContain('--no-tool-list-consistency');
+    expect(parseActionInputs({ ...env, MCPTEST_ACTION_TOOL_LIST_CONSISTENCY: 'true' }).argv).not.toContain('--no-tool-list-consistency');
+    expect(parseActionInputs({ ...env, MCPTEST_ACTION_TOOL_LIST_CONSISTENCY: 'false' }).argv).toContain('--no-tool-list-consistency');
+    expect(() => parseActionInputs({ ...env, MCPTEST_ACTION_TOOL_LIST_CONSISTENCY: 'off' })).toThrow();
+  });
+  it('does not treat a baseline obtained with a different access state as a removal', () => {
+    const withAccess = (value: PublicReport, authentication: 'authenticated' | 'unauthenticated') => (
+      { ...value, capabilityInventory: { authentication } } as unknown as PublicReport
+    );
+    const changed = classifyActionTarget(withAccess(report(), 'unauthenticated'), withAccess(report(['private_tool']), 'authenticated'), []);
+    expect(changed.changes?.counts.breaking).toBe(0);
+    expect(changed.changes?.counts.risky).toBe(1);
+    expect(changed.decision).toBe('review');
+    expect(changed.changes?.limitations.join(' ')).toContain('obtained authenticated and the later one unauthenticated');
+    const same = classifyActionTarget(withAccess(report(), 'authenticated'), withAccess(report(['private_tool']), 'authenticated'), []);
+    expect(same.decision).toBe('blocked');
+  });
+  it('shows the tool list consistency result in the summary', () => {
+    const toolListConsistency = {
+      version: 1, status: 'inconsistent', authentication: 'unauthenticated', route: 'direct', transportType: 'streamable-http',
+      requestedSamples: 3, distinctHashes: 2,
+      samples: [{ index: 1, connection: 'evaluation', status: 'complete', hash: 'sha256:a' }, { index: 2, connection: 'fresh', status: 'complete', hash: 'sha256:b' }],
+      differences: [{ tool: 'fetch', kind: 'presence', presentIn: [1], absentIn: [2], changedFields: [] }],
+    };
+    const value = { ...report(), sections: [{ id: 'toolListConsistency', evidence: [{ message: 'x', metadata: { toolListConsistency } }] }] } as unknown as PublicReport;
+    const summary = renderActionSummary([{ report: value, decision: 'review' }], 'review');
+    expect(summary).toContain('Tool list consistency: ⚠ finding');
+    expect(summary).toContain('fetch: listed by request 1, missing from request 2');
+    const passed = { ...toolListConsistency, status: 'consistent', distinctHashes: 1, differences: [] };
+    const passing = { ...report(), sections: [{ id: 'toolListConsistency', evidence: [{ message: 'x', metadata: { toolListConsistency: passed } }] }] } as unknown as PublicReport;
+    expect(renderActionSummary([{ report: passing, decision: 'ready' }], 'ready')).toContain('Tool list consistency: ✓ passed');
+  });
   it.each([
     { MCPTEST_ACTION_FAIL_ON: 'ready' }, { MCPTEST_ACTION_CLIENTS: 'imaginary-client' },
     { MCPTEST_ACTION_SESSION: 'yes' }, { MCPTEST_ACTION_PUBLISH: '1' },

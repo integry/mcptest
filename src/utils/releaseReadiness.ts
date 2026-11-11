@@ -19,6 +19,10 @@ import type { OAuthTraceV1 } from './oauthTrace';
 import { OUTPUT_CONTRACT_FINDING_ID } from './outputContract';
 import type { TransportDiagnostic } from '../types/transportDiagnostics';
 import {
+  toolListConsistencyFromSections,
+  toolListConsistencyPriority,
+} from './toolListConsistencyReport';
+import {
   detectedTransportDiagnostics,
   transportDiagnosticsFromSections,
 } from './transportDiagnostics';
@@ -570,6 +574,8 @@ export const createReleaseDecision = (
     const priority = transportDiagnosticPriority(diagnostic);
     if (priority) priorities.push(priority);
   }
+  const toolListPriority = toolListConsistencyPriority(toolListConsistencyFromSections(report.sections));
+  if (toolListPriority) priorities.push(toolListPriority);
   for (const assessment of Object.values(matrix.assessments)) {
     for (const finding of assessment.findings) {
       if (finding.outcome !== 'fail' && finding.outcome !== 'unknown') continue;
