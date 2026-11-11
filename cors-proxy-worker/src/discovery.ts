@@ -51,6 +51,21 @@ export const DISCOVERY_FORWARDED_RESPONSE_HEADERS = [
 ] as const;
 const MAX_FORWARDED_HEADER_LENGTH = 1024;
 const FORWARDED_HEADER_VALUE_PATTERN = /^[\x20-\x7e]*$/;
+/**
+ * A 403 with WWW-Authenticate is an authentication challenge, not bot
+ * protection, so the checker must still see the header through this route.
+ * It is forwarded (and exposed) bounded like the headers above; a value that
+ * is too long or not printable is reduced to its auth scheme, which keeps the
+ * evidence that the target challenged for credentials.
+ */
+const WWW_AUTHENTICATE = 'WWW-Authenticate';
+const AUTH_SCHEME_PATTERN = /^[!#$%&'*+.^_`|~0-9A-Za-z-]{1,64}(?=$|[\s,])/;
+const boundedWwwAuthenticate = (value: string | null): string | undefined => {
+  const trimmed = value?.trim();
+  if (!trimmed) return undefined;
+  if (trimmed.length <= MAX_FORWARDED_HEADER_LENGTH && FORWARDED_HEADER_VALUE_PATTERN.test(trimmed)) return trimmed;
+  return AUTH_SCHEME_PATTERN.exec(trimmed)?.[0] ?? 'unknown';
+};
 
 const ACCEPT_PATTERN = /^[\w.+\-/*]+(?:\s*;\s*q=[0-9.]+)?(?:\s*,\s*[\w.+\-/*]+(?:\s*;\s*q=[0-9.]+)?)*$/;
 const PROTOCOL_VERSION_PATTERN = /^[A-Za-z0-9.-]{1,32}$/;
@@ -103,6 +118,7 @@ const corsHeaders = (source: 'proxy' | 'target'): Record<string, string> => ({
     'X-MCP-Proxy-Limit',
     'X-MCP-Proxy-Limit-Kind',
     ...DISCOVERY_FORWARDED_RESPONSE_HEADERS,
+    WWW_AUTHENTICATE,
   ].filter((name, index, names) => names.indexOf(name) === index).join(', '),
   [PROXY_RESPONSE_SOURCE_HEADER]: source,
   'Cache-Control': 'no-store',
@@ -226,6 +242,8 @@ export async function handleDiscoveryRequest(
         headers[name] = value;
       }
     }
+    const wwwAuthenticate = boundedWwwAuthenticate(response.headers.get(WWW_AUTHENTICATE));
+    if (wwwAuthenticate) headers[WWW_AUTHENTICATE] = wwwAuthenticate;
     const contentType = response.headers.get('Content-Type');
     if (contentType && contentType.length <= 128 && CONTENT_TYPE_PATTERN.test(contentType.trim())) {
       headers['Content-Type'] = contentType.trim();
