@@ -35,7 +35,8 @@ const SNAPSHOT_DEFINITION_LIMIT = 500;
 const SNAPSHOT_DEFINITION_BYTE_LIMIT = 64_000;
 const SNAPSHOT_SCHEMA_BYTE_LIMIT = 32_000;
 const ANNOTATION_RECORD_LIMIT = 500;
-const ANNOTATION_BYTE_LIMIT = 16_000;
+// Sized so this summary, the snapshot and the annotation findings stay under the 100 KB analysis cap together.
+const ANNOTATION_BYTE_LIMIT = 10_000;
 const ANNOTATION_NAME_CHARACTER_LIMIT = 256;
 
 const SEVERITIES: readonly ToolSurfaceSeverity[] = [
