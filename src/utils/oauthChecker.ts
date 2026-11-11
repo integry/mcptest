@@ -223,7 +223,10 @@ export async function checkOAuthReadiness(
   } else if (blocking && blocking.kind !== 'rate-limited') {
     // Metadata is fine, but the MCP endpoint itself is behind a challenge or a payment wall.
     report.classification = blocking.kind === 'payment-required' ? 'unsupported client mode' : 'server non-compliance';
-    report.verdict = `Metadata checks passed, but ${RESPONSE_CLASS_CONTENT[blocking.kind].title(responseLocation(blocking.url)).replace(/^\w/, (letter) => letter.toLowerCase())}`;
+    // A heuristic match stays a suspicion here too, as in the error card.
+    const title = RESPONSE_CLASS_CONTENT[blocking.kind].title(responseLocation(blocking.url)).replace(/^\w/, (letter) => letter.toLowerCase());
+    const hedged = blocking.confidence === 'suspected' ? title.replace(/ is blocking /, ' may be blocking ') : title;
+    report.verdict = `Metadata checks passed, but ${hedged === title && blocking.confidence === 'suspected' ? `possibly ${title}` : hedged}`;
   } else if (probeTransient) {
     report.classification = 'transient';
     report.verdict = 'Metadata checks passed; MCP endpoint unavailable, retry';

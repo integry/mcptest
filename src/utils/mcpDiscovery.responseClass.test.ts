@@ -192,6 +192,20 @@ describe('OAuth checker: superseded classified candidates', () => {
     expect(report.responseClass).toMatchObject({ kind: 'bot-protection', url: 'https://example.com/mcp' });
     expect(report.verdict).toBe('Metadata checks passed, but bot protection is blocking MCP clients on /mcp');
   });
+
+  it('keeps an unbranded HTML 403 on the MCP endpoint a suspicion after metadata checks pass', async () => {
+    const report = await checkOAuthReadiness('https://example.com/mcp', {
+      probeEndpoint: answering({
+        'https://example.com/mcp': { status: 403, contentType: 'text/html', body: '<html><head><title>403 Forbidden</title></head><body><h1>Request blocked</h1></body></html>' },
+      }),
+      fetchDocument: answering({ [PATH_RESOURCE]: ok(resource), [RFC8414_ISSUER]: ok(issuer) }),
+    });
+    expect(['resource', 'issuer', 'audience', 'registration', 'pkce', 'code'].map((id) => report.rows.find((row) => row.id === id)?.status))
+      .toEqual(['pass', 'pass', 'pass', 'pass', 'pass', 'pass']);
+    expect(report.responseClass).toMatchObject({ kind: 'bot-protection', confidence: 'suspected', url: 'https://example.com/mcp' });
+    expect(report.verdict).toBe('Metadata checks passed, but bot protection may be blocking MCP clients on /mcp');
+    expect(report.verdict).not.toMatch(/ is blocking /);
+  });
 });
 
 describe('a proxied HTML 403 with WWW-Authenticate stays an authentication challenge', () => {
