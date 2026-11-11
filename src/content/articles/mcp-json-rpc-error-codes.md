@@ -40,6 +40,12 @@ sourceLinks:
     url: "https://github.com/modelcontextprotocol/typescript-sdk/blob/main/docs/servers/errors.md"
   - title: "TypeScript SDK: Streamable HTTP server transport"
     url: "https://github.com/modelcontextprotocol/typescript-sdk/blob/main/packages/server/src/server/streamableHttp.ts"
+  - title: "TypeScript SDK 1.x error codes (ConnectionClosed, RequestTimeout)"
+    url: "https://github.com/modelcontextprotocol/typescript-sdk/blob/v1.x/src/types.ts"
+  - title: "TypeScript SDK 2.4.0 release notes (Allow: POST on 405)"
+    url: "https://github.com/modelcontextprotocol/typescript-sdk/releases/tag/v2.4.0"
+  - title: "Python SDK: Streamable HTTP server transport"
+    url: "https://github.com/modelcontextprotocol/python-sdk/blob/main/src/mcp/server/streamable_http.py"
 ---
 
 MCP errors arrive at two layers: the HTTP status of the transport response and the JSON-RPC `error` object in its body. A tool can also succeed at both layers and still report failure with `isError: true`. Read all three before deciding what broke.
@@ -147,21 +153,52 @@ mcptest relies on this code during negotiation. A `-32022` that names a mutual 2
 
 ## SDK-conventional codes
 
-These are in the legacy range and are not defined by the specification. Read the HTTP status and message, not the code alone.
+These are in the legacy range and are not defined by the specification. The two SDKs use different codes for the same HTTP rejection, so read the HTTP status and message, not the code alone.
+
+### Server codes in HTTP error bodies
+
+TypeScript `@modelcontextprotocol/server` 2.4.0 (`createMcpHandler`, and the sessionful `WebStandardStreamableHTTPServerTransport` / `NodeStreamableHTTPServerTransport`), measured or read from the published build:
 
 | Code | HTTP | TypeScript SDK server message |
 | --- | --- | --- |
-| `-32000` | `400` | "Bad Request: Mcp-Session-Id header is required" |
-| `-32000` | `400` | "Bad Request: Server not initialized" |
-| `-32000` | `400` | "Bad Request: Unsupported protocol version: <version> (supported versions: …)" (2025 transport) |
-| `-32000` | `403` | "Invalid Origin header: <origin>" or "Invalid Host header: <host>", when DNS rebinding protection is on |
-| `-32000` | `405` | "Method not allowed." |
-| `-32000` | `406` | "Not Acceptable: Client must accept both application/json and text/event-stream" |
-| `-32000` | `409` | "Conflict: Only one SSE stream is allowed per session" |
+| `-32000` | `400` | "Bad Request: Mcp-Session-Id header is required" (sessionful transport) |
+| `-32000` | `400` | "Bad Request: Server not initialized" (sessionful transport) |
+| `-32000` | `400` | "Bad Request: Unsupported protocol version: <version> (supported versions: …)" (sessionful transport) |
+| `-32000` | `403` | "Invalid Host: <hostname>" or "Invalid Origin: <hostname>" from the host and origin validation middleware; "Invalid Host header: <value>" or "Invalid Origin header: <value>" when the header cannot be parsed, or from the transport's `allowedHosts` and `allowedOrigins` options |
+| `-32000` | `405` | "Method not allowed." `createMcpHandler` sends `Allow: POST` since 2.4.0 (no `Allow` in 2.3); the sessionful transport sends `Allow: GET, POST, DELETE` |
+| `-32000` | `406` | "Not Acceptable: Client must accept both application/json and text/event-stream" (2025 requests only; `createMcpHandler` does not check `Accept` on 2026 requests) |
+| `-32000` | `409` | "Conflict: Only one SSE stream is allowed per session" (sessionful transport) |
 | `-32000` | `415` | "Unsupported Media Type: Content-Type must be application/json" |
-| `-32001` | `404` | "Session not found" |
+| `-32001` | `404` | "Session not found" (sessionful transport) |
 
-The client SDK deliberately does not treat `-32001` as evidence of a protocol era, because deployed 2025 servers use it for expired sessions.
+Python `mcp` 2.3.0 (`MCPServer.streamable_http_app()`), measured, plus `src/mcp/server/streamable_http.py` and `transport_security.py`:
+
+| Code | HTTP | Python SDK server message |
+| --- | --- | --- |
+| `-32600` | `400` | "Bad Request: Missing session ID" (2025, stateful) |
+| `-32600` | `404` | "Session not found" for an unknown or deleted session ID |
+| `-32600` | `405` | "Method Not Allowed", with `Allow: GET, POST, DELETE` (2025 stateful) |
+| `-32600` | `406` | "Not Acceptable: Client must accept both application/json and text/event-stream", or "Not Acceptable: Client must accept application/json" with `json_response=True` (2025 requests) |
+| `-32600` | `409` | "Conflict: Only one SSE stream is allowed per session" |
+| `-32600` | `415` | "Unsupported Media Type: Content-Type must be application/json" (2025 requests, for example `Application/JSON`) |
+| none | `400` | Plain text `Invalid Content-Type header` for a media type other than `application/json` |
+| none | `403` | Plain text `Invalid Origin header` |
+| none | `405` | Empty body with `Allow: POST`, for `GET` or `DELETE` on a 2026 request |
+| none | `406` | Empty body, on a 2026 request |
+| none | `421` | Plain text `Invalid Host header` |
+
+So a `-32600` in a `404` body is a Python session error, not a malformed request, and a `-32001` in a `404` body is a TypeScript session error, not a timeout. The TypeScript client deliberately does not treat `-32001` as evidence of a protocol era, because deployed 2025 servers use it for expired sessions (`NOT_PROBE_RECOGNIZED` in `@modelcontextprotocol/client` 2.4.0).
+
+### Client-side codes {#client-side-codes}
+
+These are raised inside the client SDK and never sent by a server. They are what a host shows when the connection closed or no reply arrived, and they reuse numbers that servers also use in HTTP bodies.
+
+| Condition | TypeScript SDK 1.x (`@modelcontextprotocol/sdk` 1.32.2) | TypeScript SDK 2.x (`@modelcontextprotocol/client` 2.4.0) | Python SDK 2.x (`mcp` 2.3.0) |
+| --- | --- | --- | --- |
+| Connection closed | `McpError`, code `-32000`: `MCP error -32000: Connection closed` | `SdkError`, string code `CONNECTION_CLOSED`, no number: `Connection closed` | `MCPError`, code `-32000` (`CONNECTION_CLOSED`): `Connection closed` |
+| Request timed out | `McpError`, code `-32001`: `MCP error -32001: Request timed out` | `SdkError`, string code `REQUEST_TIMEOUT`: `Request timed out`, or `Maximum total timeout exceeded` | `MCPError`, code `-32001` (`REQUEST_TIMEOUT`): for example `Request 'tools/call' timed out` |
+
+Both TypeScript lines wait 60 seconds by default (`DEFAULT_REQUEST_TIMEOUT_MSEC`). For causes and fixes, see [Connection closed](/learn/mcp-error-connection-closed) and [Request timed out](/learn/mcp-error-request-timed-out).
 
 ## HTTP status mapping
 
@@ -173,9 +210,9 @@ The client SDK deliberately does not treat `-32001` as evidence of a protocol er
 | `401` | Missing, invalid or expired token; read `WWW-Authenticate` |
 | `403` | Invalid `Origin` (2025-11-25 and later), insufficient scope, or policy denial |
 | `404` | Terminated, expired or unknown session (2025); `-32601` unknown method (2026); or wrong URL |
-| `405` | GET or DELETE not offered (2025), or any GET or DELETE (2026) |
-| `406` | `Accept` rejected |
-| `415` | Request `Content-Type` rejected |
+| `405` | GET or DELETE not offered (2025), or any GET or DELETE (2026); RFC 9110 requires an `Allow` header; TypeScript `createMcpHandler` (2.4.0 and later) sends `Allow: POST`, as does Python on 2026 requests |
+| `406` | `Accept` rejected; TypeScript `createMcpHandler` checks it only on 2025 requests, Python on both |
+| `415` | Request `Content-Type` rejected; Python answers most wrong types with `400` instead |
 | `429` | Rate limited; read `Retry-After` |
 
 The status rows for `-32601`, `-32020`, `-32021`, `-32022` and the `_meta` `-32602` come from the 2026-07-28 specification. The rule that handler-produced errors stay in an HTTP `200`, except `-32021`, is the TypeScript SDK's mapping (`LADDER_ERROR_HTTP_STATUS` and `httpStatusForErrorCode` in the SDK core, bundled into `@modelcontextprotocol/client`). For transport statuses, see the [transport diagnostics reference](/learn/mcp-transport-diagnostics-reference).
