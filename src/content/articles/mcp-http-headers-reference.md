@@ -77,7 +77,7 @@ Streamable HTTP is the remote transport in every revision since 2025-03-26. Head
 - **Example:** `Mcp-Session-Id: 1868a90c-6b4e-4b0e-9b2f-3c1d0e4c7a51`
 - **Rules:** visible ASCII only (0x21 to 0x7E), and SHOULD be globally unique and cryptographically secure. The client sends DELETE with the header to end the session; the server MAY answer `405`.
 - **When missing:** a server that requires a session SHOULD answer `400` to any request but `initialize` that lacks the header.
-- **When stale:** once the server has terminated a session, requests carrying its ID MUST get `404`. A client that receives `404` on a request with a session ID MUST start again with `initialize` and no session ID.
+- **When stale:** once the server has terminated a session, requests carrying its ID MUST get `404`. A client that receives `404` on a request with a session ID MUST start again with `initialize` and no session ID. A sessionful TypeScript transport answers `-32001` "Session not found", Python `-32600` "Session not found". TypeScript `createMcpHandler` keeps no sessions and ignores the header (measured on TypeScript 2.4.0 and Python 2.3.0; see [session not found after deploy](/learn/mcp-session-not-found-after-deploy)).
 - **mcptest:** the TypeScript SDK reads the header from a successful `initialize` response and attaches it afterwards. If a cross-origin browser cannot read it, the next request goes out without it. `transport.cors-expose-headers-missing` fires when that request is rejected with a session error.
 
 ```http
@@ -114,7 +114,14 @@ Access-Control-Expose-Headers: Mcp-Session-Id, MCP-Protocol-Version
 - **POST:** MUST list both `application/json` and `text/event-stream`, because the server may answer with either.
 - **GET (2025 only):** MUST list `text/event-stream`.
 - **Example:** `Accept: application/json, text/event-stream`
-- **When missing or partial:** servers built on the TypeScript SDK answer `406` with "Not Acceptable: Client must accept both application/json and text/event-stream".
+- **When missing or partial:** SDK behaviour depends on the era (measured on TypeScript `@modelcontextprotocol/server` 2.4.0 and Python `mcp` 2.3.0):
+
+| SDK | 2025 request | 2026 request |
+| --- | --- | --- |
+| TypeScript `createMcpHandler` | `406`, JSON-RPC `-32000`, "Not Acceptable: Client must accept both application/json and text/event-stream" | Not checked; the request is served |
+| Python `streamable_http_app()` | `406`, JSON-RPC `-32600`, same message | `406`, empty body |
+
+Python treats `*/*` as accepting both types; TypeScript rejects it on 2025 requests. With `json_response=True`, Python also accepts `Accept: application/json`. Details: [406, 415 and 405](/learn/mcp-406-not-acceptable-415-and-405#406-not-acceptable-the-accept-header-rule).
 - **mcptest:** the SDK always sends both types on POST. A `406` from the target therefore points at an over-strict server check and fires [`transport.accept-header-406`](/learn/mcp-transport-diagnostics-reference#transport-accept-header-406).
 
 ## Content-Type
@@ -123,7 +130,7 @@ Access-Control-Expose-Headers: Mcp-Session-Id, MCP-Protocol-Version
 - **Response to a POST that carried a request:** `application/json` for a single JSON response, or `text/event-stream` for a stream. Clients MUST support both.
 - **Response to GET (2025):** `text/event-stream`, or `405`.
 - **Accepted notification** (and, through 2025-11-25, a POSTed client response): `202 Accepted` with no body. 2026 clients MUST NOT POST responses.
-- **When wrong:** a server that rejects `application/json`, for example over a charset parameter or letter case, answers `415`. A successful response with another type is refused by the client ("Unexpected content type").
+- **When wrong:** a server that rejects `application/json`, for example over a charset parameter or letter case, answers `415`. Python `mcp` 2.3.0 answers any other media type with `400` and the plain-text body `Invalid Content-Type header`. A successful response with another type is refused by the client ("Unexpected content type").
 - **mcptest:** `transport.unsupported-media-type-415` for a `415`, and `transport.sse-content-type-mismatch` for a `2xx` with the wrong type.
 
 ## Last-Event-ID
