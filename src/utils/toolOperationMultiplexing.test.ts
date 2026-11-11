@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   classifyOperation,
+  findAmbiguousHttpMethodSelectors,
   findMixedHttpMethodSelectors,
   findMultiplexedOperationSelectors,
 } from './toolOperationMultiplexing';
@@ -114,6 +115,21 @@ describe('findMultiplexedOperationSelectors', () => {
   });
 });
 
+describe('findAmbiguousHttpMethodSelectors', () => {
+  it('reports free-text method arguments whose description mentions safe and unsafe methods', () => {
+    expect(findAmbiguousHttpMethodSelectors([
+      tool('fetch', { method: { type: 'string', description: 'Only GET is supported; POST and DELETE are rejected.' } }),
+      tool('reads', { method: { type: 'string', description: 'GET or HEAD.' } }),
+      tool('enum', { method: { enum: ['GET', 'POST'] } }),
+    ])).toEqual([{
+      tool: 'fetch',
+      argument: 'method',
+      values: ['GET', 'POST', 'DELETE'],
+      categories: ['read', 'write', 'destructive'],
+    }]);
+  });
+});
+
 describe('findMixedHttpMethodSelectors', () => {
   it('flags a method enum with safe and unsafe methods', () => {
     expect(findMixedHttpMethodSelectors([
@@ -126,9 +142,16 @@ describe('findMixedHttpMethodSelectors', () => {
     }]);
   });
 
-  it('reads methods from the description when the argument has no enum', () => {
+  it('does not treat methods named in a description as accepted methods', () => {
     expect(findMixedHttpMethodSelectors([
       tool('http', { http_method: { type: 'string', description: 'One of GET, PUT or PATCH.' } }),
+      tool('fetch', { method: { type: 'string', description: 'Only GET is supported; POST and DELETE are rejected.' } }),
+    ])).toEqual([]);
+  });
+
+  it('flags a oneOf of method consts as an explicit value set', () => {
+    expect(findMixedHttpMethodSelectors([
+      tool('http', { method: { oneOf: [{ const: 'GET' }, { const: 'PUT' }] } }),
     ])).toHaveLength(1);
   });
 

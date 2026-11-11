@@ -194,6 +194,20 @@ describe('connector directory preflight', () => {
       expect(result.status).toBe('fail');
       expect(result.evidence).toEqual(['api_request (method: GET, POST)']);
     });
+
+    it('leaves a free-text method argument that names rejected methods unknown, not failed', () => {
+      const input = observations({
+        tools: toolsFrom([fullyAnnotated('fetch_url', {
+          inputSchema: {
+            type: 'object',
+            properties: { method: { type: 'string', description: 'Only GET is supported; POST and DELETE are rejected.' } },
+          },
+        })]),
+      });
+      const result = item(evaluateConnectorDirectoryPreflight(input), 'claude.separate-read-write');
+      expect(result.status).toBe('unknown');
+      expect(result.evidence).toEqual(['fetch_url (method: GET, POST, DELETE)']);
+    });
   });
 
   describe('authentication', () => {

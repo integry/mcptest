@@ -474,6 +474,38 @@ export const getReleaseGateThresholdReasons = (
   return [...new Set(reasons)];
 };
 
+/**
+ * Scrubs observed text (details, evidence, advisory matches) from a preflight. Statuses, counts,
+ * requirement ids and text, and vendor sources are generated locally and kept verbatim.
+ */
+const redactDirectoryPreflightCredentials = (
+  preflight: ConnectorDirectoryPreflightV1,
+  credentials: readonly string[]
+): ConnectorDirectoryPreflightV1 => {
+  if (credentials.length === 0) return preflight;
+  const redact = (value: string) => redactKnownCredentialString(value, credentials);
+  return {
+    ...preflight,
+    directories: preflight.directories.map((result) => ({
+      ...result,
+      items: result.items.map((item) => ({
+        ...item,
+        detail: redact(item.detail),
+        evidence: item.evidence.map(redact),
+      })),
+    })),
+    advisories: preflight.advisories.map((advisory) => ({
+      ...advisory,
+      matches: advisory.matches.map((match) => ({
+        ...match,
+        tool: redact(match.tool),
+        argument: redact(match.argument),
+        values: match.values.map(redact),
+      })),
+    })),
+  };
+};
+
 const createReleaseArtifact = (
   evaluation: EvaluationReport,
   endpoint: string,
@@ -506,8 +538,12 @@ const createReleaseArtifact = (
     releaseDecision: redactReleaseDecisionCredentials(decision, credentials),
     toolSurfaceAnalysis: publicEvaluation.toolSurfaceAnalysis,
   });
-  // Built from the credential-redacted evaluation, so tool names and hosts are already scrubbed.
-  const directoryPreflight = createConnectorDirectoryPreflight(publicEvaluation);
+  // Verdicts come from the original evaluation: redacting first could rewrite evidence the checks
+  // read (a credential equal to `partial` or `GET`). Observed strings are scrubbed afterwards.
+  const directoryPreflight = redactDirectoryPreflightCredentials(
+    createConnectorDirectoryPreflight(evaluation),
+    credentials
+  );
   return { decision, report, directoryPreflight };
 };
 

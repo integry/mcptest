@@ -5,7 +5,9 @@
  * - `findMixedHttpMethodSelectors`: a `method`-style argument whose allowed
  *   values include both safe (GET, HEAD, OPTIONS) and unsafe (POST, PUT, PATCH,
  *   DELETE) HTTP methods. Anthropic's review criteria reject this shape
- *   outright, so the preflight treats it as a checked requirement.
+ *   outright, so the preflight treats it as a checked requirement. Only an
+ *   explicit schema value set can fail it; method names mentioned in a
+ *   description (`findAmbiguousHttpMethodSelectors`) leave it unknown.
  * - `findMultiplexedOperationSelectors`: an `action`/`operation`-style argument
  *   (or a list of operation objects) whose values read as both read and write
  *   verbs. This is a heuristic and only ever produces an advisory.
@@ -143,31 +145,51 @@ const selectorCandidates = (inputSchema: unknown): SelectorCandidate[] => {
 
 const limitedValues = (values: readonly string[]): string[] => values.slice(0, VALUE_DISPLAY_LIMIT);
 
-/** Methods named in free text, used only when a method argument has no enum. */
+/** Methods named in free text. Mentions are not proof of support ("POST is rejected"). */
 const methodsInText = (text: string): string[] => (
   text.match(/\b(GET|HEAD|OPTIONS|POST|PUT|PATCH|DELETE)\b/g) || []
 );
 
+const mixedMethodMatch = (
+  tool: string,
+  argument: string,
+  rawMethods: readonly string[]
+): OperationSelectorMatch | undefined => {
+  const methods = rawMethods.map((value) => value.toUpperCase());
+  const safe = methods.some((method) => SAFE_HTTP_METHODS.has(method));
+  const unsafe = methods.some((method) => UNSAFE_HTTP_METHODS.has(method));
+  if (!safe || !unsafe) return undefined;
+  const categories: OperationCategory[] = ['read', 'write'];
+  if (methods.includes('DELETE')) categories.push('destructive');
+  return { tool, argument, values: limitedValues([...new Set(methods)]), categories };
+};
+
 /**
- * Tools with a method argument that admits both safe and unsafe HTTP methods,
- * the catch-all `api_request` shape Anthropic's review criteria reject.
+ * Tools with a method argument whose schema constraint (enum, const, or
+ * oneOf/anyOf of consts) admits both safe and unsafe HTTP methods, the
+ * catch-all `api_request` shape Anthropic's review criteria reject. Only an
+ * explicit value set counts: descriptions are left to
+ * `findAmbiguousHttpMethodSelectors`.
  */
 export const findMixedHttpMethodSelectors = (tools: readonly ToolLike[]): OperationSelectorMatch[] => (
   tools.flatMap((tool) => selectorCandidates(tool.inputSchema).flatMap((candidate) => {
-    if (!HTTP_METHOD_NAMES.has(candidate.name)) return [];
-    const methods = (candidate.values.length > 0 ? candidate.values : methodsInText(candidate.description))
-      .map((value) => value.toUpperCase());
-    const safe = methods.some((method) => SAFE_HTTP_METHODS.has(method));
-    const unsafe = methods.some((method) => UNSAFE_HTTP_METHODS.has(method));
-    if (!safe || !unsafe) return [];
-    const categories: OperationCategory[] = ['read', 'write'];
-    if (methods.includes('DELETE')) categories.push('destructive');
-    return [{
-      tool: tool.name,
-      argument: candidate.path,
-      values: limitedValues([...new Set(methods)]),
-      categories,
-    }];
+    if (!HTTP_METHOD_NAMES.has(candidate.name) || candidate.values.length === 0) return [];
+    const match = mixedMethodMatch(tool.name, candidate.path, candidate.values);
+    return match ? [match] : [];
+  }))
+);
+
+/**
+ * Method arguments without a value set whose description mentions both safe
+ * and unsafe HTTP methods. A mention does not establish that a method is
+ * accepted (the text may say it is rejected), so these never fail a check;
+ * the preflight reports them as unknown.
+ */
+export const findAmbiguousHttpMethodSelectors = (tools: readonly ToolLike[]): OperationSelectorMatch[] => (
+  tools.flatMap((tool) => selectorCandidates(tool.inputSchema).flatMap((candidate) => {
+    if (!HTTP_METHOD_NAMES.has(candidate.name) || candidate.values.length > 0) return [];
+    const match = mixedMethodMatch(tool.name, candidate.path, methodsInText(candidate.description));
+    return match ? [match] : [];
   }))
 );
 

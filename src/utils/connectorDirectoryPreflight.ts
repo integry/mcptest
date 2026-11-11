@@ -27,6 +27,7 @@ import { resolveEvaluationOutcome, type EvaluationReport } from './evaluation';
 import type { OAuthTraceV1 } from './oauthTrace';
 import { createObservedServerFacts } from './releaseReadiness';
 import {
+  findAmbiguousHttpMethodSelectors,
   findMixedHttpMethodSelectors,
   findMultiplexedOperationSelectors,
   type OperationSelectorMatch,
@@ -155,19 +156,27 @@ const perTool = (
   return { status: 'pass', detail: passDetail(summary.tools.length) };
 };
 
-const definitionScan = (
-  scan: (tools: ToolDefinitionSnapshotSetV1['tools']) => OperationSelectorMatch[]
-): Evaluator => ({ tools }) => {
+const methodSelectorScan: Evaluator = ({ tools }) => {
   const definitions = tools?.definitions;
   if (!definitions || definitions.status === 'unavailable') {
     return { status: 'unknown', detail: 'Tool input schemas were not recorded, so tool arguments could not be checked.' };
   }
-  const matches = scan(definitions.tools);
+  const describeMatch = (match: OperationSelectorMatch) => `${match.tool} (${match.argument}: ${match.values.join(', ')})`;
+  const matches = findMixedHttpMethodSelectors(definitions.tools);
   if (matches.length > 0) {
     return {
       status: 'fail',
       detail: `${plural(matches.length, 'tool argument')} accept both safe and unsafe HTTP methods. Split each into a read-only tool and write tools.`,
-      evidence: capped(matches.map((match) => `${match.tool} (${match.argument}: ${match.values.join(', ')})`)),
+      evidence: capped(matches.map(describeMatch)),
+    };
+  }
+  // A description that names GET and POST may be saying POST is rejected, so it cannot fail the check.
+  const ambiguous = findAmbiguousHttpMethodSelectors(definitions.tools);
+  if (ambiguous.length > 0) {
+    return {
+      status: 'unknown',
+      detail: `${plural(ambiguous.length, 'tool argument')} take a free-form HTTP method whose description mentions both safe and unsafe methods. Without an enum the accepted methods could not be established; if both are accepted, split each into a read-only tool and write tools.`,
+      evidence: capped(ambiguous.map(describeMatch)),
     };
   }
   if (definitions.status === 'partial') {
@@ -305,7 +314,7 @@ const EVALUATORS: Partial<Record<ConnectorDirectoryRequirementId, Evaluator>> = 
     (count) => `${plural(count, 'tool name')} exceed ${CLAUDE_TOOL_NAME_CHARACTER_LIMIT} characters.`,
     (count) => `All ${plural(count, 'tool name')} are ${CLAUDE_TOOL_NAME_CHARACTER_LIMIT} characters or fewer.`
   ),
-  'claude.separate-read-write': definitionScan(findMixedHttpMethodSelectors),
+  'claude.separate-read-write': methodSelectorScan,
   'claude.oauth-for-authenticated-services': claudeOAuth,
   'claude.oauth-discovery': claudeOAuthDiscovery,
   'claude.pkce-s256': claudePkce,
