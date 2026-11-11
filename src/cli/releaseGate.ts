@@ -19,6 +19,11 @@ import {
   type ReleaseDecision,
   type ReleaseReadinessStatus,
 } from '../utils/releaseReadiness';
+import {
+  createConnectorDirectoryPreflight,
+  serializeConnectorDirectoryPreflightMarkdown,
+  type ConnectorDirectoryPreflightV1,
+} from '../utils/connectorDirectoryPreflight';
 
 export const RELEASE_GATE_EXIT_CODES = {
   pass: 0,
@@ -58,6 +63,8 @@ export interface ReleaseGateTargetResult {
   report?: PublicReport;
   json?: string;
   markdown?: string;
+  /** Claude and ChatGPT directory checklists derived from the same evaluation. */
+  directoryPreflight?: ConnectorDirectoryPreflightV1;
   error?: string;
 }
 
@@ -473,7 +480,7 @@ const createReleaseArtifact = (
   generatedAt: string | Date | undefined,
   credentials: readonly string[],
   clientCompatibility = false
-): { decision: ReleaseDecision; report: PublicReport } => {
+): { decision: ReleaseDecision; report: PublicReport; directoryPreflight: ConnectorDirectoryPreflightV1 } => {
   const compatibilityMatrix = createCompatibilityMatrix(evaluation);
   const decision = createReleaseDecision(
     evaluation,
@@ -499,7 +506,9 @@ const createReleaseArtifact = (
     releaseDecision: redactReleaseDecisionCredentials(decision, credentials),
     toolSurfaceAnalysis: publicEvaluation.toolSurfaceAnalysis,
   });
-  return { decision, report };
+  // Built from the credential-redacted evaluation, so tool names and hosts are already scrubbed.
+  const directoryPreflight = createConnectorDirectoryPreflight(publicEvaluation);
+  return { decision, report, directoryPreflight };
 };
 
 /** Runs the web evaluator in headless mode, then uses the shared release and report pipeline. */
@@ -544,7 +553,7 @@ export const runReleaseGate = async (
       const evaluation = credentialedTargetOrigin
         ? await withCredentialScopedFetch(credentialedTargetOrigin, fetchFn, evaluate)
         : await evaluate();
-      const { decision, report } = createReleaseArtifact(
+      const { decision, report, directoryPreflight } = createReleaseArtifact(
         evaluation,
         endpoint,
         options.generatedAt,
@@ -565,7 +574,11 @@ export const runReleaseGate = async (
           || redactReleaseDecisionCredentials(decision, credentials),
         report,
         json: serializePublicReportJson(report),
-        markdown: serializePublicReportMarkdown(report),
+        markdown: `${serializePublicReportMarkdown(report).trimEnd()}\n\n${serializeConnectorDirectoryPreflightMarkdown(
+          directoryPreflight,
+          (value) => redactKnownCredentialString(redactReportString(value), credentials)
+        )}`,
+        directoryPreflight,
       });
     } catch (error) {
       const message = redactKnownCredentialString(

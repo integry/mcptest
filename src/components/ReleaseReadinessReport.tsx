@@ -30,6 +30,8 @@ import { getAuthorizationGuidanceForEndpoint } from '../utils/authorizationGuida
 import AuthorizationSetup from './AuthorizationSetup';
 import CapabilitiesProvided from './CapabilitiesProvided';
 import FindingReferenceLink from './FindingReferenceLink';
+import ConnectorDirectoryPreflight from './ConnectorDirectoryPreflight';
+import { createConnectorDirectoryPreflight } from '../utils/connectorDirectoryPreflight';
 
 interface ReleaseReadinessReportProps {
   authorizationActions?: React.ReactNode;
@@ -174,6 +176,10 @@ const ReleaseReadinessReport: React.FC<ReleaseReadinessReportProps> = ({
     () => createReleaseDecision(report, matrix, report.toolSurfaceAnalysis, oauthTrace),
     [report, matrix, oauthTrace]
   );
+  const directoryPreflight = useMemo(
+    () => createConnectorDirectoryPreflight(report, oauthTrace),
+    [report, oauthTrace]
+  );
   const toolSurface = report.toolSurfaceAnalysis;
   const authorizationSchemes = facts.authorization.schemes.value;
   const oauthApplies = authorizationSchemes !== 'unknown' && authorizationSchemes.includes('oauth');
@@ -196,6 +202,7 @@ const ReleaseReadinessReport: React.FC<ReleaseReadinessReportProps> = ({
       compatibilityMatrix: matrix,
       toolSurfaceAnalysis: toolSurface,
       oauthTrace,
+      directoryPreflight,
     }));
     trackEvent('report_shared', { method: format });
   };
@@ -334,6 +341,10 @@ const ReleaseReadinessReport: React.FC<ReleaseReadinessReportProps> = ({
           })}
         </div>
       </section>
+
+      {!isProxyAuthenticationRequired(report) && (
+        <ConnectorDirectoryPreflight preflight={directoryPreflight} />
+      )}
 
       <section className="release-section" aria-labelledby="oauth-timeline-title">
         <div className="release-section-heading">

@@ -12,6 +12,7 @@ import {
 } from '../utils/reportArtifact';
 import type { ReleaseDecision } from '../utils/releaseReadiness';
 import { createCapabilityInventory } from '../utils/capabilityInventory';
+import { analyzeToolSurface } from '../utils/toolSurfaceAnalysis';
 import { runCli } from './runCli';
 import {
   RELEASE_GATE_EXIT_CODES,
@@ -99,6 +100,30 @@ describe('headless release gate', () => {
     expect(result.targets[0].report?.capabilityInventory?.tools.items[0].name).toBe('search_records');
     expect(result.targets[0].json).toContain('"capabilityInventory"');
     expect(result.targets[0].markdown).toContain('## Capabilities provided');
+  });
+
+  it('adds the connector directory preflight to the result and the Markdown artifact', async () => {
+    const evaluation = evaluatedReport('https://mcp.acme-tools.dev/mcp');
+    evaluation.toolSurfaceAnalysis = analyzeToolSurface({
+      tools: [{ name: 'search_records', description: 'Search records', inputSchema: { type: 'object', properties: {} } }],
+      resources: [],
+      prompts: [],
+    });
+    const result = await runReleaseGate({
+      endpoints: [evaluation.serverUrl],
+      policy: { failOnResults: new Set(), failOnSeverity: 'none' },
+    }, { evaluate: async () => evaluation });
+
+    const preflight = result.targets[0].directoryPreflight;
+    const claude = preflight?.directories.find((entry) => entry.directory.id === 'claude');
+    expect(claude?.items.find((entry) => entry.id === 'claude.tool-title')).toMatchObject({
+      status: 'fail',
+      evidence: ['search_records'],
+    });
+    expect(claude?.items.find((entry) => entry.id === 'claude.remote-https')?.status).toBe('pass');
+    expect(result.targets[0].markdown).toContain('## Connector directory preflight');
+    expect(result.targets[0].markdown).toContain('- [Fail] Every tool has a title');
+    expect(result.targets[0].json).not.toContain('Connector directory preflight');
   });
 
   it.each([

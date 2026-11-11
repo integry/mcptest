@@ -2,6 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { isOAuthSensitiveKey } from '../utils/transportDetection';
 import { redactReportString } from '../utils/reportArtifact';
+import { summarizeConnectorDirectoryPreflight } from '../utils/connectorDirectoryPreflight';
 import {
   DEFAULT_RELEASE_GATE_POLICY,
   RELEASE_GATE_EXIT_CODES,
@@ -352,6 +353,11 @@ export const runCli = async (
     const decision = target.releaseDecision?.status || target.status;
     process.stdout.write(`${target.endpoint}: ${decision}\n`);
     for (const reason of target.thresholdReasons) process.stdout.write(`  threshold: ${reason}\n`);
+    if (target.directoryPreflight) {
+      for (const line of summarizeConnectorDirectoryPreflight(target.directoryPreflight)) {
+        process.stdout.write(`  directory: ${redactReportString(line)}\n`);
+      }
+    }
     if (target.error) process.stderr.write(`  infrastructure: ${target.error}\n`);
     for (const path of written) process.stdout.write(`  artifact: ${path}\n`);
   }

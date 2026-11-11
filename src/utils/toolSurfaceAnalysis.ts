@@ -2,6 +2,8 @@ import {
   TOOL_SURFACE_ANALYSIS_VERSION,
   type ToolSurfaceAnalysisV1,
   type ToolSurfaceAnalyzerInput,
+  type ToolAnnotationRecordV1,
+  type ToolAnnotationSummaryV1,
   type ToolDefinitionSnapshotSetV1,
   type ToolSurfaceDiscoveryCapability,
   type ToolSurfaceEvidenceV1,
@@ -32,6 +34,9 @@ const OVERLAP_PAIR_RETENTION_LIMIT = EVIDENCE_LIMIT;
 const SNAPSHOT_DEFINITION_LIMIT = 500;
 const SNAPSHOT_DEFINITION_BYTE_LIMIT = 64_000;
 const SNAPSHOT_SCHEMA_BYTE_LIMIT = 32_000;
+const ANNOTATION_RECORD_LIMIT = 500;
+const ANNOTATION_BYTE_LIMIT = 16_000;
+const ANNOTATION_NAME_CHARACTER_LIMIT = 256;
 
 const SEVERITIES: readonly ToolSurfaceSeverity[] = [
   'critical',
@@ -1483,6 +1488,56 @@ const createToolDefinitionSnapshot = (
   };
 };
 
+const ANNOTATION_HINTS = ['readOnlyHint', 'destructiveHint', 'idempotentHint', 'openWorldHint'] as const;
+
+const nonEmptyText = (value: unknown): boolean => typeof value === 'string' && value.trim() !== '';
+
+/**
+ * Records which presentation and safety metadata each tool declared, so the
+ * connector-directory preflight can check titles and hints without the raw
+ * tool list. Only presence and declared booleans are kept, never free text.
+ */
+const createToolAnnotationSummary = (
+  tools: readonly ToolRecord[],
+  expectedToolCount: number,
+  discoveryIncomplete: boolean,
+  toolListStatus: 'present' | 'empty' | 'missing' | 'malformed'
+): ToolAnnotationSummaryV1 => {
+  const toolListValidated = toolListStatus === 'present' || toolListStatus === 'empty';
+  const records: ToolAnnotationRecordV1[] = [];
+  let retainedBytes = 0;
+  let complete = toolListValidated && !discoveryIncomplete && tools.length === expectedToolCount;
+  for (const tool of tools) {
+    if (!tool.name || !isRecord(tool.raw) || records.length >= ANNOTATION_RECORD_LIMIT) {
+      complete = false;
+      continue;
+    }
+    const annotations = isRecord(tool.raw.annotations) ? tool.raw.annotations : {};
+    const record: ToolAnnotationRecordV1 = {
+      name: tool.name.slice(0, ANNOTATION_NAME_CHARACTER_LIMIT),
+      title: nonEmptyText(tool.raw.title) || nonEmptyText(annotations.title),
+      description: nonEmptyText(tool.raw.description),
+    };
+    for (const hint of ANNOTATION_HINTS) {
+      if (typeof annotations[hint] === 'boolean') record[hint] = annotations[hint];
+    }
+    const recordBytes = utf8ByteLength(JSON.stringify(record));
+    if (retainedBytes + recordBytes > ANNOTATION_BYTE_LIMIT) {
+      complete = false;
+      continue;
+    }
+    retainedBytes += recordBytes;
+    records.push(record);
+  }
+  records.sort((left, right) => compareText(left.name, right.name));
+  return {
+    status: !toolListValidated || (expectedToolCount === 0 && discoveryIncomplete)
+      ? 'unavailable'
+      : complete ? 'complete' : 'partial',
+    tools: records,
+  };
+};
+
 const contextSeverity = (toolCount: number, tokenCount: number): ToolSurfaceSeverity | null => {
   if (toolCount >= 100 || tokenCount >= 20_000) return 'high';
   if (toolCount >= 40 || tokenCount >= 8_000) return 'medium';
@@ -2082,6 +2137,12 @@ export function analyzeToolSurface(input: ToolSurfaceAnalyzerInput): ToolSurface
       canonicalBytes: utf8ByteLength(canonicalFingerprint),
     },
     toolDefinitions: createToolDefinitionSnapshot(
+      tools,
+      extracted.tools.length,
+      extracted.incompleteDiscovery.includes('tools'),
+      extracted.status
+    ),
+    toolAnnotations: createToolAnnotationSummary(
       tools,
       extracted.tools.length,
       extracted.incompleteDiscovery.includes('tools'),

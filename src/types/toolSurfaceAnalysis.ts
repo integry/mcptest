@@ -114,6 +114,27 @@ export interface ToolDefinitionSnapshotSetV1 {
   tools: ToolDefinitionSnapshotV1[];
 }
 
+/**
+ * Presence of the presentation and safety metadata directories check: a
+ * `title` (top-level or `annotations.title`), a non-empty description, and each
+ * boolean hint exactly as declared. Hints the tool omitted stay absent.
+ */
+export interface ToolAnnotationRecordV1 {
+  name: string;
+  title: boolean;
+  description: boolean;
+  readOnlyHint?: boolean;
+  destructiveHint?: boolean;
+  idempotentHint?: boolean;
+  openWorldHint?: boolean;
+}
+
+/** `partial` means at least one tool could not be recorded, so a missing tool proves nothing. */
+export interface ToolAnnotationSummaryV1 {
+  status: 'complete' | 'partial' | 'unavailable';
+  tools: ToolAnnotationRecordV1[];
+}
+
 export type ToolSurfaceFindingsBySeverityV1 = Record<
   ToolSurfaceSeverity,
   ToolSurfaceFindingV1[]
@@ -124,6 +145,8 @@ export interface ToolSurfaceAnalysisV1 {
   metrics: ToolSurfaceMetricsV1;
   fingerprint: ToolSurfaceFingerprintV1;
   toolDefinitions: ToolDefinitionSnapshotSetV1;
+  /** Absent in analyses recorded before annotation metadata was kept. */
+  toolAnnotations?: ToolAnnotationSummaryV1;
   findings: ToolSurfaceFindingsBySeverityV1;
   findingCount: number;
   interpretation: string;
