@@ -4,7 +4,7 @@ test('report: generates a release-readiness report with the badge embed', async 
   const endpoint = mockUrl('2026');
   await page.goto('/report');
   await page.getByRole('main').getByLabel('MCP server URL').fill(endpoint);
-  await page.getByRole('button', { name: 'Run Report' }).click();
+  await page.getByRole('button', { name: 'Run report' }).click();
 
   await expect(page).toHaveURL(`/report/${encodeURIComponent(endpoint)}`);
   const embed = page.getByRole('region', { name: 'Share and embed' });

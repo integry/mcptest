@@ -399,7 +399,7 @@ function renderServerFallback(server) {
 
   return [
     `<article class="server-profile seo-server-fallback" data-server-id="${escapeHtml(server.id)}">`,
-    `  <nav class="server-profile-breadcrumb" aria-label="Breadcrumb"><ol class="breadcrumb mb-0"><li class="breadcrumb-item server-profile-breadcrumb-parent"><a href="/catalog">Server Catalog</a></li><li class="breadcrumb-item server-profile-breadcrumb-parent"><a href="${escapeHtml(getCatalogCategoryPath(server.category))}">${escapeHtml(server.category)}</a></li><li class="breadcrumb-item active server-profile-breadcrumb-current" aria-current="page">${escapeHtml(server.name)}</li></ol></nav>`,
+    `  <nav class="server-profile-breadcrumb" aria-label="Breadcrumb"><ol class="breadcrumb mb-0"><li class="breadcrumb-item server-profile-breadcrumb-parent"><a href="/catalog">Server catalog</a></li><li class="breadcrumb-item server-profile-breadcrumb-parent"><a href="${escapeHtml(getCatalogCategoryPath(server.category))}">${escapeHtml(server.category)}</a></li><li class="breadcrumb-item active server-profile-breadcrumb-current" aria-current="page">${escapeHtml(server.name)}</li></ol></nav>`,
     '  <header class="server-profile-hero">',
     `    <div class="server-profile-identity">${renderServerLogo(server)}<div>`,
     `      <h1 class="text-break">${escapeHtml(getCatalogServerHeading(server))}</h1>`,
@@ -1711,7 +1711,7 @@ function writeToolPages(indexHtml, toolsMetadata, { shell, prerender }) {
 /** A standalone static action setup page; no App route or hydration is needed. */
 function writeCiPage(indexHtml) {
   const markdown = [
-    'Check whether your endpoint is ready for Claude, ChatGPT, Cursor, VS Code, Claude Code and Codex, and whether this deploy breaks agents holding the previous tool list.',
+    'Check whether your endpoint is ready for each client mcptest profiles (Claude, ChatGPT, Cursor, VS Code, Claude Code, Codex, Gemini CLI, Windsurf and others), and whether this deploy breaks agents holding the previous tool list.',
     '', '## Copy this workflow', '',
     'Create `.github/workflows/mcp-gate.yml` in your server repository. Deploy a reachable preview endpoint first, then replace the example URL.',
     '', '```yaml', CI_WORKFLOW, '```', '',
@@ -1720,7 +1720,7 @@ function writeCiPage(indexHtml) {
     'Start with `baseline: none`. Then use `baseline: published` to compare with the latest published report for the same endpoint, or supply a previous release JSON path. Missing baselines fail closed. Only publish from trusted release jobs if published history should represent the last release.',
     '', 'Set `publish: true` to make the redacted report public and include a permalink. Publishing is off by default. Use secret environment variable names in `bearer-token` or `api-key`, never literal credentials.',
     '', '## Example PR comment', '',
-    'This illustrative comment shows a removed contract blocking a deploy despite compatible client profiles. The action also links individual findings to reference sections.',
+    'In this example, a newly required input on `search` blocks the deploy even though every client profile shown is compatible or compatible with caveats. Each finding links to the guide section that explains its rule. With `publish: true`, the comment also links the published report.',
     '', '```markdown', CI_EXAMPLE_COMMENT, '```', '',
     'Grant `pull-requests: write` to update a single sticky PR comment. Fork PRs without permission skip commenting and retain their job summary and artifacts.',
     '', '## Run both readiness and conformance', '',

@@ -10,7 +10,7 @@ test.describe('MCP discovery checker', () => {
     expect(response?.status()).toBe(200);
     await expect(page).toHaveTitle(/MCP Discovery Checker/);
     await expect(page.getByRole('heading', { level: 1, name: 'MCP discovery checker' })).toBeVisible();
-    await expect(page.locator('#app-sidenav-desktop').getByRole('link', { name: 'Discovery check' })).toHaveAttribute('aria-current', 'page');
+    await expect(page.locator('#app-sidenav-desktop').getByRole('link', { name: 'Discovery checker' })).toHaveAttribute('aria-current', 'page');
   });
 
   test('finds the endpoint a local domain advertises, validates each location and opens it in the inspector', async ({ page, externalRequests }) => {

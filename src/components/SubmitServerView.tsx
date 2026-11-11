@@ -263,7 +263,7 @@ const SubmitServerView: React.FC<SubmitServerViewProps> = ({
                   className={`bi ${isSubmittableEvidence(evidence) ? 'bi-check-circle' : 'bi-x-circle'}`}
                   aria-hidden="true"
                 />
-                {isSubmittableEvidence(evidence) ? 'Ready to submit' : 'Not submittable yet'}
+                {isSubmittableEvidence(evidence) ? 'Ready to submit' : 'Not ready to submit'}
               </p>
               <dl>
                 {describeEvidence(evidence).map(([term, value]) => (
