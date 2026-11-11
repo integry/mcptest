@@ -369,6 +369,23 @@ const rateLimitObservation = (
 };
 
 /**
+ * Whether the request at `index` was rate-limit retried automatically and a
+ * later retry of the same candidate succeeded, so it did not stop the
+ * connection.
+ */
+const recoveredByAutomaticRetry = (
+  requests: readonly ObservedTransportRequest[],
+  index: number
+): boolean => {
+  const request = requests[index];
+  return request.rateLimitRetry?.action === 'retried' && requests.slice(index + 1).some((later) => (
+    later.automaticRetry?.reason === 'target-rate-limit'
+    && later.candidateUrl === request.candidateUrl
+    && isSuccess(later.status)
+  ));
+};
+
+/**
  * Detects transport diagnostics in the ordered requests of one connection
  * route. Only responses attributable to the target are considered, so a proxy
  * response (for example the proxy's own 406 or caller-limit 429) never becomes
@@ -389,11 +406,14 @@ export const detectTransportDiagnostics = (
     if (responseClass?.kind === 'bot-protection') {
       // A challenge on the optional GET stream degrades the session; anywhere
       // else no MCP client gets through. A heuristic match is only suspected.
+      // A challenge (for example a challenge 429) that the automatic retry got
+      // past did not stop this connection, so it is reported, not blocking.
       const suspected = responseClass.confidence === 'suspected';
+      const recovered = recoveredByAutomaticRetry(requests, index);
       diagnostics.push(createDiagnostic(
         'transport.bot-protection-challenge',
-        streamableGet ? 'warning' : 'error',
-        [toEvidence(request, route, `${requestDescription(request)}: ${describeResponseClassification(responseClass, targetEndpoint(request))}`)],
+        recovered || streamableGet ? 'warning' : 'error',
+        [toEvidence(request, route, `${requestDescription(request)}: ${describeResponseClassification(responseClass, targetEndpoint(request))}${recovered ? ' mcptest retried once automatically and the retry succeeded.' : ''}`)],
         suspected
           ? {
             status: 'suspected',
@@ -430,11 +450,7 @@ export const detectTransportDiagnostics = (
       // spent retrying or negotiating other candidates counts toward the wait.
       const receivedAt = responseReceivedAt(request) ?? Date.now();
       const retryAfterSeconds = parseRetryAfter(request.retryAfter, receivedAt);
-      const recovered = request.rateLimitRetry?.action === 'retried' && requests.slice(index + 1).some((later) => (
-        later.automaticRetry?.reason === 'target-rate-limit'
-        && later.candidateUrl === request.candidateUrl
-        && isSuccess(later.status)
-      ));
+      const recovered = recoveredByAutomaticRetry(requests, index);
       // The successful retry already satisfied this wait; no cooldown remains.
       const retryAt = retryAfterSeconds === undefined || recovered
         ? undefined

@@ -77,7 +77,7 @@ The fixes below repeat the code hints shown in the app (`src/utils/transportDiag
 | `transport.target-rate-limited-429` | error (warning if a retry recovered, or on GET) | Yes when error |
 | `transport.cors-expose-headers-missing` | error when confirmed, warning when suspected | Only when confirmed |
 | `transport.sse-content-type-mismatch` | error (warning on the optional GET stream) | Yes when error |
-| `transport.bot-protection-challenge` | error (warning on GET); suspected without a vendor signature | Yes when detected |
+| `transport.bot-protection-challenge` | error (warning if a retry recovered, or on GET); suspected without a vendor signature | Yes when error |
 | `transport.payment-required-402` | error (warning on GET) | No: the report is not scored |
 | `tool.output-contract-violation` | high-priority finding | Yes |
 
@@ -292,7 +292,7 @@ return new Response(readable, {
 
 A `403` HTML page without `WWW-Authenticate`, where JSON or an event stream was expected, matches no vendor signature and is reported as `suspected`. A `403` with `WWW-Authenticate` is an authentication challenge and never counts here. `Server: cloudflare` and `cf-ray` are not evidence: Cloudflare adds them to every response it serves, including the mcptest proxy's own.
 
-**Severity:** error; warning on the optional Streamable HTTP GET stream. mcptest does not start OAuth discovery on such a `403`, because discovery would hit the same rule.
+**Severity:** error; warning on the optional Streamable HTTP GET stream, and warning when a challenge `429` was retried automatically and the retry succeeded. mcptest does not start OAuth discovery on such a `403`, because discovery would hit the same rule.
 
 **Why:** MCP clients are programs, so they cannot solve a challenge meant for browsers. The same rules often cover `/.well-known/oauth-protected-resource`, `/.well-known/oauth-authorization-server` and the token endpoint, which breaks OAuth discovery in every client, not only in mcptest.
 

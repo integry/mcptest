@@ -71,6 +71,49 @@ describe('release decision response classes', () => {
     expect(decision.priorities[1].remediation).toContain('Exempt the MCP endpoint');
   });
 
+  it('does not block release on a challenge 429 the automatic retry recovered', () => {
+    const challenge = classifyHttpResponse({ status: 429, headers: { 'cf-mitigated': 'challenge', 'retry-after': '1' } });
+    const initialize = {
+      method: 'POST',
+      mcpMethod: 'initialize',
+      url: ENDPOINT,
+      targetUrl: ENDPOINT,
+      candidateUrl: ENDPOINT,
+      transportType: 'streamable-http',
+      responseSource: 'target',
+    } as const;
+    const diagnostics = collectTransportDiagnostics([{
+      route: 'direct',
+      requests: [
+        { ...initialize, status: 429, retryAfter: '1', rateLimitRetry: { action: 'retried', waitMs: 1000 }, ...(challenge ? { responseClass: challenge } : {}) },
+        { ...initialize, status: 200, responseContentType: 'application/json', automaticRetry: { reason: 'target-rate-limit', waitMs: 1000 } },
+      ],
+    }], 'headless');
+    const report = {
+      serverUrl: ENDPOINT,
+      outcome: 'scored',
+      finalScore: 15,
+      sections: {
+        protocol: {
+          name: 'Core protocol',
+          description: 'Protocol negotiation',
+          score: 15,
+          maxScore: 15,
+          status: 'passed',
+          details: [{ text: '✓ MCP negotiation succeeded' }, ...diagnostics.map(transportDiagnosticReportDetail)],
+        },
+      },
+    } as unknown as EvaluationReport;
+
+    const decision = decide(report);
+
+    expect(challenge?.kind).toBe('bot-protection');
+    expect(decision.status).not.toBe('blocked');
+    expect(decision.priorities.find(({ id }) => id === 'transport.bot-protection-challenge'))
+      .toMatchObject({ severity: 'medium' });
+    expect(decision.priorities.some(({ severity }) => severity === 'high' || severity === 'critical')).toBe(false);
+  });
+
   it('keeps the generic negotiation priority for an unclassified failure', () => {
     const decision = decide(failedReport(404, {}));
 
