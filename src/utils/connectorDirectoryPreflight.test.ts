@@ -257,6 +257,19 @@ describe('connector directory preflight', () => {
       expect(Date.now() - started).toBeLessThan(1000);
     });
 
+    it('F14: leaves a pattern-keyed schema with no visible method argument for manual review, not passed', () => {
+      const result = review(withSchema({ patternProperties: { '^method$': { type: 'string' } }, additionalProperties: false }));
+      expect(result.evidence).toEqual(['api_request (/patternProperties)']);
+      expect(result.detail).toContain('patternProperties or an external $ref');
+    });
+
+    it('F14: leaves an unresolved external $ref for manual review, not passed', () => {
+      const input = observations({
+        tools: toolsFrom([fullyAnnotated('api_request', { inputSchema: { $ref: 'https://example.com/schemas/request.json' } })]),
+      });
+      expect(review(input).evidence).toEqual(['api_request (/$ref)']);
+    });
+
     it('F13: leaves a method enum under maxProperties for manual review, not failed', () => {
       review(withSchema({
         required: ['query'],

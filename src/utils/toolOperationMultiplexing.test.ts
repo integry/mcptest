@@ -295,4 +295,41 @@ describe('regressions from earlier review rounds', () => {
       properties: { query: { type: 'string' }, method: { enum: ['GET', 'POST'] } },
     }))).toEqual([{ tool: 'search', location: '/properties/method', reason: 'not-plain' }]);
   });
+
+  it('F14: a pattern-keyed schema with no visible method argument is manual review, not a pass', () => {
+    const tools = [{
+      name: 'api_request',
+      inputSchema: { type: 'object', patternProperties: { '^method$': { type: 'string' } }, additionalProperties: false },
+    }];
+    expect(assess(...tools)).toEqual({
+      failures: [],
+      reviews: [{ tool: 'api_request', location: '/patternProperties', reason: 'unsupported-keyword' }],
+    });
+  });
+
+  it('F14: patternProperties nested anywhere in the schema is manual review', () => {
+    expect(reviewed(tool('wrapper', { request: { type: 'object', patternProperties: { '^m': {} } } })))
+      .toEqual([{ tool: 'wrapper', location: '/properties/request/patternProperties', reason: 'unsupported-keyword' }]);
+  });
+
+  it('F14: an external $ref is manual review, and is never fetched or resolved', () => {
+    expect(reviewed(
+      { name: 'root_ref', inputSchema: { $ref: 'https://example.com/schemas/request.json' } },
+      tool('nested_ref', { request: { $ref: 'request.json#/definitions/args' } }),
+      schemaTool('dynamic_ref', { $dynamicRef: 'https://example.com/meta#node' }),
+    )).toEqual([
+      { tool: 'root_ref', location: '/$ref', reason: 'unsupported-keyword' },
+      { tool: 'nested_ref', location: '/properties/request/$ref', reason: 'unsupported-keyword' },
+      { tool: 'dynamic_ref', location: '/$dynamicRef', reason: 'unsupported-keyword' },
+    ]);
+  });
+
+  it('F14: local refs, keyword-named arguments, and keyword-shaped data still pass', () => {
+    expect(assess(
+      schemaTool('local_ref', { properties: { query: { $ref: '#/$defs/q' } }, $defs: { q: { type: 'string' } } }),
+      tool('named', { patternProperties: { type: 'string' }, $ref: { type: 'string' } }),
+      tool('data', { filter: { type: 'object', default: { $ref: 'other.json', patternProperties: { a: 1 } } } }),
+      schemaTool('empty_patterns', { patternProperties: {} }),
+    )).toEqual({ failures: [], reviews: [] });
+  });
 });

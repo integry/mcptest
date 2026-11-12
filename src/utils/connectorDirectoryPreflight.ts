@@ -160,6 +160,7 @@ const METHOD_REVIEW_REASONS: Record<MethodSelectorReview['reason'], string> = {
   'not-plain': 'a method argument whose schema, or the input schema around it, uses keywords other than a plain enum or const',
   nested: 'a method argument that is not declared directly in the input schema',
   'method-values': 'an enum or const listing both safe and unsafe HTTP methods outside a plain method argument',
+  'unsupported-keyword': 'patternProperties or an external $ref, either of which could declare a method argument',
   'too-large': 'an input schema larger than the check examines',
 };
 

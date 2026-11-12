@@ -17,6 +17,8 @@
  * (composition, `$ref`, `not`, conditionals, cardinality bounds,
  * `patternProperties`, `propertyNames`, `pattern`, ...) means the value set is
  * not established, and the method check reports the tool for manual review.
+ * So does a schema that could declare arguments the scan cannot see:
+ * `patternProperties` anywhere in it, or a `$ref` that points outside it.
  * Server-supplied regular expressions are never compiled or executed.
  */
 
@@ -36,7 +38,7 @@ export interface MethodSelectorReview {
   tool: string;
   /** JSON Pointer into the input schema (`/properties/method`), or `` for the whole schema. */
   location: string;
-  reason: 'not-plain' | 'nested' | 'method-values' | 'too-large';
+  reason: 'not-plain' | 'nested' | 'method-values' | 'unsupported-keyword' | 'too-large';
 }
 
 export interface MethodSelectorAssessment {
@@ -157,6 +159,23 @@ const mixesSafeAndUnsafe = (values: readonly unknown[]): boolean => {
 
 const limitedValues = (values: readonly string[]): string[] => values.slice(0, VALUE_DISPLAY_LIMIT);
 
+/** Keywords whose object value maps names (not keywords) to schemas. */
+const NAME_MAP_KEYWORDS = new Set(['properties', 'patternProperties', '$defs', 'definitions', 'dependentSchemas']);
+/** Keywords whose value is instance data, never a schema. */
+const DATA_KEYWORDS = new Set(['enum', 'const', 'default', 'examples']);
+const REFERENCE_KEYWORDS = ['$ref', '$dynamicRef', '$recursiveRef'] as const;
+
+/**
+ * Keywords in one schema object that could declare arguments the walk cannot
+ * see without interpreting them: pattern-keyed properties (a pattern may match
+ * `method`) and references to documents outside the input schema. Neither is
+ * resolved or compiled; their presence is enough.
+ */
+const unsupportedKeywords = (node: Record<string, unknown>): string[] => [
+  ...(isRecord(node.patternProperties) && Object.keys(node.patternProperties).length > 0 ? ['patternProperties'] : []),
+  ...REFERENCE_KEYWORDS.filter((keyword) => typeof node[keyword] === 'string' && !(node[keyword] as string).startsWith('#')),
+];
+
 const pointerSegment = (key: string): string => key.replace(/~/g, '~0').replace(/\//g, '~1');
 
 interface SchemaWalk {
@@ -164,6 +183,8 @@ interface SchemaWalk {
   methodProperties: { owner: Record<string, unknown>; name: string; location: string }[];
   /** Every `enum`/`const` holding both safe and unsafe method names, wherever it appears. */
   methodValueSets: { node: Record<string, unknown>; location: string }[];
+  /** Schema keywords that could declare method arguments out of the walk's sight (see `unsupportedKeywords`). */
+  unsupported: { location: string }[];
   complete: boolean;
 }
 
@@ -174,9 +195,14 @@ interface SchemaWalk {
  * more JSON to look through.
  */
 const walkSchema = (schema: unknown): SchemaWalk => {
-  const walk: SchemaWalk = { methodProperties: [], methodValueSets: [], complete: true };
+  const walk: SchemaWalk = { methodProperties: [], methodValueSets: [], unsupported: [], complete: true };
   const seen = new Set<unknown>();
-  const stack: { value: unknown; location: string; depth: number }[] = [{ value: schema, location: '', depth: 0 }];
+  // `kind` tells schema objects apart from name maps and instance data, so that an argument
+  // named `patternProperties` or a default value holding `$ref` is not read as a keyword.
+  type Kind = 'schema' | 'map' | 'data';
+  const stack: { value: unknown; location: string; depth: number; kind: Kind }[] = [
+    { value: schema, location: '', depth: 0, kind: 'schema' },
+  ];
   // Counts every JSON value queued, primitives included, so wide objects and long enums are bounded too.
   let queued = 1;
   const exceeds = (children: number) => {
@@ -184,7 +210,7 @@ const walkSchema = (schema: unknown): SchemaWalk => {
     return queued > WALK_NODE_LIMIT;
   };
   while (stack.length > 0) {
-    const { value, location, depth } = stack.pop()!;
+    const { value, location, depth, kind } = stack.pop()!;
     if (!value || typeof value !== 'object' || seen.has(value)) continue;
     seen.add(value);
     if (depth > WALK_DEPTH_LIMIT || exceeds(Array.isArray(value) ? value.length : Object.keys(value).length)) {
@@ -192,10 +218,13 @@ const walkSchema = (schema: unknown): SchemaWalk => {
       return walk;
     }
     if (Array.isArray(value)) {
-      value.forEach((element, index) => stack.push({ value: element, location: `${location}/${index}`, depth: depth + 1 }));
+      value.forEach((element, index) => stack.push({ value: element, location: `${location}/${index}`, depth: depth + 1, kind }));
       continue;
     }
     const node = value as Record<string, unknown>;
+    if (kind === 'schema') {
+      for (const keyword of unsupportedKeywords(node)) walk.unsupported.push({ location: `${location}/${pointerSegment(keyword)}` });
+    }
     if (isRecord(node.properties)) {
       for (const name of Object.keys(node.properties)) {
         if (HTTP_METHOD_NAMES.has(canonicalName(name))) {
@@ -206,7 +235,10 @@ const walkSchema = (schema: unknown): SchemaWalk => {
     const literals = [...(Array.isArray(node.enum) ? node.enum : []), ...('const' in node ? [node.const] : [])];
     if (mixesSafeAndUnsafe(literals)) walk.methodValueSets.push({ node, location });
     for (const [key, child] of Object.entries(node)) {
-      stack.push({ value: child, location: `${location}/${pointerSegment(key)}`, depth: depth + 1 });
+      const childKind: Kind = kind !== 'schema' ? (kind === 'map' ? 'schema' : 'data')
+        : NAME_MAP_KEYWORDS.has(key) ? 'map'
+          : DATA_KEYWORDS.has(key) ? 'data' : 'schema';
+      stack.push({ value: child, location: `${location}/${pointerSegment(key)}`, depth: depth + 1, kind: childKind });
     }
   }
   return walk;
@@ -219,7 +251,9 @@ const walkSchema = (schema: unknown): SchemaWalk => {
  * its own plain `enum` or `const` lists both safe and unsafe methods. Every
  * other method-style property, and every `enum`/`const` elsewhere that lists
  * both, puts the tool up for manual review: the check does not work out
- * whether other keywords narrow or widen the accepted methods.
+ * whether other keywords narrow or widen the accepted methods. A schema with
+ * `patternProperties` or an external `$ref` is reviewed too, even when no
+ * method argument is visible, because either could declare one.
  */
 export const assessHttpMethodSelectors = (tools: readonly ToolLike[]): MethodSelectorAssessment => {
   const failures: OperationSelectorMatch[] = [];
@@ -250,6 +284,9 @@ export const assessHttpMethodSelectors = (tools: readonly ToolLike[]): MethodSel
     }
     for (const { node, location } of walk.methodValueSets) {
       if (!decided.has(node)) toolReviews.push({ tool: tool.name, location, reason: 'method-values' });
+    }
+    for (const { location } of walk.unsupported) {
+      toolReviews.push({ tool: tool.name, location, reason: 'unsupported-keyword' });
     }
     failures.push(...toolFailures);
     // A confirmed failure stands on its own; the rest of that tool needs no separate review.
