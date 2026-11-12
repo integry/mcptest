@@ -44,6 +44,22 @@ test.describe('sidebar navigation', () => {
     await expect(nav.locator('a[href="/learn/mcp-clients-compared"]')).toHaveAttribute('aria-current', 'page');
   });
 
+  test('`/` on a guide expands the collapsed sidebar and focuses the guide search', async ({ page }) => {
+    await page.goto('/learn/mcp-clients-compared');
+    const nav = page.locator(sidebar);
+    await nav.locator('.sidenav-collapse-toggle').click();
+    await expect(nav).toHaveClass(/app-sidenav--collapsed/);
+    // On the rail Learn is one icon; its body, with the search button, is hidden.
+    await expect(nav.locator('.sidenav-learn-body')).toBeHidden();
+
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    await page.keyboard.press('/');
+
+    await expect(nav).not.toHaveClass(/app-sidenav--collapsed/);
+    await expect(nav.getByRole('button', { name: 'Learn' })).toHaveAttribute('aria-expanded', 'true');
+    await expect(nav.getByRole('combobox', { name: 'Search guides' })).toBeFocused();
+  });
+
   test('remembers the collapsed sidebar across reloads', async ({ page }) => {
     await page.goto('/tools/discovery');
     await page.locator(`${sidebar} .sidenav-collapse-toggle`).click();

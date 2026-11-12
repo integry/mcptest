@@ -17,6 +17,11 @@ interface GuideSearchProps {
   /** Icon-only sidebar: shows a search button that expands the sidebar first. */
   collapsed?: boolean;
   onExpandSidebar?: () => void;
+  /**
+   * A visible rail control that takes the collapsed shortcut when this
+   * field's own rail button is folded away (inside a hidden group body).
+   */
+  railFallbackRef?: React.RefObject<HTMLElement | null>;
   /** Called after a result is opened, e.g. to close the mobile drawer. */
   onNavigate?: () => void;
   loadIndex?: GuideSearchLoader;
@@ -48,6 +53,7 @@ const GuideSearch: React.FC<GuideSearchProps> = ({
   shortcutPriority = 0,
   collapsed = false,
   onExpandSidebar,
+  railFallbackRef,
   onNavigate,
   loadIndex = loadGuideSearch,
 }) => {
@@ -111,10 +117,16 @@ const GuideSearch: React.FC<GuideSearchProps> = ({
       focus: () => {
         // A control hidden by CSS (the desktop sidebar on a phone) cannot take
         // focus, so a hidden sidebar never swallows the key or expands.
-        const control = collapsed ? railButtonRef.current : inputRef.current;
-        if (!control || (collapsed && !onExpandSidebar)) return false;
-        control.focus();
-        if (document.activeElement !== control) return false;
+        // On the rail the button may sit in a folded group; a visible rail
+        // control then proves the sidebar is shown.
+        const candidates = collapsed ? [railButtonRef.current, railFallbackRef?.current] : [inputRef.current];
+        if (collapsed && !onExpandSidebar) return false;
+        const control = candidates.find(candidate => {
+          if (!candidate) return false;
+          candidate.focus();
+          return document.activeElement === candidate;
+        });
+        if (!control) return false;
         if (collapsed) {
           onExpandSidebar!();
           setFocusPending(true);
@@ -124,7 +136,7 @@ const GuideSearch: React.FC<GuideSearchProps> = ({
         return true;
       },
     });
-  }, [shortcutEnabled, shortcutPriority, collapsed, onExpandSidebar]);
+  }, [shortcutEnabled, shortcutPriority, collapsed, onExpandSidebar, railFallbackRef]);
 
   const openResult = (result: GuideSearchResult) => {
     navigate(result.href);

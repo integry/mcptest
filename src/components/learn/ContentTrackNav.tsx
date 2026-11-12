@@ -23,6 +23,8 @@ interface ContentTrackNavProps {
    */
   open?: boolean;
   onToggleOpen?: () => void;
+  /** Ref to the Learn heading toggle, the group's always-visible control. */
+  toggleRef?: React.Ref<HTMLButtonElement>;
 }
 
 /** Icon of the Learn group toggle, also shown on the icon rail. */
@@ -42,6 +44,7 @@ const ContentTrackNav: React.FC<ContentTrackNavProps> = ({
   search,
   open,
   onToggleOpen,
+  toggleRef,
 }) => {
   const { pathname } = useLocation();
   const activeTrackId = getLearnTrackForPath(pathname)?.id;
@@ -127,6 +130,7 @@ const ContentTrackNav: React.FC<ContentTrackNavProps> = ({
         <>
           <h2 className="sidenav-section-heading">
             <button
+              ref={toggleRef}
               type="button"
               id={`${idPrefix}-learn-heading`}
               className="nav-link sidenav-link sidenav-group-toggle sidenav-section-toggle"

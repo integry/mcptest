@@ -81,6 +81,9 @@ const SideNav: React.FC<SideNavProps> = ({
   const [learnOverride, setLearnOverride] = useState<{ base: boolean; open: boolean } | null>(null);
   const learnOpen = learnOverride && learnOverride.base === learnDefaultOpen ? learnOverride.open : learnDefaultOpen;
   const learnExpanded = learnOpen && !collapsed;
+  // The guide search rail button sits in the folded Learn body, so the
+  // collapsed `/` shortcut checks visibility through the Learn toggle.
+  const learnToggleRef = useRef<HTMLButtonElement>(null);
 
   const handleLearnToggle = () => {
     if (collapsed) {
@@ -471,12 +474,14 @@ const SideNav: React.FC<SideNavProps> = ({
         idPrefix={`sidenav-${idSuffix}`}
         open={learnExpanded}
         onToggleOpen={handleLearnToggle}
+        toggleRef={learnToggleRef}
         search={(
           <GuideSearch
             idPrefix={`sidenav-${idSuffix}`}
             shortcutEnabled={!isMobile && isGuideSearchShortcutView(activeView) && (collapsed || learnOpen)}
             collapsed={collapsed}
             onExpandSidebar={openLearnFromRail}
+            railFallbackRef={learnToggleRef}
             onNavigate={closeMobileDrawer}
           />
         )}
