@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ConnectionTab } from '../types';
+import { NEW_TAB_LABEL, NEW_TAB_TOOLTIP } from '../content/landingFirstRun';
 import './Tabs.css';
 
 interface TabsProps {
@@ -138,7 +139,15 @@ const Tabs: React.FC<TabsProps> = ({ tabs, activeTabId, onSelectTab, onCloseTab,
           );
         })}
       </div>
-      <button type="button" className="nav-link playground-tab-new" onClick={onNewTab}>+ New</button>
+      <button
+        type="button"
+        className="nav-link playground-tab-new"
+        onClick={onNewTab}
+        aria-label={NEW_TAB_LABEL}
+        title={NEW_TAB_TOOLTIP}
+      >
+        <span aria-hidden="true">+</span> New
+      </button>
     </div>
   );
 };

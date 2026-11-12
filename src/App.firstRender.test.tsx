@@ -83,7 +83,8 @@ const FIRST_FRAME = {
   header: true,
   sidebarLinks: ['Playground', 'Catalog', 'Reports', 'Breaking changes', 'OAuth check', 'Discovery check'],
   dashboards: ['My first dashboard'],
-  tabs: ['New Connection'],
+  // A first visit has no tab strip until a connection starts or a second tab opens.
+  tabs: [],
   landing: 'Inspect, debug and evaluate remote MCP servers in your browser',
   connectionPanel: false,
 };

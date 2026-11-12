@@ -45,6 +45,9 @@ const fallback = parse(renderLandingFallback(catalogSeeds.length));
 const describeLanding = root => ({
   headline: text(root.querySelector('h1')),
   lede: text(root.querySelector('.landing-lede')),
+  fieldLabel: text(root.querySelector('label[for="serverUrl"]')),
+  fieldHelp: text(root.querySelector('#serverUrl-help')),
+  preview: Array.from(root.querySelectorAll('.landing-preview :is(figcaption, p, li)'), text),
   pathsLabel: root.querySelector('nav').getAttribute('aria-label'),
   paths: Array.from(root.querySelectorAll('nav a'), link => ({
     href: link.getAttribute('href'),
@@ -83,8 +86,9 @@ describe('crawler-visible landing fallback', () => {
   });
 
   it('uses semantic elements and only classes the component also renders', () => {
-    expect(fallback.querySelector('section > div > h1')).not.toBeNull();
-    expect(fallback.querySelector('section > div > p')).not.toBeNull();
+    expect(fallback.querySelector('section > .landing-hero > .landing-intro > h1')).not.toBeNull();
+    expect(fallback.querySelector('section > .landing-hero > .landing-intro > p.landing-lede')).not.toBeNull();
+    expect(fallback.querySelector('section > .landing-hero > figure.landing-preview > figcaption')).not.toBeNull();
     expect(fallback.querySelectorAll('section > nav > ul > li > a')).toHaveLength(landingCopy.LANDING_AUDIENCE_PATHS.length);
     expect(fallback.querySelectorAll('.landing-coverage > ul > li')).toHaveLength(landingCopy.LANDING_REPORT_COVERAGE.length);
 
@@ -106,8 +110,9 @@ const HIDDEN_IN_FIRST_FRAME = [
   '.view-panel.d-none',
   '.main-content > .d-none',
   'style',
-  // Static alternative selected before first paint for returning visitors.
+  // Static alternatives selected before first paint for returning visitors.
   '[data-prerendered-recent]',
+  '[data-returning-tabs]',
   'template',
   // The shell carries both theme icons and shows one with CSS.
   '.theme-toggle-icon',
@@ -196,10 +201,18 @@ describe('static first frame (header, sidebar, playground landing)', () => {
     const shell = renderShell(false);
     const input = shell.querySelector('.landing-connect input#serverUrl');
     expect(input.hasAttribute('readonly')).toBe(false);
-    expect(shell.querySelector('.landing-connect button#connectBtn').disabled).toBe(true);
+    // Enabled before a URL is typed; the app validates the replayed click.
+    expect(shell.querySelector('.landing-connect button#connectBtn').disabled).toBe(false);
+    expect(shell.querySelector('label[for="serverUrl"]').textContent).toBe('MCP endpoint URL');
+    expect(input.getAttribute('aria-describedby')).toBe('serverUrl-help');
+    expect(shell.querySelector('#serverUrl-help')).not.toBeNull();
     expect(shell.querySelectorAll('[onclick], script')).toHaveLength(0);
     expect(Array.from(shell.querySelectorAll('.landing-quick-pick'), button => button.dataset.serverId))
       .toEqual(selectLandingQuickPicks(getCatalogServers()).map(server => server.id));
+    // The one-click sample is the first preset, replayed on the app's button by id.
+    expect(shell.querySelector('#landingSampleBtn').dataset.serverId)
+      .toBe(selectLandingQuickPicks(getCatalogServers())[0].id);
+    expect(shell.querySelector('#landingSampleBtn').disabled).toBe(false);
   });
 
   it('shows the theme icon matching data-theme and nothing else', () => {

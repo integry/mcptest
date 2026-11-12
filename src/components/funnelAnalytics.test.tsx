@@ -59,7 +59,7 @@ describe('landing funnel events', () => {
   it('sends landing_view once and a host-only landing_connect for manual entry', () => {
     const container = render(
       <LandingHero
-        serverUrl="https://user:secret@mcp.example.com/mcp?api_key=1"
+        serverUrl="https://mcp.example.com/mcp?api_key=1"
         onServerUrlChange={vi.fn()}
         onConnect={vi.fn()}
         isConnecting={false}
@@ -103,6 +103,29 @@ describe('landing funnel events', () => {
       source: 'quick_pick',
       host: new URL(pick!.title).host,
     });
+  });
+
+  it('sends sample_test for the one-click sample with the sample endpoint host', () => {
+    const container = render(
+      <LandingHero serverUrl="" onServerUrlChange={vi.fn()} onConnect={vi.fn()} isConnecting={false} />
+    );
+    const sample = container.querySelector<HTMLButtonElement>('#landingSampleBtn');
+    click(sample);
+    expectSent('landing_connect', { source: 'sample_test', host: new URL(sample!.title).host });
+  });
+
+  it('sends nothing for a malformed URL the landing rejects', () => {
+    const container = render(
+      <LandingHero
+        serverUrl="https://user:secret@mcp.example.com/mcp"
+        onServerUrlChange={vi.fn()}
+        onConnect={vi.fn()}
+        isConnecting={false}
+      />
+    );
+    firebase.logEvent.mockClear();
+    click(container.querySelector('#connectBtn'));
+    expect(firebase.logEvent.mock.calls.filter(([, name]) => name === 'landing_connect')).toHaveLength(0);
   });
 });
 

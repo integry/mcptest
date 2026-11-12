@@ -66,7 +66,7 @@ import type {
   SavedCardOAuthChallenge,
 } from './utils/savedCardRuntime';
 import { consumeOAuthReconnectRequest } from './utils/oauthReconnect';
-import { isLandingEligible } from './utils/landingEligibility';
+import { isLandingEligible, isReturningWorkspace, needsTabStrip } from './utils/landingEligibility';
 import { createDefaultSpaces, createDefaultTabs } from './utils/defaultWorkspace';
 
 type SavedCardRuntime = typeof import('./utils/savedCardRuntime');
@@ -211,6 +211,13 @@ function App() {
     } catch { /* Unavailable or corrupt storage uses the empty workspace. */ }
     return createDefaultTabs();
   });
+  // Hidden during a first visit until a connection starts or a second tab
+  // opens; once shown it stays (utils/landingEligibility.ts).
+  const [tabStripShown, setTabStripShown] = useState(() => needsTabStrip(tabs) || isReturningWorkspace(tabs));
+  const showTabStrip = tabStripShown || needsTabStrip(tabs);
+  useEffect(() => {
+    if (showTabStrip && !tabStripShown) setTabStripShown(true);
+  }, [showTabStrip, tabStripShown]);
   const [activeTabId, setActiveTabId] = useState<string>(() => {
     // Ensure we always have a valid initial activeTabId
     if (tabs.length > 0) {
@@ -1933,15 +1940,17 @@ function App() {
           {hasVisited('playground') && (
             <div className={`view-panel ${activeView === 'playground' ? '' : 'd-none'}`} style={{ height: '100%' }}>
               <div className="h-100 d-flex flex-column">
-                <div className="playground-tabs-wrapper">
-                  <Tabs
-                    tabs={tabs}
-                    activeTabId={activeTabId}
-                    onSelectTab={handleSelectTab}
-                    onCloseTab={handleCloseTab}
-                    onNewTab={handleNewTab}
-                  />
-                </div>
+                {showTabStrip && (
+                  <div className="playground-tabs-wrapper">
+                    <Tabs
+                      tabs={tabs}
+                      activeTabId={activeTabId}
+                      onSelectTab={handleSelectTab}
+                      onCloseTab={handleCloseTab}
+                      onNewTab={handleNewTab}
+                    />
+                  </div>
+                )}
                 <div className="flex-grow-1 position-relative">
                   <Suspense fallback={<ViewFallback label="Loading the playground" />}>
                     {tabs.map(tab => (
