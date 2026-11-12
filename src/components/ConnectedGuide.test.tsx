@@ -298,14 +298,35 @@ const plainResult: LogEntry = {
 };
 
 describe('result explanations', () => {
-  it('says what a plain result is and toggles the raw JSON-RPC', () => {
+  it('says what a plain result is and toggles the result JSON without inventing an envelope', () => {
     const view = mount(<ToolResultView logEntry={plainResult} />);
     expect(view.querySelector('.tool-result-explanation')?.textContent).toContain('no structured content');
     const toggle = view.querySelector<HTMLButtonElement>('.tool-result-raw-link')!;
+    expect(toggle.textContent).toBe('View result JSON');
     expect(toggle.getAttribute('aria-pressed')).toBe('false');
     act(() => toggle.click());
-    expect(view.textContent).toContain('"jsonrpc": "2.0"');
     expect(toggle.getAttribute('aria-pressed')).toBe('true');
+    const explanation = view.querySelector('.tool-result-explanation')?.textContent ?? '';
+    expect(explanation).not.toMatch(/exactly as the server sent/i);
+    expect(explanation).toContain('rebuilt from what the client parsed');
+    expect(explanation).toContain('request id are not shown');
+    const json = view.querySelector('.tool-result-view pre')?.textContent ?? '';
+    expect(JSON.parse(json)).toEqual(plainResult.toolCall!.result);
+    expect(view.textContent).not.toContain('"jsonrpc"');
+  });
+
+  it('labels the tabbed JSON-RPC view as reconstructed', () => {
+    const result = { content: [{ type: 'text', text: 'hi' }], structuredContent: { ok: true } };
+    const view = mount(<ToolResultView logEntry={{
+      ...plainResult,
+      toolCall: { result, contract: checkToolOutputContract({ name: 'echo' }, result) },
+    }} />);
+    act(() => view.querySelector<HTMLButtonElement>('.tool-result-raw-link')!.click());
+    expect(view.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toBe('JSON-RPC');
+    const explanation = view.querySelector('.tool-result-explanation')?.textContent ?? '';
+    expect(explanation).not.toMatch(/exactly as the server sent/i);
+    expect(explanation).toContain('envelope is reconstructed');
+    expect(explanation).toContain('original request id is not shown');
   });
 
   it('explains isError results without calling the connection broken', () => {

@@ -85,8 +85,9 @@ for (const width of [1280, 390]) {
     await expect(resultView(page).locator('.tool-result-explanation')).toContainText('Structured content is the typed JSON');
     await expect(page.getByRole('region', { name: 'Last result' })).toBeFocused();
     await expect(page.locator('.output-panel > [role="status"]')).toHaveText('Call 1: get_forecast returned a result.');
-    await resultView(page).getByRole('button', { name: 'View raw JSON-RPC' }).click();
+    await resultView(page).getByRole('button', { name: 'View result JSON' }).click();
     await expect(resultView(page).getByRole('tab', { name: 'JSON-RPC' })).toHaveAttribute('aria-selected', 'true');
+    await expect(resultView(page).locator('.tool-result-explanation')).toContainText('envelope is reconstructed');
 
     // The share prompt follows the first successful run.
     const share = page.getByRole('complementary', { name: 'Next step: share a report' });
