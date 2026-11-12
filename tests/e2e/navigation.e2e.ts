@@ -24,7 +24,7 @@ test.describe('sidebar navigation', () => {
     await expect(nav.locator('.sidenav-learn-body a[href="/learn"]')).toHaveCount(1);
 
     // Keyboard: Tab walks the entries in order, then Enter opens Learn.
-    await nav.getByRole('link', { name: 'Playground' }).focus();
+    await nav.getByRole('link', { name: 'Playground', exact: true }).focus();
     const order = ['Catalog', 'Breaking changes', 'OAuth check', 'Discovery check', 'Reports', 'Dashboards', 'Learn'];
     for (const name of order) {
       await page.keyboard.press('Tab');
@@ -98,7 +98,7 @@ test.describe('mobile drawer', () => {
 
     const drawer = page.getByRole('dialog', { name: 'Navigation' });
     await expect(drawer).toBeVisible();
-    const playground = drawer.getByRole('link', { name: 'Playground' });
+    const playground = drawer.getByRole('link', { name: 'Playground', exact: true });
     await expect(playground).toBeInViewport();
     // Focus moves into the drawer and Tab cannot leave it.
     await expect(page.locator('.mobile-sidebar :focus')).toHaveCount(1);
