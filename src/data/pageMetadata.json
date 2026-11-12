@@ -20,12 +20,12 @@
     "description": "Check your remote MCP endpoint, describe it and submit it to the mcptest.io catalog. A maintainer reviews each submission as a pull request."
   },
   "mcpTestServers": {
-    "title": "Free Public MCP Test Servers: Echo, Auth, Errors, Slow | mcptest.io",
+    "title": "Free Public MCP Test Servers: Echo, Auth, Errors | mcptest.io",
     "description": "Free public MCP test servers: echo, bearer auth, errors, slow and schemas endpoints, with Claude, Cursor and VS Code configs and curl examples."
   },
   "mcpTestClient": {
-    "title": "Test Your MCP Client: Protocol Checklist and Test Servers | mcptest.io",
-    "description": "Test an MCP client against free public test servers: a protocol checklist for initialize, version negotiation, tools, bearer auth, errors, timeouts and structuredContent."
+    "title": "Test Your MCP Client: Protocol Checklist & Servers | mcptest.io",
+    "description": "Test an MCP client against free public test servers: a checklist for initialize, version negotiation, tools, bearer auth, errors, timeouts, structuredContent."
   },
   "learn": {
     "title": "Learn MCP",

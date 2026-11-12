@@ -36,7 +36,7 @@ describe('/mcp-test-servers build outputs', () => {
   const built = path.join(__dirname, '..', 'dist', 'mcp-test-servers', 'index.html');
   it.runIf(fs.existsSync(built))('the built page has the copy, snippets and JSON-LD in its static HTML', () => {
     const html = fs.readFileSync(built, 'utf8');
-    expect(html).toContain('<title>Free Public MCP Test Servers: Echo, Auth, Errors, Slow | mcptest.io</title>');
+    expect(html).toContain('<title>Free Public MCP Test Servers: Echo, Auth, Errors | mcptest.io</title>');
     expect(html).toMatch(/<h1 id="mcp-test-servers-title">Public MCP test servers<\/h1>/);
     expect(html).toContain('"@type":"FAQPage"');
     for (const fixture of PUBLIC_FIXTURES) {
