@@ -79,6 +79,8 @@ const LAZY_VIEWS = [
   'src/components/BreakingChangesView.tsx',
   'src/components/DiscoveryCheckerView.tsx',
   'src/components/OAuthCheckerView.tsx',
+  'src/components/McpTestServersView.tsx',
+  'src/components/McpTestClientView.tsx',
   'src/components/KeywordLandingView.tsx',
   'src/components/learn/LearnArticlePage.tsx',
   'src/components/learn/MarkdownLearnArticle.tsx',

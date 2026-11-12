@@ -102,6 +102,8 @@ Rerun the remote checks on every pull request against a preview deployment and a
 
 Use the complete published MCP URL, including its path, for example `https://your-server.example.com/custom/mcp`. mcptest.io tries that exact URL first, then conventional path fallbacks only when needed. A valid auth challenge means the service is reachable but does not, by itself, prove that anonymous MCP negotiation passed.
 
+To check your client, proxy or curl setup before pointing it at your own server, use the [public MCP test servers](/mcp-test-servers). They answer deterministically, need no account, and cover the happy path, a bearer token, every error type, slow calls and complex schemas.
+
 ## Interactive testing in the playground
 
 To test a remote MCP server online, open [mcptest.io](/), enter the endpoint and connect. No install or account is needed. The playground first probes with `server/discover`. If the server offers `2026-07-28`, the client uses stateless, self-describing requests. If the endpoint is 2025-only, it falls back to `initialize`, sends `notifications/initialized`, and preserves a server-issued `Mcp-Session-Id`. The deprecated HTTP+SSE transport is the last fallback. Authentication responses are surfaced instead of being misclassified as an old protocol.

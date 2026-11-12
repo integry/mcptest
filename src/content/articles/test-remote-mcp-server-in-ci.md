@@ -32,6 +32,11 @@ example PR comment.
 The action connects to a remote URL. It does not build or deploy your MCP
 server, so deploy a reachable preview first, then add this workflow:
 
+To try the workflow before you have a preview, point `endpoints` at the
+[public echo test server](/mcp-test-servers#fixture-echo),
+`https://mcptest.io/fixtures/echo/mcp`. Its responses never change, so it is
+also a stable target for testing an MCP client in CI.
+
 ```yaml
 name: MCP release gate
 on: [pull_request, workflow_dispatch]

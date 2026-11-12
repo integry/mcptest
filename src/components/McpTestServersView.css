@@ -1,0 +1,24 @@
+/* /mcp-test-servers: the reading layout plus a little room around each server. */
+.mcp-test-server {
+  margin-block: 1.5rem 2rem;
+}
+
+.mcp-test-server-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+
+.mcp-test-server-actions .btn {
+  text-decoration: none;
+}
+
+.mcp-test-server-note {
+  font-size: 0.875rem;
+  color: var(--bs-secondary-color);
+}
+
+.mcp-test-servers .reading-table td code {
+  overflow-wrap: anywhere;
+}

@@ -18,11 +18,15 @@ import {
   LANDING_REPORT_COVERAGE as REPORT_COVERAGE,
   LANDING_STEPS,
   LANDING_STEPS_TITLE,
+  LANDING_TEST_SERVERS_LINK,
+  LANDING_TEST_SERVERS_PATH,
   LANDING_TRUST_LABEL,
   LANDING_TRUST_POINTS,
 } from '../content/landingCopy';
 import type { KeywordLandingPage } from '../content/keywordLandingPages';
 import { selectLandingQuickPicks } from '../utils/landingQuickPicks';
+import { LANDING_FIXTURE_SELECTION } from '../utils/landingFixture';
+import { LANDING_FIXTURE } from '../data/publicFixtures';
 import { CatalogServerLogo } from './CatalogServerLogo';
 import type { SuggestedServerSelection } from './SuggestedServersPanel';
 import { LandingText } from './LandingText';
@@ -124,6 +128,11 @@ const HomeLandingContent: React.FC<{ catalogCount: number }> = ({ catalogCount }
     <p className="landing-catalog">
       <Link to="/catalog">
         {LANDING_CATALOG_LINK_PREFIX} {catalogCount} {LANDING_CATALOG_LINK_SUFFIX} <span aria-hidden="true">&rarr;</span>
+      </Link>
+    </p>
+    <p className="landing-catalog landing-test-servers">
+      <Link to={LANDING_TEST_SERVERS_PATH}>
+        {LANDING_TEST_SERVERS_LINK} <span aria-hidden="true">&rarr;</span>
       </Link>
     </p>
 
@@ -262,10 +271,31 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
                   ))}
                 </ul>
               </div>
-            ) : quickPicks.length > 0 && (
+            ) : (
               <div className="landing-quick-picks">
                 <span className="landing-quick-picks-label" id={`${idPrefix}-quick-picks-label`}>Try with</span>
                 <ul aria-labelledby={`${idPrefix}-quick-picks-label`}>
+                  {/* mcptest's own public echo server first: no sign-in, always answers. */}
+                  <li>
+                    <button
+                      type="button"
+                      className="landing-quick-pick"
+                      data-server-id={LANDING_FIXTURE.id}
+                      title={LANDING_FIXTURE.url}
+                      disabled={isConnecting}
+                      onClick={() => {
+                        trackEvent('landing_connect', { source: 'quick_pick', host: getAnalyticsHost(LANDING_FIXTURE.url), ...(page ? { page: page.key } : {}) });
+                        onConnect(LANDING_FIXTURE_SELECTION);
+                      }}
+                    >
+                      <CatalogServerLogo
+                        name={LANDING_FIXTURE.name}
+                        logoUrl={LANDING_FIXTURE.logoUrl}
+                        className="landing-quick-pick-logo"
+                      />
+                      {LANDING_FIXTURE.name}
+                    </button>
+                  </li>
                   {quickPicks.map((server) => {
                     const endpoint = getPreferredCatalogEndpoint(server);
                     return (

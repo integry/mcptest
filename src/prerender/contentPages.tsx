@@ -10,6 +10,8 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import OAuthCheckerView from '../components/OAuthCheckerView';
 import BreakingChangesView from '../components/BreakingChangesView';
+import McpTestServersView from '../components/McpTestServersView';
+import McpTestClientView from '../components/McpTestClientView';
 import KeywordLandingView from '../components/KeywordLandingView';
 import { getKeywordLandingPage } from '../content/keywordLandingPages';
 import LearnIndex from '../components/learn/LearnIndex';
@@ -56,6 +58,11 @@ export const renderBreakingChangesPage = (): string => renderAt('/tools/breaking
 
 export const renderOAuthCheckerPage = (): string => renderAt('/tools/oauth-check', <OAuthCheckerView />);
 
+/** /mcp-test-servers, with its code blocks highlighted (prepareContentPrerender loads highlight.js). */
+export const renderMcpTestServersPage = (): string => renderAt('/mcp-test-servers', <McpTestServersView />);
+
+/** /mcp-test-client, with its request/response examples highlighted. */
+export const renderMcpTestClientPage = (): string => renderAt('/mcp-test-client', <McpTestClientView />);
 /**
  * A keyword landing page (/mcp-test-server and the like) as KeywordLandingView
  * first renders it for a visitor with no recent connections, or null for any
