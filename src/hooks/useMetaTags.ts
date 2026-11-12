@@ -18,7 +18,7 @@ import { OAUTH_CHECKER_METADATA, BREAKING_CHANGES_METADATA, CATALOG_METADATA, DI
 import { BREAKING_CHANGES_TOOL_PATH } from '../utils/breakingChangesRoute';
 import { OG_IMAGE_HEIGHT, OG_IMAGE_WIDTH, getOgImagePath } from '../utils/ogImage';
 import { parseResultShareUrl } from '../utils/urlUtils';
-import { OAUTH_CHECKER_PATH, DISCOVERY_CHECKER_PATH, isKnownAppPath } from '../utils/appRoutes';
+import { OAUTH_CHECKER_PATH, DISCOVERY_CHECKER_PATH, DASHBOARDS_PATH, isKnownAppPath } from '../utils/appRoutes';
 import {
   LEARN_INDEX_METADATA,
   getContentPage,
@@ -27,6 +27,34 @@ import {
 } from '../content/learnRegistry';
 
 const DEFAULT_IMAGE = `${SITE_URL}/logo.png`;
+
+/**
+ * App-only pages (no prerendered file of their own): each gets a title that
+ * names it, so the tab and the history match the sidebar's active entry.
+ */
+const getAppPageMetadata = (pathname: string): { title: string; description: string; robots?: string } | undefined => {
+  if (pathname === '/report' || pathname.startsWith('/report/')) {
+    return {
+      title: 'MCP Release-Readiness Report | mcptest.io',
+      description: 'Run a release-readiness report on a remote MCP server and revisit the servers you tested.',
+    };
+  }
+  if (pathname === '/submit') {
+    return {
+      title: 'Submit a Remote MCP Server | mcptest.io',
+      description: 'Suggest a remote MCP server for the mcptest.io catalog.',
+    };
+  }
+  if (pathname === DASHBOARDS_PATH || pathname.startsWith(`${DASHBOARDS_PATH}/`)) {
+    // Dashboards hold the visitor's own saved calls; there is nothing to index.
+    return {
+      title: 'Dashboards | mcptest.io',
+      description: 'Saved MCP tool calls you can re-run and health-check together.',
+      robots: 'noindex, follow',
+    };
+  }
+  return undefined;
+};
 
 /** The build-time Open Graph card for a prerendered page path. */
 const ogImage = (pagePath: string) => `${SITE_URL}${getOgImagePath(pagePath)}`;
@@ -222,6 +250,11 @@ export const useMetaTags = () => {
         ...DISCOVERY_METADATA,
         canonicalUrl: `${SITE_URL}${DISCOVERY_CHECKER_PATH}`,
         imageUrl: ogImage(DISCOVERY_CHECKER_PATH),
+      });
+    } else if (isKnownAppPath(location.pathname) && getAppPageMetadata(location.pathname)) {
+      applyMetadata({
+        ...getAppPageMetadata(location.pathname)!,
+        canonicalUrl: `${SITE_URL}${location.pathname}`,
       });
     } else if (!isKnownAppPath(location.pathname)) {
       applyMetadata({
