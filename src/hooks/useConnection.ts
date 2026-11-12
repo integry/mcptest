@@ -465,6 +465,7 @@ export const useConnection = (
         ok: request.outcome === 'succeeded',
         mcpMethod: request.mcpMethod,
         route,
+        ...(request.responseSource ? { source: request.responseSource } : {}),
       });
     };
     reportProgress({

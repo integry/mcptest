@@ -25,8 +25,41 @@ describe('connection stage reporting', () => {
     const reached = run({ type: 'start' }, { type: 'response', status: 405, ok: false, route: 'direct' });
     expect(statusOf(reached)).toMatchObject({ reach: 'done', negotiate: 'active' });
     expect(connectionStages(reached)[0].detail).toBe('HTTP 405');
-    const viaProxy = run({ type: 'start' }, { type: 'response', status: 200, ok: true, route: 'proxy' });
+    const viaProxy = run({ type: 'start' }, { type: 'response', status: 200, ok: true, route: 'proxy', source: 'target' });
     expect(connectionStages(viaProxy)[0].detail).toBe('HTTP 200 through the mcptest proxy');
+  });
+
+  it('does not treat a response the proxy produced itself as reaching the endpoint', () => {
+    const proxyOwned = run(
+      { type: 'start' },
+      { type: 'proxy-fallback' },
+      { type: 'response', status: 502, ok: false, mcpMethod: 'initialize', route: 'proxy', source: 'proxy' },
+    );
+    expect(statusOf(proxyOwned)).toMatchObject({ reach: 'active', negotiate: 'pending' });
+    const failed = reduceConnectionProgress(proxyOwned, { type: 'failed' });
+    expect(statusOf(failed)).toMatchObject({ reach: 'failed', negotiate: 'pending' });
+    expect(connectionStages(failed)[0].detail).toBe('The mcptest proxy returned HTTP 502 before reaching the endpoint');
+    // An explicit proxy failure detail (e.g. a rejected proxy login) lands on the reach stage.
+    const rejected = run(
+      { type: 'start' },
+      { type: 'response', status: 401, ok: false, route: 'proxy', source: 'proxy' },
+      { type: 'failed', detail: 'The mcptest proxy rejected the saved login' },
+    );
+    expect(connectionStages(rejected)[0]).toMatchObject({ status: 'failed', detail: 'The mcptest proxy rejected the saved login' });
+    expect(statusOf(rejected).negotiate).toBe('pending');
+  });
+
+  it('does not treat a proxied response of unknown provenance as reaching the endpoint', () => {
+    const unknown = run({ type: 'start' }, { type: 'response', status: 503, ok: false, route: 'proxy' });
+    expect(statusOf(unknown)).toMatchObject({ reach: 'active', negotiate: 'pending' });
+    expect(connectionStages(reduceConnectionProgress(unknown, { type: 'failed' }))[0].detail)
+      .toBe('The mcptest proxy returned HTTP 503 without saying whether the endpoint answered');
+    // A later target-attributed response still completes the stage.
+    const reached = reduceConnectionProgress(unknown, { type: 'response', status: 200, ok: true, route: 'proxy', source: 'target' });
+    expect(statusOf(reached)).toMatchObject({ reach: 'done', negotiate: 'active' });
+    // Once reached, a proxy-owned response does not undo it.
+    const after = reduceConnectionProgress(reached, { type: 'response', status: 502, route: 'proxy', source: 'proxy' });
+    expect(after).toBe(reached);
   });
 
   it('notes the negotiation request that answered', () => {

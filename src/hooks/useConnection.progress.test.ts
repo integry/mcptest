@@ -22,11 +22,11 @@ beforeAll(() => {
   (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 });
 
-const render = () => {
+const render = (shouldUseProxy = false) => {
   let connection: ReturnType<typeof useConnection> | undefined;
   const root: Root = createRoot(document.createElement('div'));
   const Probe = () => {
-    connection = useConnection(vi.fn(), false);
+    connection = useConnection(vi.fn(), shouldUseProxy);
     return null;
   };
   act(() => root.render(React.createElement(Probe)));
@@ -49,7 +49,10 @@ describe('connection stage reporting from the attempt', () => {
     window.history.replaceState(null, '', '/');
     connectionMocks.attempt.mockReset();
   });
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+  });
 
   it('advances stages only when the transport reports a settled request', async () => {
     let settle!: (value: unknown) => void;
@@ -117,6 +120,49 @@ describe('connection stage reporting from the attempt', () => {
     await act(async () => {});
     act(() => lateResponse({ method: 'POST', url: endpoint, status: 200, outcome: 'succeeded' }));
     expect(statuses(view).reach).toBe('active');
+    view.unmount();
+  });
+
+  it('does not count a proxy-owned error as reaching the endpoint', async () => {
+    const proxyUrl = 'https://proxy.mcptest.test/';
+    const proxied = `${proxyUrl}?target=${encodeURIComponent(endpoint)}`;
+    vi.stubEnv('VITE_PROXY_URL', proxyUrl);
+    connectionMocks.attempt
+      .mockRejectedValueOnce(new TransportConnectionError([new TypeError('Failed to fetch')]))
+      .mockImplementationOnce(async (...args: unknown[]) => {
+        const onResponse = args[8] as (request: ObservedTransportRequest) => void;
+        onResponse({
+          method: 'POST', url: proxied, mcpMethod: 'initialize', status: 502, responseSource: 'proxy', outcome: 'failed',
+        });
+        throw new TransportConnectionError([new Error('HTTP 502')]);
+      });
+    const view = render(true);
+    await act(async () => { await view.connection.handleConnect(vi.fn(), vi.fn(), vi.fn(), endpoint); });
+    expect(connectionMocks.attempt).toHaveBeenCalledTimes(2);
+    const stages = connectionStages(view.connection.connectionProgress);
+    expect(statuses(view)).toMatchObject({ reach: 'failed', negotiate: 'pending' });
+    expect(stages[0].detail).toBe('The mcptest proxy returned HTTP 502 before reaching the endpoint');
+    view.unmount();
+  });
+
+  it('counts a proxied response the proxy attributes to the target as reaching the endpoint', async () => {
+    const proxyUrl = 'https://proxy.mcptest.test/';
+    const proxied = `${proxyUrl}?target=${encodeURIComponent(endpoint)}`;
+    vi.stubEnv('VITE_PROXY_URL', proxyUrl);
+    connectionMocks.attempt
+      .mockRejectedValueOnce(new TransportConnectionError([new TypeError('Failed to fetch')]))
+      .mockImplementationOnce(async (...args: unknown[]) => {
+        const onResponse = args[8] as (request: ObservedTransportRequest) => void;
+        onResponse({
+          method: 'POST', url: proxied, mcpMethod: 'initialize', status: 500, responseSource: 'target', outcome: 'failed',
+        });
+        throw new TransportConnectionError([new Error('HTTP 500')]);
+      });
+    const view = render(true);
+    await act(async () => { await view.connection.handleConnect(vi.fn(), vi.fn(), vi.fn(), endpoint); });
+    const stages = connectionStages(view.connection.connectionProgress);
+    expect(statuses(view)).toMatchObject({ reach: 'done', negotiate: 'failed' });
+    expect(stages[0].detail).toBe('HTTP 500 through the mcptest proxy');
     view.unmount();
   });
 });

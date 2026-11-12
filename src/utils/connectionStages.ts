@@ -24,12 +24,29 @@ export interface ConnectionProgress {
   /** Credentials were sent with the attempt (a saved OAuth token or an entered key). */
   credentialed: boolean;
   stages: Record<HandshakeStageId, HandshakeStage>;
+  /**
+   * What the mcptest proxy answered when that answer cannot be attributed to
+   * the endpoint (the proxy's own error, or a response without provenance).
+   * Kept so a failure before the endpoint was reached names the proxy.
+   */
+  proxyNote?: string;
 }
 
 export type ConnectionProgressEvent =
   | { type: 'start'; credentialed?: boolean }
-  /** One HTTP request settled: a readable status, or a fetch failure without one. */
-  | { type: 'response'; status?: number; ok?: boolean; mcpMethod?: string; route?: 'direct' | 'proxy' }
+  /**
+   * One HTTP request settled: a readable status, or a fetch failure without one.
+   * `source` says who produced a proxied response; only a direct response or a
+   * proxied one the proxy attributes to the target shows the endpoint was reached.
+   */
+  | {
+    type: 'response';
+    status?: number;
+    ok?: boolean;
+    mcpMethod?: string;
+    route?: 'direct' | 'proxy';
+    source?: 'target' | 'proxy';
+  }
   | { type: 'proxy-fallback' }
   | { type: 'auth-challenge'; status: number }
   /** Authorization needs the user (provider redirect, client registration, sign-in). */
@@ -96,6 +113,16 @@ export const reduceConnectionProgress = (
       // A fetch that failed without a status proves nothing yet; another
       // candidate or the proxy may still get through.
       if (event.status === undefined) return state;
+      if (event.route === 'proxy' && event.source !== 'target') {
+        // The proxy answered without showing the endpoint did: its own error or
+        // login rejection, or a response whose origin it did not report. That
+        // says nothing about the endpoint, so reachability stays in progress.
+        if (state.stages.reach.status === 'done') return state;
+        const proxyNote = event.source === 'proxy'
+          ? `The mcptest proxy returned HTTP ${event.status} before reaching the endpoint`
+          : `The mcptest proxy returned HTTP ${event.status} without saying whether the endpoint answered`;
+        return { ...set(state, 'reach', { status: 'active', detail: proxyNote }), proxyNote };
+      }
       let next = state;
       if (state.stages.reach.status !== 'done') {
         next = set(next, 'reach', {
@@ -159,7 +186,7 @@ export const reduceConnectionProgress = (
       const id = currentStage(state);
       return set(state, id, {
         status: 'failed',
-        detail: event.detail || (id === 'reach' ? 'No readable response' : undefined),
+        detail: event.detail || (id === 'reach' ? state.proxyNote || 'No readable response' : undefined),
       }, 'failed');
     }
     case 'aborted': {
