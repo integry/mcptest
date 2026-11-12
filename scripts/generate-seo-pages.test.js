@@ -732,11 +732,11 @@ describe('generated page metadata', () => {
     const article = articles.find(item => item.slug === 'testing-guide');
     const html = renderLearnArticleHtml(indexHtml, article, articles, learnIndex);
 
-    expect(html).toContain('<title>How to Test a Remote MCP Server (Step by Step) | mcptest.io</title>');
+    expect(html).toContain('<title>How to Test MCP Servers: Complete Guide with curl, Inspector and CI | mcptest.io</title>');
     expect(html).toContain('rel="canonical" href="https://mcptest.io/docs/testing-guide"');
-    expect(html).toContain('name="description" content="Test a remote MCP server step by step:');
+    expect(html).toContain('name="description" content="How to test MCP servers: unit tests,');
     expect(html).toContain('<blockquote><p><strong>Browser clients need CORS.</strong>');
-    expect(html).toContain('<pre tabindex="0"><code class="hljs language-bash">curl -i https://your-server.example.com/mcp');
+    expect(html).toContain('<pre tabindex="0"><code class="hljs language-bash">curl -i https://mcp.context7.com/mcp');
     expect(html).toContain('<h3 id="capabilities">Capabilities</h3>');
   });
 

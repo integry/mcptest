@@ -8,6 +8,12 @@ import { discoverOAuthProtectedResourceMetadata } from '@modelcontextprotocol/cl
 import type { CatalogSubmissionAuthChallenge, CatalogSubmissionEvidence } from './catalogSubmission';
 import { requestCapabilityDiscoveryPage } from './mcpClient';
 import {
+  describeResponseClassification,
+  RESPONSE_CLASS_CONTENT,
+  type ResponseClassification,
+} from './responseClassification';
+import { observedRequestsFromError } from './transportDiagnostics';
+import {
   attemptParallelConnections,
   getObservedAuthenticationChallenge,
   shouldRetryMcpConnectionThroughProxy,
@@ -127,8 +133,34 @@ const challengeEvidence = async (
   };
 };
 
+/** The first target response that was bot protection, a rate limit or a 402, with its URL. */
+const classifiedTargetResponse = (error: unknown): { classification: ResponseClassification; url: string } | undefined => {
+  for (const request of observedRequestsFromError(error).flat()) {
+    if (request.responseSource === 'target' && request.responseClass) {
+      return { classification: request.responseClass, url: request.targetUrl || request.candidateUrl || request.url };
+    }
+  }
+  return undefined;
+};
+
+const MAX_DETAIL_LENGTH = 500;
+
 const unreachableEvidence = (endpointUrl: string, error: unknown, timedOut: boolean, corsBlocked: boolean): CatalogSubmissionEvidence => {
   const message = (error instanceof Error ? error.message : String(error)).slice(0, 240);
+  const classified = timedOut ? undefined : classifiedTargetResponse(error);
+  if (classified) {
+    const { classification, url } = classified;
+    return {
+      checkedAt: new Date().toISOString(),
+      endpointUrl,
+      outcome: 'unreachable',
+      authChallenge: 'none',
+      browserAccess: corsBlocked ? 'proxy-required' : 'unknown',
+      responseClass: classification.kind,
+      detail: `${describeResponseClassification(classification, url)} ${RESPONSE_CLASS_CONTENT[classification.kind].fix}`
+        .slice(0, MAX_DETAIL_LENGTH),
+    };
+  }
   return {
     checkedAt: new Date().toISOString(),
     endpointUrl,

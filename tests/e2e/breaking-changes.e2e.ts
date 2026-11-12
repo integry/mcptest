@@ -65,6 +65,13 @@ test('breaking changes: classifies two pasted tools/list payloads from the mock 
   const subjects = await results.locator('.breaking-findings-subject code').allTextContents();
   expect(subjects).toEqual(['always_fails', 'get_forecast', 'get_alerts']);
 
+  // The estimated context cost before and after, overall and per changed tool.
+  const contextCost = results.getByTestId('context-cost-delta');
+  await expect(contextCost).toContainText(/Context cost: ≈[\d,]+ → ≈[\d,]+ estimated tokens/);
+  await expect(contextCost).toContainText('get_alerts: added');
+  await expect(contextCost).toContainText('always_fails: removed');
+  await expect(contextCost).toContainText('not exact counts for any model');
+
   // An invalid payload is explained on its field instead of comparing.
   await main.getByLabel('After (about to ship)').fill('{"prompts": []}');
   await main.getByRole('button', { name: 'Compare', exact: true }).click();

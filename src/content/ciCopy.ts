@@ -41,6 +41,13 @@ Decision: **blocked**
 
 Browser CORS and interactive OAuth remain unverified in headless CI; these are evidence-based verdicts, not client application launches.
 
+Context cost vs baseline: ≈32 → ≈59 estimated tokens \\(+27, +84%\\)
+
+- lookup: added \\(≈17, +17\\)
+- search: ≈32 → ≈42 \\(+10\\)
+
+At least one report predates the per-tool breakdown, so both are estimated from the stored names, descriptions and input schemas; output schemas and annotations are not included.
+
 Changes: 1 breaking, 1 safe
 
 - **search** (breaking)

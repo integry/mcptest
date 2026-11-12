@@ -1,4 +1,8 @@
 import { SESSION_RESILIENCE_DEFINITIONS } from './sessionResilienceDefinitions';
+import {
+  describeResponseClassification,
+  RESPONSE_CLASS_CONTENT,
+} from './responseClassification';
 import type {
   TransportDiagnostic,
   TransportDiagnosticEvidence,
@@ -150,6 +154,48 @@ export const TRANSPORT_DIAGNOSTIC_DEFINITIONS: Record<TransportDiagnosticId, Tra
       ],
     },
   },
+  'transport.bot-protection-challenge': {
+    title: 'Bot protection is blocking MCP clients',
+    explanation: RESPONSE_CLASS_CONTENT['bot-protection'].explanation,
+    remediation: {
+      summary: RESPONSE_CLASS_CONTENT['bot-protection'].fix,
+      hints: [
+        {
+          stack: 'TypeScript SDK',
+          code: "// No SDK code can pass a CDN challenge; the rule must exempt these paths at the edge.\n// On Vercel: a Firewall bypass rule for them, and Attack Challenge Mode off.\nconst mcpPaths = ['/mcp', '/.well-known/oauth-protected-resource', '/.well-known/oauth-authorization-server', '/token'];",
+        },
+        {
+          stack: 'Python SDK',
+          code: '# Behind a CDN or WAF, exempt the MCP and OAuth paths from challenges:\n#   /mcp, /.well-known/oauth-protected-resource*, /.well-known/oauth-authorization-server*, /token\n# and rate-limit them instead, answering 429 with Retry-After.',
+        },
+        {
+          stack: 'Cloudflare Workers',
+          code: "# Cloudflare dashboard > Security > WAF > Custom rules > Skip\n(http.request.uri.path eq \"/mcp\")\n  or starts_with(http.request.uri.path, \"/.well-known/oauth-\")\n  or (http.request.uri.path eq \"/token\")\n# Skip: managed rules, Super Bot Fight Mode and Browser Integrity Check.\n# Bot Fight Mode (free plan) cannot be skipped per path; turn it off for the zone.",
+        },
+      ],
+    },
+  },
+  'transport.payment-required-402': {
+    title: 'Server requires payment (HTTP 402)',
+    explanation: RESPONSE_CLASS_CONTENT['payment-required'].explanation,
+    remediation: {
+      summary: RESPONSE_CLASS_CONTENT['payment-required'].fix,
+      hints: [
+        {
+          stack: 'TypeScript SDK',
+          code: "// x402 v2: the payment requirements travel in the PAYMENT-REQUIRED header (base64 JSON).\nres.set('PAYMENT-REQUIRED', Buffer.from(JSON.stringify(paymentRequired)).toString('base64'));\nres.set('Access-Control-Expose-Headers', 'PAYMENT-REQUIRED, PAYMENT-RESPONSE');\nres.status(402).json({ error: 'Payment required' });",
+        },
+        {
+          stack: 'Python SDK',
+          code: 'return JSONResponse(\n    {"error": "Payment required"},\n    status_code=402,\n    headers={"PAYMENT-REQUIRED": payment_required_b64, "Access-Control-Expose-Headers": "PAYMENT-REQUIRED"},\n)',
+        },
+        {
+          stack: 'Cloudflare Workers',
+          code: "return new Response(JSON.stringify({ error: 'Payment required' }), {\n  status: 402,\n  headers: { 'Content-Type': 'application/json', 'PAYMENT-REQUIRED': paymentRequiredB64, 'Access-Control-Expose-Headers': 'PAYMENT-REQUIRED' },\n});",
+        },
+      ],
+    },
+  },
 };
 
 const MAX_EVIDENCE_PER_DIAGNOSTIC = 6;
@@ -254,7 +300,7 @@ const toEvidence = (
   route: TransportDiagnosticRoute,
   observation: string
 ): TransportDiagnosticEvidence => {
-  const headersSeen: Record<string, string> = {};
+  const headersSeen: Record<string, string> = { ...request.responseClass?.headers };
   if (request.responseContentType) headersSeen['content-type'] = request.responseContentType;
   if (request.retryAfter) headersSeen['retry-after'] = request.retryAfter;
   const headersSent: Record<string, string> = {};
@@ -270,6 +316,9 @@ const toEvidence = (
     ...(request.responseSource ? { responseSource: request.responseSource } : {}),
     ...(Object.keys(headersSeen).length > 0 ? { headersSeen } : {}),
     ...(Object.keys(headersSent).length > 0 ? { headersSent } : {}),
+    ...(request.responseClass && request.responseClass.kind !== 'rate-limited'
+      ? { responseClass: request.responseClass }
+      : {}),
     observation,
   };
 };
@@ -320,6 +369,23 @@ const rateLimitObservation = (
 };
 
 /**
+ * Whether the request at `index` was rate-limit retried automatically and a
+ * later retry of the same candidate succeeded, so it did not stop the
+ * connection.
+ */
+const recoveredByAutomaticRetry = (
+  requests: readonly ObservedTransportRequest[],
+  index: number
+): boolean => {
+  const request = requests[index];
+  return request.rateLimitRetry?.action === 'retried' && requests.slice(index + 1).some((later) => (
+    later.automaticRetry?.reason === 'target-rate-limit'
+    && later.candidateUrl === request.candidateUrl
+    && isSuccess(later.status)
+  ));
+};
+
+/**
  * Detects transport diagnostics in the ordered requests of one connection
  * route. Only responses attributable to the target are considered, so a proxy
  * response (for example the proxy's own 406 or caller-limit 429) never becomes
@@ -335,8 +401,33 @@ export const detectTransportDiagnostics = (
     if (!isTargetResponse(request)) continue;
     const status = request.status as number;
     const streamableGet = request.method === 'GET' && request.transportType === 'streamable-http';
+    const responseClass = request.responseClass;
 
-    if (status === 406) {
+    if (responseClass?.kind === 'bot-protection') {
+      // A challenge on the optional GET stream degrades the session; anywhere
+      // else no MCP client gets through. A heuristic match is only suspected.
+      // A challenge (for example a challenge 429) that the automatic retry got
+      // past did not stop this connection, so it is reported, not blocking.
+      const suspected = responseClass.confidence === 'suspected';
+      const recovered = recoveredByAutomaticRetry(requests, index);
+      diagnostics.push(createDiagnostic(
+        'transport.bot-protection-challenge',
+        recovered || streamableGet ? 'warning' : 'error',
+        [toEvidence(request, route, `${requestDescription(request)}: ${describeResponseClassification(responseClass, targetEndpoint(request))}${recovered ? ' mcptest retried once automatically and the retry succeeded.' : ''}`)],
+        suspected
+          ? {
+            status: 'suspected',
+            unconfirmedReason: 'Not confirmed. The response matched no documented CDN or WAF signature; it is an HTML page without WWW-Authenticate where JSON or an event stream was expected, which is what most challenge and block pages look like. Compare the response body in a terminal with the curl command below.',
+          }
+          : {}
+      ));
+    } else if (responseClass?.kind === 'payment-required') {
+      diagnostics.push(createDiagnostic(
+        'transport.payment-required-402',
+        streamableGet ? 'warning' : 'error',
+        [toEvidence(request, route, `${requestDescription(request)}: ${describeResponseClassification(responseClass, targetEndpoint(request))}`)]
+      ));
+    } else if (status === 406) {
       diagnostics.push(createDiagnostic(
         'transport.accept-header-406',
         streamableGet ? 'warning' : 'error',
@@ -359,11 +450,7 @@ export const detectTransportDiagnostics = (
       // spent retrying or negotiating other candidates counts toward the wait.
       const receivedAt = responseReceivedAt(request) ?? Date.now();
       const retryAfterSeconds = parseRetryAfter(request.retryAfter, receivedAt);
-      const recovered = request.rateLimitRetry?.action === 'retried' && requests.slice(index + 1).some((later) => (
-        later.automaticRetry?.reason === 'target-rate-limit'
-        && later.candidateUrl === request.candidateUrl
-        && isSuccess(later.status)
-      ));
+      const recovered = recoveredByAutomaticRetry(requests, index);
       // The successful retry already satisfied this wait; no cooldown remains.
       const retryAt = retryAfterSeconds === undefined || recovered
         ? undefined

@@ -5,6 +5,7 @@ import {
   type ObservedTransportRequest,
 } from './transportDetection';
 import { collectConnectionTransportDiagnostics } from './connectionDiagnostics';
+import { collectTransportDiagnostics } from './transportDiagnostics';
 
 type TransportFetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
@@ -136,6 +137,45 @@ describe('target HTTP 429 retry', () => {
     expect(observed[0].rateLimitRetry?.action).toBe('retried');
     expect(observed[0].rateLimitRetry?.waitMs).toBeGreaterThanOrEqual(0);
     expect(observed[0].rateLimitRetry?.waitMs).toBeLessThanOrEqual(MAX_AUTOMATIC_RATE_LIMIT_WAIT_MS);
+  });
+
+  it('downgrades a Cloudflare challenge 429 that the automatic retry recovered', async () => {
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(new Response('<html>Just a moment...</html>', {
+        status: 429,
+        headers: { 'Content-Type': 'text/html', 'cf-mitigated': 'challenge', 'Retry-After': '1' },
+      }))
+      .mockResolvedValueOnce(ok()));
+
+    const { result, observed } = await connect();
+
+    expect(result).toBeDefined();
+    expect(observed[0]).toMatchObject({
+      status: 429,
+      responseClass: { kind: 'bot-protection', confidence: 'confirmed' },
+      rateLimitRetry: { action: 'retried', waitMs: 1000 },
+    });
+    expect(observed[1]).toMatchObject({ status: 200, automaticRetry: { reason: 'target-rate-limit' } });
+    const diagnostics = collectTransportDiagnostics([{ route: 'direct', requests: observed }], 'headless');
+    const challenge = diagnostics.find(({ id }) => id === 'transport.bot-protection-challenge');
+    expect(challenge).toMatchObject({ status: 'detected', severity: 'warning' });
+    expect(challenge?.evidence[0].observation).toContain('the retry succeeded');
+    expect(diagnostics.some(({ severity }) => severity === 'error')).toBe(false);
+  });
+
+  it('keeps a challenge 429 an error when the automatic retry is challenged again', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => new Response('<html>Just a moment...</html>', {
+      status: 429,
+      headers: { 'Content-Type': 'text/html', 'cf-mitigated': 'challenge', 'Retry-After': '0' },
+    })));
+
+    const { error, observed } = await connect();
+
+    expect(error).toBeDefined();
+    expect(observed[0].rateLimitRetry?.action).toBe('retried');
+    const diagnostics = collectTransportDiagnostics([{ route: 'direct', requests: observed }], 'headless');
+    expect(diagnostics.filter(({ id }) => id === 'transport.bot-protection-challenge').map(({ severity }) => severity))
+      .toEqual(['error']);
   });
 
   it('never retries a second time when the retry is rate-limited again', async () => {

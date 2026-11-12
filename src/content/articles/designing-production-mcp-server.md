@@ -296,3 +296,5 @@ Publish, alongside the server:
 - the date of the last review.
 
 Operations and evidence are part of the integration, not follow-up work.
+
+See also: [tool annotations and client retries](/learn/mcp-tool-annotations-and-client-retries), [long-running tools](/learn/mcp-long-running-tools), [tool errors agents can act on](/learn/mcp-tool-errors-agents-can-act-on) and [bot protection that blocks MCP clients](/learn/mcp-bot-protection-blocking-clients).

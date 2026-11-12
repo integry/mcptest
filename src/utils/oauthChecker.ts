@@ -7,9 +7,16 @@ import {
   discoverOAuthProtectedResourceMetadata, extractWWWAuthenticateParams,
   resourceUrlFromServerUrl, type FetchLike,
 } from '@modelcontextprotocol/client';
-import type { DiscoveryFetch } from './mcpDiscovery';
+import type { DiscoveryFetch, DiscoveryResponse } from './mcpDiscovery';
 import { getOAuthProviderDiagnosis, getOAuthProviderPolicy } from './oauthProviderPolicy';
 import { sanitizeOAuthTraceUrl } from './oauthTrace';
+import {
+  classifyHttpResponse,
+  describeResponseClassification,
+  RESPONSE_CLASS_CONTENT,
+  responseLocation,
+  type ResponseClassification,
+} from './responseClassification';
 
 export type OAuthCheckStatus = 'pass' | 'fail' | 'unknown' | 'skipped';
 export interface OAuthCheckRow {
@@ -26,7 +33,26 @@ export interface OAuthCheckReport {
   verdict: string;
   rows: OAuthCheckRow[];
   providerNote?: string;
+  /**
+   * The bot-protection, rate-limit or 402 response behind the verdict, with the
+   * URL that answered: the MCP endpoint probe, or a metadata candidate of a
+   * discovery step that failed. A candidate superseded by a successful
+   * fallback stays in its row's evidence only.
+   */
+  responseClass?: LocatedResponseClass;
 }
+
+type LocatedResponseClass = ResponseClassification & { url: string };
+
+const classifyDiscoveryResponse = (response: DiscoveryResponse): ResponseClassification | undefined => (
+  classifyHttpResponse({
+    status: response.status,
+    headers: response.headers,
+    contentType: response.contentType,
+    body: response.body,
+    hasWwwAuthenticate: Boolean(response.wwwAuthenticate),
+  })
+);
 
 /** Query parameters can carry credentials; this tool accepts a clean endpoint only. */
 export function normalizeOAuthCheckEndpoint(value: string): string {
@@ -54,18 +80,33 @@ export async function checkOAuthReadiness(
   const row = (id: string, title: string, status: OAuthCheckStatus, url: string, evidence: string, fix?: string) => {
     rows.push({ id, title, status, url: safeUrl(url), evidence, fix });
   };
+  // The endpoint probe has no fallback, so its classification always counts.
+  // Metadata candidates are tracked per discovery step: the step's first
+  // classified candidate counts only if the whole step fails.
+  let endpointClass: LocatedResponseClass | undefined;
+  let candidateClass: LocatedResponseClass | undefined;
+  const noteResponseClass = (classification: ResponseClassification | undefined, url: string, source: 'endpoint' | 'candidate'): string => {
+    if (!classification) return '';
+    const located = { ...classification, url: safeUrl(url) };
+    if (source === 'endpoint') endpointClass ??= located;
+    else candidateClass ??= located;
+    return ` ${describeResponseClassification(classification, url)}`;
+  };
   let resourceMetadataUrl: URL | undefined;
   try {
     const response = await probeEndpoint(endpoint, { accept: 'application/json' });
     probeTransient = response.status === 429 || response.status >= 500;
     const header = response.wwwAuthenticate;
+    const classification = classifyDiscoveryResponse(response);
     resourceMetadataUrl = extractWWWAuthenticateParams(new Response(null, {
       headers: header ? { 'WWW-Authenticate': header } : {},
     })).resourceMetadataUrl;
     row('challenge', 'Unauthenticated MCP request / WWW-Authenticate',
-      probeTransient ? 'unknown' : response.status === 401 && header ? 'pass' : 'unknown', endpoint,
-      `POST initialize HTTP ${response.status}. WWW-Authenticate: ${header ? safeUrlHeader(header) : 'absent or not exposed to this browser'}.`,
-      'Return 401 with a Bearer resource_metadata URL. Expose WWW-Authenticate through CORS. A successful initialize response may mean OAuth is optional for this endpoint.');
+      probeTransient || classification ? 'unknown' : response.status === 401 && header ? 'pass' : 'unknown', endpoint,
+      `POST initialize HTTP ${response.status}. WWW-Authenticate: ${header ? safeUrlHeader(header) : 'absent or not exposed to this browser'}.${noteResponseClass(classification, endpoint, 'endpoint')}`,
+      classification
+        ? RESPONSE_CLASS_CONTENT[classification.kind].fix
+        : 'Return 401 with a Bearer resource_metadata URL. Expose WWW-Authenticate through CORS. A successful initialize response may mean OAuth is optional for this endpoint.');
   } catch {
     row('challenge', 'Unauthenticated MCP request / WWW-Authenticate', 'unknown', endpoint,
       'Browser could not read the unauthenticated response (CORS, network failure or timeout). Metadata discovery continues.',
@@ -83,13 +124,16 @@ export async function checkOAuthReadiness(
     normalizeOAuthCheckEndpoint(url);
     try {
       const response = await fetchDocument(url);
-      const blocked = response.status === 401 || response.status === 403 || response.status === 429 || response.status >= 500;
+      const classification = classifyDiscoveryResponse(response);
+      const blocked = Boolean(classification) || response.status === 401 || response.status === 403 || response.status === 429 || response.status >= 500;
       if (blocked) blockedSeen = true;
       sourceUrl = url;
       row(`${phase}-${rows.length}`, phase === 'resource' ? 'Protected resource metadata request (RFC 9728)' : 'Authorization server metadata request (RFC 8414 / OIDC)',
         response.status === 200 ? 'pass' : blocked ? 'unknown' : 'fail', url,
-        `GET HTTP ${response.status}, ${response.contentType ?? 'no Content-Type'}, via ${response.route}${response.url !== url ? `; final URL ${safeUrl(response.url)}` : ''}.`,
-        response.status !== 200 ? 'Serve public JSON at this well-known path. A failed candidate can be superseded by a successful fallback below.' : undefined);
+        `GET HTTP ${response.status}, ${response.contentType ?? 'no Content-Type'}, via ${response.route}${response.url !== url ? `; final URL ${safeUrl(response.url)}` : ''}.${noteResponseClass(classification, url, 'candidate')}`,
+        classification
+          ? RESPONSE_CLASS_CONTENT[classification.kind].fix
+          : response.status !== 200 ? 'Serve public JSON at this well-known path. A failed candidate can be superseded by a successful fallback below.' : undefined);
       return new Response(response.body, { status: response.status, headers: { 'Content-Type': response.contentType ?? 'application/json' } });
     } catch (error) {
       blockedSeen = true;
@@ -107,10 +151,12 @@ export async function checkOAuthReadiness(
     row('resource', 'Protected resource metadata validation', blockedSeen ? 'unknown' : 'fail', sourceUrl,
       message(error).slice(0, 500), 'Publish RFC 9728 JSON with resource and authorization_servers. Path-suffixed metadata precedes the root fallback; a challenge URL is authoritative.');
   }
+  const resourceClass = resource ? undefined : candidateClass;
   phase = 'issuer';
   // Failed candidates matter only if the whole discovery step fails. A valid
   // fallback (including another advertised issuer) supersedes their blocking.
   blockedSeen = false;
+  candidateClass = undefined;
   let metadata: Awaited<ReturnType<typeof discoverAuthorizationServerMetadata>>;
   let metadataUrl = '';
   if (resource) {
@@ -125,6 +171,7 @@ export async function checkOAuthReadiness(
     }
   }
   if (!metadata && blockedSeen) discoveryTransient = true;
+  const issuerClass = metadata ? undefined : candidateClass;
   row('issuer', 'Authorization server discovery', metadata ? 'pass' : blockedSeen ? 'unknown' : 'fail', metadataUrl || sourceUrl,
     metadata ? `Validated issuer: ${safeUrl(metadata.issuer)}; authorization_endpoint: ${safeUrl(metadata.authorization_endpoint)}; token_endpoint: ${safeUrl(metadata.token_endpoint)}.` : 'Failed to discover OAuth metadata from the advertised authorization servers.',
     !metadata ? 'Publish RFC 8414 metadata at /.well-known/oauth-authorization-server<issuer-path>, or OIDC metadata at <issuer>/.well-known/openid-configuration.' : undefined);
@@ -157,7 +204,15 @@ export async function checkOAuthReadiness(
     'Metadata does not expose per-client redirect allow-lists. Compare the client callbacks below with your provider configuration; exact-match acceptance is only tested by a real inspector connection.',
     'Register each client’s exact callback. Respect loopback variable-port rules; do not substitute localhost for 127.0.0.1 or omit the vscode.dev bridge callback.');
 
-  if (!resource || !metadata) {
+  const blocking = endpointClass ?? resourceClass ?? issuerClass;
+  if (blocking) report.responseClass = blocking;
+  if ((!resource || !metadata) && blocking) {
+    // Name what answered instead of the metadata, with its location and fix.
+    report.classification = blocking.kind === 'rate-limited'
+      ? 'transient'
+      : blocking.kind === 'payment-required' ? 'unsupported client mode' : 'server non-compliance';
+    report.verdict = `${blocking.confidence === 'suspected' ? 'Possibly: ' : ''}${RESPONSE_CLASS_CONTENT[blocking.kind].title(responseLocation(blocking.url))}`;
+  } else if (!resource || !metadata) {
     report.classification = probeTransient || discoveryTransient ? 'transient' : 'server non-compliance';
     report.verdict = probeTransient || discoveryTransient ? 'Discovery blocked: retry or check access policy' : `Discovery broken: fix ${!resource ? 'protected resource metadata' : 'authorization server metadata'}`;
   } else if (!resourceMatches || !pkce || !code) {
@@ -165,6 +220,13 @@ export async function checkOAuthReadiness(
   } else if (restricted || !advertised) {
     report.classification = 'unsupported client mode';
     report.verdict = confidential ? 'Confidential client required' : 'Only pre-registered clients or provider-approved clients';
+  } else if (blocking && blocking.kind !== 'rate-limited') {
+    // Metadata is fine, but the MCP endpoint itself is behind a challenge or a payment wall.
+    report.classification = blocking.kind === 'payment-required' ? 'unsupported client mode' : 'server non-compliance';
+    // A heuristic match stays a suspicion here too, as in the error card.
+    const title = RESPONSE_CLASS_CONTENT[blocking.kind].title(responseLocation(blocking.url)).replace(/^\w/, (letter) => letter.toLowerCase());
+    const hedged = blocking.confidence === 'suspected' ? title.replace(/ is blocking /, ' may be blocking ') : title;
+    report.verdict = `Metadata checks passed, but ${hedged === title && blocking.confidence === 'suspected' ? `possibly ${title}` : hedged}`;
   } else if (probeTransient) {
     report.classification = 'transient';
     report.verdict = 'Metadata checks passed; MCP endpoint unavailable, retry';

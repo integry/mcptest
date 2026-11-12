@@ -134,6 +134,8 @@ Annotations are hints. Clients still use them to decide what to auto-approve and
   - `openWorldHint` going from `false` to `true`, or being dropped (the default is `true`).
 - **Safe:** the reverse changes, and a `title` change.
 
+See also [how clients use tool annotations](/learn/mcp-tool-annotations-and-client-retries) and [tool errors agents can act on](/learn/mcp-tool-errors-agents-can-act-on).
+
 ## Prompts and resources {#prompts-and-resources}
 
 The same logic applies to prompts, resources and resource templates:

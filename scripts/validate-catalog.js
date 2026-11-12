@@ -22,6 +22,61 @@ const catalogPath = path.join(__dirname, '..', 'src', 'data', 'serverCatalog.jso
 const outputPath = path.join(__dirname, '..', 'src', 'data', 'catalogValidation.json');
 const capabilitiesPath = path.join(__dirname, '..', 'src', 'data', 'catalogCapabilities.json');
 
+let responseClassifierPromise;
+// Shared with the browser checkers, so a catalog run judges a challenge page,
+// a rate limit or a 402 exactly like the playground does.
+function responseClassifier() {
+  responseClassifierPromise ||= import('../src/utils/responseClassification.ts');
+  return responseClassifierPromise;
+}
+
+const RESPONSE_CLASS_ERROR_CODES = {
+  'bot-protection': 'bot_protection',
+  'rate-limited': 'rate_limited',
+  'payment-required': 'payment_required',
+};
+
+/** Records one probe response, with its bot-protection, rate-limit or 402 class when it has one. */
+async function observeProbeResponse(responses, response) {
+  const observed = {
+    status: response.status,
+    contentType: response.headers.get('content-type') || '',
+  };
+  if (response.status >= 400) {
+    try {
+      const { classifyFetchResponse } = await responseClassifier();
+      const responseClass = await classifyFetchResponse(response);
+      if (responseClass) observed.responseClass = responseClass;
+    } catch {
+      // Classification is evidence only; it never changes the probe outcome on failure.
+    }
+  }
+  responses.push(observed);
+}
+
+/** A 401, or a 403 that is not a bot-protection page, is an authentication challenge. */
+function isAuthChallengeResponse(observed) {
+  return isAuthStatus(observed.status) && observed.responseClass?.kind !== 'bot-protection';
+}
+
+async function classifiedProbeFailure(endpoint, responses) {
+  const classified = responses.find(({ responseClass }) => responseClass);
+  if (!classified) return undefined;
+  const { describeResponseClassification } = await responseClassifier();
+  const { responseClass } = classified;
+  return {
+    ...endpoint,
+    reachable: true,
+    alive: false,
+    authChallenge: false,
+    protocolEra: 'unknown',
+    statusCode: classified.status,
+    responseClass,
+    errorCode: RESPONSE_CLASS_ERROR_CODES[responseClass.kind],
+    message: describeResponseClassification(responseClass, endpoint.url),
+  };
+}
+
 let canonicalInventoryPromise;
 function canonicalInventory() {
   canonicalInventoryPromise ||= import('../src/utils/capabilityInventory.ts');
@@ -563,12 +618,9 @@ async function probeStreamableEndpoint(
   const observingFetch = async (input, init) => {
     throwIfAborted(signal);
     const response = await fetchImpl(input, withAbortSignal(init, signal));
-    responses.push({
-      status: response.status,
-      contentType: response.headers.get('content-type') || '',
-    });
+    await observeProbeResponse(responses, response);
 
-    if (isAuthStatus(response.status)) {
+    if (isAuthChallengeResponse(responses.at(-1))) {
       resourceMetadataUrl = extractWWWAuthenticateParams(response).resourceMetadataUrl?.toString();
     }
 
@@ -608,7 +660,7 @@ async function probeStreamableEndpoint(
       message: `Negotiated ${era === 'modern' ? 'stateless' : 'stateful'} MCP${protocolVersion ? ` ${protocolVersion}` : ''} at ${endpoint.url}`,
     };
   } catch (error) {
-    const authResponse = responses.find(({ status }) => isAuthStatus(status));
+    const authResponse = responses.find(isAuthChallengeResponse);
     const lastResponse = responses.at(-1);
 
     if (authResponse) {
@@ -623,6 +675,9 @@ async function probeStreamableEndpoint(
         message: `Authentication challenge at ${endpoint.url} returned HTTP ${authResponse.status}`,
       };
     }
+
+    const classified = await classifiedProbeFailure(endpoint, responses);
+    if (classified) return classified;
 
     return {
       ...endpoint,
@@ -657,11 +712,8 @@ async function probeSseEndpoint(
     }
 
     const { response } = result;
-    responses.push({
-      status: response.status,
-      contentType: response.headers.get('content-type') || '',
-    });
-    if (isAuthStatus(response.status)) {
+    await observeProbeResponse(responses, response);
+    if (isAuthChallengeResponse(responses.at(-1))) {
       resourceMetadataUrl = extractWWWAuthenticateParams(response).resourceMetadataUrl?.toString();
     }
     return response;
@@ -705,7 +757,7 @@ async function probeSseEndpoint(
       message: `Negotiated legacy MCP${protocolVersion ? ` ${protocolVersion}` : ''} at ${endpoint.url}`,
     };
   } catch (error) {
-    const authResponse = responses.find(({ status }) => isAuthStatus(status));
+    const authResponse = responses.find(isAuthChallengeResponse);
     const lastResponse = responses.at(-1);
 
     if (authResponse) {
@@ -720,6 +772,9 @@ async function probeSseEndpoint(
         message: `Authentication challenge at ${endpoint.url} returned HTTP ${authResponse.status}`,
       };
     }
+
+    const classified = await classifiedProbeFailure(endpoint, responses);
+    if (classified) return classified;
 
     return {
       ...endpoint,
@@ -799,8 +854,21 @@ function detectedTransport(probes) {
   return 'unknown';
 }
 
+/** A 402 is a deliberate payment wall: the server is up, so it is never offline or broken. */
+function isPaymentRequiredProbe(probe) {
+  return probe.responseClass?.kind === 'payment-required';
+}
+
+/** The response class that explains why no probe completed, if one does. */
+function failureResponseClass(probes) {
+  if (probes.some((probe) => probe.alive || probe.authChallenge)) return undefined;
+  const payment = probes.find(isPaymentRequiredProbe);
+  if (payment) return payment.responseClass.kind;
+  return probes.find((probe) => probe.responseClass)?.responseClass.kind;
+}
+
 function detectedStatus(probes) {
-  if (probes.some((probe) => probe.alive || probe.authChallenge)) return 'online';
+  if (probes.some((probe) => probe.alive || probe.authChallenge || isPaymentRequiredProbe(probe))) return 'online';
   if (probes.some((probe) => probe.reachable)) return 'unknown';
   return 'offline';
 }
@@ -840,6 +908,11 @@ function resultMessage(status, transport, probes, authType) {
     return `${challengeProbe.message}; endpoint was reachable but did not complete an MCP probe; authentication ${authType}`;
   }
 
+  const classifiedProbe = probes.find(isPaymentRequiredProbe) || probes.find((probe) => probe.responseClass);
+  if (classifiedProbe) {
+    return `${classifiedProbe.message}; endpoint was reachable but did not complete an MCP probe`;
+  }
+
   const reachableProbe = probes.find((probe) => probe.reachable);
   if (reachableProbe) {
     return `${reachableProbe.message}; endpoint was reachable but did not complete an MCP probe`;
@@ -853,6 +926,8 @@ function resultMessage(status, transport, probes, authType) {
 
 function errorCodeForStatus(status, probes) {
   if (status === 'online') return undefined;
+  const responseClass = failureResponseClass(probes);
+  if (responseClass) return RESPONSE_CLASS_ERROR_CODES[responseClass];
   if (status === 'unknown') return 'unexpected_response';
   return probes.some((probe) => probe.errorCode === 'timeout') ? 'timeout' : 'network_error';
 }
@@ -905,8 +980,9 @@ async function validateSeed(
     message: resultMessage(status, transport, probes, authType),
   };
 
-  if (successfulProbe?.url || challengeProbe?.url) {
-    result.validatedUrl = successfulProbe?.url || challengeProbe.url;
+  const paymentProbe = probes.find(isPaymentRequiredProbe);
+  if (successfulProbe?.url || challengeProbe?.url || paymentProbe?.url) {
+    result.validatedUrl = successfulProbe?.url || challengeProbe?.url || paymentProbe.url;
   }
   if (protocolProbe?.protocolVersion) result.protocolVersion = protocolProbe.protocolVersion;
   if (authorizationEvidence.authorizationServers.length > 0) {
@@ -915,6 +991,8 @@ async function validateSeed(
   if (authType === 'none' && authorizationEvidence.authorizationServers.length > 0) {
     result.message += '; WARNING: OAuth authorization servers advertised; an anonymous MCP handshake does not establish anonymous tool access';
   }
+  const responseClass = failureResponseClass(probes);
+  if (responseClass) result.responseClass = responseClass;
   if (errorCode) result.errorCode = errorCode;
   if (successfulProbe?.capabilityInventory) {
     result.capabilityInventory = successfulProbe.capabilityInventory;
@@ -1010,6 +1088,7 @@ const VALIDATION_KEY_ORDER = [
   'validatedUrl',
   'protocolVersion',
   'authorizationServers',
+  'responseClass',
   'errorCode',
 ];
 

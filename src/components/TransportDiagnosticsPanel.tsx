@@ -4,6 +4,7 @@ import type {
   TransportDiagnosticEvidence,
 } from '../types/transportDiagnostics';
 import { formatRetryWait } from '../utils/transportDiagnostics';
+import { RESPONSE_CLASS_CONTENT } from '../utils/responseClassification';
 import FindingReferenceLink from './FindingReferenceLink';
 import './TransportDiagnosticsPanel.css';
 
@@ -58,6 +59,8 @@ const TransportDiagnosticsPanel: React.FC<TransportDiagnosticsPanelProps> = ({
           const modifier = diagnostic.status === 'detected' ? diagnostic.severity : diagnostic.status;
           const rateLimited = diagnostic.id === 'transport.target-rate-limited-429'
             && diagnostic.status === 'detected';
+          const responseClass = diagnostic.evidence.find((evidence) => evidence.responseClass)?.responseClass;
+          const learnMore = responseClass ? RESPONSE_CLASS_CONTENT[responseClass.kind]?.learnMore : undefined;
           return (
             <article
               key={diagnostic.id}
@@ -115,6 +118,9 @@ const TransportDiagnosticsPanel: React.FC<TransportDiagnosticsPanelProps> = ({
                     </ul>
                   )}
                   <p className="small mb-1"><strong>How to fix:</strong> {diagnostic.remediation.summary}</p>
+                  {learnMore && (
+                    <p className="small mb-1">Learn more: <a href={learnMore.path}>{learnMore.title}</a></p>
+                  )}
                   <details>
                     <summary className="small">Code hints for common stacks</summary>
                     {diagnostic.remediation.hints.map((hint) => (

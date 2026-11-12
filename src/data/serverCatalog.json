@@ -13110,5 +13110,49 @@
     "caveats": [
       "AgentSEO documents initialize and tools/list as public discovery methods that work without credentials; tool calls require an AgentSEO API key. The submitter reports the key is also accepted as a Bearer token."
     ]
+  },
+  {
+    "id": "fairvalid",
+    "name": "FairValid",
+    "url": "https://mcp.fairvalid.com/mcp",
+    "description": "Verify email addresses, read verification-job results, and find verified work emails using an OAuth-authorized FairValid workspace.",
+    "category": "CRM",
+    "tags": [
+      "email-verification",
+      "crm",
+      "search",
+      "oauth"
+    ],
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://fairvalid.com/en/help/mcp"
+    },
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false,
+        "redirectUrls": {}
+      },
+      "setupSteps": [],
+      "settings": [],
+      "reviewedAt": "2026-11-12",
+      "evidenceUrl": "https://fairvalid.com/en/help/mcp"
+    },
+    "homepageUrl": "https://fairvalid.com/",
+    "sourceUrl": "https://github.com/moonlitnayeem/fairvalid-ai",
+    "logoUrl": "/server-logos/fairvalid.svg",
+    "logoSourceUrl": "https://fairvalid.com/brand/fairvalid-icon.svg",
+    "logoSourceKind": "official-site",
+    "logoRetrievedAt": "2026-11-12",
+    "logoLicenseNote": "Official FairValid product icon supplied for identification in this catalog. Trademark rights remain with FairValid."
   }
 ]

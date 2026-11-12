@@ -135,6 +135,32 @@ additional modeling assumption on every profile, reviewed on 2026-08-11.
   TypeScript SDK can implement, not what every application using an SDK has
   wired up. Browser CORS is therefore a runtime-dependent caveat.
 
+## Tool hint behaviour rules
+
+Client behaviour that depends on tool annotation hints is kept in
+`src/data/toolHintClientBehaviors.ts`, one entry per behaviour with the
+client's own changelog line quoted verbatim, its URL and the day it was read.
+`buildHostProfile` adds a rule for each entry of the profiled client and cites
+only that source:
+
+- `tools.retry-hints` (Claude Code, 2.1.307): HTTP MCP tool calls cut off
+  mid-call are retried only for read-only or idempotent tools. Passes when
+  every tool declares `readOnlyHint: true`, `idempotentHint: true`, or both
+  `readOnlyHint` and `idempotentHint` (fact `tools.retryHintsDeclared`).
+- `tools.parallel-read-only` (Codex CLI, 0.134.0): MCP tools run concurrently
+  only when they advertise `readOnlyHint: true`. Passes when every tool
+  declares `readOnlyHint` (fact `tools.readOnlyHintDeclared`).
+
+A missing hint is a caveat, never a failure. The `tools` facts come from the
+tool surface analysis and are left out when the tool list was not fully
+analyzed (catalog facts, partial pagination, older reports); `tools.*` paths
+then read as unknown and both rules pass. The rules have no `appliesWhen`:
+the facts exist only for a complete, non-empty tool list, so they already show
+the rules apply, and gating on `capabilities.tools` would turn an unknown
+capability into an unknown finding. A server observed not to advertise tools
+reads as unknown through `unknownWhen` and also passes. Add a behaviour here only after
+reading it in the client's official documentation or changelog.
+
 ## Canonical fixtures
 
 `fixtures.ts` exports public, OAuth-protected, stateful Streamable HTTP,

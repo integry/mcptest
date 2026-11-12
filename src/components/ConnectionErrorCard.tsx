@@ -9,6 +9,7 @@ import {
 } from '../utils/connectionDiagnostics';
 import type { TransportDiagnostic } from '../types/transportDiagnostics';
 import { detectedTransportDiagnostics, formatRetryWait } from '../utils/transportDiagnostics';
+import { RESPONSE_CLASS_CONTENT, responseLocation, type ResponseClass } from '../utils/responseClassification';
 import TransportDiagnosticsPanel from './TransportDiagnosticsPanel';
 
 interface ConnectionErrorCardProps {
@@ -75,6 +76,27 @@ const inferTransportEvidence = (
   return [...transports][0] || 'unknown';
 };
 
+const RESPONSE_CLASS_DIAGNOSTICS: Partial<Record<TransportDiagnostic['id'], ResponseClass>> = {
+  'transport.bot-protection-challenge': 'bot-protection',
+  'transport.payment-required-402': 'payment-required',
+};
+
+/**
+ * The bot-protection or payment-required diagnostic that explains a failed
+ * connection. A suspected bot-protection match still explains it better than a
+ * generic HTTP error, so it is used too, worded as a possibility.
+ */
+const responseClassDiagnostic = (
+  diagnostics: readonly TransportDiagnostic[] | undefined
+): { diagnostic: TransportDiagnostic; kind: ResponseClass } | undefined => {
+  for (const diagnostic of diagnostics || []) {
+    const kind = RESPONSE_CLASS_DIAGNOSTICS[diagnostic.id];
+    if (!kind || diagnostic.severity !== 'error') continue;
+    if (diagnostic.status === 'detected' || diagnostic.status === 'suspected') return { diagnostic, kind };
+  }
+  return undefined;
+};
+
 const diagnose = (errorDetails: ConnectionErrorDetails): Diagnosis => {
   if (errorDetails.failureStage === 'oauth') {
     return {
@@ -106,6 +128,23 @@ const diagnose = (errorDetails: ConnectionErrorDetails): Diagnosis => {
       heading: 'mcptest proxy authentication required',
       summary: 'The proxy rejected an invalid or expired mcptest login before it could inspect the target. Sign in again, or sign out to use the proxy anonymously. This is not a target OAuth response.',
       alertClass: 'alert-warning border-warning',
+    };
+  }
+
+  const classified = responseClassDiagnostic(errorDetails.transportDiagnostics);
+  if (classified) {
+    const { diagnostic, kind } = classified;
+    const content = RESPONSE_CLASS_CONTENT[kind];
+    const evidence = diagnostic.evidence[0];
+    const location = responseLocation(evidence?.endpoint);
+    const suspected = diagnostic.status === 'suspected';
+    return {
+      badge: suspected ? `${content.label}?` : content.label,
+      heading: suspected
+        ? `${content.title(location).replace(/ is blocking /, ' may be blocking ')}`
+        : content.title(location),
+      summary: [evidence?.observation, content.explanation].filter(Boolean).join(' '),
+      alertClass: kind === 'payment-required' ? 'alert-info border-info' : 'alert-warning border-warning',
     };
   }
 
@@ -233,7 +272,9 @@ const ConnectionErrorCard: React.FC<ConnectionErrorCardProps> = ({
   const attempts = errorDetails.attempts || [];
   const diagnosis = useMemo(() => diagnose(errorDetails), [errorDetails]);
   const transportDiagnostics: readonly TransportDiagnostic[] = errorDetails.transportDiagnostics || [];
-  const hasTransportFinding = detectedTransportDiagnostics(transportDiagnostics)
+  const classified = responseClassDiagnostic(transportDiagnostics);
+  const classifiedContent = classified ? RESPONSE_CLASS_CONTENT[classified.kind] : undefined;
+  const hasTransportFinding = !classified && detectedTransportDiagnostics(transportDiagnostics)
     .some(({ severity }) => severity === 'error');
   const rateLimit = transportDiagnostics.find((diagnostic) => (
     diagnostic.id === 'transport.target-rate-limited-429'
@@ -371,10 +412,16 @@ const ConnectionErrorCard: React.FC<ConnectionErrorCardProps> = ({
               {browserBlocked && !showProxyOption && (
                 <li>Use the exact terminal probe below or configure a trusted backend proxy to inspect the response outside the browser.</li>
               )}
+              {classifiedContent && (
+                <li>
+                  {classifiedContent.fix}{' '}
+                  <a href={classifiedContent.learnMore.path}>{classifiedContent.learnMore.title}</a>
+                </li>
+              )}
               {hasTransportFinding && (
                 <li>Apply the transport fix described above on the MCP server, then retry the connection.</li>
               )}
-              {!oauthFailed && !browserBlocked && !hasTransportFinding && attempts.some(({ failureKind }) => failureKind === 'http') && (
+              {!oauthFailed && !browserBlocked && !hasTransportFinding && !classified && attempts.some(({ failureKind }) => failureKind === 'http') && (
                 <li>Verify that the publisher&apos;s exact MCP endpoint path matches the readable HTTP response.</li>
               )}
               {!browserBlocked && attempts.some(({ failureKind }) => failureKind === 'timeout') && (
