@@ -17,11 +17,14 @@ describe.skipIf(!process.env.FIRST_PAINT)('first paint of the built home page', 
     expect(findBrowser(), 'Chromium is required; set CHROME_PATH').not.toBeNull();
     expect(fs.readFileSync(path.join(distDir, 'index.html'), 'utf8')).toContain('seo-shell-fallback');
 
-    const result = await measureFirstPaint({ distDir, colorScheme: 'dark', triggerMountAtMs: 1000 });
+    // On CI hosts the mount lands ~2.7 s after the 1 s trigger, at the edge of
+    // the default 4 s window; capture longer so a busy runner doesn't fail it.
+    const durationMs = 7000;
+    const result = await measureFirstPaint({ distDir, colorScheme: 'dark', triggerMountAtMs: 1000, durationMs });
     console.log(formatTimeline(result));
 
     expect(result.screenshots.length).toBeLessThanOrEqual(DEFAULTS.maxScreenshots);
-    expect(result.samples).toHaveLength(DEFAULTS.durationMs / DEFAULTS.intervalMs);
+    expect(result.samples).toHaveLength(durationMs / DEFAULTS.intervalMs);
 
     // data-theme is set once, from the system preference, before anything paints.
     const firstPaintAt = result.paints['first-paint'];

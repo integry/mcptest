@@ -12,9 +12,14 @@ import { createCapabilityInventory } from '../src/utils/capabilityInventory';
 import { extractOutline } from '../src/content/outline';
 import { buildTrackNavigation } from '../src/content/contentModel';
 import { buildLearnTrackNavigation } from '../src/content/navigationLinks';
+import { KEYWORD_LANDING_PAGES, getKeywordLandingFaqStructuredData } from '../src/content/keywordLandingPages';
+import { landingPlainText } from '../src/content/landingCopy';
+import { renderKeywordLandingPage } from '../src/prerender/contentPages';
+import machineReadable from './content/machineReadable.js';
 
 const {
   loadArticles, mergeCatalogServers, renderCatalogHtml, renderDiscoveryHtml, renderHomeHtml, renderLearnArticleHtml,
+  renderKeywordLandingHtml, buildOgCards, getSitemapEntries,
   renderLearnIndexHtml, renderServerHtml, renderMarkdown, renderSitemap, renderStaticPageHtml,
   stripLandingFallback, validateCapabilitySnapshots, addFontPreloads, findFirstFrameFontAssets,
   addAppPreloads, findAppPreloadHrefs,
@@ -560,11 +565,44 @@ describe('generated page metadata', () => {
     expect(html).toContain('property="og:url" content="https://mcptest.io"');
     expect(html).toContain('property="og:image" content="https://mcptest.io/og/home.png"');
     const root = document.getElementById('root');
-    expect(root.querySelector('.landing-title').textContent).toBe('Inspect, debug and evaluate remote MCP servers in your browser');
+    expect(root.querySelector('.landing-title').textContent).toBe('Test remote MCP servers online');
     expect(root.querySelector('.landing-catalog a[href="/catalog"]').textContent).toContain('Browse 111 public remote MCP servers');
     // The whole first frame, not just the landing: header and sidebar too.
     expect(root.querySelector('.seo-shell-fallback .app-header .app-brand-title').textContent).toBe('mcptest.io');
     expect(root.querySelector('.seo-shell-fallback .desktop-sidebar .app-sidenav a.active').getAttribute('href')).toBe('/');
+  });
+
+  it('prerenders the trust line, how-to steps and FAQ, with FAQPage JSON-LD for exactly the visible questions', () => {
+    const html = renderHomeHtml(indexHtml, { title: 'Home | mcptest.io', description: 'Home description.' }, 111);
+    const document = new DOMParser().parseFromString(html, 'text/html');
+    const root = document.getElementById('root');
+
+    expect(root.querySelector('.landing-hero .landing-trust').textContent).toContain('No sign-up needed to connect and test');
+    expect(root.querySelector('.landing-steps h2').textContent).toBe('How to test an MCP server');
+    const steps = Array.from(root.querySelectorAll('.landing-steps ol > li .landing-step-title'), node => node.textContent);
+    expect(steps).toEqual(['Paste the endpoint URL', 'Pick the authentication', 'Connect', 'Call a tool', 'Share the report']);
+    expect(root.querySelector('.landing-steps a[href="/catalog"]')).not.toBeNull();
+
+    const questions = Array.from(root.querySelectorAll('.landing-faq .landing-faq-question'), node => node.textContent);
+    const answers = Array.from(root.querySelectorAll('.landing-faq .landing-faq-answer'), node => node.textContent);
+    expect(questions).toHaveLength(7);
+    for (const href of ['/docs/testing-guide', '/learn/mcptest-vs-mcp-inspector', '/ci']) {
+      expect(root.querySelector(`.landing-faq a[href="${href}"]`), href).not.toBeNull();
+    }
+    expect(root.querySelector('.landing-faq a[href^="https://"]').getAttribute('rel')).toBe('noopener noreferrer');
+
+    const scripts = document.querySelectorAll('script[type="application/ld+json"]');
+    expect(scripts).toHaveLength(1);
+    const structuredData = JSON.parse(scripts[0].textContent);
+    expect(structuredData['@type']).toBe('FAQPage');
+    expect(structuredData.mainEntity.map(entry => entry.name)).toEqual(questions);
+    expect(structuredData.mainEntity.map(entry => entry.acceptedAnswer.text)).toEqual(answers);
+    expect(structuredData.mainEntity[0].acceptedAnswer.text).not.toContain('](');
+
+    // Rerunning the generator never carries the home FAQ into other pages.
+    const shell = stripLandingFallback(html);
+    expect(shell).not.toContain('FAQPage');
+    expect(renderLearnIndexHtml(shell, learnIndex, articles)).not.toContain('application/ld+json');
   });
 
   it('removes a previous landing fallback so rerunning never copies it into other pages', () => {
@@ -643,6 +681,53 @@ describe('generated page metadata', () => {
     expect(html).not.toContain('data-deferred-mount');
     expect(html).toMatch(/<a href="\/tools\/discovery" class="nav-link sidenav-link active" aria-current="page" aria-describedby="[^"]+" title="[^"]+">/);
     expect(renderDiscoveryHtml(indexHtml, metadata)).toContain('The proxy is not configured in this build');
+  });
+
+  it.each(KEYWORD_LANDING_PAGES.map(page => [page.path, page]))('prerenders the keyword landing page %s with its copy, metadata and FAQ JSON-LD in static HTML', (path, page) => {
+    const pageHtml = renderKeywordLandingPage(path);
+    const html = renderKeywordLandingHtml(indexHtml, page, { pageHtml });
+    const escapeText = value => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+    expect(html).toContain(`<title>${escapeText(page.title)}</title>`);
+    expect(html).toContain(`name="description" content="${escapeText(page.description)}"`);
+    expect(html).toContain(`rel="canonical" href="https://mcptest.io${path}"`);
+    expect(html).toContain(`property="og:url" content="https://mcptest.io${path}"`);
+    expect(html).toContain(`property="og:title" content="${escapeText(page.title)}"`);
+    expect(html).toContain(`name="twitter:title" content="${escapeText(page.title)}"`);
+    expect(html).toContain(`property="og:image" content="https://mcptest.io/og${path}.png"`);
+
+    const body = new DOMParser().parseFromString(html, 'text/html');
+    expect(body.querySelectorAll('h1')).toHaveLength(1);
+    expect(body.querySelector('h1')?.textContent).toBe(page.h1);
+    const text = body.querySelector('.keyword-landing')?.textContent.replace(/\s+/g, ' ') ?? '';
+    for (const section of page.sections) {
+      expect(body.getElementById(section.id), section.id).not.toBeNull();
+      expect(text).toContain(section.title);
+    }
+    for (const item of page.faq) {
+      expect(text).toContain(item.question);
+      expect(text).toContain(landingPlainText(item.answer));
+    }
+    // The connect form the app mounts over, in the app shell.
+    expect(body.querySelector(`#${page.key}-server-url`)).not.toBeNull();
+    expect(body.querySelector('.seo-shell-fallback .desktop-sidebar')).not.toBeNull();
+    expect(body.querySelector(`.sidenav-footer a[href="${path}"]`)).not.toBeNull();
+    // An app route: React mounts at load.
+    expect(html).not.toContain('data-deferred-mount');
+
+    const jsonLd = JSON.parse(body.getElementById('server-structured-data').textContent);
+    expect(jsonLd).toEqual(getKeywordLandingFaqStructuredData(page));
+  });
+
+  it('lists the keyword landing pages in the sitemap, llms.txt and the Open Graph cards', () => {
+    const sitemapPaths = getSitemapEntries([], articles, []).map(entry => entry.pathname);
+    const cards = buildOgCards({ servers: [], articles: [], pageMetadata: { catalog: { title: 'C', description: 'C' }, learn: { title: 'L', description: 'L' }, tools: {}, docs: {} } });
+    const llms = machineReadable.renderLlmsTxt(articles);
+    for (const page of KEYWORD_LANDING_PAGES) {
+      expect(sitemapPaths.filter(pathname => pathname === page.path)).toHaveLength(1);
+      expect(cards.find(card => card.pagePath === page.path)).toMatchObject({ title: page.h1 });
+      expect(llms).toContain(`- [${page.h1}](https://mcptest.io${page.path}): ${page.llmsNote}`);
+    }
   });
 
   it('renders unique initial metadata for documentation routes', () => {
@@ -732,11 +817,11 @@ describe('generated page metadata', () => {
     const article = articles.find(item => item.slug === 'testing-guide');
     const html = renderLearnArticleHtml(indexHtml, article, articles, learnIndex);
 
-    expect(html).toContain('<title>How to Test a Remote MCP Server (Step by Step) | mcptest.io</title>');
+    expect(html).toContain('<title>How to Test MCP Servers: Complete Guide with curl, Inspector and CI | mcptest.io</title>');
     expect(html).toContain('rel="canonical" href="https://mcptest.io/docs/testing-guide"');
-    expect(html).toContain('name="description" content="Test a remote MCP server step by step:');
+    expect(html).toContain('name="description" content="How to test MCP servers: unit tests,');
     expect(html).toContain('<blockquote><p><strong>Browser clients need CORS.</strong>');
-    expect(html).toContain('<pre tabindex="0"><code class="hljs language-bash">curl -i https://your-server.example.com/mcp');
+    expect(html).toContain('<pre tabindex="0"><code class="hljs language-bash">curl -i https://mcp.context7.com/mcp');
     expect(html).toContain('<h3 id="capabilities">Capabilities</h3>');
   });
 

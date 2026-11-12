@@ -10,10 +10,16 @@ import {
   LANDING_CATALOG_LINK_PREFIX,
   LANDING_CATALOG_LINK_SUFFIX,
   LANDING_COVERAGE_TITLE,
+  LANDING_FAQ,
+  LANDING_FAQ_TITLE,
   LANDING_HEADLINE,
   LANDING_LEDE,
   LANDING_PATHS_LABEL,
   LANDING_REPORT_COVERAGE as REPORT_COVERAGE,
+  LANDING_STEPS,
+  LANDING_STEPS_TITLE,
+  LANDING_TRUST_LABEL,
+  LANDING_TRUST_POINTS,
 } from '../content/landingCopy';
 import {
   LANDING_ADVANCED_HINT,
@@ -28,10 +34,13 @@ import {
   LANDING_SAMPLE_NOTE_SUFFIX,
   getEndpointInputError,
 } from '../content/landingFirstRun';
+import type { KeywordLandingPage } from '../content/keywordLandingPages';
 import { selectLandingQuickPicks } from '../utils/landingQuickPicks';
 import { CatalogServerLogo } from './CatalogServerLogo';
 import { LandingPreview } from './LandingPreview';
 import type { SuggestedServerSelection } from './SuggestedServersPanel';
+import { LandingText } from './LandingText';
+import { KeywordLandingContent } from './KeywordLandingContent';
 import './LandingHero.css';
 
 const RECENT_SERVER_LIMIT = 6;
@@ -69,7 +78,80 @@ export interface LandingHeroProps {
    * "Advanced options" disclosure swaps it in for the simple connect row.
    */
   advancedOptions?: React.ReactNode;
+  /**
+   * Opens the full connection panel elsewhere (the playground) instead of in
+   * place; shows the same "Advanced options" control when `advancedOptions`
+   * is not given.
+   */
+  onOpenAdvancedOptions?: () => void;
+  /** Starts with `advancedOptions` shown. */
+  defaultShowAdvanced?: boolean;
+  /**
+   * A keyword landing page (src/content/keywordLandingPages.ts): its H1 and
+   * intro replace the home page's, and its own sections, FAQ and related
+   * links replace the home page's below the form.
+   */
+  page?: KeywordLandingPage;
 }
+
+/** The home page's sections below the connect form. */
+const HomeLandingContent: React.FC<{ catalogCount: number }> = ({ catalogCount }) => (
+  <>
+    <section className="landing-steps" aria-labelledby="landing-steps-title">
+      <h2 id="landing-steps-title" className="landing-section-title">{LANDING_STEPS_TITLE}</h2>
+      <ol>
+        {LANDING_STEPS.map((step) => (
+          <li key={step.title}>
+            <h3 className="landing-step-title">{step.title}</h3>
+            <p className="landing-step-description"><LandingText value={step.description} /></p>
+          </li>
+        ))}
+      </ol>
+    </section>
+
+    <nav className="landing-paths" aria-label={LANDING_PATHS_LABEL}>
+      <ul>
+        {AUDIENCE_PATHS.map((path) => (
+          <li key={path.to}>
+            <Link to={path.to} className="landing-path">
+              <span className="landing-path-title">{path.title}</span>
+              <span className="landing-path-description">{path.description}</span>
+              <span className="landing-path-arrow" aria-hidden="true">&rarr;</span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </nav>
+
+    <div className="landing-coverage">
+      <h2 className="landing-coverage-title">{LANDING_COVERAGE_TITLE}</h2>
+      <ul>
+        {REPORT_COVERAGE.map((item) => (
+          <li key={item}>
+            <i className="bi bi-check2" aria-hidden="true"></i>
+            {item}
+          </li>
+        ))}
+      </ul>
+    </div>
+
+    <p className="landing-catalog">
+      <Link to="/catalog">
+        {LANDING_CATALOG_LINK_PREFIX} {catalogCount} {LANDING_CATALOG_LINK_SUFFIX} <span aria-hidden="true">&rarr;</span>
+      </Link>
+    </p>
+
+    <section className="landing-faq" aria-labelledby="landing-faq-title">
+      <h2 id="landing-faq-title" className="landing-section-title">{LANDING_FAQ_TITLE}</h2>
+      {LANDING_FAQ.map((item) => (
+        <div key={item.question} className="landing-faq-item">
+          <h3 className="landing-faq-question">{item.question}</h3>
+          <p className="landing-faq-answer"><LandingText value={item.answer} /></p>
+        </div>
+      ))}
+    </section>
+  </>
+);
 
 export const LandingHero: React.FC<LandingHeroProps> = ({
   serverUrl,
@@ -82,20 +164,30 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
   onConnectRecent,
   onRemoveRecentServer,
   advancedOptions,
+  onOpenAdvancedOptions,
+  defaultShowAdvanced = false,
+  page,
 }) => {
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(defaultShowAdvanced);
   const [inputError, setInputError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const recent = recentServers.slice(0, RECENT_SERVER_LIMIT);
   const showRecent = recent.length > 0 && Boolean(onConnectRecent);
   const advancedOpen = showAdvanced && Boolean(advancedOptions);
+  // Ids stay unique when the playground's landing is mounted (hidden) beside a landing page.
+  const idPrefix = page ? `${page.key}-landing` : 'landing';
+  const inputId = page ? `${page.key}-server-url` : 'serverUrl';
+  const pageProps = page ? { page: page.key } : {};
   // The first preset is the one-click sample: it connects through the same
   // path as clicking that preset.
   const sample = quickPicks[0];
   const sampleEndpoint = sample ? getPreferredCatalogEndpoint(sample) : undefined;
 
   // Once per landing shown; a returning user is one with recent endpoints.
-  useEffect(() => trackEvent('landing_view', { variant: showRecent ? 'returning' : 'new' }), []);
+  useEffect(() => trackEvent('landing_view', {
+    variant: showRecent ? 'returning' : 'new',
+    ...(page ? { page: page.key } : {}),
+  }), []);
 
   const handleManualConnect = () => {
     if (isConnecting) return;
@@ -105,40 +197,43 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
       inputRef.current?.focus();
       return;
     }
-    trackEvent('landing_connect', { source: 'manual', host: getAnalyticsHost(serverUrl) });
+    trackEvent('landing_connect', { source: 'manual', host: getAnalyticsHost(serverUrl), ...pageProps });
     onConnect();
   };
 
   const connectPreset = (server: CatalogServer, source: 'quick_pick' | 'sample_test') => {
     const endpoint = getPreferredCatalogEndpoint(server);
     setInputError(null);
-    trackEvent('landing_connect', { source, host: getAnalyticsHost(endpoint.url) });
+    trackEvent('landing_connect', { source, host: getAnalyticsHost(endpoint.url), ...pageProps });
     onConnect({ endpoint, protocolEra: server.protocolEra });
   };
 
   return (
-    <section className={`landing${showRecent ? ' landing--returning' : ''}`} aria-labelledby="landing-title">
+    <section
+      className={`landing${page ? ' keyword-landing' : ''}${showRecent ? ' landing--returning' : ''}`}
+      aria-labelledby={`${idPrefix}-title`}
+    >
       <div className="landing-hero">
         <div className="landing-intro">
-          <h1 id="landing-title" className="landing-title">
-            {LANDING_HEADLINE}
+          <h1 id={`${idPrefix}-title`} className="landing-title">
+            {page ? page.h1 : LANDING_HEADLINE}
           </h1>
           <p className="landing-lede">
-            {LANDING_LEDE}
+            {page ? <LandingText value={page.intro} /> : LANDING_LEDE}
           </p>
 
           {advancedOpen ? (
-            <div className="landing-advanced" id="landing-advanced-panel">
+            <div className="landing-advanced" id={`${idPrefix}-advanced-panel`}>
               {advancedOptions}
             </div>
           ) : (
             <>
               <div className="landing-form">
-                <label htmlFor="serverUrl" className="landing-field-label">{LANDING_FIELD_LABEL}</label>
+                <label htmlFor={inputId} className="landing-field-label">{LANDING_FIELD_LABEL}</label>
                 <div className="landing-connect">
                   <input
                     ref={inputRef}
-                    id="serverUrl"
+                    id={inputId}
                     type="text"
                     inputMode="url"
                     autoComplete="off"
@@ -146,7 +241,7 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
                     spellCheck={false}
                     className="form-control landing-connect-input"
                     placeholder={LANDING_FIELD_PLACEHOLDER}
-                    aria-describedby={inputError ? 'serverUrl-error serverUrl-help' : 'serverUrl-help'}
+                    aria-describedby={inputError ? `${inputId}-error ${inputId}-help` : `${inputId}-help`}
                     aria-invalid={inputError ? true : undefined}
                     value={serverUrl}
                     onChange={(event) => {
@@ -162,7 +257,7 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
                     disabled={isConnecting}
                   />
                   <button
-                    id="connectBtn"
+                    id={page ? undefined : 'connectBtn'}
                     type="button"
                     className="btn btn-primary landing-connect-button"
                     onClick={handleManualConnect}
@@ -172,18 +267,18 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
                   </button>
                 </div>
                 {inputError && (
-                  <p id="serverUrl-error" className="landing-field-error" role="alert">
+                  <p id={`${inputId}-error`} className="landing-field-error" role="alert">
                     <i className="bi bi-exclamation-circle" aria-hidden="true"></i>
                     {inputError}
                   </p>
                 )}
-                <p id="serverUrl-help" className="landing-field-help">{LANDING_FIELD_HELP}</p>
+                <p id={`${inputId}-help`} className="landing-field-help">{LANDING_FIELD_HELP}</p>
               </div>
 
               {showRecent ? (
                 <div className="landing-quick-picks landing-recent">
-                  <span className="landing-quick-picks-label" id="landing-recent-label">Recent</span>
-                  <ul aria-labelledby="landing-recent-label">
+                  <span className="landing-quick-picks-label" id={`${idPrefix}-recent-label`}>Recent</span>
+                  <ul aria-labelledby={`${idPrefix}-recent-label`}>
                     {recent.map((url) => (
                       <li key={url} className="landing-recent-item">
                         <button
@@ -193,7 +288,7 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
                           title={url}
                           disabled={isConnecting}
                           onClick={() => {
-                            trackEvent('landing_connect', { source: 'recent_chip', host: getAnalyticsHost(url) });
+                            trackEvent('landing_connect', { source: 'recent_chip', host: getAnalyticsHost(url), ...pageProps });
                             onConnectRecent?.(url);
                           }}
                         >
@@ -218,26 +313,26 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
                 </div>
               ) : sample && sampleEndpoint && (
                 <div className="landing-quick-picks">
-                  <span className="landing-quick-picks-label" id="landing-quick-picks-label">{LANDING_ALTERNATIVES_LABEL}</span>
+                  <span className="landing-quick-picks-label" id={`${idPrefix}-quick-picks-label`}>{LANDING_ALTERNATIVES_LABEL}</span>
                   <div className="landing-sample">
                     <button
-                      id="landingSampleBtn"
+                      id={page ? undefined : 'landingSampleBtn'}
                       type="button"
                       className="btn landing-sample-button"
                       data-server-id={sample.id}
                       title={sampleEndpoint.url}
-                      aria-describedby="landing-sample-note"
+                      aria-describedby={`${idPrefix}-sample-note`}
                       disabled={isConnecting}
                       onClick={() => connectPreset(sample, 'sample_test')}
                     >
                       <i className="bi bi-play-fill" aria-hidden="true"></i>
                       {LANDING_SAMPLE_LABEL}
                     </button>
-                    <span id="landing-sample-note" className="landing-sample-note">
+                    <span id={`${idPrefix}-sample-note`} className="landing-sample-note">
                       {LANDING_SAMPLE_NOTE_PREFIX} {sample.name}{LANDING_SAMPLE_NOTE_SUFFIX}
                     </span>
                   </div>
-                  <ul aria-labelledby="landing-quick-picks-label">
+                  <ul aria-labelledby={`${idPrefix}-quick-picks-label`}>
                     {quickPicks.map((server) => (
                       <li key={server.id}>
                         <button
@@ -263,12 +358,28 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
             </>
           )}
 
+          {!advancedOptions && onOpenAdvancedOptions && (
+            <button
+              type="button"
+              className="landing-advanced-toggle"
+              aria-expanded={false}
+              onClick={() => {
+                trackEvent('advanced_options_open');
+                onOpenAdvancedOptions();
+              }}
+            >
+              <i className="bi bi-gear" aria-hidden="true"></i>
+              {LANDING_ADVANCED_LABEL}
+              <span className="landing-advanced-hint">{LANDING_ADVANCED_HINT}</span>
+            </button>
+          )}
+
           {advancedOptions && (
             <button
               type="button"
               className="landing-advanced-toggle"
               aria-expanded={advancedOpen}
-              aria-controls={advancedOpen ? 'landing-advanced-panel' : undefined}
+              aria-controls={advancedOpen ? `${idPrefix}-advanced-panel` : undefined}
               onClick={() => {
                 if (!advancedOpen) trackEvent('advanced_options_open');
                 setShowAdvanced((open) => !open);
@@ -281,42 +392,18 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
               </span>
             </button>
           )}
+
+          <ul className="landing-trust" aria-label={LANDING_TRUST_LABEL}>
+            {LANDING_TRUST_POINTS.map((point) => (
+              <li key={point}>{point}</li>
+            ))}
+          </ul>
         </div>
 
-        <LandingPreview />
+        <LandingPreview idPrefix={idPrefix} />
       </div>
 
-      <nav className="landing-paths" aria-label={LANDING_PATHS_LABEL}>
-        <ul>
-          {AUDIENCE_PATHS.map((path) => (
-            <li key={path.to}>
-              <Link to={path.to} className="landing-path">
-                <span className="landing-path-title">{path.title}</span>
-                <span className="landing-path-description">{path.description}</span>
-                <span className="landing-path-arrow" aria-hidden="true">&rarr;</span>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </nav>
-
-      <div className="landing-coverage">
-        <h2 className="landing-coverage-title">{LANDING_COVERAGE_TITLE}</h2>
-        <ul>
-          {REPORT_COVERAGE.map((item) => (
-            <li key={item}>
-              <i className="bi bi-check2" aria-hidden="true"></i>
-              {item}
-            </li>
-          ))}
-        </ul>
-      </div>
-
-      <p className="landing-catalog">
-        <Link to="/catalog">
-          {LANDING_CATALOG_LINK_PREFIX} {catalogCount} {LANDING_CATALOG_LINK_SUFFIX} <span aria-hidden="true">&rarr;</span>
-        </Link>
-      </p>
+      {page ? <KeywordLandingContent page={page} /> : <HomeLandingContent catalogCount={catalogCount} />}
     </section>
   );
 };

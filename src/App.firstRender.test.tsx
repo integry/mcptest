@@ -86,7 +86,7 @@ const FIRST_FRAME = {
   dashboards: [],
   // A first visit has no tab strip until a connection starts or a second tab opens.
   tabs: [],
-  landing: 'Inspect, debug and evaluate remote MCP servers in your browser',
+  landing: 'Test remote MCP servers online',
   connectionPanel: false,
 };
 

@@ -16,6 +16,11 @@ on:
         required: false
         default: false
         type: boolean
+      tool_list_consistency:
+        description: Re-list tools twice on fresh connections to detect mixed deploys (false disables)
+        required: false
+        default: true
+        type: boolean
       credential_mode:
         description: public, bearer, or api-key
         required: false
@@ -46,6 +51,11 @@ on:
         description: Opt in to session resilience probes (temporary sessions and 12 pings)
         required: false
         default: false
+        type: boolean
+      tool_list_consistency:
+        description: Re-list tools twice on fresh connections to detect mixed deploys (false disables)
+        required: false
+        default: true
         type: boolean
       credential_mode:
         description: public, bearer, or api-key
@@ -166,6 +176,7 @@ jobs:
           npm run mcptest --
           --endpoints-env MCPTEST_ENDPOINTS
           ${{ inputs.session_resilience && '--session-resilience' || '' }}
+          ${{ !inputs.tool_list_consistency && '--no-tool-list-consistency' || '' }}
           --fail-on-result "$MCPTEST_FAIL_RESULTS"
           --fail-on-severity "$MCPTEST_FAIL_SEVERITY"
       - name: Evaluate with bearer token
@@ -176,6 +187,7 @@ jobs:
           npm run mcptest --
           --endpoints-env MCPTEST_ENDPOINTS
           ${{ inputs.session_resilience && '--session-resilience' || '' }}
+          ${{ !inputs.tool_list_consistency && '--no-tool-list-consistency' || '' }}
           --bearer-token-env MCPTEST_BEARER_TOKEN
           --fail-on-result "$MCPTEST_FAIL_RESULTS"
           --fail-on-severity "$MCPTEST_FAIL_SEVERITY"
@@ -187,6 +199,7 @@ jobs:
           npm run mcptest --
           --endpoints-env MCPTEST_ENDPOINTS
           ${{ inputs.session_resilience && '--session-resilience' || '' }}
+          ${{ !inputs.tool_list_consistency && '--no-tool-list-consistency' || '' }}
           --api-key-env MCPTEST_API_KEY
           --fail-on-result "$MCPTEST_FAIL_RESULTS"
           --fail-on-severity "$MCPTEST_FAIL_SEVERITY"

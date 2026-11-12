@@ -85,7 +85,7 @@ describe('landing hero', () => {
     const { container } = renderLanding();
 
     expect(container.querySelector('h1')?.textContent).toBe(
-      'Inspect, debug and evaluate remote MCP servers in your browser'
+      'Test remote MCP servers online'
     );
     expect(container.querySelector<HTMLInputElement>('#serverUrl')).not.toBeNull();
 
@@ -108,6 +108,27 @@ describe('landing hero', () => {
     const catalogLink = container.querySelector<HTMLAnchorElement>('.landing-catalog a');
     expect(catalogLink?.getAttribute('href')).toBe('/catalog');
     expect(catalogLink?.textContent).toContain(`Browse ${getCatalogServers().length} public remote MCP servers`);
+  });
+
+  it('states what is free and needs no sign-up, and shows the how-to steps and FAQ as visible text', () => {
+    const { container } = renderLanding();
+
+    expect(container.querySelector('.landing-lede')?.textContent).toMatch(/^Inspect, debug and evaluate/);
+    expect(container.querySelector('.landing-hero .landing-trust')?.textContent).toContain('No sign-up needed to connect and test');
+
+    const steps = Array.from(container.querySelectorAll('.landing-steps ol > li'));
+    expect(steps.length).toBeGreaterThanOrEqual(3);
+    expect(steps.length).toBeLessThanOrEqual(5);
+    expect(container.querySelector('.landing-steps h2')?.textContent).toBe('How to test an MCP server');
+
+    const questions = Array.from(container.querySelectorAll('.landing-faq-question'), (node) => node.textContent);
+    expect(questions).toContain('Is mcptest.io free?');
+    expect(questions).toContain('How is this different from the official MCP Inspector?');
+    expect(questions.length).toBeGreaterThanOrEqual(5);
+    expect(questions.length).toBeLessThanOrEqual(7);
+    const faqLinks = Array.from(container.querySelectorAll('.landing-faq a'), (link) => link.getAttribute('href'));
+    expect(faqLinks).toEqual(expect.arrayContaining(['/docs/testing-guide', '/learn/mcptest-vs-mcp-inspector', '/ci']));
+    expect(container.querySelector('.landing-faq')?.textContent).not.toContain('](');
   });
 
   it('connects the entered URL without a selection on click or Enter, like the connection panel', () => {

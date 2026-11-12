@@ -55,6 +55,8 @@ interface ConnectionPanelProps {
   connectionStages?: readonly ConnectionStage[];
   /** Rendered as the body of the connected card. */
   connectedSummary?: React.ReactNode;
+  /** Starts with the "Advanced options" disclosure open (a landing page's Advanced options control). */
+  defaultAdvancedOpen?: boolean;
 }
 
 const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
@@ -90,6 +92,7 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
   autoFocusUrl = false,
   connectionStages,
   connectedSummary,
+  defaultAdvancedOpen = false,
 }) => {
   const [connectionTimer, setConnectionTimer] = useState(0);
   const [placeholder] = useState(() => {
@@ -332,7 +335,7 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
             </div>
           )}
           {!isConnected && (
-            <details className="connection-advanced mt-3">
+            <details className="connection-advanced mt-3" open={defaultAdvancedOpen || undefined}>
               <summary>
                 <i className="bi bi-gear me-2" aria-hidden="true"></i>
                 Advanced options

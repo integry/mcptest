@@ -18,6 +18,21 @@ export const OAUTH_CHECKER_PATH = '/tools/oauth-check';
 /** The dashboards page: what dashboards are, the create action and the list (src/components/DashboardsHome.tsx). */
 export const DASHBOARDS_PATH = '/space';
 
+/**
+ * The keyword landing pages: the connect form with their own copy
+ * (src/content/keywordLandingPages.ts, src/components/KeywordLandingView.tsx).
+ */
+export const MCP_TEST_SERVER_PATH = '/mcp-test-server';
+export const MCP_INSPECTOR_ONLINE_PATH = '/mcp-inspector-online';
+export const MCP_PLAYGROUND_PATH = '/mcp-playground';
+export const KEYWORD_LANDING_PATHS: readonly string[] = [
+  MCP_TEST_SERVER_PATH,
+  MCP_INSPECTOR_ONLINE_PATH,
+  MCP_PLAYGROUND_PATH,
+];
+
+export const isKeywordLandingPath = (pathname: string): boolean => KEYWORD_LANDING_PATHS.includes(pathname);
+
 export const EXACT_APP_ROUTES: readonly string[] = [
   '/',
   '/catalog',
@@ -28,6 +43,7 @@ export const EXACT_APP_ROUTES: readonly string[] = [
   DISCOVERY_CHECKER_PATH,
   OAUTH_CHECKER_PATH,
   DASHBOARDS_PATH,
+  ...KEYWORD_LANDING_PATHS,
   '/oauth/callback',
   '/install-integration',
 ];

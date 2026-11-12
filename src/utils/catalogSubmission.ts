@@ -8,6 +8,7 @@
  */
 import serverCatalog from '../data/serverCatalog.json';
 import type { CatalogServerSeed } from '../types/catalog';
+import type { ResponseClass } from './responseClassification';
 
 export const CATALOG_SUBMISSION_SCHEMA_URL = 'https://mcptest.io/schemas/catalog-submission/v1.schema.json' as const;
 export const CATALOG_SUBMISSION_API_PATH = '/api/catalog/submissions';
@@ -62,6 +63,12 @@ export interface CatalogSubmissionEvidence {
   browserAccess: 'direct' | 'proxy-required' | 'unknown';
   /** Number of tools listed without credentials. */
   toolCount?: number;
+  /**
+   * Set on `unreachable` evidence only, when bot protection, a rate limit or a
+   * 402 answered instead of the MCP server. Unreachable evidence is never
+   * submitted, so the public schema does not carry it.
+   */
+  responseClass?: ResponseClass;
   /** Short human-readable summary. */
   detail: string;
 }

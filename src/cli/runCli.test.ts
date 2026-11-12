@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   ReleaseGateConfigurationError,
+  formatTargetSummary,
   parseReleaseGateArgs,
   releaseGateHelp,
   runCli,
@@ -8,6 +9,10 @@ import {
 import { RELEASE_GATE_EXIT_CODES } from './releaseGate';
 
 describe('release gate CLI configuration', () => {
+  it('re-lists tools by default and accepts an opt-out flag', () => {
+    expect(parseReleaseGateArgs(['https://example.com/mcp'], {}).toolListConsistency).toBeUndefined();
+    expect(parseReleaseGateArgs(['--no-tool-list-consistency', 'https://example.com/mcp'], {}).toolListConsistency).toBe(false);
+  });
   it('requires an explicit session resilience flag', () => {
     expect(parseReleaseGateArgs(['https://example.com/mcp'], {}).sessionResilience).toBeUndefined();
     expect(parseReleaseGateArgs(['--session-resilience', 'https://example.com/mcp'], {}).sessionResilience).toBe(true);
@@ -172,5 +177,42 @@ describe('release gate CLI configuration', () => {
     expect(releaseGateHelp).toContain('3 invalid configuration');
     expect(releaseGateHelp).toContain('4 infrastructure');
     expect(releaseGateHelp).toContain('Browser OAuth is intentionally non-interactive');
+  });
+});
+
+describe('release gate CLI target summary', () => {
+  it('names bot protection with its evidence and fix instead of a bare result', () => {
+    expect(formatTargetSummary({
+      endpoint: 'https://blocked.example/mcp',
+      status: 'evaluated',
+      releaseDecision: {
+        status: 'blocked',
+        answer: 'No — fix blockers first',
+        summary: '',
+        priorities: [
+          { id: 'evaluation.negotiation-failed', severity: 'high', title: 'Let MCP clients past bot protection', detail: 'd', remediation: 'r', source: 'Evaluation' },
+          {
+            id: 'transport.bot-protection-challenge',
+            severity: 'high',
+            title: 'Bot protection is blocking MCP clients',
+            detail: 'POST initialize: Bot protection is blocking MCP clients on /mcp (Cloudflare). Observed HTTP 403, cf-mitigated: challenge.',
+            remediation: 'Exempt the MCP endpoint from challenge rules.',
+            source: 'Evaluation',
+          },
+        ],
+      },
+    })).toEqual([
+      'https://blocked.example/mcp: blocked',
+      '  Bot protection is blocking MCP clients: POST initialize: Bot protection is blocking MCP clients on /mcp (Cloudflare). Observed HTTP 403, cf-mitigated: challenge.',
+      '  fix: Exempt the MCP endpoint from challenge rules.',
+    ]);
+  });
+
+  it('prints only the result line for other outcomes', () => {
+    expect(formatTargetSummary({
+      endpoint: 'https://ok.example/mcp',
+      status: 'evaluated',
+      releaseDecision: { status: 'ready', answer: 'Yes', summary: '', priorities: [] },
+    })).toEqual(['https://ok.example/mcp: ready']);
   });
 });

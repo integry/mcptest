@@ -145,6 +145,11 @@ export interface ToolSurfaceSnapshot {
   annotationsObserved: boolean;
   titlesObserved: boolean;
   promptArgumentsObserved: boolean;
+  /**
+   * Whether the listing was obtained with target credentials, when the source
+   * recorded it. Two listings obtained differently are not compared as drift.
+   */
+  authentication?: 'authenticated' | 'unauthenticated';
 }
 
 // The guide explains each rule; findings link to its sections.
@@ -214,7 +219,8 @@ const stableValue = (value: unknown): unknown => {
   }
   return value;
 };
-const stableString = (value: unknown): string => JSON.stringify(stableValue(value ?? null));
+/** Canonical JSON with sorted object keys; shared by the tool-list consistency hash. */
+export const stableString = (value: unknown): string => JSON.stringify(stableValue(value ?? null));
 const same = (left: unknown, right: unknown): boolean => stableString(left) === stableString(right);
 
 const REDACTED_VALUE = '[REDACTED]';
@@ -239,7 +245,12 @@ const finding = (
 
 // --- Parsing pasted payloads ---
 
-const toolFromValue = (value: unknown): ToolDefinitionSnapshot | undefined => {
+/**
+ * One tools/list entry as a comparable definition: name, title, description,
+ * inputSchema, outputSchema and annotations. Also the input to the tool-list
+ * consistency hash, so both agree on what a definition is.
+ */
+export const toolDefinitionFromValue = (value: unknown): ToolDefinitionSnapshot | undefined => {
   if (!isRecord(value)) return undefined;
   const name = text(value.name);
   if (!name) return undefined;
@@ -330,7 +341,7 @@ export const parseToolsListPayload = (input: string | unknown): ToolsListParseRe
     return { ok: false, error: 'No "tools" array found. Paste the result of a tools/list request.' };
   }
   const rawTools = listed('tools');
-  const tools = uniqueByName(rawTools.flatMap((tool) => toolFromValue(tool) ?? []));
+  const tools = uniqueByName(rawTools.flatMap((tool) => toolDefinitionFromValue(tool) ?? []));
   if (tools.length < rawTools.length && tools.length === 0) {
     return { ok: false, error: 'The "tools" array has no entries with a name.' };
   }
@@ -373,6 +384,7 @@ export const toolSurfaceFromInterfaceSnapshot = (snapshot: InterfaceSnapshot): T
     annotationsObserved: false,
     titlesObserved: snapshot.source === 'playground',
     promptArgumentsObserved: false,
+    ...(snapshot.authentication ? { authentication: snapshot.authentication } : {}),
   };
 };
 
@@ -887,6 +899,14 @@ export const summarizeCounts = (counts: Record<BreakingChangeSeverity, number>):
   return parts.length > 0 ? parts.join(', ') : 'No changes';
 };
 
+const ACCESS_SENSITIVE_RULES = new Set<BreakingChangeRule>(['tool-removed', 'tool-renamed', 'prompt-removed', 'resource-removed']);
+
+/** True when both listings recorded how they were obtained and the access state differs. */
+export const accessStateChanged = (
+  before: Pick<ToolSurfaceSnapshot, 'authentication'>,
+  after: Pick<ToolSurfaceSnapshot, 'authentication'>
+): boolean => Boolean(before.authentication && after.authentication && before.authentication !== after.authentication);
+
 /** Classifies every difference between two listings of the same server. */
 export const classifyBreakingChanges = (
   before: ToolSurfaceSnapshot,
@@ -905,6 +925,17 @@ export const classifyBreakingChanges = (
   if (before.resources && after.resources) findings.push(...compareResources(before.resources, after.resources, 'resource'));
   if (before.resourceTemplates && after.resourceTemplates) {
     findings.push(...compareResources(before.resourceTemplates, after.resourceTemplates, 'resourceTemplate'));
+  }
+  if (accessStateChanged(before, after)) {
+    limitations.push(`The earlier listing was obtained ${before.authentication} and the later one ${after.authentication}. Servers often list different tools to signed-in callers, so removals are not treated as breaking; compare listings obtained the same way.`);
+    for (const [index, item] of findings.entries()) {
+      if (!ACCESS_SENSITIVE_RULES.has(item.rule) || item.severity !== 'breaking') continue;
+      findings[index] = {
+        ...item,
+        severity: 'risky',
+        reason: `${item.reason} The access state changed between the listings, so this may reflect what the server shows ${after.authentication} callers rather than a removal.`,
+      };
+    }
   }
 
   const groupsByKey = new Map<string, BreakingChangeGroup>();

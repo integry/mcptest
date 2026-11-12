@@ -1,5 +1,6 @@
 import NextStepsStrip from './NextStepsStrip';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 // Bootstrap's dropdown behaviour; loaded with this chunk rather than on every page.
 import 'bootstrap';
 import { ConnectionTab, LogEntry, type Resource } from '../types';
@@ -115,6 +116,10 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
   } | null>(null);
   const nextBearerAttemptId = useRef(0);
   const startedBearerAttemptId = useRef<number | null>(null);
+  // A keyword landing page's "Advanced options" opens the full panel on arrival (App.tsx).
+  const location = useLocation();
+  const [openAdvancedOnArrival] = useState(() => isActive
+    && (location.state as { openAdvancedOptions?: unknown } | null)?.openAdvancedOptions === true);
   const [hasStartedFirstConnection, setHasStartedFirstConnection] = useState(() => Boolean(
     tab.serverUrl || tab.autoConnect || tab.resultShareData
   ));
@@ -1124,6 +1129,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
           connectionKey={`${serverUrl}|${protocolVersion}|${transportType}`}
         />
       ) : undefined}
+      defaultAdvancedOpen={openAdvancedOnArrival}
     />
     {isConnected && transportType === 'streamable-http' && (
       <React.Suspense fallback={null}>
@@ -1162,6 +1168,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
           onConnectRecent={handleLandingRecentConnect}
           onRemoveRecentServer={removeRecentServer}
           advancedOptions={connectionPanel}
+          defaultShowAdvanced={openAdvancedOnArrival}
         />
       ) : connectionPanel}
 

@@ -48,6 +48,7 @@ describe('badge selection by result', () => {
     expect(BADGE_DEFINITIONS.review.color).toBe(token('warning-color'));
     expect(BADGE_DEFINITIONS['authorization-required'].color).toBe(token('warning-color'));
     expect(BADGE_DEFINITIONS.unknown.color).toBe(token('secondary-color'));
+    expect(BADGE_DEFINITIONS['payment-required'].color).toBe(token('info-color'));
   });
 
   it('maps catalog validation evidence onto the release vocabulary', () => {
@@ -58,6 +59,10 @@ describe('badge selection by result', () => {
     expect(getCatalogBadgeVariant({ status: 'online', authType: 'none' })).toBe('unknown');
     expect(getCatalogBadgeVariant({ status: 'offline', protocolVersion: '2025-11-25' })).toBe('blocked');
     expect(getCatalogBadgeVariant({ status: 'unknown' })).toBe('unknown');
+    // A 402 is a deliberate payment wall, distinct from blocked; bot protection proves nothing about the server.
+    expect(getCatalogBadgeVariant({ status: 'online', authType: 'none', responseClass: 'payment-required' })).toBe('payment-required');
+    expect(getCatalogBadgeVariant({ status: 'unknown', responseClass: 'bot-protection' })).toBe('unknown');
+    expect(getCatalogBadgeVariant({ status: 'unknown', responseClass: 'rate-limited' })).toBe('unknown');
   });
 
   it('gives every bundled catalog validation result a result badge', () => {

@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { EvaluationReport } from '../utils/evaluation';
 import type { OAuthTraceV1 } from '../utils/oauthTrace';
 import type { PublicReport } from '../utils/reportArtifact';
-import { diffPublicReports } from '../utils/reportDiff';
+import { diffPublicReports, diffReportContextCost } from '../utils/reportDiff';
 import { classifyBreakingChanges, toolSurfaceFromInterfaceSnapshot } from '../utils/breakingChanges';
 import { BREAKING_CHANGES_TOOL_PATH } from '../utils/breakingChangesRoute';
 import { interfaceSnapshotFromReport } from '../utils/interfaceSnapshot';
@@ -28,6 +28,7 @@ import {
 import PublishedWatchAlerts from './PublishedWatchAlerts';
 import ReportDiffChanges from './ReportDiffChanges';
 import BreakingChangeFindings from './BreakingChangeFindings';
+import { ToolContextCostDelta, contextCostDeltaChanged } from './ToolContextCost';
 import './PublishedReportHistory.css';
 
 interface PublishedReportHistoryProps {
@@ -254,6 +255,14 @@ const PublishedReportHistory: React.FC<PublishedReportHistoryProps> = ({
     const left = toolSurfaceFromInterfaceSnapshot(interfaceSnapshotFromReport(before));
     const right = toolSurfaceFromInterfaceSnapshot(interfaceSnapshotFromReport(after));
     return left && right ? classifyBreakingChanges(left, right) : null;
+    // latestPairKey stands for latestPair.
+  }, [latestPairKey, artifacts]);
+
+  const latestContextCost = useMemo(() => {
+    if (!latestPair) return undefined;
+    const before = artifacts[latestPair.before];
+    const after = artifacts[latestPair.after];
+    return before && after ? diffReportContextCost(before, after) : undefined;
     // latestPairKey stands for latestPair.
   }, [latestPairKey, artifacts]);
 
@@ -575,6 +584,9 @@ const PublishedReportHistory: React.FC<PublishedReportHistoryProps> = ({
             <p className="published-reports-note">These snapshots do not both record a complete tool list, so their interfaces cannot be compared.</p>
           ) : (
             <p className="published-reports-note" role="status">Loading snapshots to compare...</p>
+          )}
+          {!latestPairError && contextCostDeltaChanged(latestContextCost) && (
+            <ToolContextCostDelta delta={latestContextCost} />
           )}
         </section>
       )}

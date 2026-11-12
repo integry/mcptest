@@ -2,6 +2,13 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { isOAuthSensitiveKey } from '../utils/transportDetection';
 import { redactReportString } from '../utils/reportArtifact';
+import { summarizeConnectorDirectoryPreflight } from '../utils/connectorDirectoryPreflight';
+import { contextCostSummaryLines, isToolContextCost } from '../utils/toolTokenCost';
+import {
+  describeToolListDifference,
+  toolListConsistencyFromSections,
+  toolListConsistencySummary,
+} from '../utils/toolListConsistencyReport';
 import {
   DEFAULT_RELEASE_GATE_POLICY,
   RELEASE_GATE_EXIT_CODES,
@@ -10,13 +17,37 @@ import {
   type ReleaseGateExitCode,
   type ReleaseGatePolicy,
   type ReleaseGateSeverityThreshold,
+  type ReleaseGateTargetResult,
 } from './releaseGate';
+
+const RESPONSE_CLASS_PRIORITY_IDS: ReadonlySet<string> = new Set([
+  'transport.bot-protection-challenge',
+  'transport.payment-required-402',
+]);
+
+/**
+ * The stdout lines for one target: its result, then bot protection or a
+ * payment wall named with the evidence and what to change, instead of leaving
+ * a bare "blocked" or "unknown".
+ */
+export const formatTargetSummary = (
+  target: Pick<ReleaseGateTargetResult, 'endpoint' | 'status' | 'releaseDecision'>
+): string[] => {
+  const lines = [`${target.endpoint}: ${target.releaseDecision?.status || target.status}`];
+  for (const priority of target.releaseDecision?.priorities || []) {
+    if (!RESPONSE_CLASS_PRIORITY_IDS.has(priority.id)) continue;
+    lines.push(`  ${priority.title}: ${priority.detail}`, `  fix: ${priority.remediation}`);
+  }
+  return lines;
+};
 
 type ArtifactFormat = 'json' | 'markdown' | 'both';
 
 interface ParsedReleaseGateArgs {
   clientCompatibility?: boolean;
   sessionResilience?: boolean;
+  /** `false` when --no-tool-list-consistency disabled the repeated tools/list check. */
+  toolListConsistency?: false;
   endpoints: string[];
   outputDir: string;
   format: ArtifactFormat;
@@ -24,6 +55,8 @@ interface ParsedReleaseGateArgs {
   policy: ReleaseGatePolicy;
   quiet: boolean;
   help: boolean;
+  /** Heaviest tools printed under the context-cost totals. */
+  contextCostTop: number;
   consumedSecretEnvironmentVariables: string[];
 }
 
@@ -52,8 +85,15 @@ Gate options:
   --fail-on-result <list>      Comma-separated ready, review, blocked, unknown; or none
                                (default: blocked,unknown)
   --fail-on-severity <value>   critical, high, medium, unknown, or none (default: high)
+  --max-context-tokens <n>     Fail when the estimated context cost of the tool
+                               definitions is above n (an estimate, not an exact
+                               count for any model; default: no limit)
+  --context-cost-top <n>       Heaviest tools to print with their share of the
+                               estimated context cost (default: 5; 0 hides them)
   --client-compatibility       Include profiles for all documented clients
   --session-resilience         Opt in to bounded active session probes
+  --no-tool-list-consistency   Skip re-listing tools (2 extra tools/list requests on
+                               fresh connections) that detects mixed deploys
   --quiet                      Hide evaluator progress
   -h, --help                   Show this help
 
@@ -132,6 +172,13 @@ const parseSeverityThreshold = (value: string): ReleaseGateSeverityThreshold => 
   return value as ReleaseGateSeverityThreshold;
 };
 
+const parseNonNegativeInteger = (value: string, option: string): number => {
+  if (!/^\d+$/.test(value) || !Number.isSafeInteger(Number(value))) {
+    throw new ReleaseGateConfigurationError(`${option} must be a non-negative integer.`);
+  }
+  return Number(value);
+};
+
 const unknownOptionError = (argument: string): ReleaseGateConfigurationError => {
   const optionName = argument.match(/^(-{1,2}[A-Za-z0-9][A-Za-z0-9-]*)(?:[=:].*)?$/)?.[1];
   return new ReleaseGateConfigurationError(
@@ -151,8 +198,11 @@ export const parseReleaseGateArgs = (
   let format: ArtifactFormat = 'both';
   let failOnResults = DEFAULT_RELEASE_GATE_POLICY.failOnResults;
   let failOnSeverity = DEFAULT_RELEASE_GATE_POLICY.failOnSeverity;
+  let maxContextTokens: number | undefined;
+  let contextCostTop = 5;
   let quiet = false;
   let sessionResilience = false;
+  let toolListConsistency = true;
   let clientCompatibility = false;
   let help = false;
 
@@ -165,6 +215,8 @@ export const parseReleaseGateArgs = (
       clientCompatibility = true;
     } else if (argument === '--session-resilience') {
       sessionResilience = true;
+    } else if (argument === '--no-tool-list-consistency') {
+      toolListConsistency = false;
     } else if (argument === '--quiet') {
       quiet = true;
     } else if (argument === '--endpoints-env') {
@@ -192,6 +244,12 @@ export const parseReleaseGateArgs = (
     } else if (argument === '--fail-on-severity') {
       failOnSeverity = parseSeverityThreshold(requireValue(argv, index, argument));
       index += 1;
+    } else if (argument === '--max-context-tokens') {
+      maxContextTokens = parseNonNegativeInteger(requireValue(argv, index, argument), argument);
+      index += 1;
+    } else if (argument === '--context-cost-top') {
+      contextCostTop = parseNonNegativeInteger(requireValue(argv, index, argument), argument);
+      index += 1;
     } else if (argument.startsWith('-')) {
       throw unknownOptionError(argument);
     } else {
@@ -202,7 +260,7 @@ export const parseReleaseGateArgs = (
   if (help) {
     return {
       endpoints: [], outputDir, format, policy: { failOnResults, failOnSeverity }, quiet,
-      help, consumedSecretEnvironmentVariables: [],
+      help, contextCostTop, consumedSecretEnvironmentVariables: [],
     };
   }
   if (bearerEnvironment && apiKeyEnvironment) {
@@ -252,12 +310,18 @@ export const parseReleaseGateArgs = (
     endpoints,
     clientCompatibility,
     ...(sessionResilience ? { sessionResilience } : {}),
+    ...(!toolListConsistency ? { toolListConsistency: false as const } : {}),
     outputDir,
     format,
     headers,
-    policy: { failOnResults, failOnSeverity },
+    policy: {
+      failOnResults,
+      failOnSeverity,
+      ...(maxContextTokens !== undefined ? { maxContextTokens } : {}),
+    },
     quiet,
     help,
+    contextCostTop,
     consumedSecretEnvironmentVariables,
   };
 };
@@ -308,6 +372,7 @@ export const runCli = async (
     endpoints: configuration.endpoints,
     clientCompatibility: configuration.clientCompatibility,
     ...(configuration.sessionResilience ? { sessionResilience: true } : {}),
+    ...(configuration.toolListConsistency === false ? { toolListConsistency: false as const } : {}),
     headers: configuration.headers,
     policy: configuration.policy,
     generatedAt: new Date(),
@@ -349,9 +414,27 @@ export const runCli = async (
       )}\n`);
     }
 
-    const decision = target.releaseDecision?.status || target.status;
-    process.stdout.write(`${target.endpoint}: ${decision}\n`);
+    for (const line of formatTargetSummary(target)) process.stdout.write(`${line}\n`);
+    const toolList = target.report ? toolListConsistencyFromSections(target.report.sections) : undefined;
+    if (toolList) {
+      const mark = toolList.status === 'consistent' ? 'pass' : toolList.status === 'inconsistent' ? 'finding' : 'not checked';
+      process.stdout.write(`  tool list consistency (${mark}): ${redactReportString(toolListConsistencySummary(toolList))}\n`);
+      for (const difference of toolList.differences) {
+        process.stdout.write(`    ${redactReportString(describeToolListDifference(difference))}\n`);
+      }
+    }
+    const contextCost = target.report?.toolSurfaceAnalysis?.contextCost;
+    if (isToolContextCost(contextCost)) {
+      const [total, ...heaviest] = contextCostSummaryLines(contextCost, configuration.contextCostTop);
+      process.stdout.write(`  context cost: ${redactReportString(total)}\n`);
+      for (const line of heaviest) process.stdout.write(`    ${redactReportString(line)}\n`);
+    }
     for (const reason of target.thresholdReasons) process.stdout.write(`  threshold: ${reason}\n`);
+    if (target.directoryPreflight) {
+      for (const line of summarizeConnectorDirectoryPreflight(target.directoryPreflight)) {
+        process.stdout.write(`  directory: ${redactReportString(line)}\n`);
+      }
+    }
     if (target.error) process.stderr.write(`  infrastructure: ${target.error}\n`);
     for (const path of written) process.stdout.write(`  artifact: ${path}\n`);
   }

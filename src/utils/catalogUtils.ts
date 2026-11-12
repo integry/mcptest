@@ -119,6 +119,10 @@ const supportsAuthType = (server: CatalogServer, authType: CatalogAuthType): boo
   return server.authType === authType || server.alternativeAuthTypes?.includes(authType) === true;
 };
 
+const isResponseClass = (value: unknown): value is NonNullable<CatalogServer['responseClass']> => (
+  value === 'bot-protection' || value === 'rate-limited' || value === 'payment-required'
+);
+
 export const getCatalogServers = (): CatalogServer[] => {
   const validationByServerId = new Map(
     CATALOG_VALIDATION.map((result) => [result.serverId, result])
@@ -153,6 +157,7 @@ export const getCatalogServers = (): CatalogServer[] => {
       authorizationServers: validation?.authorizationServers,
       checkedAt: validation?.checkedAt,
       validationMessage: validation?.message,
+      ...(isResponseClass(validation?.responseClass) ? { responseClass: validation.responseClass } : {}),
       ...(CATALOG_CAPABILITIES[seed.id]
         ? { capabilityInventory: getInventory(seed.id) }
         : {}),

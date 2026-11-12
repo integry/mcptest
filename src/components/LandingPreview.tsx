@@ -8,9 +8,9 @@ import { LANDING_PREVIEW_SAMPLE as SAMPLE } from '../content/landingFirstRun';
  * plain markup from sample data (no screenshot, no measured layout), so the
  * prerendered copy in scripts/generate-seo-pages.js paints it identically.
  */
-export const LandingPreview: React.FC = () => (
-  <figure className="landing-preview" aria-labelledby="landing-preview-caption">
-    <figcaption id="landing-preview-caption" className="landing-preview-caption">
+export const LandingPreview: React.FC<{ idPrefix?: string }> = ({ idPrefix = 'landing' }) => (
+  <figure className="landing-preview" aria-labelledby={`${idPrefix}-preview-caption`}>
+    <figcaption id={`${idPrefix}-preview-caption`} className="landing-preview-caption">
       <span className="landing-preview-tag">{SAMPLE.caption}</span>
       <span className="landing-preview-title">{SAMPLE.title}</span>
     </figcaption>
