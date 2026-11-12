@@ -1,19 +1,19 @@
 ---
 title: "Secure a remote MCP server with Clerk OAuth 2.1"
 navTitle: "MCP authorization with Clerk"
-summary: "Use Clerk as an MCP authorization server with CIMD or DCR, protected resource metadata, explicit OAuth-token verification and scope checks, and an audience-binding compatibility gate."
+summary: "Use Clerk as an MCP authorization server: register the MCP server URL, enable CIMD or DCR, publish protected resource metadata, and verify OAuth tokens with an audience and scope check."
 track: "build"
 level: "practitioner"
 order: 405
 category: "Authorization"
 readingTimeMinutes: 7
-lastReviewed: "2026-10-24"
+lastReviewed: "2026-11-11"
 metaTitle: "MCP authorization with Clerk | mcptest.io"
-metaDescription: "Use Clerk as an MCP authorization server with CIMD or DCR, protected resource metadata, explicit OAuth-token verification and scope checks, and an audience-binding compatibility gate."
+metaDescription: "Use Clerk as an MCP authorization server: register the MCP server URL, enable CIMD or DCR, publish protected resource metadata, and verify OAuth tokens with an audience and scope check."
 relatedSlugs:
   - mcp-oauth-2-1-reference
   - mcp-server-authentication-patterns
-  - remote-mcp-server-with-hono
+  - remote-mcp-server-with-nextjs
   - remote-mcp-server-401-unauthorized
 sourceLinks:
   - title: "MCP: authorization specification"
@@ -22,35 +22,97 @@ sourceLinks:
     url: "https://clerk.com/docs/nextjs/guides/ai/mcp/build-mcp-server"
   - title: "Clerk: OAuth implementation and client onboarding"
     url: "https://clerk.com/docs/guides/configure/auth-strategies/oauth/how-clerk-implements-oauth"
-  - title: "Clerk: OAuth and PKCE overview"
-    url: "https://clerk.com/docs/guides/configure/auth-strategies/oauth/overview"
+  - title: "Clerk: Client ID Metadata Documents"
+    url: "https://clerk.com/docs/guides/configure/auth-strategies/oauth/client-id-metadata-documents"
   - title: "Clerk: verify OAuth access tokens"
     url: "https://clerk.com/docs/nextjs/guides/development/verifying-oauth-access-tokens"
 ---
 
-Clerk's OAuth server lets an MCP client request delegated access from the users of your application. That is different from signing those users into your website with a session cookie. The MCP endpoint should accept the intended OAuth access token and enforce its permissions on every tool call.
+Clerk's OAuth server lets an MCP client get delegated access to your application's users. This is different from signing users in to your website with a session cookie. Your MCP endpoint must accept only OAuth access tokens issued for it, and check their scopes on every tool call.
 
-The provider settings below were checked on **24 October 2026**. Clerk has a maintained [Next.js MCP implementation](https://clerk.com/docs/nextjs/guides/ai/mcp/build-mcp-server); prefer that integration when your application already uses Clerk's Next.js SDK.
+This guide follows Clerk's [Build an MCP server](https://clerk.com/docs/nextjs/guides/ai/mcp/build-mcp-server) guide for Next.js and was checked against it on **11 November 2026**. For the protocol rules, see the [OAuth 2.1 reference](/learn/mcp-oauth-2-1-reference).
 
-## Configure client onboarding deliberately
+## Before you start
 
-In **OAuth applications → Settings → Client onboarding**, enable **Publish CIMD support**. Clerk supports an HTTPS metadata URL as the client's identity, requires `S256` PKCE for CIMD, and lets you control whether unknown clients may connect. Enable **Publish DCR support** only when a client needs traditional dynamic registration. These are authorization-server settings, not routes in your MCP app.
+- A Clerk application with your framework's quickstart completed. Clerk's MCP guide requires Node.js 22.18 or later.
+- The exact URL of your MCP endpoint. For local work, Clerk uses `http://localhost:3000/mcp` on a development instance. For a hosted server, use the full HTTPS URL, such as `https://mcp.example.com/mcp`.
+- Your Clerk Frontend API URL. It is the issuer: `https://YOUR-INSTANCE.clerk.accounts.dev` for a development instance, or `https://clerk.example.com` in production.
 
-For manually registered or DCR clients, turn on the instance-level **Require PKCE** setting as well. [Clerk's OAuth overview](https://clerk.com/docs/guides/configure/auth-strategies/oauth/overview) explains this enforcement control; a website login working without PKCE is not evidence your MCP flow meets OAuth 2.1 expectations.
+Use one URL for the MCP endpoint everywhere: Clerk setup, client configuration, metadata and the token audience check. Clerk's guide uses `/mcp` with no query string and no trailing slash.
 
-Use a pre-registered public OAuth client if automatic onboarding is disallowed. Register its exact redirect URI and use a client that can exchange the code without a secret. The [OAuth implementation docs](https://clerk.com/docs/guides/configure/auth-strategies/oauth/how-clerk-implements-oauth) describe public clients and configurable default scopes for clients that omit a scope request. Choose a narrow default; never make the omission of `scope` mean unrestricted access.
+## Step 1: Register the MCP server in Clerk
 
-## Pick the intended tokens and permissions
+1. In the Clerk Dashboard, open **Agents → MCP servers** and select **Add MCP server** (or **Get started** for your first server).
+2. Enter the full endpoint in **MCP URL** and select **Add server**.
 
-Clerk currently issues JWT OAuth access tokens by default and also offers opaque access tokens for immediate revocation. Use a verifier that handles the configured format. For Next.js, [Clerk's verification guide](https://clerk.com/docs/nextjs/guides/development/verifying-oauth-access-tokens) shows explicitly accepting `oauth_token`. Do not rely on a middleware's default session-token acceptance or treat any authenticated website visitor as an authorized MCP client.
+When you add your first MCP server, Clerk turns on audience (`aud`) claims in OAuth access tokens. This is what lets your server reject tokens issued for something else. If you select **Allow public clients to connect**, the Dashboard also turns on CIMD support. Existing client restrictions and the instance-wide PKCE setting stay unchanged.
 
-For a first integration, request Clerk's `profile` scope and expose a read-only profile tool, matching the provider's MCP walkthrough. For your own records, define an application scope such as `orders:read`, grant it only to the intended clients, and enforce it inside the API. A successful token verification identifies a principal; it does not establish access to every organization or database row.
+You can do the same step from a coding agent with Clerk's MCP server: call `configure_mcp_server` with `application_id`, `instance` and `resource_url`. Pass `dry_run: true` first to preview. Add localhost URLs through the Dashboard instead.
 
-Clerk's helper-based walkthrough uses `verifyClerkToken` with `withMcpAuth`, and `protectedResourceHandlerClerk` to expose resource metadata. Use the complete walkthrough's files together. Dropping only its authentication wrapper into an unrelated server can leave discovery routes or scope enforcement missing.
+## Step 2: Choose how clients register
 
-## Publish the resource's metadata
+MCP clients usually have no client ID for your app in advance. Configure this under **OAuth applications → Settings → Client onboarding**:
 
-Serve this complete JSON document at `https://mcp.example.com/.well-known/oauth-protected-resource/mcp`, replacing the example endpoint and issuer with your deployment values:
+- **Publish CIMD support.** With a Client ID Metadata Document (CIMD), the client ID is an HTTPS URL that serves the client's metadata. Clerk treats every CIMD client as a public client, requires PKCE with `S256`, and always shows the consent screen. This setting is off by default. **Client admission** then controls who may connect: any compatible CIMD client (the default), only pre-registered and previously connected clients, or only pre-registered clients.
+- **Publish DCR support.** Enable this only for clients that need [Dynamic Client Registration](/learn/mcp-glossary#dynamic-client-registration). With DCR on, the consent screen is always enforced. Clerk recommends CIMD, because it does not expose an unauthenticated registration endpoint.
+- **Default scopes for dynamic clients.** Clerk applies these scopes when a CIMD or DCR client omits `scope`. Keep them narrow.
+
+CIMD clients need a reachable consent page. Keep the Account Portal enabled, or configure your own OAuth consent page. OAuth applications on Clerk's legacy OAuth implementation do not support CIMD.
+
+**PKCE for other clients.** Under **OAuth applications → Settings → Authorization security**, **Require PKCE** enforces PKCE for every manually and dynamically registered application. It is on by default for new instances.
+
+**A pre-registered client.** If you do not allow automatic onboarding, create an OAuth application by hand. Turn on **Public** so it can exchange the code without a secret, and turn on **Require PKCE** for it, because **Public** does not enforce PKCE by itself. Register its exact redirect URI.
+
+## Step 3: Pick scopes and the token format
+
+Clerk's built-in scopes include `openid`, `profile`, `email`, `public_metadata`, `private_metadata` and `offline_access`, plus `user:org:read` when Organizations is enabled. Clerk's MCP guide requires `profile` and `email` for a tool that returns the user's profile.
+
+For your own data, create a custom scope such as `orders:read` on the **Scopes** tab, and assign it only to the applications that need it. A verified token tells you who the user is. It does not grant access to every organization or record, so check that inside each tool.
+
+Clerk issues OAuth access tokens as JWTs by default. Under **Access token format** you can switch to opaque tokens, which can be revoked immediately. The verifier below handles both.
+
+## Step 4: Verify tokens with an audience check
+
+Install the packages Clerk's guide uses:
+
+```bash
+npm install @clerk/backend @clerk/mcp-tools mcp-handler @modelcontextprotocol/server
+```
+
+Then verify each request with `authenticateRequest`. This is the core of Clerk's `lib/mcp-auth.ts`:
+
+```typescript
+// lib/mcp-auth.ts
+import { createClerkClient } from '@clerk/backend';
+import { verifyClerkToken } from '@clerk/mcp-tools/server';
+
+export const MCP_RESOURCE_URL = 'https://mcp.example.com/mcp';
+export const REQUIRED_SCOPES = ['profile', 'email'];
+
+const clerkClient = createClerkClient({
+  secretKey: process.env.CLERK_SECRET_KEY,
+  publishableKey: process.env.CLERK_PUBLISHABLE_KEY ?? process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
+});
+
+export async function verifyMcpToken(request: Request) {
+  const requestState = await clerkClient.authenticateRequest(request, {
+    acceptsToken: 'oauth_token',
+    audience: MCP_RESOURCE_URL,
+  });
+  if (!requestState.isAuthenticated) return undefined;
+  return verifyClerkToken(requestState.toAuth(), requestState.token);
+}
+```
+
+- `acceptsToken: 'oauth_token'` accepts only OAuth access tokens issued by your instance. By default, Clerk accepts session tokens and rejects OAuth tokens.
+- `audience` makes Clerk check that the token's `aud` includes your MCP URL, and reject tokens with no audience. Always pass it. Without it, the audience is not checked.
+- `verifyClerkToken` returns the token's `clientId`, `scopes` and the user ID in `extra.userId`.
+
+Clerk's guide wraps the MCP route with `withMcpAuth` from `mcp-handler`, passing `required: true`, `requiredScopes: REQUIRED_SCOPES` and `resourceMetadataPath: '/.well-known/oauth-protected-resource/mcp'`. The wrapper answers `401` with a `WWW-Authenticate` challenge when the token is missing or invalid. Use the guide's files together. Copying only the auth wrapper into another server can leave the discovery routes or the scope check out.
+
+## Step 5: Publish protected resource metadata
+
+Clerk's guide serves the metadata from `app/.well-known/oauth-protected-resource/mcp/route.ts` with `protectedResourceHandlerClerk({ resource: MCP_RESOURCE_URL, scopes_supported: REQUIRED_SCOPES })`. On another framework, serve the equivalent JSON at `https://mcp.example.com/.well-known/oauth-protected-resource/mcp`:
 
 ```json
 {
@@ -59,7 +121,8 @@ Serve this complete JSON document at `https://mcp.example.com/.well-known/oauth-
     "https://YOUR-INSTANCE.clerk.accounts.dev"
   ],
   "scopes_supported": [
-    "profile"
+    "profile",
+    "email"
   ],
   "bearer_methods_supported": [
     "header"
@@ -67,49 +130,63 @@ Serve this complete JSON document at `https://mcp.example.com/.well-known/oauth-
 }
 ```
 
-Make that GET route public. On an unauthenticated `/mcp` request, return `401` and a `WWW-Authenticate` Bearer challenge whose `resource_metadata` points to that document. The MCP server owns this document; the provider owns the authorization-server discovery document. Do not put a client secret or a registration endpoint into protected resource metadata.
+Keep the `.well-known` routes public. Clerk's guide also adds `app/.well-known/oauth-authorization-server/route.ts` with `authServerMetadataHandlerClerk()`, which serves Clerk's authorization server metadata from your origin for clients that look for it there.
 
-This is a configuration document, not a complete protected server. Wire it into the [complete authenticated Hono application](/learn/remote-mcp-server-with-hono), replacing that app's issuer, resource, verifier and scope settings as described below. For the full protocol flow, use the [OAuth 2.1 reference](/learn/mcp-oauth-2-1-reference); for where enforcement belongs, use [server authentication patterns](/learn/mcp-server-authentication-patterns).
+## Check discovery with curl
 
-## Check resource binding before production
-
-The reviewed Clerk MCP walkthrough establishes client onboarding and token verification, but does not establish how RFC 8707 `resource` requests are bound to a distinct audience for every arbitrary MCP resource. Do not infer that merely because a JWT contains `aud`, it was minted for your `/mcp` URL.
-
-For your instance, inspect a verified OAuth token or its authoritative introspection result and confirm the documented audience mapping for your resource. Test a token issued for another API and make sure this MCP endpoint rejects it. Configure audience validation in the verifier where applicable. Never substitute `azp` or the user's ID for an audience check.
-
-If the needed resource-specific binding is unavailable, use an MCP-facing authorization server or broker that implements it, with Clerk providing upstream user authentication. The broker must issue its own resource-bound tokens, obtain per-client consent and enforce redirect/PKCE rules. Your protected resource metadata must then advertise the **broker's** issuer. Passing a Clerk session token through unchanged is not a workaround.
-
-This is an interoperability gate, not a claim that Clerk categorically lacks RFC 8707 support. Confirm the current capabilities of your instance before publishing a broad compatibility promise.
-
-## Check discovery before opening a chat app
-
-These Bash commands require only curl. Replace both example values with your deployment's exact resource and issuer, then run:
+Set the three variables to your values, then run the commands. They need only Bash and curl.
 
 ```bash
-export MCP_ENDPOINT='https://mcp.example.com/mcp'
-export MCP_ISSUER='https://YOUR-INSTANCE.clerk.accounts.dev'
+MCP_ORIGIN='https://mcp.example.com'
+MCP_PATH='/mcp'
+ISSUER='https://YOUR-INSTANCE.clerk.accounts.dev'
+
+# 1. Protected resource metadata: expect public JSON.
 curl --fail-with-body --silent --show-error \
-  'https://mcp.example.com/.well-known/oauth-protected-resource/mcp'
+  "${MCP_ORIGIN}/.well-known/oauth-protected-resource${MCP_PATH}"
+
+# 2. Authorization server metadata: check issuer, S256 and registration.
 curl --fail-with-body --silent --show-error \
-  "${MCP_ISSUER%/}/.well-known/oauth-authorization-server" \
-  || curl --fail-with-body --silent --show-error \
-    "${MCP_ISSUER%/}/.well-known/openid-configuration"
-curl --silent --show-error --include \
-  -H 'Accept: application/json, text/event-stream' "$MCP_ENDPOINT"
-curl --silent --show-error --include -X OPTIONS "$MCP_ENDPOINT" \
+  "${ISSUER%/}/.well-known/oauth-authorization-server"
+
+# 3. Unauthenticated MCP request: expect 401 and a WWW-Authenticate header.
+curl --silent --show-error --include -X POST "${MCP_ORIGIN}${MCP_PATH}" \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  --data '{"jsonrpc":"2.0","id":1,"method":"ping"}'
+
+# 4. CORS preflight for browser clients: expect a 2xx response.
+curl --silent --show-error --include -X OPTIONS "${MCP_ORIGIN}${MCP_PATH}" \
   -H 'Origin: https://mcptest.io' \
   -H 'Access-Control-Request-Method: POST' \
-  -H 'Access-Control-Request-Headers: authorization, mcp-protocol-version, mcp-method'
+  -H 'Access-Control-Request-Headers: authorization, content-type, mcp-protocol-version'
 ```
 
-Change the metadata URL as well as the endpoint when using your domain. Expect public JSON metadata, a `401` challenge for the unauthenticated MCP request, and a successful CORS preflight. Ensure error responses expose `WWW-Authenticate`. Inspect provider discovery next: its `issuer` must match exactly, `code_challenge_methods_supported` must include `S256`, and the registration/authentication method must work for your actual client. A browser public client cannot keep a secret.
+In Clerk's metadata, check that:
 
-Use the issuer's `/.well-known/oauth-authorization-server` document to inspect onboarding and PKCE. The MCP app's CORS must cover metadata, `401` and `403` responses; the provider's token endpoint needs its own browser-compatible path. Do not turn a confidential client into a public client by shipping its secret to the browser.
+- `issuer` equals the value in `authorization_servers` exactly.
+- `code_challenge_methods_supported` includes `S256`.
+- `client_id_metadata_document_supported` is `true` if you enabled CIMD. Clerk omits the field otherwise.
+- `registration_endpoint` is present if you enabled DCR.
 
-## Test it on mcptest.io
+For hosted servers, the Clerk Dashboard also runs connection checks. Fix any reported issue, then select **Re-test connection**. To run the same discovery checks in the browser, use the [MCP OAuth checker](/tools/oauth-check).
 
-Open the protected `/mcp` URL in the [mcptest.io playground](/). Start authorization, inspect the discovered issuer and registration path, sign in as a test user, list tools, then call one read-only tool. If automatic registration is unavailable, pre-register a public client with the exact redirect URI `https://mcptest.io/oauth/callback` and supply its client ID. Never give a browser a client secret.
+## Test sign-in on mcptest.io
 
-Then try an expired token, a token issued for another resource, and a valid token lacking the required scope. Expect `401`, `401`, and a scope denial respectively; none should execute the protected tool. Check the user/organization boundary with two test accounts. Use the [401 troubleshooting guide](/learn/remote-mcp-server-401-unauthorized) to distinguish discovery, registration and verification failures.
+1. Open your hosted `/mcp` URL in the [mcptest.io playground](/). For a localhost server, Clerk recommends a client on the same machine.
+2. Start authorization. Check the discovered issuer and the registration method used.
+3. Sign in as a test user, approve access, list tools, and call one read-only tool.
 
-The metadata JSON and shell syntax were checked locally. Provider tenant setup, real authorization-code exchange, refresh, consent and revocation need a configured account and were not run during authoring. Passing the transport checks alone does not establish those behaviors.
+If automatic registration is off, create a public OAuth application with the exact redirect URI `https://mcptest.io/oauth/callback`, and enter its client ID in the playground. Never give a browser a client secret.
+
+Then test the failure paths. None of them may run the tool:
+
+| Request | Expected result |
+| --- | --- |
+| Expired token | `401` |
+| Token issued for another resource, or a session token | `401` |
+| Valid token without a required scope | `403` with `insufficient_scope` |
+
+Use the [401 troubleshooting guide](/learn/remote-mcp-server-401-unauthorized) to tell discovery, registration and verification failures apart.
+
+**What was checked.** The function names and import paths were checked against the published `@clerk/mcp-tools` 0.9.0 and `mcp-handler` 2.3.1 packages, and the JSON and Bash syntax locally. The tenant setup, a real authorization code exchange, refresh, consent and revocation need a Clerk account and were not run.

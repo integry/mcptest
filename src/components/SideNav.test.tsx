@@ -154,8 +154,8 @@ describe('SideNav information architecture', () => {
     expect(groupLinks(container, 'start')).toEqual([['Playground', '/'], ['Catalog', '/catalog']]);
     expect(groupLinks(container, 'checks')).toEqual([
       ['Breaking changes', '/tools/breaking-changes'],
-      ['OAuth check', '/tools/oauth-check'],
-      ['Discovery check', '/tools/discovery'],
+      ['OAuth checker', '/tools/oauth-check'],
+      ['Discovery checker', '/tools/discovery'],
     ]);
     expect(groupLinks(container, 'saved')).toEqual([['Reports', '/report'], ['Dashboards', null]]);
     expect(PRIMARY_NAVIGATION.map(item => item.path)).toEqual(

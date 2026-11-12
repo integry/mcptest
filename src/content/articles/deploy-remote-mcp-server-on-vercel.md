@@ -7,7 +7,7 @@ level: "practitioner"
 order: 400
 category: "Deployment"
 readingTimeMinutes: 7
-lastReviewed: "2026-10-24"
+lastReviewed: "2026-11-11"
 metaTitle: "Deploy MCP on Vercel | mcptest.io"
 metaDescription: "Run a tested stateless MCP sample on Vercel Functions, configure duration and browser CORS, and check production domains, cold starts and SSE in mcptest.io."
 relatedSlugs:
@@ -30,13 +30,28 @@ sourceLinks:
     url: "https://vercel.com/docs/domains/working-with-domains/add-a-domain"
 ---
 
-Vercel Functions suit a remote MCP server that does a bounded amount of work per request. You can publish one Node function without creating a Next.js application. Start with this echo server, then add your real tools once the production URL passes a browser test.
+Vercel Functions suit a remote MCP server that does a bounded amount of work per request. You can publish one Node.js function without creating a Next.js application. This guide deploys a small, tested echo server to that function. Once the production URL passes a browser test, replace the echo tool with your own tools.
 
-The [general deployment guide](/learn/deploy-remote-mcp-server) compares hosting models. This guide focuses on a complete plain-function project and Vercel's limits, reviewed on 24 October 2026.
+For a comparison of hosting models, see the [general deployment guide](/learn/deploy-remote-mcp-server). For an MCP server inside a Next.js app, see [the Next.js guide](/learn/remote-mcp-server-with-nextjs).
 
-## Run the complete sample locally
+## What you will build
 
-The [complete deployment sample](https://github.com/integry/mcptest/tree/master/src/content/articles/samples/remote-deploy) includes `app.mjs`, `node.mjs`, pinned dependencies, all platform adapters, and a smoke runner. Download just that directory from the repository archive into a fresh folder:
+- A stateless MCP server at `https://YOUR-PROJECT.vercel.app/mcp`, running as one Vercel Function.
+- One read-only `echo` tool. It takes a required `text` string and an optional `waitMs` delay from 0 to 1000, sends a progress notification when the caller asks for one, and returns the text.
+- One URL for both protocol eras. `createMcpHandler` answers 2026-07-28 requests directly and 2025 clients through `legacy: 'stateless'`. It issues no `Mcp-Session-Id`, and `GET /mcp` returns `405`. A response upgrades to SSE when the tool sends progress. There is no separate `/sse` endpoint.
+- `Host` and `Origin` validation, and CORS for browser clients at `https://mcptest.io`.
+
+The server has no authentication. Before you connect private data, add [bearer authorization and protected resource metadata](/learn/mcp-server-authentication-patterns).
+
+## Prerequisites
+
+- Node.js 22 and npm. The sample was tested with Node.js 22.23.4.
+- A Vercel account and a Git repository that Vercel can import.
+- `curl`, to check the deployment.
+
+## Step 1: Download and test the sample locally
+
+The [deployment sample](https://github.com/integry/mcptest/tree/master/src/content/articles/samples/remote-deploy) holds the shared app, the entry points for Vercel, AWS Lambda, Cloud Run and Fly.io, pinned dependencies, and a smoke test. Download only that directory into a new folder:
 
 ```bash
 mkdir echo-mcp
@@ -45,18 +60,17 @@ curl -fL https://github.com/integry/mcptest/archive/refs/heads/master.tar.gz \
   | tar -xz --strip-components=6 mcptest-master/src/content/articles/samples/remote-deploy
 npm install
 npm run smoke
-npm start
 ```
 
-Use Node.js 22.23.4. `npm start` serves `http://localhost:3000/mcp`; stop it before rerunning smoke, which uses ports 3000–3003. Leave `PUBLIC_URL` unset locally. The sample pins `@modelcontextprotocol/server` 2.3.1, `@hono/node-server` 2.1.5 and `zod` 4.6.7. The smoke client is SDK 2.3.1.
+The smoke test starts every entry point on ports 3000 to 3003. For each one it connects with the 2026-07-28 protocol and with the 2025 handshake, lists and calls `echo`, receives SSE progress, and checks that no session ID is issued. It also checks the CORS preflight, the `405` on `GET`, and the `403` for a foreign `Host` or `Origin`. Each entry point prints one `passed` line.
 
-The app registers one read-only `echo` tool with a required `text` string and optional `waitMs` from 0 to 1000. It emits progress when the caller requests it, then returns the text. `createMcpHandler` serves **2026-07-28 stateless requests** and uses `legacy: 'stateless'` for 2025 clients. It issues no session ID; `GET /mcp` returns `405`. The same URL handles JSON responses and POST responses that upgrade to SSE when progress is emitted. There is no separate legacy `/sse` endpoint.
+To try the server by hand, run `npm start` and open `http://localhost:3000/mcp` in the [mcptest.io playground](/). Leave `PUBLIC_URL` unset locally. Stop the server before you run the smoke test again.
 
-This is an unauthenticated echo demonstration. Before attaching private data, add [real bearer authorization and protected resource metadata](/learn/mcp-server-authentication-patterns). The [Hono guide](/learn/remote-mcp-server-with-hono) provides a complete authenticated application if that is your next step.
+The sample pins `@modelcontextprotocol/server` 2.3.1, `@hono/node-server` 2.1.5 and `zod` 4.6.7, and the smoke client is `@modelcontextprotocol/client` 2.3.1.
 
-## The Vercel entry point
+## Step 2: Review the Vercel entry point
 
-The downloaded project already contains the complete function entry:
+The function entry imports the shared app and exports it:
 
 ```javascript
 // api/mcp.mjs
@@ -64,9 +78,9 @@ import app from '../app.mjs';
 export default app;
 ```
 
-`app.mjs` exports an object with a `fetch(request)` method. [Vercel's Node runtime docs](https://vercel.com/docs/functions/runtimes/node-js) support this web-standard export in the root `api` directory. Keep the project root at the sample directory so both the function and its shared app are included.
+`app.mjs` exports an object with a `fetch(request)` method. [Vercel's Node.js runtime](https://vercel.com/docs/functions/runtimes/node-js) accepts that web-standard export from a file in the `api` directory. Keep the sample directory as the project root, so the function and the shared app deploy together.
 
-Its complete `vercel.json` mounts the friendly URL and sets an explicit duration:
+`vercel.json` maps the public `/mcp` path to the function and sets its maximum duration:
 
 ```json
 {
@@ -76,35 +90,83 @@ Its complete `vercel.json` mounts the friendly URL and sets an explicit duration
 }
 ```
 
-The public endpoint is `/mcp`. The rewrite routes that path to the function; no catch-all page rewrite is needed. Do not cache POST responses or put a page redirect on this route.
+Do not add a catch-all rewrite to a page, a redirect, or response caching on `/mcp`.
 
-## Publish the function
+## Step 3: Deploy to Vercel
 
-1. Import a repository containing the downloaded sample into Vercel, selecting this directory as the root. Use framework **Other**, with no build command or output directory override. The server files are ordinary JavaScript.
-2. Choose a production hostname, such as your project's `.vercel.app` domain, and set the production environment variable `PUBLIC_URL=https://YOUR-PROJECT.vercel.app/mcp`.
-3. Deploy, then test that exact production URL. Changing environment settings requires a new deployment.
-4. If you add a custom hostname in Project Settings → Domains, follow Vercel's DNS instructions, wait for TLS, change `PUBLIC_URL` to `https://YOUR-DOMAIN/mcp`, and redeploy.
+1. Push the downloaded sample to a Git repository and import it into Vercel. Set the root directory to the sample directory, the framework preset to **Other**, and leave the build command and output directory empty. The server files are plain JavaScript.
+2. In the project's environment variables, set `PUBLIC_URL` for Production to your production endpoint, for example `https://YOUR-PROJECT.vercel.app/mcp`. The app accepts only that hostname in `Host`.
+3. Redeploy. A change to environment variables applies only to new deployments.
+4. Optional: to use your own domain, add it in **Project Settings → Domains** and follow [Vercel's DNS instructions](https://vercel.com/docs/domains/working-with-domains/add-a-domain). When the certificate is ready, change `PUBLIC_URL` to `https://YOUR-DOMAIN/mcp` and redeploy.
 
-[Vercel Deployment Protection](https://vercel.com/docs/deployment-protection) can put a Vercel login in front of previews. A preview URL reaching an authentication page is not the same as the MCP app's OAuth. Use a reachable production domain or an intentionally configured automation bypass. Do not expose a private project just to make a test green.
+Test the production domain. [Deployment Protection](https://vercel.com/docs/deployment-protection) can put a Vercel login in front of preview URLs. That login is not the MCP server's OAuth, and an MCP client cannot complete it. Use the production domain or a deliberately configured automation bypass. Do not make a private project public just to pass a test.
 
-## Duration, streaming and cold starts
+## Step 4: Verify the deployment
 
-[Vercel's duration table](https://vercel.com/docs/functions/configuring-functions/duration) currently gives Fluid Compute a 300-second default: Hobby's maximum is 300 seconds, Pro and Enterprise have an 800-second generally available maximum, and an extended 1800-second beta exists for eligible configurations. This sample uses 60 seconds so it does not depend on the extended beta. Plans without Fluid Compute have different limits; check the project's settings.
+Replace `YOUR-PROJECT.vercel.app` with your production hostname.
 
-A streaming response still consumes the invocation's duration. SSE progress can make a tool's work visible, but cannot extend `maxDuration`. [Vercel supports streaming function responses](https://vercel.com/docs/functions/streaming-functions); return the response body directly as this wrapper does. Converting the body to text first would buffer it. Set downstream API deadlines shorter than the function deadline and move longer work to a separately managed job.
+```bash
+# The endpoint offers no GET stream: expect 405.
+curl -s -o /dev/null -w '%{http_code}\n' https://YOUR-PROJECT.vercel.app/mcp
 
-Fluid Compute can reuse an instance for concurrent invocations. Instances can also start cold or disappear on redeploy. Module-scope SDK setup can be reused, but per-user tokens, tool results and sessions must not live in mutable globals. Our factory creates request-scoped server work and uses no in-memory session map. A stateful 2025 transport would need a different design; “one function file” does not mean “one durable process.”
+# A 2026 discovery request: expect 200 and "supportedVersions":["2026-07-28"].
+curl -s https://YOUR-PROJECT.vercel.app/mcp \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -H 'MCP-Protocol-Version: 2026-07-28' \
+  -H 'Mcp-Method: server/discover' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"curl-check","version":"1.0.0"},"io.modelcontextprotocol/clientCapabilities":{}}}}'
+
+# A browser preflight: expect 204 and access-control-allow-origin: https://mcptest.io.
+curl -s -i -X OPTIONS https://YOUR-PROJECT.vercel.app/mcp \
+  -H 'Origin: https://mcptest.io' \
+  -H 'Access-Control-Request-Method: POST' \
+  -H 'Access-Control-Request-Headers: content-type,mcp-method,mcp-protocol-version'
+```
+
+Then test it on mcptest.io:
+
+1. Open the production endpoint in the playground: `https://mcptest.io/server/` followed by the endpoint without the scheme and a final `/mcp`, for example `mcptest.io/server/YOUR-PROJECT.vercel.app/mcp/mcp`.
+2. Confirm that discovery succeeds, that `tools/list` shows `echo`, and that no session ID is issued.
+3. Call `echo` with `{"text":"hello","waitMs":500}` and confirm the result is `hello`.
+4. Repeat once after the function has been idle and once after a new deployment, to catch cold-start and redeploy problems.
+
+When the URL is stable, add the [pre-deployment release gate](/learn/test-mcp-server-before-deploying) to your pipeline.
+
+The smoke test above passed locally with the pinned versions. It does not exercise Vercel's front door. No Vercel deployment was run for this guide, so check DNS, TLS, duration limits and live streaming in your own account.
+
+## Duration and streaming
+
+[Vercel's duration documentation](https://vercel.com/docs/functions/configuring-functions/duration) lists the default and maximum duration per plan. With Fluid Compute, the default is 300 seconds on every plan. Hobby can be configured up to 300 seconds, and Pro and Enterprise up to 800 seconds. Pro and Enterprise also have a 1800-second maximum in beta. The sample sets 60 seconds, so it does not depend on the beta. Raise `maxDuration` to the longest tool call you support, within your plan's limit.
+
+[Vercel streams function responses](https://vercel.com/docs/functions/streaming-functions). The app returns the response body directly, so SSE progress reaches the client as it is sent. Converting the body to text first would buffer it. A streaming response still counts against `maxDuration`: progress makes long work visible but does not extend the deadline. Give downstream API calls shorter deadlines than the function, and move longer work to a separate job.
+
+## Cold starts and shared instances
+
+With Fluid Compute, one instance can serve several invocations at the same time. Instances can also start cold, or be replaced on redeploy. Module-scope setup, such as the handler, can be reused. Per-user tokens, tool results and sessions must not live in mutable globals.
+
+The sample keeps no state between requests and no in-memory session map, so any instance can answer any request. A stateful 2025 transport would need shared storage. One function file does not mean one long-lived process.
 
 ## CORS and the public URL
 
-Set `PUBLIC_URL` to your exact production endpoint, including `/mcp`. The app validates the incoming `Host` against that hostname and rejects other Origins. It allows browser requests from `https://mcptest.io`, answers `OPTIONS` before the MCP handler, allows the MCP request headers, and exposes `WWW-Authenticate`, `MCP-Protocol-Version`, `Mcp-Session-Id` and `Retry-After`.
+`PUBLIC_URL` must be the exact production endpoint, including `/mcp`. The app:
 
-To support another browser app, add its exact origin to the `origins` array in `app.mjs`. The SDK Origin check compares hostnames; the CORS response uses the exact origin allowlist. CORS is not user authentication. Non-browser clients can omit Origin, so protect private tools independently. The [CORS reference](/learn/mcp-cors-headers-for-browser-clients) covers the browser checks in detail.
+- rejects a `Host` other than the `PUBLIC_URL` hostname with `403`;
+- rejects an `Origin` that is not on its allowlist with `403`, and lets requests without an `Origin` through;
+- answers the `OPTIONS` preflight itself, before the MCP handler, for `https://mcptest.io`;
+- allows the MCP request headers, and exposes `WWW-Authenticate`, `MCP-Protocol-Version`, `Mcp-Session-Id` and `Retry-After`.
 
-A new custom domain means a new canonical resource URL if you later add OAuth. Update `PUBLIC_URL`, protected resource metadata and the provider's resource/audience configuration together. Test redirects too: an HTML landing page or a login page in front of `/mcp` is not a successful MCP response.
+To allow another browser app, add its exact origin to the `origins` array in `app.mjs`. The SDK's `Origin` check compares hostnames, and the CORS headers echo only exact origins on the list. CORS is not authentication: non-browser clients can omit `Origin`, so protect private tools separately. The [CORS reference](/learn/mcp-cors-headers-for-browser-clients) explains each header.
 
-## Test it on mcptest.io
+A new domain is also a new resource URL if you add OAuth later. Change `PUBLIC_URL`, the protected resource metadata, and the identity provider's resource or audience setting together.
 
-Open the **deployed HTTPS `/mcp` endpoint** in the [mcptest.io playground](/). Check discovery, list tools, and call `echo` with `{"text":"hello","waitMs":500}`. Confirm the result is `hello`, the browser preflight succeeds, the response headers are readable, and there is no session ID. Repeat once after the platform has been idle and once after a new deployment.
+## Common failures
 
-The fixture's `npm run smoke` was run locally: pinned 2026 discovery, legacy initialization, tool listing/calling, SSE progress, no-session behavior, allowed-origin preflight, rejected Host/Origin, and GET `405` all passed. Local success does not verify the cloud front door. Deployment CLIs and credentials were unavailable during authoring; cloud deployment, DNS/TLS, platform timeouts and live streaming must be checked in your account. Add the [pre-deployment release gate](/learn/test-mcp-server-before-deploying) once the public URL is stable.
+| Symptom | Likely cause | Fix |
+| --- | --- | --- |
+| `403` with `Invalid Host: …` | `PUBLIC_URL` is unset, has another hostname, or was changed without a redeploy | Set it to the exact production URL and redeploy. See [Invalid Host header](/learn/mcp-error-invalid-host-header). |
+| A Vercel login page or `401` from Vercel instead of MCP | Deployment Protection on a preview URL | Test the production domain, or configure a protection bypass for automation. |
+| `GET /mcp` returns `200 text/html` | A catch-all rewrite or page answers the MCP path | Keep the `/mcp` rewrite to `/api/mcp` and remove the catch-all for that path. See [`transport.sse-content-type-mismatch`](/learn/mcp-transport-diagnostics-reference#transport-sse-content-type-mismatch). |
+| The browser reports a network error; `curl` works | The browser's origin is not in `origins`, or a header is missing from the preflight | Add the origin and check the preflight. See the [CORS reference](/learn/mcp-cors-headers-for-browser-clients). |
+| A long call stops before its result, or the stream is cut | The function reached `maxDuration` | Raise `maxDuration` within your plan, or shorten the work. See [SSE stream disconnected](/learn/mcp-error-sse-stream-disconnected) and [Request timed out](/learn/mcp-error-request-timed-out). |
+| `GET /mcp` returns `405` | Expected: the server offers no GET stream | Nothing to fix. See [406, 415 and 405](/learn/mcp-406-not-acceptable-415-and-405). |

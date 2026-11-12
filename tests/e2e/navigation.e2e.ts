@@ -9,13 +9,13 @@ test.describe('sidebar navigation', () => {
     await page.goto('/tools/discovery');
     await expect(page.locator('.seo-shell-fallback')).toHaveCount(0);
     const nav = page.locator(sidebar);
-    await expect(nav.getByRole('link', { name: 'Discovery check' })).toHaveAttribute('aria-current', 'page');
+    await expect(nav.getByRole('link', { name: 'Discovery checker' })).toHaveAttribute('aria-current', 'page');
 
     await expect(nav.locator('.sidenav-section-label')).toHaveText(['Checks', 'Saved work']);
     await expect(nav.getByRole('region', { name: 'Checks' }).getByRole('link'))
-      .toHaveText(['Breaking changes', 'OAuth check', 'Discovery check']);
+      .toHaveText(['Breaking changes', 'OAuth checker', 'Discovery checker']);
     await expect(nav.getByRole('region', { name: 'Saved work' }).getByRole('link')).toHaveText(['Reports', 'Dashboards']);
-    await expect(nav.getByRole('link', { name: 'OAuth check' })).toHaveAccessibleDescription(/OAuth authorization step by step/);
+    await expect(nav.getByRole('link', { name: 'OAuth checker' })).toHaveAccessibleDescription(/OAuth authorization step by step/);
 
     const learn = nav.getByRole('button', { name: 'Learn' });
     await expect(learn).toHaveAttribute('aria-expanded', 'false');
@@ -25,7 +25,7 @@ test.describe('sidebar navigation', () => {
 
     // Keyboard: Tab walks the entries in order, then Enter opens Learn.
     await nav.getByRole('link', { name: 'Playground', exact: true }).focus();
-    const order = ['Catalog', 'Breaking changes', 'OAuth check', 'Discovery check', 'Reports', 'Dashboards', 'Learn'];
+    const order = ['Catalog', 'Breaking changes', 'OAuth checker', 'Discovery checker', 'Reports', 'Dashboards', 'Learn'];
     for (const name of order) {
       await page.keyboard.press('Tab');
       await expect(page.locator(':focus .sidenav-label')).toHaveText(name);

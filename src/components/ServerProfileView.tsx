@@ -121,7 +121,7 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
       <nav aria-label="Breadcrumb" className="server-profile-breadcrumb">
         <ol className="breadcrumb mb-0">
           <li className="breadcrumb-item server-profile-breadcrumb-parent">
-            <Link to="/catalog">Server Catalog</Link>
+            <Link to="/catalog">Server catalog</Link>
           </li>
           <li className="breadcrumb-item server-profile-breadcrumb-parent">
             <Link to={getCatalogCategoryPath(server.category)}>{server.category}</Link>

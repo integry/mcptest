@@ -14,7 +14,7 @@ import {
   getCatalogServerSeo,
   SITE_URL,
 } from '../utils/catalogSeo';
-import { OAUTH_CHECKER_METADATA, BREAKING_CHANGES_METADATA, CATALOG_METADATA, DISCOVERY_METADATA, HOME_METADATA } from '../utils/pageMetadata';
+import { OAUTH_CHECKER_METADATA, BREAKING_CHANGES_METADATA, CATALOG_METADATA, DISCOVERY_METADATA, HOME_METADATA, REPORT_METADATA, SUBMIT_METADATA } from '../utils/pageMetadata';
 import { BREAKING_CHANGES_TOOL_PATH } from '../utils/breakingChangesRoute';
 import { OG_IMAGE_HEIGHT, OG_IMAGE_WIDTH, getOgImagePath } from '../utils/ogImage';
 import { parseResultShareUrl } from '../utils/urlUtils';
@@ -36,16 +36,10 @@ const DEFAULT_IMAGE = `${SITE_URL}/logo.png`;
  */
 const getAppPageMetadata = (pathname: string): { title: string; description: string; robots?: string } | undefined => {
   if (pathname === '/report' || pathname.startsWith('/report/')) {
-    return {
-      title: 'MCP Release-Readiness Report | mcptest.io',
-      description: 'Run a release-readiness report on a remote MCP server and revisit the servers you tested.',
-    };
+    return REPORT_METADATA;
   }
   if (pathname === '/submit') {
-    return {
-      title: 'Submit a Remote MCP Server | mcptest.io',
-      description: 'Suggest a remote MCP server for the mcptest.io catalog.',
-    };
+    return SUBMIT_METADATA;
   }
   if (pathname === DASHBOARDS_PATH || pathname.startsWith(`${DASHBOARDS_PATH}/`)) {
     // Dashboards hold the visitor's own saved calls; there is nothing to index.

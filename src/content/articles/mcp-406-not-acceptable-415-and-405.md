@@ -1,24 +1,24 @@
 ---
 title: "Fixing MCP 406 Not Acceptable, 415 Unsupported Media Type, and 405 Method Not Allowed"
-navTitle: 406, 415, and 405 errors
-summary: The Accept rule, request and response content types, and GET stream optionality in Streamable HTTP, with measured TypeScript and Python SDK behavior and the fix for each status.
-track: build
-level: practitioner
+navTitle: "406, 415, and 405 errors"
+summary: "The Accept rule, request and response content types, and GET stream optionality in Streamable HTTP, with measured TypeScript and Python SDK behavior and the fix for each status."
+track: "build"
+level: "practitioner"
 order: 25
-category: Transports
-readingTimeMinutes: 7
-lastReviewed: "2026-10-20"
-metaTitle: MCP 406 Not Acceptable, 415, and 405 Fixes | mcptest.io
-metaDescription: Fix MCP 406 Not Acceptable from the Accept header rule, 415 Unsupported Media Type, SSE content-type mismatches, and 405 on GET, with SDK-level fixes for TypeScript and Python.
+category: "Transports"
+readingTimeMinutes: 8
+lastReviewed: "2026-11-11"
+metaTitle: "MCP 406 Not Acceptable, 415, and 405 Fixes | mcptest.io"
+metaDescription: "Fix MCP 406 Not Acceptable from the Accept header rule, 415 Unsupported Media Type, SSE content-type mismatches, and 405 on GET, with SDK-level fixes for TypeScript and Python."
 relatedSlugs:
   - deploy-remote-mcp-server
   - mcp-cors-headers-for-browser-clients
   - troubleshooting
   - test-mcp-server-before-deploying
 sourceLinks:
-  - title: MCP 2026-07-28 Streamable HTTP transport
+  - title: "MCP 2026-07-28 Streamable HTTP transport"
     url: "https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http"
-  - title: MCP 2025-11-25 transports
+  - title: "MCP 2025-11-25 transports"
     url: "https://modelcontextprotocol.io/specification/2025-11-25/basic/transports"
   - title: "ComposioHQ/composio#2152: 406 when Accept only contains text/event-stream"
     url: "https://github.com/ComposioHQ/composio/issues/2152"
@@ -28,11 +28,15 @@ sourceLinks:
     url: "https://ts.sdk.modelcontextprotocol.io/v2/serving/legacy-clients"
   - title: "Python SDK v2: running your server"
     url: "https://py.sdk.modelcontextprotocol.io/run/"
+  - title: "TypeScript SDK 2.4.0 release notes (Allow: POST on 405)"
+    url: "https://github.com/modelcontextprotocol/typescript-sdk/releases/tag/v2.4.0"
+  - title: "Python SDK Streamable HTTP server transport"
+    url: "https://github.com/modelcontextprotocol/python-sdk/blob/main/src/mcp/server/streamable_http.py"
   - title: "RFC 9110: 405 Method Not Allowed"
     url: "https://www.rfc-editor.org/rfc/rfc9110.html#name-405-method-not-allowed"
 ---
 
-These three statuses come from the HTTP layer, before any JSON-RPC is processed, which is why clients often report them as a generic connection failure. Each maps to one rule in the Streamable HTTP transport. The tables below record what the current SDKs actually return: TypeScript `@modelcontextprotocol/server` 2.3 through `createMcpHandler`, and Python `mcp` 2.3 through `MCPServer.streamable_http_app()`, both with default settings. mcptest reports each failure under a stable diagnostic id, shown in each section.
+These three statuses come from the HTTP layer, before any JSON-RPC is processed, which is why clients often report them as a generic connection failure. Each maps to one rule in the Streamable HTTP transport. The tables below record what the current SDKs actually return, measured in November 2026: TypeScript `@modelcontextprotocol/server` 2.4.0 through `createMcpHandler`, and Python `mcp` 2.3.0 through `MCPServer.streamable_http_app()`, both with default settings. mcptest reports each failure under a stable diagnostic id, shown in each section.
 
 ## 406 Not Acceptable: the Accept header rule
 
@@ -45,9 +49,14 @@ The rule is the same in the 2025 and 2026 revisions: every `POST` from the clien
 | `application/json` | 200 | 406 | 406 |
 | `text/event-stream` | 200 | 406 | 406 |
 | `*/*` | 200 | 406 | 200 |
-| No `Accept` header | 200 | 406 | 200 |
+| No `Accept` header | 200 | 406 | 406 |
 
-Order and parameters do not matter to either SDK. What differs is how strictly a header that names only one type, or no concrete type, is treated. The 406 body from both SDKs explains itself: `Not Acceptable: Client must accept both application/json and text/event-stream`.
+Order and parameters do not matter to either SDK. What differs is how strictly a header that names only one type, or no concrete type, is treated:
+
+- TypeScript does not check `Accept` on 2026 requests at all, although the specification still says clients MUST send both types.
+- Python treats `*/*` as accepting both types, but a missing header as accepting neither.
+
+The 2025 406 body explains itself: `Not Acceptable: Client must accept both application/json and text/event-stream`. TypeScript sends it with code `-32000`, Python with `-32600`. Python's 406 for a 2026 request has an empty body, so read the status, not the body.
 
 ### Client-side fix
 
@@ -92,7 +101,7 @@ app.all('/mcp', (req, res) => {
 
 A header that names neither type, such as `*/*` or no header at all, gets the JSON handler, because every client can parse a single JSON object. Clients routed to the JSON handler do not receive progress notifications during a call. That is the cost of serving them.
 
-The Python SDK has no per-request response mode, so the adapter has to pin JSON for the whole app. Widen only headers that lack `text/event-stream`, and leave SSE-only headers unchanged so the SDK still answers them with `406` instead of a JSON body they cannot read:
+The Python SDK has no per-request response mode, so the adapter has to pin JSON for the whole app. With `json_response=True`, Python already accepts `Accept: application/json` on its own (a failure then reads `Not Acceptable: Client must accept application/json`), but it still rejects a request with no `Accept` header. Widen only headers that lack `text/event-stream`, and leave SSE-only headers unchanged so the SDK still answers them with `406` instead of a JSON body they cannot read:
 
 ```python
 from starlette.types import ASGIApp, Receive, Scope, Send
@@ -129,11 +138,11 @@ Every `POST` body is a single JSON-RPC message sent with `Content-Type: applicat
 | --- | --- | --- |
 | `application/json` | 200 | 200 |
 | `application/json; charset=utf-8` | 200 | 200 |
-| `Application/JSON` | 200 | 200 |
+| `Application/JSON` | 200 | 415 on 2025 requests, 200 on 2026 |
 | `text/plain;charset=UTF-8` | 415 | 400 |
 | `application/x-www-form-urlencoded` | 415 | 400 |
 
-Both SDKs compare the media type case-insensitively and ignore parameters. TypeScript answers `415` with `Unsupported Media Type: Content-Type must be application/json`; Python answers `400` with the plain-text body `Invalid Content-Type header`, so look for both when debugging.
+Both SDKs ignore parameters such as `charset`. TypeScript compares the media type case-insensitively and answers any other type with `415` and `Unsupported Media Type: Content-Type must be application/json`. Python answers a type other than `application/json` with `400` and the plain-text body `Invalid Content-Type header`. On 2025 requests it also compares the letter case, so `Application/JSON` gets `415` with the same message as TypeScript. Look for all three when debugging.
 
 The two most common client causes are easy to miss. `fetch(url, { method: 'POST', body: JSON.stringify(message) })` without a `headers` option sends `text/plain;charset=UTF-8`, and `curl -d` without `-H 'Content-Type: application/json'` sends `application/x-www-form-urlencoded`. On the server side, the causes are an exact-string comparison that rejects a `charset` parameter, or a body parser, gateway, or WAF rule that accepts only another type. Compare the essence of the media type instead:
 
@@ -159,9 +168,11 @@ What `GET` means depends on the era.
 
 | Request | TypeScript `createMcpHandler` | Python `streamable_http_app()` |
 | --- | --- | --- |
-| `GET` or `DELETE` with a 2026 protocol version | 405, no `Allow` header | 405 with `Allow: POST` |
-| 2025 `GET` with a valid session | 405 (2025 serving is stateless by default) | 200 `text/event-stream` |
-| 2025 `GET` without a session | 405 | 400 `Missing session ID` |
+| `GET` or `DELETE` with a 2026 protocol version | 405 with `Allow: POST` | 405 with `Allow: POST` |
+| 2025 `GET` with a valid session | 405 with `Allow: POST` (2025 serving is stateless by default) | 200 `text/event-stream` |
+| 2025 `GET` without a session | 405 with `Allow: POST` | 400 `Bad Request: Missing session ID` |
+
+TypeScript 2.3 sent these 405s without an `Allow` header; 2.4.0 added it.
 
 The history behind most "405 on GET" reports is [cloudflare/agents#403](https://github.com/cloudflare/agents/issues/403), where the reference Workers server answered `GET /mcp` with `405` and a developer expected a stream for notifications, sampling, and elicitation. That answer was permitted by the spec then and is required for 2026 now.
 
@@ -170,7 +181,7 @@ mcptest raises `transport.get-stream-405` as a warning, which asks for review bu
 - For 2026 clients, implement `subscriptions/listen`; both SDKs serve it.
 - For 2025 clients that need push, run a sessionful transport: the Python SDK's default 2025 leg, or in TypeScript a `NodeStreamableHTTPServerTransport` with `sessionIdGenerator`, routed with `isLegacyRequest` as the SDK's legacy-clients guide shows.
 
-If you keep the `405`, add an `Allow` header. RFC 9110 requires one on every `405`, and it tells clients the stream is intentionally absent:
+If you keep the `405`, send an `Allow` header. RFC 9110 requires one on every `405`, and it tells clients the stream is intentionally absent. `createMcpHandler` does this from 2.4.0; a hand-written route must add it:
 
 ```typescript
 app.get('/mcp', (_req, res) => {
@@ -194,6 +205,17 @@ A `405` on `POST` is a different problem: the URL is not an MCP endpoint. The us
 | 200 with the wrong type | `transport.sse-content-type-mismatch` | CDN, proxy, compression, or catch-all routes |
 | 405 on `GET` or `DELETE` | `transport.get-stream-405` (warning) | Nothing, unless a 2025 client needs server push |
 | 405 on `POST` | None; negotiation fails | The endpoint URL |
+
+To confirm a status by hand, send a 2025 `initialize` and change one header at a time. With both headers correct, a working server answers `200`:
+
+```bash
+curl -si https://mcp.example.com/mcp \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"probe","version":"1"}}}'
+```
+
+Replace the `Accept` value with `application/json` to test the `406` rule, or the `Content-Type` value with `text/plain` to test `415`. For the `GET` stream, send `curl -si https://mcp.example.com/mcp -H 'Accept: text/event-stream'` and expect `text/event-stream` or `405`. A sessionful Python server answers `400` until you add the `Mcp-Session-Id` from `initialize`.
 
 For CORS failures that look like these statuses in a browser, see [the CORS reference](/learn/mcp-cors-headers-for-browser-clients); the broader status table is in [troubleshooting](/docs/troubleshooting).
 

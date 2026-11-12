@@ -7,7 +7,7 @@ level: practitioner
 order: 1
 category: Troubleshooting
 readingTimeMinutes: 8
-lastReviewed: "2026-10-26"
+lastReviewed: "2026-11-11"
 path: /docs/troubleshooting
 metaTitle: "MCP Server Errors: Causes and Fixes | mcptest.io"
 metaDescription: "Find exact MCP errors: OAuth discovery, unsupported registration, invalid_redirect_uri, SSE 404, closed streams, request timeouts and Invalid Host header."
@@ -41,7 +41,7 @@ Start with the actual HTTP exchange: endpoint, status, response headers, protoco
 
 ## Find the exact error
 
-These guides select recurring remote-connection symptoms from linked 2026 client reports and SDK documentation. Reports are version-specific, and there is no public cross-client incident census. Each guide ranks causes qualitatively by recurrence in its cited cases and explains the evidence needed to distinguish them; this is not a statistical frequency ranking.
+Each guide covers one recurring remote-connection symptom from cited 2026 client reports and SDK documentation. Causes are ordered by how often they recur in those cases, not by a statistical census, and each guide lists the evidence that tells them apart.
 
 ### OAuth discovery and sign-in
 
@@ -79,7 +79,7 @@ Use `curl -i` with the stateless discovery or stateful initialization request fr
 
 ## 2026 discovery or requests fail
 
-A `2026-07-28` server must implement `server/discover`, although clients do not have to call it before other operations. Each request must carry `io.modelcontextprotocol/protocolVersion` and `io.modelcontextprotocol/clientCapabilities` in `params._meta`. On HTTP, it also needs `MCP-Protocol-Version` and `Mcp-Method`; named calls need `Mcp-Name`. The header version and body version must match.
+A `2026-07-28` server must implement `server/discover`, although clients do not have to call it before other operations. Each request must carry `io.modelcontextprotocol/protocolVersion` and `io.modelcontextprotocol/clientCapabilities` in `params._meta`. On HTTP, it also needs `MCP-Protocol-Version` and `Mcp-Method`, and `tools/call`, `resources/read` and `prompts/get` need `Mcp-Name`. Header values must match the body, or the server answers `400` with `-32020`. A missing required `_meta` field gets `400` with `-32602`.
 
 If discovery succeeds but the next request gets `400`, compare those fields character for character and inspect gateway logs. Proxies often drop unfamiliar headers unless they are explicitly allowed. If a gateway routes on `Mcp-Method` or `Mcp-Name`, verify it forwards the same request unchanged. Do not add `Mcp-Session-Id` or send an initialization notification on the 2026 path; both belong to the older lifecycle.
 
@@ -87,12 +87,12 @@ If discovery succeeds but the next request gets `400`, compare those fields char
 
 Revisions through `2025-11-25` begin with `initialize`, followed by `notifications/initialized`. If the response includes `Mcp-Session-Id`, preserve it exactly and attach it to the notification and every later request. The common symptoms are:
 
-- **`400` after initialization:** the client lost the session ID, CORS hid it, or the server issued it too late.
+- **`400` after initialization:** the client lost the session ID, CORS hid it, or the server did not return it on the `initialize` response.
 - **Intermittent `404`:** session state is in one instance's memory and requests are reaching another, or the server expired the session.
 - **Tabs affect one another:** the server is keying state on IP or a global variable rather than the opaque session ID.
 - **DELETE or GET returns `405`:** this can be valid because explicit termination and the standalone SSE stream are optional.
 
-A client should establish a new session after an expired-ID `404`. A server should use secure, unpredictable IDs and either shared storage or deliberate affinity when it scales out.
+After a `404` on a request with a session ID, the client MUST start a new session with `initialize`. A server SHOULD use globally unique, cryptographically secure IDs, and needs shared storage or deliberate affinity when it scales out.
 
 ## Works in curl, fails in a browser
 
@@ -126,13 +126,15 @@ If you use mcptest.io's optional proxy, sign-in authenticates the proxy itself. 
 
 | Status | Likely meaning |
 | --- | --- |
-| `400` | Malformed transport request: 2026 metadata/header mismatch, missing routing header, invalid version header, or a missing required 2025 session ID. |
+| `400` | Malformed transport request: 2026 header/body mismatch (`-32020`), missing `_meta` field (`-32602`), unsupported version (`-32022`), missing client capability (`-32021`), invalid version header, or a missing required 2025 session ID. |
 | `401` | Authentication is required or the token is invalid or expired. Inspect `WWW-Authenticate` and protected-resource metadata. |
 | `403` | Origin rejected, token lacks scope, API key lacks permission, or a policy blocks this method or named capability. |
-| `404` | Wrong route, or—when a 2025 session header is present—an expired or unknown session. |
-| `405` | Wrong endpoint for POST. In the 2025 era it can be a valid answer to optional GET or DELETE. |
-| `406` | The requested response media types are unsupported; 2025 Streamable HTTP clients offer JSON and SSE on POST. |
-| `202` | Normal empty acceptance for a 2025 notification or client response, not a failure. |
+| `404` | Wrong route; `-32601` unknown method on a 2026 server; or, when a 2025 session header is present, a terminated or unknown session. |
+| `405` | POST to an endpoint that does not accept it, such as a legacy SSE URL. A valid answer to the optional GET or DELETE in 2025, and the expected answer to any GET or DELETE on a 2026-only server. |
+| `406` | The server rejected `Accept`. Streamable HTTP clients MUST offer both `application/json` and `text/event-stream` on POST. |
+| `415` | The server rejected the request `Content-Type`; send `application/json`. |
+| `429` | Rate limited; honor `Retry-After`. |
+| `202` | Normal empty acceptance of a notification (or, through 2025-11-25, a client response), not a failure. |
 
 ## SSE responses hang or arrive all at once
 
@@ -148,7 +150,7 @@ If login succeeds but the MCP endpoint rejects the token, compare issuer, audien
 
 ## JSON-RPC and capability errors
 
-`-32700` means invalid JSON, `-32601` means the method is absent, and `-32602` means invalid parameters. If a server advertises tools, resources, or prompts but their list methods return method-not-found, fix the advertised capabilities. Tool input and execution failures that a model can correct should normally be returned as a tool result with `isError: true`; reserve protocol errors for protocol failures.
+`-32700` means invalid JSON, `-32601` means the method is absent, and `-32602` means invalid parameters, an unknown tool or, in 2026, a missing resource. See [MCP error codes](/learn/mcp-json-rpc-error-codes). If a server advertises tools, resources, or prompts but their list methods return method-not-found, fix the advertised capabilities. Tool input and execution failures that a model can correct should normally be returned as a tool result with `isError: true`; reserve protocol errors for protocol failures.
 
 ## Still stuck?
 

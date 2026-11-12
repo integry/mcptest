@@ -5,25 +5,33 @@
   },
   "catalog": {
     "title": "Remote MCP Server Catalog | mcptest.io",
-    "description": "Browse remote MCP servers by capability, transport, authentication method, and live validation status."
+    "description": "Browse public remote MCP servers by category and authentication. Each listing shows its transport, protocol, browser access and latest validation result."
   },
   "discovery": {
     "title": "MCP Discovery Checker: Server Cards and Registry | mcptest.io",
-    "description": "Free MCP discovery checker: find every remote MCP server a domain advertises (Server Cards, OAuth metadata, MCP Registry), validated, with copy-paste fixes."
+    "description": "Find every remote MCP server a domain advertises in Server Cards, OAuth metadata, the MCP Registry and the catalog. Each document is validated."
+  },
+  "report": {
+    "title": "MCP Release-Readiness Report | mcptest.io",
+    "description": "Run a release-readiness report on a remote MCP server: shipping blockers, client compatibility, OAuth and tool risk, saved in your browser."
+  },
+  "submit": {
+    "title": "Submit a Remote MCP Server to the Catalog | mcptest.io",
+    "description": "Check your remote MCP endpoint, describe it and submit it to the mcptest.io catalog. A maintainer reviews each submission as a pull request."
   },
   "learn": {
     "title": "Learn MCP",
-    "description": "Practical, source-backed guides for choosing MCP clients, connecting remote servers, understanding OAuth, and operating trustworthy production MCP systems.",
-    "summary": "Evergreen guides for evaluating, connecting, building, and operating Model Context Protocol integrations."
+    "description": "Source-backed MCP guides: how MCP works, connecting clients to remote servers, OAuth, building and testing a server, and decoding errors.",
+    "summary": "Guides to understanding MCP, connecting clients to remote servers, building and testing your own server, and debugging errors."
   },
   "tools": {
     "breaking-changes": {
       "title": "MCP Breaking Change Checker for tools/list | mcptest.io",
-      "description": "Free MCP breaking-change check. Compare two tools/list results and see which changes break clients that cached the old schema: removed tools, new required inputs, narrowed types and output contracts."
+      "description": "Compare two tools/list results, or a live endpoint with an earlier listing, and see which tool, prompt and resource changes break clients."
     },
     "oauth-check": {
-      "title": "MCP OAuth Checker: Test Your Server\u2019s Authorization | mcptest.io",
-      "description": "Free MCP OAuth checker with step-by-step discovery evidence, provider-specific diagnosis, PKCE, resource URL matching and client callback guidance."
+      "title": "MCP OAuth Checker: Test Discovery Before Login | mcptest.io",
+      "description": "Check the OAuth discovery an MCP client runs before login: challenge, resource and authorization server metadata, resource match, registration and PKCE."
     }
   },
   "docs": {

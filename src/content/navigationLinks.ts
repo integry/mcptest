@@ -71,13 +71,13 @@ export const CHECKS_NAVIGATION: readonly NavigationLink[] = [
     description: 'Compare two tools/list results and see which changes break clients.',
   },
   {
-    label: 'OAuth check',
+    label: 'OAuth checker',
     path: '/tools/oauth-check',
     icon: 'bi-shield-check',
     description: "Test a server's OAuth authorization step by step, with fixes.",
   },
   {
-    label: 'Discovery check',
+    label: 'Discovery checker',
     path: '/tools/discovery',
     icon: 'bi-broadcast',
     description: 'Find the MCP servers a domain advertises and validate them.',

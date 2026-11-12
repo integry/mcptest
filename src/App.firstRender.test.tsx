@@ -81,7 +81,7 @@ const mount = () => {
 
 const FIRST_FRAME = {
   header: true,
-  sidebarLinks: ['Playground', 'Catalog', 'Breaking changes', 'OAuth check', 'Discovery check', 'Reports', 'Dashboards'],
+  sidebarLinks: ['Playground', 'Catalog', 'Breaking changes', 'OAuth checker', 'Discovery checker', 'Reports', 'Dashboards'],
   // A new visitor has no dashboards until they create one (no empty default).
   dashboards: [],
   // A first visit has no tab strip until a connection starts or a second tab opens.

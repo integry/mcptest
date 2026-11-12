@@ -7,7 +7,7 @@ level: newcomer
 order: 1
 category: Protocol fundamentals
 readingTimeMinutes: 6
-lastReviewed: "2026-08-09"
+lastReviewed: "2026-11-11"
 path: /docs/what-is-mcp
 metaTitle: What Is the Model Context Protocol? | mcptest.io
 metaDescription: Understand MCP tools, resources, prompts, transports, and protocol lifecycles. A developer introduction to local and remote Model Context Protocol servers.
@@ -25,21 +25,31 @@ sourceLinks:
     url: "https://www.jsonrpc.org/specification"
 ---
 
-The Model Context Protocol (MCP) is an open protocol for connecting AI applications to tools and context. A service describes its capabilities once through a standard JSON-RPC interface; MCP clients can then discover and use them without a bespoke integration for every client-server pair.
+The Model Context Protocol (MCP) is an open protocol for connecting AI applications to tools and data. A service describes its capabilities once, through a standard JSON-RPC interface. Any MCP client can then discover and use them, with no custom integration for each client-server pair.
 
-MCP was introduced by Anthropic in November 2024 and is now an openly governed Linux Foundation project. It defines three roles: the **host** is the AI application a person uses, a **client** speaks MCP on the host's behalf, and a **server** provides capabilities backed by a database, SaaS API, local system, or business process. Clients and servers exchange [JSON-RPC 2.0](https://www.jsonrpc.org/specification) messages over a transport such as local stdio or remote Streamable HTTP.
+Anthropic introduced MCP in November 2024. Since December 2025 it has been part of the Agentic AI Foundation, a directed fund under the Linux Foundation; see the [MCP timeline](/learn/mcp-protocol-timeline).
+
+MCP defines three roles:
+
+- The **host** is the AI application a person uses, such as Claude, ChatGPT or an IDE.
+- A **client** runs inside the host and speaks MCP to one server on the host's behalf.
+- A **server** exposes capabilities backed by a database, SaaS API, local system or business process.
+
+Clients and servers exchange [JSON-RPC 2.0](https://www.jsonrpc.org/specification) messages over a transport: stdio for a local process, or Streamable HTTP for a remote server. The [glossary](/learn/mcp-glossary) defines these and other terms.
 
 ## What a server exposes
 
-**Tools** are functions an AI model can invoke: search a database, create a ticket, or send a message. Each tool has a name, description, JSON Schema input, and optional structured output schema. Clients use `tools/list` and `tools/call` to discover and invoke them.
+A server can expose three kinds of capability.
 
-**Resources** are data addressed by URIs. They may be listed with `resources/list`, parameterized through URI templates, and read with `resources/read`. **Prompts** are reusable message templates, discovered with `prompts/list` and rendered with `prompts/get`.
+- **Tools** are functions the AI model can call: search a database, create a ticket, send a message. Each tool has a name, a description, a JSON Schema for its input and, optionally, a schema for structured output. Clients list them with `tools/list` and call them with `tools/call`.
+- **Resources** are data addressed by URIs. Clients list them with `resources/list`, list URI templates with `resources/templates/list`, and read them with `resources/read`.
+- **Prompts** are reusable message templates. Clients list them with `prompts/list` and fill one in with `prompts/get`.
 
-The 2026 protocol also supports in-band multi-round-trip requests. A tool, resource, or prompt operation can return `resultType: "input_required"`; the client obtains the requested user or model input and retries the original call with `inputResponses`. This replaces the held-open server-to-client requests used by older sampling, elicitation, and roots flows. Roots, sampling, and logging are deprecated in the 2026 core, although compatibility implementations may continue to serve them.
+In `2026-07-28`, a server that needs more input mid-request uses a multi round-trip request. A `tools/call`, `resources/read` or `prompts/get` returns `resultType: "input_required"` with the questions it needs answered. The client collects the answers from the user or model and retries the original request with `inputResponses`. This replaces the server-to-client requests that 2025 revisions used for sampling, elicitation and roots. Roots, Sampling and Logging are deprecated in `2026-07-28`; they still work during the deprecation window, but new implementations should not add them.
 
 ## Two protocol eras
 
-MCP now has two lifecycle families. A production client should understand both because many deployed servers still implement a 2025 revision.
+MCP now has two lifecycle families. A production client needs both, because many deployed servers still implement a 2025 revision.
 
 | Behavior | 2026-07-28 stateless | 2025 and earlier stateful |
 | --- | --- | --- |
@@ -50,7 +60,7 @@ MCP now has two lifecycle families. A production client should understand both b
 
 ### Stateless requests in 2026
 
-There is no `initialize` handshake in `2026-07-28`. Every request is self-describing. The protocol version and client capabilities are required in `params._meta`, while client identity is recommended. On Streamable HTTP, the body metadata is mirrored by routing headers so a gateway can classify a request without parsing JSON:
+There is no `initialize` handshake in `2026-07-28`. Every request describes itself: the protocol version and client capabilities are required in `params._meta`, and clients SHOULD also send their name and version (`clientInfo`). On Streamable HTTP, headers repeat the method and name from the body, so a gateway can route a request without parsing JSON:
 
 ```http
 POST /mcp
@@ -77,26 +87,32 @@ Mcp-Name: search
 }
 ```
 
-`Mcp-Method` is required on every HTTP request. `Mcp-Name` is also required for `tools/call`, `resources/read`, and `prompts/get`. The `MCP-Protocol-Version` header must match the version in `_meta`. With no hidden transport session, requests can reach any healthy instance behind a normal load balancer. Applications can still keep business state by returning an explicit handle and accepting it as a later tool argument.
+- `Mcp-Method` is required on every POST. In `2026-07-28` every request is a POST.
+- `Mcp-Name` is also required on `tools/call`, `resources/read` and `prompts/get`. It carries the tool or prompt name, or the resource URI.
+- `MCP-Protocol-Version` must match the version in `_meta`.
+
+With no transport session, any healthy instance behind an ordinary load balancer can serve any request. A server that needs state across calls, such as a cart, returns an explicit handle from one tool and accepts it as an argument to the next. The [HTTP headers reference](/learn/mcp-http-headers-reference) covers each header.
 
 ### Stateful compatibility through 2025
 
-Revisions through `2025-11-25` begin with `initialize`. The client and server negotiate one version and capability set, the client sends `notifications/initialized`, and a stateful server may issue an opaque `Mcp-Session-Id` that the client must return on later requests. This remains a valid and important compatibility path; it is not how a 2026-only request should be served.
+Revisions through `2025-11-25` begin with `initialize`. The client and server agree on one version and capability set, then the client sends `notifications/initialized`. Over HTTP, the server may issue an opaque `Mcp-Session-Id` that the client returns on every later request. Many servers still work this way, so clients keep supporting it.
 
-mcptest.io uses automatic SDK negotiation. It probes with `server/discover` and adopts stateless behavior when the server offers `2026-07-28`. A 2025-only response falls back to the byte-compatible initialization flow. Authentication failures remain authentication failures rather than being mistaken for lifecycle evidence.
+mcptest.io uses the TypeScript SDK's automatic negotiation. It first sends `server/discover`. If the server offers `2026-07-28`, mcptest uses stateless requests; if the server only speaks a 2025 revision, it falls back to `initialize`. A `401` or `403` is reported as an authorization problem, not taken as a sign of the server's protocol era. [MCP protocol versions explained](/learn/mcp-protocol-versions-explained) has the full rules.
 
 ## Protocol versions
 
 | Version | Important changes |
 | --- | --- |
-| `2024-11-05` | First stable release; stdio and the original two-endpoint HTTP+SSE transport. |
-| `2025-03-26` | Introduced Streamable HTTP and the OAuth-based authorization framework. |
-| `2025-06-18` | OAuth 2.1 resource-server model, structured tool output, elicitation, protocol-version header, and no JSON-RPC batching. |
-| `2025-11-25` | OIDC discovery, Client ID Metadata Documents, URL elicitation, icons, experimental tasks, and SSE polling refinements. |
-| `2026-07-28` | Current version: stateless core, discovery, header routing, cacheable lists, multi-round-trip input, subscriptions, extensions, and authorization hardening. |
+| `2024-11-05` | First published revision: stdio and the original two-endpoint HTTP+SSE transport. |
+| `2025-03-26` | Streamable HTTP and an authorization framework based on OAuth 2.1. |
+| `2025-06-18` | Servers become OAuth resource servers; structured tool output, elicitation, the `MCP-Protocol-Version` header; JSON-RPC batching removed. |
+| `2025-11-25` | OIDC discovery, Client ID Metadata Documents, URL-mode elicitation, icons, experimental tasks, server-closed SSE streams with polling. |
+| `2026-07-28` | Current: no handshake or sessions, `server/discover`, `Mcp-Method`/`Mcp-Name` headers, cache hints on list and read results, multi round-trip requests, `subscriptions/listen`, extensions, tighter authorization. |
 
 ## Where to go next
 
-Read [Remote vs. Local MCP Servers](/docs/remote-vs-local) for the transport mechanics, then use the [testing guide](/docs/testing-guide) to verify both lifecycle eras. The [troubleshooting guide](/docs/troubleshooting) maps common CORS, session, routing-header, streaming, and authorization failures to fixes.
+- [Remote vs. local MCP servers](/docs/remote-vs-local) explains the transports.
+- The [testing guide](/docs/testing-guide) shows how to test both lifecycle eras.
+- The [troubleshooting guide](/docs/troubleshooting) maps CORS, session, header, streaming and authorization failures to fixes.
 
 The authoritative references are the [2026-07-28 specification](https://modelcontextprotocol.io/specification/2026-07-28), the official [release overview](https://blog.modelcontextprotocol.io/posts/2026-07-28/), and the TypeScript SDK's [dual-era negotiation guide](https://github.com/modelcontextprotocol/typescript-sdk/blob/main/docs/protocol-versions.md).

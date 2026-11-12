@@ -5,6 +5,7 @@ import app from '../app.mjs';
 export const handler = awslambda.streamifyResponse(async (event, output) => {
   const method = event.requestContext.http.method;
   const headers = new Headers(event.headers);
+  if (event.cookies?.length) headers.set('cookie', event.cookies.join('; '));
   const url = new URL(event.rawPath, process.env.PUBLIC_URL);
   url.search = event.rawQueryString ?? '';
   const body = event.body == null ? undefined

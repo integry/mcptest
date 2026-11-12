@@ -91,9 +91,9 @@ Use the **MCP: Add Server** command, edit `servers` in `.vscode/mcp.json` or the
 
 ## Windsurf {#windsurf}
 
-Verified 2026-10-20. Windsurf (Devin Desktop, Cascade) supports Streamable HTTP, SSE and stdio, and headers with `${env:VAR}` or `${file:path}` values. OAuth is supported for every transport but the docs do not say how the client registers, and Cascade can use at most 100 tools at a time.
+Verified 2026-10-20. Windsurf (now Devin Desktop) supports Streamable HTTP, SSE and stdio, OAuth for each transport, and headers with `${env:VAR}` or `${file:path}` values. The docs do not say how the client registers with an authorization server. As of 2026-11-11 the cited Cascade MCP page redirects to Devin Desktop's customizations page, which no longer states the 100-tool limit listed in the matrix.
 
-Edit `serverUrl` or `url` in `~/.config/devin/mcp_config.json` (`%APPDATA%\devin\mcp_config.json` on Windows), or open it from the Cascade panel under **MCPs > Open MCP config file**. Guide: [Connect an MCP server to Windsurf, Gemini CLI and Codex](/learn/connect-mcp-server-to-windsurf-gemini-cli-and-codex).
+Edit `~/.config/devin/mcp_config.json` (`%APPDATA%\devin\mcp_config.json` on Windows) or a project `.devin/mcp_config.json`, or open the **Customize** page and select **MCPs**. Guide: [Connect an MCP server to Windsurf, Gemini CLI and Codex](/learn/connect-mcp-server-to-windsurf-gemini-cli-and-codex).
 
 ## Gemini CLI {#gemini-cli}
 

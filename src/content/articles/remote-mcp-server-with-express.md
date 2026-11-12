@@ -7,7 +7,7 @@ level: practitioner
 order: 30
 category: Frameworks
 readingTimeMinutes: 7
-lastReviewed: "2026-10-21"
+lastReviewed: "2026-11-11"
 metaTitle: Remote MCP Server with Express (SDK v2) | mcptest.io
 metaDescription: Build a remote MCP server with Express and the TypeScript SDK v2. createMcpExpressApp, toNodeHandler, CORS, requireBearerAuth with JWT verification, and the checks mcptest runs on it.
 relatedSlugs:
@@ -29,21 +29,33 @@ sourceLinks:
     url: "https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization"
 ---
 
-Express is still the most common way to put an MCP server on the internet, and the TypeScript SDK v2 ships an adapter package for it. This guide builds one complete server: a read-only tool, `Host` and `Origin` validation, CORS for browser clients, and an OAuth bearer check against a hosted identity provider. Every line below was type-checked and run, and the last section shows the exact result mcptest reported for it.
+Express is still the most common way to put an MCP server on the internet, and the TypeScript SDK v2 ships an adapter package for it. Every line below was type-checked and run, and a later section shows the result mcptest reported for it.
 
-## What was tested
+## What you will build
+
+- An Express server that serves MCP at `https://mcp.example.com/mcp` from one stateless handler, for 2026-07-28 and 2025 clients.
+- One read-only `get-order` tool with a validated `id` argument.
+- `Host` and `Origin` validation, CORS for browser clients, and a `/healthz` route.
+- An OAuth bearer check against a hosted identity provider, with Protected Resource Metadata so clients can start sign-in.
+
+## Prerequisites
+
+- Node.js 20 or later. The server was run on Node.js 22 with `tsx`.
+- An identity provider that serves RFC 8414 metadata and a JWKS, signs RS256 access tokens, and puts your server's URL in `aud`. The test used a local provider.
+
+These versions were tested:
 
 | Package | Version |
 | --- | --- |
-| `@modelcontextprotocol/server` | 2.3.1 |
+| `@modelcontextprotocol/server` | 2.4.0 |
 | `@modelcontextprotocol/express` | 2.0.2 |
-| `@modelcontextprotocol/node` | 2.1.1 |
+| `@modelcontextprotocol/node` | 2.1.2 |
 | `express` | 5.3.0 |
 | `cors` | 2.8.6 |
-| `jose` | 6.2.13 |
+| `jose` | 6.2.17 |
 | `zod` | 4.6.7 |
 
-The server ran on Node.js 22 with `tsx`, against a local identity provider that serves RFC 8414 metadata and a JWKS, and signs RS256 access tokens.
+## Step 1: Install the packages
 
 ```bash
 npm install @modelcontextprotocol/server @modelcontextprotocol/express @modelcontextprotocol/node express cors jose zod
@@ -52,7 +64,7 @@ npm install -D typescript tsx @types/express @types/cors @types/node
 
 The file uses top-level `await`, so set `"type": "module"` in `package.json` and `"module": "NodeNext"` in `tsconfig.json`.
 
-## The complete server
+## Step 2: Write the server
 
 ```typescript
 // server.ts
@@ -158,6 +170,14 @@ app.get('/healthz', (_req, res) => void res.send('ok'));
 app.listen(Number(process.env.PORT ?? 3000));
 ```
 
+## Step 3: Run it
+
+```bash
+PUBLIC_URL=https://mcp.example.com/mcp OAUTH_ISSUER=https://auth.example.com npx tsx server.ts
+```
+
+Startup fetches the identity provider's metadata, so a wrong `OAUTH_ISSUER` fails here rather than at the first sign-in. For a local test, set `PUBLIC_URL=http://localhost:3000/mcp` so the `Host` check accepts `localhost`.
+
 ## How the pieces fit
 
 **`createMcpExpressApp`** returns an Express app with a JSON body parser and the transport's `Host` and `Origin` checks already installed. The `host` option does not choose the listening interface; it decides the default protection. With the default, `127.0.0.1`, only localhost `Host` headers are accepted, so a deployed server answers every request with `403` and `Invalid Host: mcp.example.com`. Set `host: '0.0.0.0'` and list your public hostname in `allowedHosts`. `allowedOrigins` takes hostnames without a scheme, and requests without an `Origin` header, which is every desktop and command-line client, pass.
@@ -172,16 +192,16 @@ app.listen(Number(process.env.PORT ?? 3000));
 
 | Token | Response |
 | --- | --- |
-| Missing, malformed, expired, or signed by another issuer | `401` with `WWW-Authenticate: Bearer error="invalid_token", scope="orders:read", resource_metadata="..."` |
-| Valid, but `aud` is another resource | `401`, because the verifier sets `audience` and `expectedResource` compares `AuthInfo.resource` |
+| Missing, malformed, expired, or signed by another issuer | `401` with `WWW-Authenticate: Bearer error="invalid_token", error_description="...", scope="orders:read", resource_metadata="..."` |
+| Valid, but `aud` is another resource | `401`, because `jwtVerify` rejects the audience. `expectedResource` only catches this when the verifier reports the token's real audience in `AuthInfo.resource`. |
 | Valid, but without `orders:read` | `403` with `error="insufficient_scope"` |
 | Valid | The request continues; tools read the result as `ctx.http.authInfo` |
 
-The verifier must set `expiresAt`: the SDK refuses tokens without an expiry. Checking the audience is not optional either. The 2026-07-28 authorization specification requires a server to accept only tokens issued for itself, which is what `audience: PUBLIC_URL.href` in `jwtVerify` enforces. Your identity provider must put that URL in `aud`, usually because the client sent it as the RFC 8707 `resource` parameter. [Authentication patterns](/learn/mcp-server-authentication-patterns) shows the provider-side settings for WorkOS, Auth0, and Stytch, and a shorter API key gate if you do not need OAuth.
+The verifier must set `expiresAt`: the SDK refuses tokens without one with `Token has no expiration time`. Checking the audience is not optional either. The 2026-07-28 authorization specification requires a server to accept only tokens issued for itself, which is what `audience: PUBLIC_URL.href` in `jwtVerify` enforces. Your identity provider must put that URL in `aud`, usually because the client sent it as the RFC 8707 `resource` parameter. [Authentication patterns](/learn/mcp-server-authentication-patterns) shows the provider-side settings for WorkOS, Auth0, and Stytch, and a shorter API key gate if you do not need OAuth.
 
-## Check it before you deploy
+## Step 4: Verify the server
 
-Start the server with `PUBLIC_URL` and `OAUTH_ISSUER` set, then run these requests. Each output below was captured from the server above.
+Start the server with `PUBLIC_URL=http://localhost:3000/mcp` and `OAUTH_ISSUER` set, then run these requests. Each output below was captured from the server above.
 
 An unauthenticated request must get a challenge a client can follow:
 
@@ -214,7 +234,7 @@ That returned `204` with the allow-lists from the code. The same `POST` with `Or
 
 ## What mcptest reported for this server
 
-The headless gate runs the same evaluator as the web report. It only sends credentials over HTTPS, so the run went through a local TLS proxy, with a token minted for that URL:
+The headless gate runs the same evaluator as the web report. It only sends credentials over HTTPS, so when this guide was first tested, the run went through a local TLS proxy, with a token minted for that URL:
 
 ```bash
 export MCPTEST_BEARER_TOKEN="$(cat token.txt)"
@@ -231,13 +251,15 @@ npm run mcptest -- --bearer-token-env MCPTEST_BEARER_TOKEN https://localhost:844
 
 The total was 89 out of 95; the headless run leaves out Web Client Accessibility. The release decision was **review**, not **ready**, because of host-compatibility observations a single run cannot settle, such as whether the identity provider issues refresh tokens and accepts each host's redirect URI. An earlier version of the tool with a bare `z.object` and no property description added a medium `tool.schema.unconstrained-inputs` finding. `z.strictObject` emits `additionalProperties: false`, which cleared it.
 
-## Express mistakes that look like protocol bugs
+## Common failures
 
 - **`app.post('/mcp', ...)` only.** `GET` and `DELETE` then fall through to Express's `404` HTML page instead of a JSON-RPC `405`. Use `app.all`.
-- **The 100 kb body limit.** The adapter's JSON parser keeps Express's default. A `tools/call` with a 200 kB argument was refused with `413` and an HTML error page before the MCP handler ran, which clients report as a transport error rather than a tool error. Set `jsonLimit: '1mb'`, or whatever your largest argument needs, on `createMcpExpressApp` instead of adding a second `express.json()`.
+- **`403 Invalid Host: mcp.example.com` after deploying.** `host` was left at its `127.0.0.1` default, or the public hostname is missing from `allowedHosts`. See [Invalid Host header](/learn/mcp-error-invalid-host-header).
+- **Every request gets `401`.** Check that the token's `iss` and `aud` match `OAUTH_ISSUER` and `PUBLIC_URL`, and that it has an expiry. The [401 checklist](/learn/remote-mcp-server-401-unauthorized) walks through each step.
+- **The 100 kB body limit.** The adapter's JSON parser keeps Express's default. A `tools/call` with a 200 kB argument was refused with `413` and an HTML error page before the MCP handler ran, which clients report as a transport error rather than a tool error. Set `jsonLimit: '1mb'`, or whatever your largest argument needs, on `createMcpExpressApp` instead of adding a second `express.json()`. See [Error POSTing to endpoint](/learn/mcp-error-posting-to-endpoint).
 - **Authentication behind a path prefix.** `app.use('/api', auth)` with the MCP route mounted elsewhere leaves `/mcp` open. Attach `auth` to the MCP route itself.
-- **A reverse proxy that buffers.** Responses that stream progress use SSE. [Deploying a remote MCP server](/learn/deploy-remote-mcp-server) has the nginx and platform settings that keep streams flowing.
+- **A reverse proxy that buffers.** Responses that stream progress use SSE. [Deploying a remote MCP server](/learn/deploy-remote-mcp-server) has the nginx and platform settings that keep streams flowing, and [SSE stream disconnected](/learn/mcp-error-sse-stream-disconnected) covers the symptoms.
 
-## Run the gate on your deployment
+## Test it on mcptest.io
 
 Deploy to staging, then open the endpoint in the [MCP Playground](/) to complete OAuth in the browser and get the Web Client Accessibility score, or add `npm run mcptest -- --bearer-token-env MCPTEST_BEARER_TOKEN https://staging.example.com/mcp` to the pipeline as described in [How to test an MCP server before you deploy it](/learn/test-mcp-server-before-deploying#run-the-same-checks-in-ci).

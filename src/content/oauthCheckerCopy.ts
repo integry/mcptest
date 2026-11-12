@@ -1,6 +1,6 @@
 /** Shared first-screen copy; the build prerenders the React component itself. */
 export const OAUTH_CHECKER_COPY = {
   heading: 'MCP OAuth checker',
-  lede: 'Test every discovery step before login: the MCP challenge, resource metadata, authorization server, client registration options, PKCE and callback expectations. See the evidence and what to fix.',
-  hint: 'Free, read-only checks. No credentials, storage, client registration or login. Metadata uses the restricted discovery proxy when CORS prevents direct reads. The MCP challenge is read directly from your browser.',
+  lede: 'Check each OAuth discovery step an MCP client runs before login: the unauthenticated MCP challenge, protected resource metadata, authorization server metadata, resource URL match, client registration options, PKCE and the authorization code flow. Each step shows its evidence and what to fix.',
+  hint: 'Free and read-only: the checker sends no credentials, stores nothing, registers no client and does not log in. The unauthenticated MCP request is sent from your browser; metadata that CORS blocks is read through the restricted discovery proxy.',
 };

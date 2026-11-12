@@ -183,10 +183,11 @@ const BreakingChangesView: React.FC<BreakingChangesViewProps> = ({ initialEndpoi
   return (
     <div className="breaking-changes">
       <header className="breaking-changes-header">
-        <h1>MCP breaking-change check</h1>
+        <h1>MCP breaking-change checker</h1>
         <p>
-          Will this deploy break the agents that already use your server? Compare two tools/list results and every
-          difference is classified as breaking, risky or safe for clients that cached the old listing, with the reason.
+          Will this deploy break the agents that already use your server? Compare two tools/list results, or a live
+          endpoint with an earlier listing. Each difference in tools, prompts and resources is classified as breaking,
+          risky or safe for clients that cached the old listing, with the reason.
         </p>
         <p>
           Pasted payloads never leave your browser. Read <a href={BREAKING_CHANGES_GUIDE_PATH}>which MCP tool changes break clients</a> for

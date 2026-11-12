@@ -232,7 +232,7 @@ function renderCategoryFallback({ summary, summaries, servers, articles }) {
     `<div class="catalog-view seo-catalog-category" data-category="${escapeHtml(summary.slug)}">`,
     renderListingSourceIconDefinition(),
     '<div class="catalog-command-bar"><div class="catalog-command-copy">',
-    `<nav aria-label="Breadcrumb" class="catalog-category-breadcrumb"><a href="${CATALOG_PATH}">Server Catalog</a><span aria-hidden="true">/</span><span aria-current="page">${escapeHtml(summary.category)}</span></nav>`,
+    `<nav aria-label="Breadcrumb" class="catalog-category-breadcrumb"><a href="${CATALOG_PATH}">Server catalog</a><span aria-hidden="true">/</span><span aria-current="page">${escapeHtml(summary.category)}</span></nav>`,
     `<h1 class="mb-1">${escapeHtml(summary.category)} MCP servers</h1>`,
     `<p class="catalog-category-intro">${escapeHtml(getCatalogCategoryIntro(summary).join(' '))}</p>`,
     renderCategorySummaryList(summary),
