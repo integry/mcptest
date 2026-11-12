@@ -4061,3 +4061,35 @@ pre.bg-light code {
     min-height: 0;
   }
 }
+
+/* --- Dashboards page (/space): what dashboards are, create, list --- */
+.dashboards-home {
+  max-width: 44rem;
+  padding: var(--space-2) 0 var(--space-8);
+}
+
+.dashboards-home-title {
+  margin-bottom: var(--space-3);
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-bold);
+}
+
+.dashboards-home-lede {
+  color: var(--text-accent);
+  font-size: var(--text-md);
+  line-height: 1.55;
+}
+
+.dashboards-home-create {
+  margin: var(--space-5) 0 var(--space-6);
+}
+
+.dashboards-home-subtitle {
+  margin-bottom: var(--space-2);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+}
+
+.dashboards-home-note {
+  color: var(--text-muted);
+}

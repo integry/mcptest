@@ -56,15 +56,20 @@ const { OG_IMAGE_HEIGHT, OG_IMAGE_WIDTH, getOgImagePath } = require('../src/util
 const {
   DASHBOARDS_NAVIGATION,
   FOOTER_NAVIGATION,
+  HEADER_COPY,
   LEARN_HUB_NAVIGATION,
   LEGAL_NAVIGATION,
-  PRIMARY_NAVIGATION,
+  NAVIGATION_GROUPS,
+  PLAYGROUND_NAVIGATION,
   buildLearnTrackNavigation,
+  isLearnOpenByDefault,
+  isNavigationItemActive,
+  navigationDescriptionId,
+  navigationTooltip,
 } = require('../src/content/navigationLinks.ts');
-const { createDefaultSpaces, createDefaultTabs } = require('../src/utils/defaultWorkspace.ts');
+const { createDefaultTabs } = require('../src/utils/defaultWorkspace.ts');
 const { selectLandingQuickPicks } = require('../src/utils/landingQuickPicks.ts');
 const { VERSION_INFO, getGithubCommitUrl } = require('../src/utils/versionInfo.ts');
-const { getSpaceUrl } = require('../src/utils/urlUtils.ts');
 const { highlightCode } = require('../src/content/codeHighlighting.ts');
 const { DISCOVERY_COPY, DISCOVERY_GUIDE_PATH } = require('../src/content/discoveryCopy.ts');
 const {
@@ -1059,56 +1064,46 @@ function renderHeaderFallback({ authEnabled }) {
   return [
     '<header class="app-header">',
     '  <div class="app-header-brand">',
-    '    <button type="button" class="mobile-menu-toggle d-md-none position-relative" aria-label="Toggle navigation menu"><span class="hamburger"></span></button>',
+    '    <button type="button" class="mobile-menu-toggle d-md-none position-relative" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="mobile-sidebar"><span class="hamburger"></span></button>',
     '    <a href="/" class="app-logo" aria-label="mcptest.io home"><img src="/logo-96.png" alt="MCP Logo" width="40" height="40"></a>',
     '    <a href="/" class="app-brand-copy">',
     '      <span class="app-brand-title">mcptest.io</span>',
-    '      <p class="app-brand-subtitle d-none d-md-block">Remote MCP Inspector</p>',
+    `      <p class="app-brand-subtitle d-none d-md-block">${escapeHtml(HEADER_COPY.descriptor)}</p>`,
     '    </a>',
     '  </div>',
     '  <div class="app-header-actions d-none d-md-flex">',
     '    <button type="button" class="btn btn-outline-secondary app-theme-toggle" aria-label="Toggle color theme">'
-      + '<i class="theme-toggle-icon bi bi-moon-stars-fill"></i><i class="theme-toggle-icon bi bi-sun-fill"></i></button>',
+      + '<i class="theme-toggle-icon bi bi-moon-stars-fill" aria-hidden="true"></i><i class="theme-toggle-icon bi bi-sun-fill" aria-hidden="true"></i></button>',
+    // Header.tsx holds the sign-in control's space while auth resolves.
     ...(authEnabled
-      ? ['    <button type="button" class="btn btn-sm btn-primary app-auth-placeholder" style="visibility: hidden;" aria-hidden="true" tabindex="-1" disabled>Login with Google</button>']
+      ? [`    <div class="app-auth app-auth-placeholder" style="visibility: hidden;" aria-hidden="true"><span class="app-auth-hint">${escapeHtml(HEADER_COPY.signInHint)}</span><button type="button" class="btn btn-sm btn-primary" tabindex="-1" disabled>${escapeHtml(HEADER_COPY.signIn)}</button></div>`]
       : []),
     '  </div>',
     '</header>',
   ].join('\n');
 }
 
-/** Same inline style SideNav gives a dashboard with no cards to check. */
-const HEALTH_INDICATOR_STYLE = 'display: inline-block; width: 12px; height: 12px; border-radius: 50%; background-color: #6c757d; flex-shrink: 0; vertical-align: middle; position: relative; top: -1px;';
-
-function cardCountLabel(count) {
-  return `${count} ${count === 1 ? 'card' : 'cards'}`;
-}
-
-/** Which views light up each primary link, as PRIMARY_ACTIVE_VIEWS in SideNav. */
-const PRIMARY_ACTIVE_VIEWS = {
-  '/': ['playground'],
-  '/catalog': ['catalog', 'server-profile'],
-  '/report': ['report'],
-  '/tools/breaking-changes': ['breaking-changes'],
-  '/tools/oauth-check': ['oauth-check'],
-  [DISCOVERY_CHECKER_PATH]: ['discovery'],
-};
-
 /** Views on which the guide search takes the `/` shortcut (components/learn/guideSearchShortcut.ts). */
 const GUIDE_SEARCH_SHORTCUT_VIEWS = ['learn', 'docs'];
+
+/** ContentTrackNav's LEARN_GROUP_ICON. */
+const LEARN_GROUP_ICON = 'bi-mortarboard';
 
 /**
  * Desktop sidebar as src/components/SideNav.tsx renders it for a visitor with
  * nothing saved and the sidebar expanded, on `view` at `pathname`: the
- * workspace and learn groups from src/content/navigationLinks.ts (the track
- * owning the page expanded, as ContentTrackNav does), the default dashboard
- * from src/utils/defaultWorkspace.ts, and the footer.
+ * groups from src/content/navigationLinks.ts (a new visitor has no
+ * dashboards, so Dashboards is a single link to the dashboards page), the
+ * learn group (open on Learn and Docs views, with the track owning the page
+ * expanded, as ContentTrackNav does; folded but present elsewhere, so every
+ * guide link stays in the HTML) and the footer.
  */
 function renderSideNavFallback({ learnTracks, versionInfo, year, view = 'playground', pathname = '/' }) {
   const idSuffix = 'desktop';
   const currentPath = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname;
   const currentTrack = learnTracks.find(track => track.items.some(item => item.path === currentPath));
-  const shortcut = GUIDE_SEARCH_SHORTCUT_VIEWS.includes(view);
+  const learnOpen = isLearnOpenByDefault(view);
+  const shortcut = GUIDE_SEARCH_SHORTCUT_VIEWS.includes(view) && learnOpen;
   // NavLink: `active` and aria-current on an exact match.
   const navLinkState = (path, className) => (path === currentPath
     ? { className: `${className} active`, extra: ' aria-current="page"' }
@@ -1119,39 +1114,32 @@ function renderSideNavFallback({ learnTracks, versionInfo, year, view = 'playgro
   const sidenavLink = (item, className, extra = '') => (
     `<a href="${escapeHtml(item.path)}" class="${className}"${extra}><i class="bi ${escapeHtml(item.icon)} sidenav-icon" aria-hidden="true"></i><span class="sidenav-label">${escapeHtml(item.label)}</span></a>`
   );
+  // SideNav's renderLink: the description is a sibling of the link, named by aria-describedby.
+  const groupLink = (item, extraItemClass = '') => {
+    const active = isNavigationItemActive(item, view);
+    const descriptionId = navigationDescriptionId(item, idSuffix);
+    const title = navigationTooltip(item, false);
+    const className = `nav-link sidenav-link${item === PLAYGROUND_NAVIGATION ? ' sidenav-link--primary' : ''}${active ? ' active' : ''}`;
+    const extra = `${active ? ' aria-current="page"' : ''}${item.description ? ` aria-describedby="${escapeHtml(descriptionId)}"` : ''}${title ? ` title="${escapeHtml(title)}"` : ''}`;
+    return [
+      `      <li class="nav-item${extraItemClass ? ` ${extraItemClass}` : ''}">${sidenavLink(item, className, extra)}`,
+      item.description ? `<span id="${escapeHtml(descriptionId)}" class="visually-hidden">${escapeHtml(item.description)}</span>` : '',
+      '</li>',
+    ].join('');
+  };
   return [
     `<nav id="app-sidenav-${idSuffix}" class="app-sidenav d-flex flex-column flex-grow-1" aria-label="Main">`,
-    `  <section class="sidenav-group" aria-labelledby="workspace-nav-heading-${idSuffix}">`,
-    `    <h2 id="workspace-nav-heading-${idSuffix}" class="sidenav-section-label">Workspace</h2>`,
-    '    <ul class="sidenav-list">',
-    ...PRIMARY_NAVIGATION.map(item => {
-      const active = (PRIMARY_ACTIVE_VIEWS[item.path] || []).includes(view);
-      return `      <li class="nav-item">${sidenavLink(item, `nav-link sidenav-link${active ? ' active' : ''}`, active ? ' aria-current="page"' : '')}</li>`;
-    }),
-    '      <li class="nav-item sidenav-dashboards">',
-    '        <div class="sidenav-group-header">',
-    `          <button type="button" class="nav-link sidenav-link sidenav-group-toggle${view === 'dashboards' ? ' active' : ''}" aria-expanded="true" aria-controls="sidenav-dashboards-${idSuffix}"><i class="bi ${escapeHtml(DASHBOARDS_NAVIGATION.icon)} sidenav-icon" aria-hidden="true"></i><span class="sidenav-label">${escapeHtml(DASHBOARDS_NAVIGATION.label)}</span><i class="bi bi-chevron-right sidenav-chevron" aria-hidden="true"></i></button>`,
-    '          <div class="sidenav-group-actions">',
-    '            <button type="button" class="btn btn-sm btn-ghost sidenav-action" title="Refresh health status" aria-label="Refresh health status of all dashboards"><i class="bi bi-arrow-clockwise" aria-hidden="true"></i></button>',
-    '            <button type="button" class="btn btn-sm btn-ghost sidenav-action" title="Create new dashboard" aria-label="Create new dashboard"><i class="bi bi-plus-lg" aria-hidden="true"></i></button>',
-    '          </div>',
-    '        </div>',
-    `        <div id="sidenav-dashboards-${idSuffix}" class="sidenav-dashboards-body">`,
-    '          <ul class="nav flex-column dashboard-list" aria-label="Dashboards">',
-    ...createDefaultSpaces().map(space => [
-      '            <li class="nav-item">',
-      `<a href="${escapeHtml(getSpaceUrl(space.name))}" class="dashboard-link nav-link sidenav-sublink py-1 d-flex align-items-center" style="cursor: move; opacity: 1; user-select: none;">`,
-      `<span class="me-2 health-indicator health-indicator-gray" title="No cards to check" style="${HEALTH_INDICATOR_STYLE}"></span>`,
-      `<span class="dashboard-name flex-grow-1 text-truncate" title="${escapeHtml(space.name)}">${escapeHtml(space.name)}</span>`,
-      `<span class="dashboard-card-count">${cardCountLabel(space.cards.length)}</span></a></li>`,
-    ].join('')),
-    '          </ul>',
-    '        </div>',
-    '      </li>',
-    '    </ul>',
-    '  </section>',
+    ...NAVIGATION_GROUPS.flatMap(group => [
+      `  <section class="sidenav-group sidenav-group--${group.id}" aria-labelledby="sidenav-${group.id}-heading-${idSuffix}">`,
+      `    <h2 id="sidenav-${group.id}-heading-${idSuffix}" class="${group.labelHidden ? 'visually-hidden' : 'sidenav-section-label'}">${escapeHtml(group.label)}</h2>`,
+      '    <ul class="sidenav-list">',
+      ...group.items.map(item => groupLink(item, item === DASHBOARDS_NAVIGATION ? 'sidenav-dashboards' : '')),
+      '    </ul>',
+      '  </section>',
+    ]),
     `  <section class="sidenav-group content-track-nav" aria-labelledby="${learnPrefix}-learn-heading">`,
-    `    <h2 id="${learnPrefix}-learn-heading" class="sidenav-section-label">Learn</h2>`,
+    `    <h2 class="sidenav-section-heading"><button type="button" id="${learnPrefix}-learn-heading" class="nav-link sidenav-link sidenav-group-toggle sidenav-section-toggle" aria-expanded="${learnOpen}" aria-controls="${learnPrefix}-learn-body"><i class="bi ${LEARN_GROUP_ICON} sidenav-icon" aria-hidden="true"></i><span class="sidenav-label">Learn</span><i class="bi bi-chevron-right sidenav-chevron" aria-hidden="true"></i></button></h2>`,
+    `    <div id="${learnPrefix}-learn-body" class="sidenav-learn-body"${learnOpen ? '' : ' hidden'}>`,
     // The guide search field, inert until React mounts, so the tracks below it do not shift.
     `    <div class="guide-search guide-search--sidebar" role="search" aria-label="Guides"><div class="guide-search-field"><i class="bi bi-search guide-search-icon" aria-hidden="true"></i><input type="search" class="guide-search-input" placeholder="Search guides" aria-label="Search guides"${shortcut ? ' aria-keyshortcuts="/"' : ''} role="combobox" aria-expanded="false" aria-controls="${learnPrefix}-guide-search-results" aria-autocomplete="list" autocomplete="off" spellcheck="false">${shortcut ? '<kbd class="guide-search-shortcut" aria-hidden="true">/</kbd>' : ''}</div><p class="guide-search-status visually-hidden" role="status" aria-live="polite"></p><div id="${learnPrefix}-guide-search-results" class="guide-search-results" role="listbox" aria-label="Guide search results" hidden></div></div>`,
     '    <ul class="sidenav-list">',
@@ -1173,6 +1161,7 @@ function renderSideNavFallback({ learnTracks, versionInfo, year, view = 'playgro
       ].join('');
     }),
     '    </ul>',
+    '    </div>',
     '  </section>',
     '  <div class="sidenav-footer">',
     '    <ul class="sidenav-footer-links" aria-label="Project links">',

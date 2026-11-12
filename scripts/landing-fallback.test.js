@@ -179,7 +179,7 @@ describe('static first frame (header, sidebar, playground landing)', () => {
   it('builds the sidebar links from the shared navigation module', () => {
     const shell = renderShell(false);
     const sidebarLinks = Array.from(
-      shell.querySelectorAll('.desktop-sidebar .app-sidenav .sidenav-group:first-child .sidenav-list > .nav-item > a.nav-link'),
+      shell.querySelectorAll('.desktop-sidebar .app-sidenav .sidenav-group:not(.content-track-nav) .sidenav-list > .nav-item > a.nav-link'),
       link => ({
         path: link.getAttribute('href'),
         label: text(link),

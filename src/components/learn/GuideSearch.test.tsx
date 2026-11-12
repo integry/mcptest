@@ -296,7 +296,10 @@ describe('guide search placement', () => {
     mountSideNavs('playground', '/');
     for (const scope of ['.mobile-sidebar', '.desktop-sidebar']) {
       const group = container!.querySelector(`${scope} .content-track-nav`)!;
-      expect(group.querySelector('h2')?.nextElementSibling?.classList).toContain('guide-search');
+      // The Learn heading folds the group; the search field opens its body.
+      const body = group.querySelector('h2')?.nextElementSibling;
+      expect(body?.classList).toContain('sidenav-learn-body');
+      expect(body?.firstElementChild?.classList).toContain('guide-search');
     }
     const ids = Array.from(container!.querySelectorAll('[id]'), element => element.id);
     expect(new Set(ids).size).toBe(ids.length);

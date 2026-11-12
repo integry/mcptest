@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import SideNav from './SideNav';
-import { LEARN_TRACKS } from '../content/navigation';
+import { DASHBOARDS_NAVIGATION, LEARN_TRACKS, NAVIGATION_GROUPS, PRIMARY_NAVIGATION } from '../content/navigation';
 import { TRACK_NAVIGATION } from '../content/learnRegistry';
 import { SIDEBAR_COLLAPSED_CLASS, SIDEBAR_COLLAPSED_KEY } from '../hooks/useSidebarCollapsed';
 import { readStylesheet } from '../styles/readStylesheet';
@@ -93,7 +93,14 @@ describe('SideNav dashboard rows', () => {
 
     expect(
       Array.from(container.querySelectorAll('.sidenav-section-label'), (label) => label.textContent)
-    ).toEqual(['Workspace', 'Learn']);
+    ).toEqual(['Checks', 'Saved work']);
+    // The Learn heading is a toggle set in the same type as the section labels.
+    const learnToggleRule = sidebarCss.slice(
+      sidebarCss.indexOf('.app-sidenav .sidenav-section-toggle.nav-link {'),
+      sidebarCss.indexOf('}', sidebarCss.indexOf('.app-sidenav .sidenav-section-toggle.nav-link {'))
+    );
+    expect(learnToggleRule).toMatch(/font-size:\s*0\.8125rem/);
+    expect(learnToggleRule).toMatch(/letter-spacing:\s*0/);
     expect(sidebarCss).not.toMatch(/text-transform:\s*uppercase/i);
 
     const sectionRuleStart = sidebarCss.indexOf('.sidenav-section-label {');
@@ -126,32 +133,40 @@ describe('SideNav dashboard rows', () => {
 });
 
 describe('SideNav information architecture', () => {
-  it('groups the workspace links, a collapsible dashboards group and the learn tracks', () => {
+  const groupLinks = (container: ParentNode, groupId: string) => Array.from(
+    container.querySelectorAll(`.sidenav-group--${groupId} > .sidenav-list > .nav-item`),
+    item => item.querySelector('a.sidenav-link, button.sidenav-group-toggle')!
+  ).map(link => [link.querySelector('.sidenav-label')?.textContent?.trim(), link.getAttribute('href')]);
+
+  it('orders the groups by what people come to do: test and browse, checks, saved work, then learn', () => {
     const container = renderStatic('catalog', '/catalog');
 
-    const workspaceLinks = Array.from(
-      container.querySelectorAll('.sidenav-group:first-of-type > .sidenav-list > .nav-item > a'),
-      link => [link.textContent?.trim(), link.getAttribute('href')]
-    );
-    expect(workspaceLinks).toEqual([
-      ['Playground', '/'],
-      ['Catalog', '/catalog'],
-      ['Reports', '/report'],
+    const sections = Array.from(container.querySelectorAll('.app-sidenav > section.sidenav-group'));
+    expect(sections.map(section => section.querySelector('h2')?.textContent?.trim()))
+      .toEqual(['Workspace', 'Checks', 'Saved work', 'Learn']);
+    // The first group's heading is for screen readers; the rest are visible labels.
+    expect(sections[0].querySelector('h2')?.classList).toContain('visually-hidden');
+    // Each group is a region named by its own heading.
+    sections.forEach(section => {
+      expect(section.querySelector(`[id="${section.getAttribute('aria-labelledby')}"]`)?.textContent?.trim()).toBeTruthy();
+    });
+
+    expect(groupLinks(container, 'start')).toEqual([['Playground', '/'], ['Catalog', '/catalog']]);
+    expect(groupLinks(container, 'checks')).toEqual([
       ['Breaking changes', '/tools/breaking-changes'],
       ['OAuth check', '/tools/oauth-check'],
       ['Discovery check', '/tools/discovery'],
     ]);
+    expect(groupLinks(container, 'saved')).toEqual([['Reports', '/report'], ['Dashboards', null]]);
+    expect(PRIMARY_NAVIGATION.map(item => item.path)).toEqual(
+      NAVIGATION_GROUPS.flatMap(group => group.items.map(item => item.path))
+    );
+
+    // Playground is the primary action.
+    expect(container.querySelector('a[href="/"]')?.classList).toContain('sidenav-link--primary');
+    expect(container.querySelectorAll('.sidenav-link--primary')).toHaveLength(1);
     expect(container.querySelector('a[href="/catalog"]')?.classList).toContain('active');
     expect(container.querySelector('a[href="/catalog"]')?.getAttribute('aria-current')).toBe('page');
-
-    const dashboardsToggle = container.querySelector<HTMLElement>('.sidenav-dashboards .sidenav-group-toggle');
-    expect(dashboardsToggle?.textContent).toContain('Dashboards');
-    expect(dashboardsToggle?.getAttribute('aria-expanded')).toBe('true');
-    const dashboardsBody = container.querySelector<HTMLElement>(`#${dashboardsToggle?.getAttribute('aria-controls')}`);
-    expect(dashboardsBody?.hidden).toBe(false);
-    expect(dashboardsBody?.textContent).toContain('Saved space');
-    expect(container.querySelector('.sidenav-dashboards [aria-label="Create new dashboard"]')).not.toBeNull();
-    expect(container.querySelector('.sidenav-dashboards [aria-label="Refresh health status of all dashboards"]')).not.toBeNull();
 
     // The old "Resources" trio is gone; its entries live under the tracks.
     expect(container.textContent).not.toContain('Resources');
@@ -160,16 +175,76 @@ describe('SideNav information architecture', () => {
     expect(
       Array.from(container.querySelectorAll('.content-track-label .sidenav-label'), label => label.textContent)
     ).toEqual(['Understand', 'Use', 'Build', 'Reference']);
-    // Off content pages every track is collapsed, but all four stay visible.
-    expect(expandedTracks(container)).toEqual([]);
-    container.querySelectorAll('.content-track').forEach(track => {
-      expect(track.querySelector('.sidenav-group-toggle')?.getAttribute('aria-expanded')).toBe('false');
-      expect(track.querySelector<HTMLElement>('.sidenav-sublist')?.hidden).toBe(true);
-    });
   });
 
-  it('expands only the active track to its articles on a content page', () => {
+  it('gives every tool entry a one-line description as its tooltip and accessible description', () => {
+    const container = renderStatic('playground', '/');
+    for (const item of PRIMARY_NAVIGATION) {
+      expect(item.description, item.label).toMatch(/^[^\n]{10,90}$/);
+      const control = Array.from(container.querySelectorAll<HTMLElement>('.app-sidenav .sidenav-link'))
+        .find(element => element.querySelector('.sidenav-label')?.textContent === item.label)!;
+      expect(control, item.label).toBeTruthy();
+      expect(control.title).toBe(item.description);
+      const description = container.querySelector(`#${control.getAttribute('aria-describedby')}`);
+      expect(description?.textContent).toBe(item.description);
+      expect(description?.classList).toContain('visually-hidden');
+      // The description is not part of the link's name.
+      expect(control.textContent?.trim()).toBe(item.label);
+    }
+  });
+
+  it('shows a single Dashboards entry, not an empty default dashboard, to a visitor with none', () => {
+    const container = renderStatic('playground', '/', []);
+    const entry = container.querySelector('.sidenav-dashboards')!;
+
+    expect(entry.querySelector('a')?.getAttribute('href')).toBe(DASHBOARDS_NAVIGATION.path);
+    expect(entry.querySelector('a')?.textContent?.trim()).toBe('Dashboards');
+    expect(container.querySelector('.dashboard-list')).toBeNull();
+    expect(container.textContent).not.toContain('My first dashboard');
+    expect(container.textContent).not.toContain('0 cards');
+    expect(container.querySelector('[aria-label="Create new dashboard"]')).toBeNull();
+    expect(container.querySelector('[aria-label="Refresh health status of all dashboards"]')).toBeNull();
+
+    const onPage = renderStatic('dashboards', '/space', []);
+    expect(onPage.querySelector('.sidenav-dashboards a')?.getAttribute('aria-current')).toBe('page');
+  });
+
+  it('keeps the collapsible dashboards group for a visitor who has dashboards', () => {
+    const container = renderStatic('catalog', '/catalog');
+    const dashboardsToggle = container.querySelector<HTMLElement>('.sidenav-dashboards .sidenav-group-toggle');
+    expect(dashboardsToggle?.textContent).toContain('Dashboards');
+    expect(dashboardsToggle?.getAttribute('aria-expanded')).toBe('true');
+    const dashboardsBody = container.querySelector<HTMLElement>(`#${dashboardsToggle?.getAttribute('aria-controls')}`);
+    expect(dashboardsBody?.hidden).toBe(false);
+    expect(dashboardsBody?.textContent).toContain('Saved space');
+    expect(container.querySelector('.sidenav-dashboards [aria-label="Create new dashboard"]')).not.toBeNull();
+    expect(container.querySelector('.sidenav-dashboards [aria-label="Refresh health status of all dashboards"]')).not.toBeNull();
+  });
+
+  it.each([
+    ['playground', '/'],
+    ['catalog', '/catalog'],
+    ['report', '/report'],
+    ['breaking-changes', '/tools/breaking-changes'],
+    ['dashboards', '/space'],
+  ] as const)('folds the Learn group on the app page %s, with every guide link still in the HTML', (view, path) => {
+    const container = renderStatic(view, path);
+    const toggle = container.querySelector<HTMLElement>('.content-track-nav .sidenav-section-toggle')!;
+    const body = container.querySelector<HTMLElement>(`#${toggle.getAttribute('aria-controls')}`)!;
+
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(body.hidden).toBe(true);
+    expect(body.querySelector('.guide-search')).not.toBeNull();
+    expect(Array.from(body.querySelectorAll('.sidenav-sublist a'), link => link.getAttribute('href')))
+      .toEqual(LEARN_TRACKS.flatMap(track => track.items.map(item => item.path)));
+    expect(expandedTracks(container)).toEqual([]);
+  });
+
+  it('opens the Learn group with the current track on Learn and Docs pages', () => {
     const container = renderStatic('learn', '/learn/mcp-clients-compared');
+    const toggle = container.querySelector<HTMLElement>('.content-track-nav .sidenav-section-toggle')!;
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(container.querySelector<HTMLElement>(`#${toggle.getAttribute('aria-controls')}`)?.hidden).toBe(false);
 
     expect(expandedTracks(container)).toEqual(['use']);
     const useTrack = container.querySelector('.content-track[data-track="use"]')!;
@@ -177,6 +252,8 @@ describe('SideNav information architecture', () => {
     expect(hrefs).toEqual(TRACK_NAVIGATION.find(track => track.id === 'use')!.items.map(item => item.path));
     expect(useTrack.querySelector('a[href="/learn/mcp-clients-compared"]')?.classList).toContain('active');
     expect(container.querySelector('a[href="/learn"]')?.classList).not.toContain('active');
+    // No app destination is active on a guide.
+    expect(container.querySelectorAll('.sidenav-group:not(.content-track-nav) a.active')).toHaveLength(0);
 
     // Every article of every track is still in the DOM in reading order, just hidden when collapsed.
     const allHrefs = Array.from(container.querySelectorAll('.sidenav-sublist a'), link => link.getAttribute('href'));
@@ -201,9 +278,26 @@ describe('SideNav information architecture', () => {
     expect(container.querySelector('a[href="/report"]')).not.toBeNull();
 
     const docs = renderStatic('docs', '/docs/troubleshooting');
+    expect(docs.querySelector('.sidenav-section-toggle')?.getAttribute('aria-expanded')).toBe('true');
     expect(expandedTracks(docs)).toEqual(['reference']);
     expect(docs.querySelector('a[href="/docs/troubleshooting"]')?.classList).toContain('active');
     expect(expandedTracks(renderStatic('docs', '/docs/troubleshooting/'))).toEqual(['reference']);
+  });
+
+  it.each([
+    ['playground', '/', '/'],
+    ['catalog', '/catalog', '/catalog'],
+    ['server-profile', '/servers/example/', '/catalog'],
+    ['breaking-changes', '/tools/breaking-changes', '/tools/breaking-changes'],
+    ['oauth-check', '/tools/oauth-check', '/tools/oauth-check'],
+    ['discovery', '/tools/discovery', '/tools/discovery'],
+    ['report', '/report/example.com', '/report'],
+    ['dashboards', '/space', '/space'],
+  ] as const)('marks only the entry for %s active', (view, path, expected) => {
+    const container = renderStatic(view, path, []);
+    const active = Array.from(container.querySelectorAll('.sidenav-group:not(.content-track-nav) a.active'), link => link.getAttribute('href'));
+    expect(active).toEqual([expected]);
+    expect(container.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
   });
 
   it('renders the footer links in order, with external links opening in a new tab', () => {
@@ -294,15 +388,26 @@ describe('SideNav collapsed desktop mode', () => {
     // Icon-only: groups fold, but every link keeps a name for its tooltip.
     expect(expandedTracks(host)).toEqual([]);
     expect(host.querySelector('.sidenav-dashboards .sidenav-group-toggle')?.getAttribute('aria-expanded')).toBe('false');
-    host.querySelectorAll('.sidenav-group:first-of-type > .sidenav-list > .nav-item > a').forEach(link => {
-      expect(link.getAttribute('title')).toBe(link.textContent?.trim());
+    expect(host.querySelector('.sidenav-section-toggle')?.getAttribute('aria-expanded')).toBe('false');
+    host.querySelectorAll('.sidenav-group:not(.content-track-nav) .sidenav-list > .nav-item > a').forEach(link => {
+      const label = link.textContent?.trim();
+      const item = PRIMARY_NAVIGATION.find(entry => entry.label === label)!;
+      expect(link.getAttribute('title')).toBe(`${label}: ${item.description}`);
     });
+    expect(host.querySelector('.sidenav-section-toggle')?.getAttribute('title')).toBe('Learn');
 
-    // Opening a group from the rail expands the sidebar first.
+    // Opening Learn from the rail expands the sidebar first, with the page's track open.
+    click(host.querySelector('.sidenav-section-toggle'));
+    expect(nav.classList).not.toContain('app-sidenav--collapsed');
+    expect(host.querySelector('.sidenav-section-toggle')?.getAttribute('aria-expanded')).toBe('true');
+    expect(expandedTracks(host)).toEqual(['use']);
+    expect(localStorage.getItem(SIDEBAR_COLLAPSED_KEY)).toBe('false');
+
+    // A track opened from the rail is the only one open.
+    click(toggle);
     click(host.querySelector('.content-track[data-track="build"] .sidenav-group-toggle'));
     expect(nav.classList).not.toContain('app-sidenav--collapsed');
     expect(expandedTracks(host)).toEqual(['build']);
-    expect(localStorage.getItem(SIDEBAR_COLLAPSED_KEY)).toBe('false');
 
     act(() => root?.unmount());
     root = undefined;
@@ -380,6 +485,7 @@ describe('SideNav mobile drawer', () => {
     drawer.remove();
     opener.remove();
     document.body.classList.remove('menu-open');
+    vi.unstubAllEnvs();
   });
 
   const waitForObserver = () => act(async () => {
@@ -387,6 +493,7 @@ describe('SideNav mobile drawer', () => {
   });
 
   it('traps focus while open, closes on Escape and restores focus to the hamburger', async () => {
+    vi.stubEnv('VITE_FIREBASE_AUTH_ENABLED', 'true');
     root = createRoot(drawer);
     act(() => root!.render(
       <MemoryRouter initialEntries={['/']}>
@@ -404,6 +511,14 @@ describe('SideNav mobile drawer', () => {
     const focusable = Array.from(drawer.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled])'))
       .filter(element => !element.closest('[hidden]'));
     expect(document.activeElement).toBe(focusable[0]);
+    // The primary action is the drawer's first control: one tap after opening.
+    expect(focusable[0].getAttribute('href')).toBe('/');
+    expect(focusable[0].classList).toContain('sidenav-link--primary');
+    // Learn is folded on app pages, so the drawer's tab order skips its guide links.
+    expect(focusable.some(element => element.closest('.sidenav-learn-body'))).toBe(false);
+    // Signing in is explained in the drawer too.
+    const signIn = Array.from(drawer.querySelectorAll('button')).find(button => button.textContent === 'Login with Google')!;
+    expect(drawer.querySelector(`#${signIn.getAttribute('aria-describedby')}`)?.textContent).toMatch(/^Optional\. Testing works without an account/);
 
     focusable[focusable.length - 1].focus();
     act(() => {
