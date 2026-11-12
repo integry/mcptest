@@ -7,7 +7,7 @@ level: expert
 order: 23
 category: Authorization
 readingTimeMinutes: 8
-lastReviewed: "2026-10-20"
+lastReviewed: "2026-11-11"
 metaTitle: MCP OAuth 2.1 reference (RFC 9728, 8414, 7636, 7591, 8707) | mcptest.io
 metaDescription: MCP authorization reference with protected resource metadata, authorization server discovery order, PKCE, client ID metadata documents, resource indicators, step-up scopes and RFC 9207.
 relatedSlugs:
@@ -71,12 +71,12 @@ An MCP server MUST publish an RFC 9728 document. The document MUST list at least
 
 | Field | RFC 9728 status | Notes |
 | --- | --- | --- |
-| `resource` | REQUIRED | Must match the URL used to find the document |
+| `resource` | REQUIRED | Must be identical to the resource identifier the well-known URL was built from, or, when the URL came from `WWW-Authenticate`, to the URL the client requested (RFC 9728 section 3.3). Otherwise the client MUST NOT use the document |
 | `authorization_servers` | OPTIONAL in RFC 9728, required by MCP | Issuer identifiers |
 | `scopes_supported` | RECOMMENDED | MCP: the minimal set for basic use |
 | `bearer_methods_supported` | OPTIONAL | `header`, `body`, `query`; MCP clients send the token in the `Authorization` header and never in the query string |
 
-Discovery order for clients:
+A server MUST offer at least one way to find the document: the `resource_metadata` parameter on its `401`, or a well-known URI. Clients MUST support both, in this order:
 
 1. The `resource_metadata` parameter of `WWW-Authenticate` on the `401`, when present.
 2. The path-inserted well-known URI: `https://example.com/.well-known/oauth-protected-resource/public/mcp` for an endpoint at `/public/mcp`.
@@ -87,7 +87,7 @@ HTTP/1.1 401 Unauthorized
 WWW-Authenticate: Bearer resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource/mcp", scope="files:read"
 ```
 
-When several authorization servers are listed, the client chooses. In 2026-07-28 it MUST keep separate client credentials and tokens per authorization server.
+When several authorization servers are listed, the client chooses (RFC 9728 section 7.6). Each one is independent: in 2026-07-28 the client MUST keep separate registration state (client credentials, tokens) per authorization server and MUST NOT assume credentials from one work at another.
 
 ## Authorization server metadata (RFC 8414)
 
@@ -105,37 +105,38 @@ The `issuer` in the document MUST be identical to the issuer used to build the U
 
 - `code_verifier`: 43 to 128 characters from `[A-Za-z0-9-._~]`.
 - `code_challenge = BASE64URL(SHA256(ASCII(code_verifier)))`, sent with `code_challenge_method=S256`.
-- A client that can use `S256` MUST NOT fall back to `plain`.
-- MCP clients MUST verify PKCE support before authorizing. If `code_challenge_methods_supported` is absent, the client MUST refuse to proceed. RFC 8414 says an omitted field means the server does not support PKCE.
+- MCP clients MUST use `S256` when technically capable (OAuth 2.1 section 4.1.1). RFC 7636 section 4.2 allows `plain` only when a client cannot support `S256`.
+- MCP clients MUST verify PKCE support in the authorization server metadata before authorizing. If `code_challenge_methods_supported` is absent, the client MUST refuse to proceed; RFC 8414 says an omitted field means the server does not support PKCE.
+- OpenID Connect Discovery does not define the field, so MCP requires authorization servers that offer OIDC discovery to include it.
 
 ## Client registration
 
 Priority for a client that supports every option:
 
-1. Pre-registered client information for this authorization server.
+1. Pre-registered client information for this authorization server. Clients SHOULD support static credentials, hard-coded or entered by the user.
 2. Client ID Metadata Document, when the authorization server sets `client_id_metadata_document_supported`.
 3. Dynamic Client Registration, when it publishes a `registration_endpoint`.
 4. Ask the user.
 
 | | Client ID Metadata Document | Dynamic Client Registration (RFC 7591) |
 | --- | --- | --- |
-| Status in 2026-07-28 | Recommended (SHOULD) | Deprecated; kept for servers without CIMD |
+| Status in 2026-07-28 | Recommended (SHOULD) | Deprecated (MAY); kept for servers without CIMD |
 | `client_id` | An HTTPS URL with a path that serves the metadata JSON | Issued by the authorization server |
 | Required metadata | `client_id` (equal to the URL), `client_name`, `redirect_uris` | Sent in the registration POST |
 | State per server | None; the ID is portable | One registration per authorization server |
 | Server checks | Fetch the document, match `client_id` and `redirect_uris` | Policy on open registration |
 
-`application_type` (2026-07-28): clients MUST send an appropriate value during dynamic registration. Use `native` for desktop, mobile, CLI and localhost apps, and `web` for remote browser apps. OpenID providers default to `web`, which can reject native redirect URIs.
+`application_type` (2026-07-28): clients MUST send an appropriate value during dynamic registration. Native apps (desktop, mobile, CLI, and web apps served from `localhost`) SHOULD use `native`; browser apps served from a remote host SHOULD use `web`. Under OpenID Connect Dynamic Client Registration an omitted value defaults to `web`, which can conflict with native redirect URIs; non-OIDC servers ignore the parameter.
 
-Credentials are bound to the issuer. Persisted client credentials MUST be keyed by the authorization server's `issuer`, MUST NOT be reused with another authorization server, and require re-registration when it changes. RFC 6749 section 2.2: "The client identifier is unique to the authorization server."
+Credentials are bound to the issuer (2026-07-28). Pre-registered credentials and persisted dynamic-registration credentials MUST be keyed by the authorization server's `issuer` and MUST NOT be reused with another authorization server. When protected resource metadata names a new authorization server, the client MUST re-register; for pre-registered credentials it SHOULD surface an error. A CIMD client ID is portable and needs no re-registration. RFC 6749 section 2.2: "The client identifier is unique to the authorization server."
 
 ## Resource indicators and token audience (RFC 8707)
 
 - The client MUST send `resource` on both the authorization request and the token request, even if the authorization server does not advertise support.
-- The value is the canonical URI of the MCP server: an absolute URI with a scheme and no fragment. Prefer the most specific URI, with a lowercase scheme and host and no trailing slash unless it is meaningful.
+- The value is the canonical URI of the MCP server: an absolute URI with a scheme and no fragment. Clients SHOULD send the most specific URI, without a trailing slash unless it is meaningful. The canonical form has a lowercase scheme and host; implementations SHOULD still accept uppercase.
 - Valid: `https://mcp.example.com/mcp`, `https://mcp.example.com`, `https://mcp.example.com:8443`.
 - Invalid: `mcp.example.com` (no scheme), `https://mcp.example.com#fragment`.
-- The MCP server MUST validate that the token was issued for it (its audience), and MUST answer `401` to invalid or expired tokens.
+- The MCP server MUST validate that the token was issued for it (its audience), and MUST answer `401` to invalid or expired tokens. Clients MUST NOT send it tokens from any other authorization server.
 - An authorization server that rejects the resource answers `invalid_target`.
 
 ## Scopes and step-up on insufficient_scope
@@ -159,20 +160,20 @@ Clients acting for a user SHOULD re-authorize with the union of scopes already r
 
 - Authorization servers MUST rotate refresh tokens issued to public clients and SHOULD issue short-lived access tokens.
 - Clients MUST keep refresh tokens confidential, SHOULD list `refresh_token` in `grant_types`, and MUST NOT assume one will be issued.
-- Clients MAY request `offline_access` when the authorization server lists it. MCP servers SHOULD NOT put it in challenges or `scopes_supported`.
+- Clients MAY request `offline_access` when the authorization server metadata lists it in `scopes_supported`. MCP servers SHOULD NOT put it in challenges or in protected resource `scopes_supported`.
 
 ## Issuer validation (RFC 9207)
 
-2026-07-28. Before redirecting, the client records the issuer with the PKCE verifier and `state`. On the callback:
+2026-07-28. Authorization servers SHOULD include `iss` in authorization responses, including error responses; those that do MUST set `authorization_response_iss_parameter_supported: true`. Before redirecting, the client MUST record the `issuer` from the validated metadata with the PKCE verifier and `state`. On the callback, before sending the code to any token endpoint:
 
 | `authorization_response_iss_parameter_supported` | `iss` present | Action |
 | --- | --- | --- |
-| `true` | Yes | Compare by exact string |
+| `true` | Yes | Compare by simple string comparison |
 | `true` | No | Reject |
-| `false` or absent | Yes | Compare by exact string |
+| `false` or absent | Yes | Compare by simple string comparison |
 | `false` or absent | No | Proceed |
 
-There is no normalization before the comparison. On a mismatch, the client MUST NOT act on or display `error`, `error_description` or `error_uri`. This blocks mix-up attacks between authorization servers.
+After form-decoding `iss`, apply no case folding, default-port elision, trailing-slash or percent-encoding normalization. On a mismatch, the client MUST NOT act on or display `error`, `error_description` or `error_uri`. This blocks mix-up attacks between authorization servers.
 
 ## Confused deputy
 
@@ -183,7 +184,12 @@ The attack described in the [security best practices](https://modelcontextprotoc
 3. An attacker registers a client with their own `redirect_uri` and sends the user a link.
 4. The cookie skips the consent screen, and the authorization code goes to the attacker.
 
-Required mitigations: a per-client consent screen run by the proxy before the third-party flow, showing the client name, scopes and `redirect_uri`, with CSRF protection and framing blocked. Consent cookies must be `__Host-`, `Secure`, `HttpOnly`, `SameSite=Lax`, signed and bound to the client ID. `redirect_uri` must match exactly, and `state` must be single-use and short-lived.
+An MCP proxy server that uses a static client ID MUST obtain the user's consent for each dynamically registered client before forwarding to the third-party authorization server. The best practices spell out the required controls (MUST):
+
+- A per-client consent screen run by the proxy before the third-party flow. It names the client, shows the third-party scopes and the registered `redirect_uri`, has CSRF protection, and blocks framing (`frame-ancestors` or `X-Frame-Options: DENY`).
+- Consent cookies use the `__Host-` prefix, `Secure`, `HttpOnly` and `SameSite=Lax`, are cryptographically signed (or replaced by server-side sessions), and are bound to the client ID.
+- `redirect_uri` matches the registered value by exact string.
+- `state` is random, stored only after consent, single-use and short-lived.
 
 ## Token passthrough
 

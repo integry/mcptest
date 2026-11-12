@@ -5,47 +5,69 @@ track: use
 level: practitioner
 order: 3
 category: Authorization
-readingTimeMinutes: 10
-lastReviewed: 2026-08-17
+readingTimeMinutes: 12
+lastReviewed: "2026-11-11"
 relatedSlugs:
   - connect-remote-mcp-server
   - designing-production-mcp-server
 sourceLinks:
+  - title: "MCP specification 2026-07-28: Authorization"
+    url: "https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization"
+  - title: "MCP specification 2026-07-28: Authorization server discovery"
+    url: "https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization/authorization-server-discovery"
+  - title: "MCP specification 2026-07-28: Client registration"
+    url: "https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization/client-registration"
+  - title: "MCP specification 2026-07-28: Authorization security considerations"
+    url: "https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization/security-considerations"
   - title: "MCP specification: Authorization (2025-11-25)"
     url: "https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization"
-  - title: "MCP draft: Client registration approaches"
-    url: "https://modelcontextprotocol.io/specification/draft/basic/authorization"
   - title: "RFC 9728: OAuth 2.0 Protected Resource Metadata"
     url: "https://www.rfc-editor.org/rfc/rfc9728"
   - title: "RFC 8414: OAuth 2.0 Authorization Server Metadata"
     url: "https://www.rfc-editor.org/rfc/rfc8414"
   - title: "RFC 7636: PKCE"
     url: "https://www.rfc-editor.org/rfc/rfc7636"
+  - title: "RFC 9207: Authorization Server Issuer Identification"
+    url: "https://www.rfc-editor.org/rfc/rfc9207"
   - title: MCP 2026-07-28 authorization changes
     url: "https://blog.modelcontextprotocol.io/posts/2026-07-28/"
+  - title: "Cloudflare workers-oauth-provider"
+    url: "https://github.com/cloudflare/workers-oauth-provider"
 ---
 ## The actors
 
-A remote MCP deployment commonly involves four parties: the user, an MCP host/client, the MCP server acting as an OAuth protected resource, and an authorization server that authenticates the user and issues tokens. The MCP server and authorization server may share a domain, but the protocol does not require them to be the same service.
+A remote MCP deployment usually involves four parties:
 
-OAuth answers **who may access which protected resource with which scopes**. It does not decide whether a model should invoke a destructive tool. Clients still need understandable tool descriptions, user consent, and confirmation policy.
+- **The user**, who signs in and approves access.
+- **The MCP client** (inside a host app such as Claude or VS Code), which makes requests.
+- **The MCP server**, which in OAuth terms is a protected resource.
+- **The authorization server**, which signs the user in and issues tokens.
+
+The MCP server and the authorization server may share a domain, but they do not have to be the same service.
+
+OAuth decides **who may access which protected resource, with which [scopes](/learn/mcp-glossary#scope)**. It does not decide whether a model should run a destructive tool. Clients still need clear tool descriptions, user consent and confirmation rules.
+
+This page walks through the sequence. The [MCP OAuth 2.1 reference](/learn/mcp-oauth-2-1-reference) lists the exact rules and fields. Requirements here follow MCP 2026-07-28 unless a version is named.
 
 ## The sequence, step by step
 
 ### 1. MCP request and `401` challenge
 
-The client attempts an MCP request without a usable token. The MCP server responds with HTTP `401 Unauthorized` and a Bearer `WWW-Authenticate` challenge. When present, its `resource_metadata` parameter gives the protected-resource metadata URL; `scope` can state what the current request needs.
+The client sends an MCP request without a usable token. The server answers HTTP `401 Unauthorized` with a Bearer `WWW-Authenticate` challenge:
 
 ```http
 HTTP/1.1 401 Unauthorized
-WWW-Authenticate: Bearer resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource", scope="files:read"
+WWW-Authenticate: Bearer resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource/mcp", scope="files:read"
 ```
 
-A client must parse the challenge rather than scraping an error body. If `resource_metadata` is absent, current MCP rules define well-known URL fallbacks based on the MCP endpoint.
+- `resource_metadata` gives the URL of the protected resource metadata document. A server must either send it here or serve the document at a well-known URL.
+- `scope` says what the request needs. Servers should include it.
+
+The client must parse this header rather than read an error body. If `resource_metadata` is missing, the client tries the well-known URLs in order: first the path form (`/.well-known/oauth-protected-resource/mcp` for an endpoint at `/mcp`), then the root (`/.well-known/oauth-protected-resource`).
 
 ### 2. Protected-resource metadata
 
-The client fetches the RFC 9728 document. Its `resource` identifies the MCP resource and `authorization_servers` lists issuers that may authorize access. The client validates URLs and chooses an appropriate issuer; it must not assume the MCP origin is also the issuer.
+The client fetches the [protected resource metadata](/learn/mcp-glossary#protected-resource-metadata) document (RFC 9728):
 
 ```json
 {
@@ -55,26 +77,40 @@ The client fetches the RFC 9728 document. Its `resource` identifies the MCP reso
 }
 ```
 
+- `resource` identifies the MCP server.
+- `authorization_servers` lists the issuers that can authorize access. MCP requires at least one.
+
+The client validates these URLs and picks an issuer. It must not assume the MCP server's origin is also the issuer. If several issuers are listed, the client keeps separate client credentials and tokens for each.
+
 ### 3. Authorization-server metadata
 
-The client fetches OAuth Authorization Server Metadata (RFC 8414) and, where applicable, OpenID Connect discovery. It obtains the authorization endpoint, token endpoint, supported PKCE methods, scopes, and client-registration capabilities. Issuer validation matters: accepting metadata or tokens for the wrong issuer enables mix-up and token-redirection attacks.
+Next the client fetches the issuer's metadata. MCP clients must support both OAuth Authorization Server Metadata (RFC 8414) and OpenID Connect Discovery. For an issuer without a path, they try `/.well-known/oauth-authorization-server`, then `/.well-known/openid-configuration`. Issuers with a path have a three-step order, listed in the [reference](/learn/mcp-oauth-2-1-reference#authorization-server-metadata-rfc-8414).
 
-MCP clients must verify PKCE support and use `S256` when technically capable. If the relevant metadata does not advertise a supported code challenge method, the client should stop instead of silently downgrading.
+The document gives the authorization endpoint, token endpoint, supported PKCE methods, scopes and registration options. Two checks protect against attacks that swap one authorization server for another (mix-up attacks):
+
+- The `issuer` in the document must be identical to the issuer the client used to build the URL. Otherwise the client must not use the metadata.
+- The client must check for [PKCE](/learn/mcp-glossary#pkce) support. If `code_challenge_methods_supported` is missing, the client must refuse to continue. If `S256` is available, the client must use it and must not fall back to `plain`.
 
 ### 4. Establish client identity
 
-A client ID tells the authorization server which software is asking; it is not proof of the user. Current MCP guidance recognizes these paths, in priority order when supported:
+A client ID tells the authorization server which software is asking. It does not prove who the user is. MCP lists four ways to get one, in this order of preference:
 
 1. **Pre-registered client information** already configured for that issuer.
-2. **Client ID Metadata Documents (CIMD)**, where an HTTPS URL serves as the client ID and describes redirect URIs and other metadata. The 2026 specification direction prefers CIMD.
-3. **Dynamic Client Registration (DCR)** using an advertised registration endpoint. DCR remains a compatibility mechanism and the 2026 release marks it deprecated in favor of CIMD.
-4. **Manual client information** entered after someone registers the client with the authorization server.
+2. **A Client ID Metadata Document (CIMD).** The client ID is an HTTPS URL that serves a JSON document describing the client, including its redirect URIs. Clients use it when the issuer advertises `client_id_metadata_document_supported`. MCP 2026-07-28 recommends this option.
+3. **[Dynamic Client Registration](/learn/mcp-glossary#dynamic-client-registration) (DCR, RFC 7591)**, when the issuer publishes a `registration_endpoint`. MCP 2026-07-28 deprecates DCR and keeps it for servers that do not support CIMD. A client that registers this way must send an `application_type`: `native` for desktop, mobile and CLI apps, `web` for browser apps.
+4. **Asking the user** to enter client information, after someone registers the client with the authorization server.
 
-Credentials obtained through DCR or manual registration must be bound to the issuer. Do not reuse a client ID/secret when protected-resource metadata changes to a different authorization server.
+Pre-registered and DCR credentials belong to one issuer. Store them keyed by the issuer, and register again if the protected resource metadata starts pointing to a different authorization server. A CIMD client ID is a URL, so it works with any server that supports CIMD.
 
 ### 5. Authorization code plus PKCE
 
-The client creates a high-entropy `code_verifier`, derives an `S256` `code_challenge`, stores state, and opens the authorization endpoint. MCP requires the `resource` parameter in both authorization and token requests so the token is bound to the intended MCP server. The user authenticates and approves scopes.
+The client:
+
+1. creates a random, high-entropy `code_verifier` and derives an `S256` `code_challenge` from it;
+2. records the `state`, the verifier and the expected issuer;
+3. opens the authorization endpoint in a browser.
+
+MCP requires the `resource` parameter (a [resource indicator](/learn/mcp-glossary#resource-indicator), RFC 8707) in both the authorization request and the token request. It binds the token to this MCP server. The user signs in and approves the scopes.
 
 A simplified authorization request contains:
 
@@ -89,50 +125,80 @@ resource=https://mcp.example.com/mcp
 scope=files:read
 ```
 
-The client verifies returned state and, in current protocol guidance, validates issuer information when supplied before redeeming the code. Desktop and CLI clients commonly use a loopback callback. The exact callback must satisfy the authorization server's registration rules.
+For `scope`, clients should use the `scope` from the `401` challenge. Without one, they request everything in `scopes_supported`; without that, they omit `scope`.
+
+When the browser returns to the callback, the client checks `state`. It then checks the issuer (RFC 9207) before it uses the code:
+
+- If the callback has an `iss` parameter, it must exactly match the expected issuer.
+- If the server's metadata sets `authorization_response_iss_parameter_supported: true` and `iss` is missing, the client rejects the response.
+
+Desktop and CLI clients usually use a loopback callback such as `http://127.0.0.1:<port>/...`. The exact callback must satisfy the authorization server's registration rules.
 
 ### 6. Token exchange
 
-The client sends the code, original verifier, redirect URI, client identity, and resource to the token endpoint. A public desktop or CLI client cannot keep a global embedded secret confidential; PKCE protects the code exchange. A confidential web client can also authenticate with its registered method.
+The client sends the code, the original `code_verifier`, the redirect URI, its client identity and `resource` to the token endpoint.
 
-The authorization server returns an access token and may return a refresh token. The client stores them using platform-appropriate secure storage, observes expiration, and rotates refresh tokens when required. Tokens must not be logged or exposed to the model.
+A desktop or CLI client is a public client: a secret shipped inside it would not stay secret, so PKCE protects the exchange instead. A confidential web client can also authenticate with its registered method.
+
+The authorization server returns an access token and may return a refresh token. The client must not assume a refresh token will be issued. For public clients, the authorization server must rotate refresh tokens, so the client must store each new refresh token it receives. Keep tokens in platform-appropriate secure storage, respect their expiry, and never log them or show them to the model.
 
 ### 7. Authenticated MCP request
 
-The client retries the MCP request with `Authorization: Bearer <access-token>`. The MCP server validates signature or introspection result, issuer, audience/resource, expiration, and scope. A valid token intended for some other API must be rejected.
+The client retries the MCP request with `Authorization: Bearer <access-token>`. The MCP server checks the token's signature or introspection result, issuer, audience (`resource`), expiry and scope. It must reject a token issued for another API, and must answer `401` to an invalid or expired token. It must not forward the client's token to upstream APIs.
 
-If a later request needs more privilege, another `401` challenge may request additional scope. The client should preserve already granted scopes, ask for the minimum increment, and make the step-up visible to the user.
+If a later request needs more access, the server should answer `403 Forbidden` with `error="insufficient_scope"` and the needed scopes:
+
+```http
+HTTP/1.1 403 Forbidden
+WWW-Authenticate: Bearer error="insufficient_scope", scope="files:read files:write", resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource/mcp"
+```
+
+The client should then authorize again, requesting the challenged scopes together with the scopes it already holds. It should limit the number of attempts and make the extra request visible to the user. The server should name every scope the operation needs in one challenge, so the user is asked only once.
 
 ## When manual client credentials are actually needed
 
-Manual values are appropriate when an enterprise identity provider requires administrators to pre-register every application; when redirect URIs must be allowlisted before use; when the authorization server supports neither CIMD nor DCR; or when a client/server partnership intentionally uses a pre-agreed confidential client.
+Manual client information is the right choice when:
 
-They are not a universal prerequisite for MCP OAuth. Asking every user to create an OAuth application is often a sign that automatic client identity is unavailable or misconfigured. Before showing a client-ID form, inspect authorization-server metadata for CIMD support and `registration_endpoint`, and check whether the client ships issuer-specific registration.
+- an enterprise identity provider requires administrators to pre-register every application;
+- redirect URIs must be allowlisted before use;
+- the authorization server supports neither CIMD nor DCR;
+- a client and server intentionally use a pre-agreed confidential client.
 
-A client secret is especially easy to misuse. A secret distributed inside a desktop binary, CLI package, or public configuration is not secret. Treat such clients as public clients and rely on PKCE unless the provider has a defensible platform-specific mechanism.
+It is not a general requirement of MCP OAuth. If every user is asked to create an OAuth application, automatic client identity is probably unavailable or misconfigured. Before showing a client ID form, a client should check the authorization-server metadata for CIMD support and a `registration_endpoint`, and check whether it ships a pre-registration for that issuer.
+
+Client secrets are easy to misuse. A secret inside a desktop app, CLI package or public configuration is not secret. Treat those clients as public clients and rely on PKCE, unless the provider offers a sound platform-specific mechanism.
 
 ## Failure map
 
 | Failure | Evidence | Likely correction |
 | --- | --- | --- |
-| No authorization server found | Missing/invalid resource metadata | Fix `WWW-Authenticate` and RFC 9728 well-known routes |
-| PKCE unsupported | Metadata lacks usable `code_challenge_methods_supported` | Configure `S256`; do not downgrade |
-| `invalid_redirect_uri` | Registration and actual callback differ | Register the exact callback; set correct native/web application type |
-| `invalid_client` | Wrong issuer binding, registration, or auth method | Re-register for this issuer; verify client authentication |
-| Code exchange fails | State/verifier/redirect mismatch or expired code | Keep transaction state intact; use the original verifier and callback |
-| MCP rejects a fresh token | Wrong resource/audience, issuer, or scope | Include `resource` in both requests and validate token claims |
-| Refresh works once only | Rotation not persisted | Atomically store the newly returned refresh token |
-| `403` from a tool | Authenticated but operation forbidden | Inspect application permission and tool result; do not restart OAuth blindly |
+| No authorization server found | Missing or invalid resource metadata | Fix `WWW-Authenticate` and the RFC 9728 well-known routes |
+| Metadata ignored | `issuer` differs from the URL used to fetch it | Publish an `issuer` identical to the advertised authorization server, including any trailing slash |
+| PKCE unsupported | Metadata has no usable `code_challenge_methods_supported` | Configure and advertise `S256`; do not downgrade |
+| `invalid_redirect_uri` | Registered and actual callback differ | Register the exact callback; set the right `application_type` |
+| `invalid_client` | Wrong issuer binding, registration or auth method | Register again for this issuer; check client authentication |
+| Callback rejected | Missing or mismatched `iss` | Return the correct `iss`, or stop advertising support for it |
+| Code exchange fails | State, verifier or redirect mismatch, or expired code | Keep transaction state intact; use the original verifier and callback |
+| `invalid_target` | Authorization server rejects `resource` | Accept the published MCP resource as an audience; do not drop the parameter |
+| MCP rejects a fresh token | Wrong audience, issuer or scope | Send `resource` in both requests and validate token claims |
+| Refresh works once only | Rotated refresh token not saved | Store the newly returned refresh token atomically |
+| `403` with `insufficient_scope` | Token valid but lacks a scope | Authorize again for the existing plus challenged scopes |
+| Bare `403` from a tool | Signed in but operation forbidden | Check application permissions and the tool result; do not restart OAuth |
 
-Log the sequence as redacted events: challenge source, metadata URLs, selected issuer, registration path, requested scopes, callback validation, token status, and authenticated retry. This is enough to debug interoperability without recording codes, verifiers, tokens, secrets, or personal authorization-page data.
+Log the sequence as redacted events: challenge source, metadata URLs, selected issuer, registration path, requested scopes, callback validation, token status and the authenticated retry. That is enough to debug most interoperability problems without recording codes, verifiers, tokens, secrets or personal data from the sign-in page.
 
 ## Read-only OAuth checks and fixes
 
-The free [MCP OAuth checker](/tools/oauth-check) follows steps 1–5 above without registering a client, sending credentials or opening authorization. Each request has a URL and evidence. A failed path probe can be followed by a successful root or OIDC fallback; judge the validation rows, not an individual fallback's 404. “Clients can start OAuth” means the metadata is ready, not that login or token exchange was verified. Continue with **Open in inspector** to test a real connection.
+The free [MCP OAuth checker](/tools/oauth-check) runs the discovery steps (1 to 4) and checks PKCE support and callback expectations from step 5. It does not register a client, send credentials or open the sign-in page. Each row shows the request URL and its evidence.
 
-For “failed to discover OAuth metadata,” serve public JSON and check the issuer-path rules in the [OAuth reference](/learn/mcp-oauth-2-1-reference#sequence-at-a-glance). For “protected resource does not match expected,” fix the published `resource` to match the MCP audience, using the [resource mismatch guide](/learn/mcp-oauth-protected-resource-mismatch). Do not replace an access-blocked metadata URL with guessed endpoints.
+How to read the result:
 
-For example, these are the discovery response shapes for `https://mcp.example.com/mcp` and issuer `https://auth.example.com`:
+- A failed path probe can be followed by a successful root or OIDC fallback. Judge the validation rows, not one fallback's `404`.
+- "Clients can start OAuth" means the metadata is ready. It does not mean sign-in or token exchange was tested. Select **Open in inspector** to test a real connection.
+
+For "failed to discover OAuth metadata", serve public JSON and check the issuer-path rules in the [OAuth reference](/learn/mcp-oauth-2-1-reference#sequence-at-a-glance). For "protected resource does not match expected", make the published `resource` match the MCP server's audience; see the [resource mismatch guide](/learn/mcp-oauth-protected-resource-mismatch). If a metadata URL is blocked, fix the access rather than guessing other endpoints.
+
+For example, these are the discovery responses for an MCP server at `https://mcp.example.com/mcp` with issuer `https://auth.example.com`:
 
 ```json
 {
@@ -141,7 +207,7 @@ For example, these are the discovery response shapes for `https://mcp.example.co
 }
 ```
 
-Serve that at `/.well-known/oauth-protected-resource/mcp` (or advertise its location in the 401 challenge). The issuer's `/.well-known/oauth-authorization-server` should advertise real endpoints and capabilities your server implements:
+Serve that at `/.well-known/oauth-protected-resource/mcp`, or give its location in the `401` challenge. The issuer's `/.well-known/oauth-authorization-server` should list only endpoints and features it really implements:
 
 ```json
 {
@@ -156,9 +222,9 @@ Serve that at `/.well-known/oauth-protected-resource/mcp` (or advertise its loca
 }
 ```
 
-Only advertise CIMD or a `registration_endpoint` when implemented. DCR advertising does not prove arbitrary clients will be accepted: Dropbox, Harness and ZoomInfo rejected registration in the recorded sweep under partner/vendor policies. GitHub requires a configured confidential client. These are client-mode restrictions, not automatically missing discovery metadata.
+Advertise CIMD or a `registration_endpoint` only when it works. An advertised registration endpoint does not mean every client will be accepted. In mcptest's October 2026 catalog sweep, Dropbox, Harness and ZoomInfo rejected registration under partner or vendor approval policies. GitHub's remote server does not support DCR: it needs a pre-registered GitHub App or OAuth App, or a personal access token. These are policy limits on client registration, not missing discovery metadata.
 
-TypeScript SDK applications can serve the challenge from their HTTP auth middleware (replace the example origin with the deployment origin):
+TypeScript SDK applications can send the challenge from their HTTP auth middleware. Replace the example origin with your deployment's origin:
 
 ```typescript
 res.setHeader('Access-Control-Allow-Origin', '*');
@@ -168,7 +234,7 @@ res.setHeader('WWW-Authenticate',
 res.status(401).end();
 ```
 
-Python SDK applications can return the same challenge in their ASGI authentication layer:
+Python SDK applications can return the same challenge from their ASGI authentication layer:
 
 ```python
 from starlette.responses import Response
@@ -180,16 +246,15 @@ return Response(status_code=401, headers={
 })
 ```
 
-For Cloudflare `workers-oauth-provider`, check the resource metadata exposed by the wrapper and use an equivalent response for rejected unauthenticated MCP requests:
+Cloudflare's `workers-oauth-provider` sends the challenge and publishes the RFC 9728 document itself once you configure `resourceMetadata`. Set `resource` to the exact MCP URL clients use:
 
 ```typescript
-return new Response(null, { status: 401, headers: {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Expose-Headers': 'WWW-Authenticate',
-  'WWW-Authenticate': 'Bearer resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource/mcp"',
-} });
+resourceMetadata: {
+  resource: 'https://mcp.example.com/mcp',
+  authorization_servers: ['https://auth.example.com'],
+},
 ```
 
-These snippets describe HTTP responses, not complete authorization implementations. Keep PKCE validation, audience enforcement and token validation in the auth provider. See the [Cloudflare deployment guide](/learn/remote-mcp-server-with-cloudflare-workers-agents) or the integration guides for [Auth0](/learn/secure-remote-mcp-server-with-auth0), [Clerk](/learn/secure-remote-mcp-server-with-clerk), [WorkOS](/learn/secure-remote-mcp-server-with-workos-authkit) and [Stytch](/learn/secure-remote-mcp-server-with-stytch).
+These snippets cover HTTP responses, not a complete authorization server. Keep PKCE validation, audience checks and token validation in your auth provider. See the [Cloudflare deployment guide](/learn/remote-mcp-server-with-cloudflare-workers-agents) or the integration guides for [Auth0](/learn/secure-remote-mcp-server-with-auth0), [Clerk](/learn/secure-remote-mcp-server-with-clerk), [WorkOS](/learn/secure-remote-mcp-server-with-workos-authkit) and [Stytch](/learn/secure-remote-mcp-server-with-stytch).
 
-Redirect allow-lists are not discoverable metadata. Compare the callbacks in the checker with the provider's configuration, including Claude, ChatGPT's callback-specific variant, Cursor's hosted callback and both VS Code loopback and `vscode.dev` callbacks. Follow the [VS Code redirect guide](/learn/vscode-mcp-oauth-redirect-uris); exact callback acceptance remains unverified until connection.
+Redirect allowlists are not part of discoverable metadata. Compare the callbacks the checker lists with your provider's configuration. Include Claude's callback, ChatGPT's callback variants, Cursor's localhost and hosted callbacks, and both VS Code callbacks (loopback and `vscode.dev`). See the [VS Code redirect guide](/learn/vscode-mcp-oauth-redirect-uris). Whether a provider accepts a callback is confirmed only by a real connection.

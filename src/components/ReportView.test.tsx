@@ -365,7 +365,7 @@ describe('ReportView OAuth discovery', () => {
     });
 
     const runButton = Array.from(container.querySelectorAll('button')).find(
-      (button) => button.textContent?.includes('Run Report')
+      (button) => button.textContent?.includes('Run report')
     );
     await act(async () => {
       runButton?.click();
@@ -413,7 +413,7 @@ describe('ReportView OAuth discovery', () => {
     });
 
     const runButton = Array.from(container.querySelectorAll('button')).find(
-      (button) => button.textContent?.includes('Run Report')
+      (button) => button.textContent?.includes('Run report')
     );
     await act(async () => {
       runButton?.click();
@@ -499,7 +499,7 @@ describe('ReportView OAuth discovery', () => {
     });
 
     const runButton = Array.from(container.querySelectorAll('button')).find(
-      (button) => button.textContent?.includes('Run Report')
+      (button) => button.textContent?.includes('Run report')
     );
     await act(async () => {
       runButton?.click();
@@ -610,7 +610,7 @@ describe('ReportView OAuth discovery', () => {
     });
 
     const runButton = Array.from(container.querySelectorAll('button')).find(
-      (button) => button.textContent?.includes('Run Report')
+      (button) => button.textContent?.includes('Run report')
     );
     await act(async () => {
       runButton?.click();
@@ -712,7 +712,7 @@ describe('ReportView OAuth discovery', () => {
       input.dispatchEvent(new Event('input', { bubbles: true }));
     });
     const run = Array.from(container.querySelectorAll('button')).find((button) => (
-      button.textContent?.includes('Run Report')
+      button.textContent?.includes('Run report')
     ));
     expect(run).toBeDefined();
     await act(async () => run?.click());
@@ -770,7 +770,7 @@ describe('ReportView OAuth discovery', () => {
     });
 
     const runButton = Array.from(container.querySelectorAll('button')).find(
-      (button) => button.textContent?.includes('Run Report')
+      (button) => button.textContent?.includes('Run report')
     );
     await act(async () => {
       runButton?.click();
@@ -854,7 +854,7 @@ describe('ReportView OAuth discovery', () => {
     });
 
     const runButton = Array.from(container.querySelectorAll('button')).find(
-      (button) => button.textContent?.includes('Run Report')
+      (button) => button.textContent?.includes('Run report')
     );
     await act(async () => {
       runButton?.click();
@@ -886,7 +886,7 @@ describe('ReportView OAuth discovery', () => {
     });
 
     const runButton = Array.from(container.querySelectorAll('button')).find(
-      (button) => button.textContent?.includes('Run Report')
+      (button) => button.textContent?.includes('Run report')
     );
     await act(async () => {
       runButton?.click();

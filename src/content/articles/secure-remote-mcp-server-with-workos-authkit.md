@@ -6,8 +6,8 @@ track: "build"
 level: "practitioner"
 order: 406
 category: "Authorization"
-readingTimeMinutes: 6
-lastReviewed: "2026-10-24"
+readingTimeMinutes: 7
+lastReviewed: "2026-11-11"
 metaTitle: "MCP authorization with WorkOS | mcptest.io"
 metaDescription: "Configure WorkOS AuthKit and Connect for MCP with CIMD, resource indicators, protected resource metadata and exact JWT audience checks, then test OAuth on mcptest.io."
 relatedSlugs:
@@ -22,35 +22,57 @@ sourceLinks:
     url: "https://workos.com/docs/authkit/mcp"
   - title: "WorkOS: Connect overview"
     url: "https://workos.com/docs/authkit/connect"
+  - title: "WorkOS: Connect OAuth applications"
+    url: "https://workos.com/docs/authkit/connect/oauth"
+  - title: "WorkOS: Connect authorize endpoint and scopes"
+    url: "https://workos.com/docs/reference/workos-connect/authorize"
   - title: "WorkOS: resource indicators announcement"
     url: "https://workos.com/changelog/resource-indicators-for-mcp-auth"
   - title: "WorkOS: CIMD support announcement"
     url: "https://workos.com/changelog/client-id-metadata-support-for-mcp-auth"
 ---
 
-WorkOS AuthKit can provide the authorization server for your MCP service through **Connect**. AuthKit's normal sign-in establishes who is using your app; Connect handles a third-party client's delegated access. Your MCP server is still the resource server, responsible for validating access tokens and authorizing tools.
+WorkOS AuthKit can act as the authorization server for your MCP server. The feature that does this is **Connect**: it lets third-party apps, including MCP clients, get delegated access to your users. AuthKit signs users in and issues tokens. Your MCP server is the resource server: it validates every access token and decides what each tool may do.
 
-This guide focuses on those provider settings, checked on **24 October 2026**. The complete protocol rules live in the [OAuth 2.1 reference](/learn/mcp-oauth-2-1-reference), while [authentication patterns](/learn/mcp-server-authentication-patterns) explains where to put the verifier.
+This guide covers the WorkOS settings. It was checked against the [WorkOS MCP guide](https://workos.com/docs/authkit/mcp) on **11 November 2026**. For the protocol rules, see the [OAuth 2.1 reference](/learn/mcp-oauth-2-1-reference). For where to put the token check, see [authentication patterns](/learn/mcp-server-authentication-patterns).
 
-## Enable MCP onboarding in the right environment
+## Before you start
 
-Use the WorkOS environment and AuthKit domain corresponding to the data your MCP tools expose. In its MCP configuration, enable CIMD onboarding for clients that publish an HTTPS client metadata document. Enable DCR for older clients when needed. [WorkOS's CIMD announcement](https://workos.com/changelog/client-id-metadata-support-for-mcp-auth) explains that Connect supports both; the older announcement's contact-support instructions are historical, so follow the current MCP dashboard documentation for your environment.
+- A WorkOS environment with AuthKit set up. Use a staging environment and test data while you wire this up.
+- Your AuthKit domain, for example `https://youthful-ginger-43.authkit.app`. It is the issuer.
+- The exact public URL of your MCP endpoint, for example `https://mcp.example.com/mcp`. You will use this one string as the resource indicator, the metadata `resource` and the token audience.
+- An MCP server that can verify JWTs, such as the [Hono example](/learn/remote-mcp-server-with-hono).
 
-Discover the actual issuer's `/.well-known/oauth-authorization-server` document. Confirm it advertises `S256`, the authorization-code flow, token endpoint methods and your intended client registration path. Do not hardcode another environment's registration URL or copy a client secret into a browser tester.
+## Step 1: Enable client registration
 
-[Connect's overview](https://workos.com/docs/authkit/connect) distinguishes user OAuth applications from machine-to-machine integrations. A `client_credentials` integration represents a different actor and does not stand in for an interactive user's consent flow. For a manually registered client, choose a public-client configuration appropriate to the host; if that is unavailable in your environment, use the supported MCP onboarding route or a compatible server-side host.
+MCP clients usually have no client ID for your server in advance. They get one in one of two ways:
 
-## Register the MCP resource URL
+- **Client ID Metadata Document (CIMD).** The client ID is an HTTPS URL that serves the client's metadata. This is what the MCP specification recommends.
+- **[Dynamic client registration](/learn/mcp-glossary#dynamic-client-registration) (DCR).** The client registers itself with a POST. The specification now deprecates it, but many clients still use it.
 
-Add the exact MCP endpoint as a **Resource Indicator**, for example `https://mcp.example.com/mcp`, in the WorkOS dashboard. [WorkOS's MCP guide](https://workos.com/docs/authkit/mcp) says issued `aud` matches the requested configured resource. With no Resource Indicators configured, the provider can ignore `resource` and issue the environment client ID as audience instead. That is a configuration trap: do not loosen your verifier to accept the environment ID just to make the flow succeed.
+In the WorkOS Dashboard, open **Connect → Configuration** and enable CIMD. It is off by default. Enable DCR there too if you need to support clients that do not implement CIMD yet.
 
-Use explicit resource URLs for development and production. Start with exact URLs rather than a wildcard, then verify a token obtained for development fails at production. [WorkOS announced resource indicators in May 2026](https://workos.com/changelog/resource-indicators-for-mcp-auth); an older integration may still be using the earlier audience behavior.
+WorkOS's [CIMD changelog entry](https://workos.com/changelog/client-id-metadata-support-for-mcp-auth) (30 November 2025) still ends with "Contact us to get started". The current MCP guide documents CIMD as a dashboard setting instead, so follow the guide.
 
-If you set a default Resource Indicator for clients that omit `resource`, confirm its effect on new grants and refresh flows using the current docs. Existing authorizations can retain their old audience. Reauthorize your test client after changing resource configuration rather than diagnosing a stale token as a verifier bug.
+You can also create an OAuth application by hand under Connect. OAuth applications are confidential by default. For a browser or desktop client that cannot keep a secret, mark the application **Public** when you create it. Public applications must use [PKCE](/learn/mcp-glossary#pkce). Do not use an M2M application for this: it uses the `client_credentials` grant, which acts for an organization, not for a signed-in user.
 
-## Publish the resource's metadata
+## Step 2: Register the MCP server URL as a resource indicator
 
-Serve this complete JSON document at `https://mcp.example.com/.well-known/oauth-protected-resource/mcp`, replacing the example endpoint and issuer with your deployment values:
+1. In the WorkOS Dashboard, add your exact MCP endpoint, `https://mcp.example.com/mcp`, as a **Resource Indicator**.
+2. Add separate entries for development and production URLs.
+3. Optional: open the **…** menu next to an entry and choose **Set as default**.
+
+MCP clients send this URL as the [`resource` parameter](/learn/mcp-glossary#resource-indicator). WorkOS then issues access tokens whose `aud` claim equals the requested resource.
+
+**If you configure no resource indicators,** WorkOS ignores `resource` and sets `aud` to the environment's client ID. Your verifier will then reject the tokens, which is correct. Fix the dashboard setting; do not loosen the verifier to accept the client ID.
+
+**The default indicator** applies only to CIMD and DCR clients that omit `resource`. Hand-created OAuth and M2M applications never use it. Existing grants keep their old audience, and so do tokens refreshed from them. After you change resource settings, authorize your test client again.
+
+WorkOS also supports wildcard indicators, such as `https://*.preview.example.com/mcp`. Start with exact URLs. Then confirm that a token issued for development is rejected by production.
+
+## Step 3: Publish protected resource metadata
+
+Serve this JSON at `https://mcp.example.com/.well-known/oauth-protected-resource/mcp`. Replace the endpoint and the AuthKit domain with your own values:
 
 ```json
 {
@@ -59,7 +81,9 @@ Serve this complete JSON document at `https://mcp.example.com/.well-known/oauth-
     "https://YOUR-APP.authkit.app"
   ],
   "scopes_supported": [
-    "profile"
+    "openid",
+    "profile",
+    "email"
   ],
   "bearer_methods_supported": [
     "header"
@@ -67,51 +91,106 @@ Serve this complete JSON document at `https://mcp.example.com/.well-known/oauth-
 }
 ```
 
-Make that GET route public. On an unauthenticated `/mcp` request, return `401` and a `WWW-Authenticate` Bearer challenge whose `resource_metadata` points to that document. The MCP server owns this document; the provider owns the authorization-server discovery document. Do not put a client secret or a registration endpoint into protected resource metadata.
+- Make the route public: no login, no cookie.
+- The `authorization_servers` value must equal the `issuer` in AuthKit's metadata exactly. AuthKit's issuer has no trailing slash.
+- On an unauthenticated request to `/mcp`, return `401` with `WWW-Authenticate: Bearer resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource/mcp"`.
 
-This is a configuration document, not a complete protected server. Wire it into the [complete authenticated Hono application](/learn/remote-mcp-server-with-hono), replacing that app's issuer, resource, verifier and scope settings as described below. For the full protocol flow, use the [OAuth 2.1 reference](/learn/mcp-oauth-2-1-reference); for where enforcement belongs, use [server authentication patterns](/learn/mcp-server-authentication-patterns).
+WorkOS's own sample serves the document at the root path, `/.well-known/oauth-protected-resource`, with the origin as `resource`. The path-suffixed location above is the one [RFC 9728](/learn/mcp-oauth-2-1-reference#protected-resource-metadata-rfc-9728) defines for an endpoint at `/mcp`. Use the full endpoint URL consistently in the dashboard, the metadata and the verifier.
 
-## Validate identity and authorization separately
+**Scopes.** AuthKit's authorize endpoint accepts `openid`, `profile`, `email` and `offline_access`, and `profile` and `email` require `openid`. CIMD and DCR clients receive these standard scopes only; you cannot assign custom scopes to them per client. `offline_access` lets a client get a refresh token, so leave it out of `scopes_supported`. The MCP specification says servers should not advertise it.
 
-Use the AuthKit domain's discovered JWKS and exact issuer in the JWT verifier, and require `https://mcp.example.com/mcp` as audience. Check expiry and scope before tool dispatch. Pass the verified user and organization context through to your data layer; a token for one organization must not gain access by providing another organization's ID in tool arguments.
+This document is configuration, not a protected server. Add it to the [complete Hono application](/learn/remote-mcp-server-with-hono) and replace that app's issuer, resource and scope settings.
 
-For the Hono example, change its required scope to the scope your provider actually grants. The metadata above uses `profile` for an identity-reading experiment. That scope alone is not permission to read your business records. Add your own role/permission checks before exposing such tools, and keep the advertised metadata consistent with the scopes your authorization server supports.
+## Step 4: Verify the access token
 
-Keep refresh policy separate from tool permissions. The client may request `offline_access` when supported to stay connected, but it is not a data-access scope to require for an ordinary read tool. A refresh token belongs at the client, not in your MCP tool arguments.
+WorkOS's MCP guide verifies tokens with `jose`. For the settings above:
 
-## Check discovery before opening a chat app
+```typescript
+import { createRemoteJWKSet, jwtVerify } from 'jose';
 
-These Bash commands require only curl. Replace both example values with your deployment's exact resource and issuer, then run:
+const ISSUER = 'https://YOUR-APP.authkit.app';
+const JWKS = createRemoteJWKSet(new URL(`${ISSUER}/oauth2/jwks`));
 
-```bash
-export MCP_ENDPOINT='https://mcp.example.com/mcp'
-export MCP_ISSUER='https://YOUR-APP.authkit.app'
-curl --fail-with-body --silent --show-error \
-  'https://mcp.example.com/.well-known/oauth-protected-resource/mcp'
-curl --fail-with-body --silent --show-error \
-  "${MCP_ISSUER%/}/.well-known/oauth-authorization-server" \
-  || curl --fail-with-body --silent --show-error \
-    "${MCP_ISSUER%/}/.well-known/openid-configuration"
-curl --silent --show-error --include \
-  -H 'Accept: application/json, text/event-stream' "$MCP_ENDPOINT"
-curl --silent --show-error --include -X OPTIONS "$MCP_ENDPOINT" \
-  -H 'Origin: https://mcptest.io' \
-  -H 'Access-Control-Request-Method: POST' \
-  -H 'Access-Control-Request-Headers: authorization, mcp-protocol-version, mcp-method'
+export async function verifyAccessToken(token: string) {
+  const { payload } = await jwtVerify(token, JWKS, {
+    issuer: ISSUER,
+    audience: 'https://mcp.example.com/mcp',
+  });
+  return payload;
+}
 ```
 
-Change the metadata URL as well as the endpoint when using your domain. Expect public JSON metadata, a `401` challenge for the unauthenticated MCP request, and a successful CORS preflight. Ensure error responses expose `WWW-Authenticate`. Inspect provider discovery next: its `issuer` must match exactly, `code_challenge_methods_supported` must include `S256`, and the registration/authentication method must work for your actual client. A browser public client cannot keep a secret.
+`jwtVerify` checks the signature, expiry, issuer and audience. A token issued for another resource fails the audience check.
 
-## When a successful login still fails
+Scopes do not authorize your data. WorkOS says Connect scopes do not enforce the user's role-based permissions, and Connect tokens carry no permissions claim. So check authorization yourself, before each tool runs:
 
-If consent completes and the next request returns `401`, compare resource metadata, the requested `resource`, and the token's verified audience. A missing Resource Indicator or stale grant is more likely than a reason to accept any token from the issuer. If no consent screen opens at all, inspect client onboarding and callback registration first.
+- Use the verified `sub` (the user) and `org_id` (the organization the user selected).
+- Never trust an organization or user ID passed in tool arguments.
 
-A custom AuthKit domain changes discovery and issuer configuration; an MCP custom domain changes the resource. Update each at its own boundary. Reusing an OAuth client ID across a different issuer can fail even when both domains belong to your company.
+**Tokens and refresh.** Access tokens use the default AuthKit application's **Access token duration**, which defaults to five minutes. Public clients, including every CIMD client, get a new refresh token on each refresh. Revoking a user's AuthKit sessions does not revoke their Connect authorizations. Use the authorized-applications API for that.
 
-## Test it on mcptest.io
+**Calling your other APIs.** Your other APIs reject tokens whose `aud` is the MCP server. To call one as the signed-in user, exchange the token with WorkOS's token exchange grant. Do not forward the MCP token.
 
-Open the protected `/mcp` URL in the [mcptest.io playground](/). Start authorization, inspect the discovered issuer and registration path, sign in as a test user, list tools, then call one read-only tool. If automatic registration is unavailable, pre-register a public client with the exact redirect URI `https://mcptest.io/oauth/callback` and supply its client ID. Never give a browser a client secret.
+## Check discovery with curl
 
-Then try an expired token, a token issued for another resource, and a valid token lacking the required scope. Expect `401`, `401`, and a scope denial respectively; none should execute the protected tool. Check the user/organization boundary with two test accounts. Use the [401 troubleshooting guide](/learn/remote-mcp-server-401-unauthorized) to distinguish discovery, registration and verification failures.
+Set the three variables to your values, then run the commands. They need only Bash and curl.
 
-The metadata JSON and shell syntax were checked locally. Provider tenant setup, real authorization-code exchange, refresh, consent and revocation need a configured account and were not run during authoring. Passing the transport checks alone does not establish those behaviors.
+```bash
+MCP_ORIGIN='https://mcp.example.com'
+MCP_PATH='/mcp'
+ISSUER='https://YOUR-APP.authkit.app'
+
+# 1. Protected resource metadata: expect public JSON.
+curl --fail-with-body --silent --show-error \
+  "${MCP_ORIGIN}/.well-known/oauth-protected-resource${MCP_PATH}"
+
+# 2. Authorization server metadata: check issuer, S256 and registration.
+curl --fail-with-body --silent --show-error \
+  "${ISSUER%/}/.well-known/oauth-authorization-server"
+
+# 3. Unauthenticated MCP request: expect 401 and a WWW-Authenticate header.
+curl --silent --show-error --include -X POST "${MCP_ORIGIN}${MCP_PATH}" \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  --data '{"jsonrpc":"2.0","id":1,"method":"ping"}'
+
+# 4. CORS preflight for browser clients: expect a 2xx response.
+curl --silent --show-error --include -X OPTIONS "${MCP_ORIGIN}${MCP_PATH}" \
+  -H 'Origin: https://mcptest.io' \
+  -H 'Access-Control-Request-Method: POST' \
+  -H 'Access-Control-Request-Headers: authorization, content-type, mcp-protocol-version'
+```
+
+In the AuthKit metadata, check that:
+
+- `issuer` equals the value in `authorization_servers` exactly.
+- `code_challenge_methods_supported` includes `S256`.
+- `registration_endpoint` is present if you enabled DCR, and `client_id_metadata_document_supported` is `true` if you enabled CIMD.
+
+For browser clients, the `401` and `403` responses must also expose `WWW-Authenticate` through `Access-Control-Expose-Headers`. To run the same checks in the browser, use the [MCP OAuth checker](/tools/oauth-check).
+
+## Test sign-in on mcptest.io
+
+1. Open your `/mcp` URL in the [mcptest.io playground](/).
+2. Start authorization. Check the discovered issuer and the registration method used.
+3. Sign in as a test user, list tools, then call one read-only tool.
+
+If automatic registration is unavailable, create a public OAuth application with the exact redirect URI `https://mcptest.io/oauth/callback`. Then enter its client ID in the playground. Never give a browser a client secret.
+
+Then test the failure paths. None of them may run the tool:
+
+| Request | Expected result |
+| --- | --- |
+| Expired token | `401` |
+| Token issued for another resource | `401` |
+| User from a second organization asking for the first organization's records | Denied by your authorization check |
+
+## When sign-in works but requests fail
+
+- **`401` right after consent.** Compare the metadata `resource`, the `resource` the client requested and the token's `aud`. The usual cause is a missing resource indicator, or a grant from before you added one. Accepting any token from the issuer is not a fix.
+- **No consent screen opens.** Check client registration (Step 1) and the client's redirect URI first.
+- **Custom domains.** A custom AuthKit domain changes the issuer, the JWKS URL and discovery. A custom MCP domain changes the resource. Update each one in its own place. A client ID registered with one issuer does not work with another.
+
+Use the [401 troubleshooting guide](/learn/remote-mcp-server-401-unauthorized) to tell discovery, registration and verification failures apart.
+
+**What was checked.** The JSON, the Bash commands and the TypeScript snippet were checked locally against `jose` 6. The tenant setup, a real authorization code exchange, refresh, consent and revocation need a WorkOS account and were not run.

@@ -7,7 +7,7 @@ level: practitioner
 order: 20
 category: Protocol reference
 readingTimeMinutes: 7
-lastReviewed: "2026-10-20"
+lastReviewed: "2026-11-11"
 metaTitle: MCP protocol version differences, 2024-11-05 to 2026-07-28 | mcptest.io
 metaDescription: MCP protocol version differences in one table. Transport, authorization, headers, lifecycle and capability changes per revision, plus negotiation and fallback rules.
 relatedSlugs:
@@ -92,7 +92,7 @@ From the [changelog](https://modelcontextprotocol.io/specification/2025-06-18/ch
 
 From the [changelog](https://modelcontextprotocol.io/specification/2025-11-25/changelog):
 
-- **Transport:** an invalid `Origin` MUST get `403 Forbidden`. Servers may close an SSE stream at will after sending an SSE `retry` field, and clients reconnect; resumption is always a GET with `Last-Event-ID`.
+- **Transport:** an invalid `Origin` MUST get `403 Forbidden`. After sending an event ID, a server MAY close the connection without ending the SSE stream; it SHOULD send an SSE `retry` field first, and the client MUST wait that long before reconnecting. Resumption is always a GET with `Last-Event-ID`.
 - **Auth:** OpenID Connect Discovery for authorization servers, Client ID Metadata Documents as the recommended registration mechanism, incremental scope consent through `WWW-Authenticate`, and protected resource metadata discovery aligned with RFC 9728 (the header is optional; clients fall back to `.well-known`).
 - **Errors:** input validation errors are tool execution errors (`isError: true`), not protocol errors.
 - **Capabilities:** icons, URL-mode elicitation, tools in sampling, experimental tasks, and JSON Schema 2020-12 as the default dialect.
@@ -105,8 +105,9 @@ From the [changelog](https://modelcontextprotocol.io/specification/2026-07-28/ch
 - **Transport:** protocol-level sessions and `Mcp-Session-Id` are removed. The GET stream and `resources/subscribe` are replaced by `subscriptions/listen`, a long-lived POST response stream. `Last-Event-ID` resumption is removed; a broken stream loses the in-flight request and the client re-issues it with a new ID.
 - **Headers:** `Mcp-Method` on every POST, `Mcp-Name` on `tools/call`, `resources/read` and `prompts/get`, and optional `Mcp-Param-*` headers declared with `x-mcp-header`.
 - **Server-to-client requests:** sampling, elicitation and roots requests are replaced by multi round-trip requests: the server returns `resultType: "input_required"` and the client retries with `inputResponses`. All results carry `resultType`.
-- **Removed methods:** `ping`, `logging/setLevel`, `notifications/roots/list_changed`.
-- **Errors:** resource not found moves from `-32002` to `-32602`; new codes `-32020` HeaderMismatch, `-32021` MissingRequiredClientCapability, `-32022` UnsupportedProtocolVersion. See [MCP error codes](/learn/mcp-json-rpc-error-codes).
+- **Removed methods:** `ping`, `logging/setLevel`, `notifications/roots/list_changed`. The log level is set per request with `io.modelcontextprotocol/logLevel` in `_meta`.
+- **Tasks:** experimental tasks leave the core protocol for the official `io.modelcontextprotocol/tasks` extension, which polls with `tasks/get` instead of the blocking `tasks/result`.
+- **Errors:** resource not found moves from `-32002` to `-32602`; new codes `-32020` HeaderMismatch, `-32021` MissingRequiredClientCapability, `-32022` UnsupportedProtocolVersion, in a `-32020` to `-32099` sub-range reserved for the specification. See [MCP error codes](/learn/mcp-json-rpc-error-codes).
 - **Auth:** Dynamic Client Registration deprecated in favour of Client ID Metadata Documents; clients MUST validate a present RFC 9207 `iss`; credentials are bound to the issuer. See the [OAuth 2.1 reference](/learn/mcp-oauth-2-1-reference).
 - **Deprecated:** Roots, Sampling and Logging; the HTTP+SSE transport is formally Deprecated.
 - **Caching:** list and read results carry `ttlMs` and `cacheScope`.
@@ -148,10 +149,10 @@ To reach a 2024-11-05 server, a Streamable HTTP client POSTs `initialize`; if th
 
 Defined in [versioning and compatibility](https://modelcontextprotocol.io/specification/2026-07-28/basic/versioning):
 
-- There is no handshake. Each request names its version; a server that does not implement it MUST return `-32022` with `data.supported` and `data.requested`, over HTTP with status `400`.
+- There is no handshake. Each request names its version. A server that does not implement that version, whether unknown or deliberately unsupported, MUST return `-32022` with `data.supported` and `data.requested`; over HTTP the status is `400`.
 - The client SHOULD pick a mutually supported version from `supported` and retry.
 - Clients MAY call `server/discover` first. Its result carries `supportedVersions`, `capabilities` and server identity.
-- Era detection over HTTP: on a `400`, inspect the body. A recognized 2026 error means correct and retry; an empty or unrecognized body means fall back to `initialize`, and then to HTTP+SSE if needed.
+- Era detection over HTTP: on a `400`, inspect the body. A recognized 2026 error means correct and retry; an empty or unrecognized body means fall back to `initialize`. A `400`, `404` or `405` without a recognized 2026 error body can also lead on to the HTTP+SSE probe. Clients SHOULD cache the era per origin.
 - A dual-era server serves requests with 2026 `_meta` statelessly and an `initialize` with 2025 session semantics.
 
 | Client | Server | Result |
@@ -163,7 +164,7 @@ Defined in [versioning and compatibility](https://modelcontextprotocol.io/specif
 
 ## How mcptest negotiates
 
-mcptest is a dual-era client built on the official TypeScript SDK (`@modelcontextprotocol/client` 2.0).
+mcptest is a dual-era client built on the official TypeScript SDK (`@modelcontextprotocol/client` 2.x).
 
 - `createNegotiatingMcpClient` in `src/utils/mcpClient.ts` sets `versionNegotiation: { mode: 'auto' }`. The SDK first sends `server/discover` with a 2026-07-28 `_meta` envelope.
 - A valid discover result that lists a version mcptest supports selects the stateless era. A `-32022` naming a mutual 2026 version triggers one corrective retry.

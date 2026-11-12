@@ -7,7 +7,7 @@ level: "practitioner"
 order: 450
 category: "Authorization"
 readingTimeMinutes: 5
-lastReviewed: "2026-10-26"
+lastReviewed: "2026-11-11"
 metaTitle: "invalid_redirect_uri: MCP OAuth callback fixes | mcptest.io"
 metaDescription: "Find the stage rejecting an MCP OAuth callback and align registered, advertised and requested redirect URIs without weakening validation."
 relatedSlugs:
@@ -20,10 +20,14 @@ sourceLinks:
     url: "https://github.com/anthropics/claude-code/issues/58054"
   - title: "Claude Code CIMD callback regression #37747"
     url: "https://github.com/anthropics/claude-code/issues/37747"
-  - title: "OAuth native app loopback redirects"
+  - title: "RFC 7591: client registration error codes"
+    url: "https://www.rfc-editor.org/rfc/rfc7591.html#section-3.2.2"
+  - title: "RFC 6749: redirection endpoint matching"
+    url: "https://www.rfc-editor.org/rfc/rfc6749.html#section-3.1.2.3"
+  - title: "RFC 8252: loopback interface redirection"
     url: "https://www.rfc-editor.org/rfc/rfc8252.html#section-7.3"
-  - title: "OAuth redirect validation"
-    url: "https://www.rfc-editor.org/rfc/rfc6749.html#section-3.1.2"
+  - title: "MCP 2026-07-28: Authorization security considerations"
+    url: "https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization/security-considerations"
 ---
 
 ## invalid_redirect_uri
@@ -32,30 +36,53 @@ sourceLinks:
 invalid_redirect_uri
 ```
 
-**Where it appears:** [Claude Code #58054](https://github.com/anthropics/claude-code/issues/58054) records a Meta MCP registration response rejecting a localhost callback. The issuer returns the error; it is not a universal MCP transport failure. [Claude Code #37747](https://github.com/anthropics/claude-code/issues/37747) reports a separate CIMD callback mismatch on 2.1.80+. Its affected-version claim is the reporter's observation.
+**What it is.** `invalid_redirect_uri` is an OAuth error code from the authorization server, not from the MCP client or the MCP transport. [RFC 7591](https://www.rfc-editor.org/rfc/rfc7591.html#section-3.2.2) defines it for client registration: "The value of one or more redirection URIs is invalid." Some providers also show it on the authorization page when the requested `redirect_uri` is not registered.
 
-## Likely causes, ranked by the report evidence
+The redirect URI, or callback, is where the provider sends the browser back with the authorization code. Every client has its own: a hosted URL for web clients, or a loopback address such as `http://127.0.0.1:33418/` or `http://localhost:3118/callback` for desktop and CLI clients.
 
-1. **Provider callback policy excludes the host's callback.** The Meta reproduction contrasts accepted hosted callbacks with a rejected localhost callback. Inspect the registration response: failure before an authorization code exists identifies registration policy, not token exchange.
-2. **The registered or published URI differs from the request.** The CIMD report identifies a port discrepancy. Compare scheme, host, port, path and trailing slash across the client document or registration, authorize request and token request.
-3. **Old registration or reverse-proxy configuration.** If those current values match, inspect the saved client id and the public callback generated behind a proxy. This is a diagnostic hypothesis, not a confirmed cause of every instance of this error.
+**Where it appears.**
 
-These priorities are qualitative, not ecosystem frequency statistics.
+- [Claude Code #58054](https://github.com/anthropics/claude-code/issues/58054): Meta's MCP server answered a registration request for a `localhost` callback with `400 invalid_redirect_uri`, while hosted claude.ai callbacks were accepted. Claude Code itself showed `SDK auth failed: The provided redirect_uris are not registered for this client.`
+- [Claude Code #37747](https://github.com/anthropics/claude-code/issues/37747): the browser showed `invalid_redirect_uri` because the client's metadata document listed `http://localhost/callback` without a port, while the client sent `http://localhost:3118/callback`. The reporter saw it from version 2.1.80.
+
+## Likely causes, most common first
+
+1. **The provider does not accept this kind of callback.** Many providers allow only HTTPS callbacks, or only callbacks of approved clients. A desktop or CLI client's loopback callback is then rejected at registration, as in the Meta report.
+2. **The registered and requested URIs differ.** The scheme, host, port, path or trailing slash differs between the registration (or CIMD document) and the authorization request. `localhost` and `127.0.0.1` are different hosts.
+3. **A stale registration or a proxy.** The client changed its callback port or path after it registered. Or a server behind a proxy builds an `http://` callback instead of `https://`.
+
+## How to confirm
+
+1. Find the request that failed:
+   - **Registration:** the POST to the `registration_endpoint` returns `400` with `"error": "invalid_redirect_uri"`.
+   - **Authorization:** the provider shows an error page in the browser and does not redirect back.
+   - **Token exchange:** a mismatched `redirect_uri` usually returns `invalid_grant`, not this error.
+2. Copy the decoded `redirect_uri` from that request. Leave `code`, `state` and tokens out of anything you share.
+3. Compare it character by character with the registered URIs: the registration request, the client's CIMD document, or the provider's dashboard.
 
 ## Fix for client users
 
-Record which endpoint returned the error: registration, authorization or token exchange. Copy the decoded `redirect_uri` value for comparison, excluding `code`, `state` and tokens from shared logs. Use the provider's documented integration for your host; a hosted connector callback is not interchangeable with a CLI's local listener.
+- Use the integration your provider documents for your client. A hosted connector's callback and a CLI's loopback listener are not interchangeable.
+- If you use a pre-registered client ID, add your client's exact callback to the provider's allowed list.
+- After you change the callback or client, remove the old connection and connect again, so the client registers afresh.
+- If the client builds the wrong callback, send its version and the redacted mismatch to the client's maintainers.
 
-Re-register through supported controls after changing the callback or client identity. If the callback is generated incorrectly by the host, provide the client maintainer the version and redacted mismatch. For VS Code's particular loopback and hosted redirects, use the [existing VS Code guide](/learn/vscode-mcp-oauth-redirect-uris).
+For VS Code's loopback and `vscode.dev` callbacks, see the [VS Code redirect guide](/learn/vscode-mcp-oauth-redirect-uris).
 
-## Fix for server and authorization-server authors
+## Fix for authorization server authors
 
-[OAuth redirect validation](https://www.rfc-editor.org/rfc/rfc6749.html#section-3.1.2) requires matching the registered callback. Preserve that validation. Permit only deliberately registered callbacks; do not accept arbitrary domains or redirect to an unvalidated URI on error.
+Keep redirect validation. The [MCP security considerations](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization/security-considerations) say authorization servers MUST validate exact redirect URIs against registered values, and every redirect URI must be `localhost` or HTTPS. [RFC 6749 section 3.1.2.3](https://www.rfc-editor.org/rfc/rfc6749.html#section-3.1.2.3) requires simple string comparison when the full URI was registered. Never accept arbitrary domains, and never redirect to an unvalidated URI to report an error.
 
-For native applications, [RFC 8252 loopback rules](https://www.rfc-editor.org/rfc/rfc8252.html#section-7.3) permit an ephemeral port with a loopback IP redirect. Apply that specific exception where the provider supports native clients; it is not a wildcard exemption for hosted callbacks. Decide explicitly which native and web clients your provider supports.
+There is one exception. For native apps, [RFC 8252 section 7.3](https://www.rfc-editor.org/rfc/rfc8252.html#section-7.3) says the authorization server MUST allow any port for loopback IP redirect URIs. Match everything except the port for `http://127.0.0.1` and `http://[::1]` callbacks. The exception does not cover hosted HTTPS callbacks.
 
-Compare the actual CIMD `redirect_uris` or DCR response with the authorize request, and keep the token exchange's redirect consistent. This fix generally belongs in client registration or the identity provider, not the TypeScript/Python transport. If a framework constructs URLs behind TLS termination, configure its trusted proxy and external HTTPS URL correctly.
+Then:
+
+- Decide which native and web clients you support, and document their callbacks.
+- With CIMD, validate the authorization request against the `redirect_uris` in the client's fetched document.
+- Behind TLS termination, configure the framework's trusted proxy and external URL, so it builds `https://` callbacks.
+
+This is registration and identity provider configuration. Changing the MCP transport will not fix it.
 
 ## Check with mcptest
 
-**Test your server** starts an independent browser OAuth flow. The [OAuth pre-login troubleshooting reference](/learn/mcp-oauth-2-1-reference#pre-login-troubleshooting) covers callback rejection; there is no transport diagnostic id for it. The inspector uses its [hosted browser callback](/learn/mcp-oauth-2-1-reference#browser-public-clients-what-mcptest-does), so success there cannot prove a CLI loopback callback is allowed. Re-test in the originally failing host as well. If registration never gets this far, see [DCR incompatibility](/learn/mcp-error-dynamic-client-registration).
+The [MCP OAuth checker](/tools/oauth-check) lists the documented callbacks of mcptest, Claude, ChatGPT, VS Code and Cursor under **Client redirect URIs**. Compare them with your provider's allowed list; the checker cannot read that list. The [inspector](/) uses its own hosted callback, `https://mcptest.io/oauth/callback`, as described in the [browser client reference](/learn/mcp-oauth-2-1-reference#browser-public-clients-what-mcptest-does). A successful sign-in there does not prove that a CLI's loopback callback is allowed, so test again in the client that failed. If registration fails before any callback is checked, see [DCR incompatibility](/learn/mcp-error-dynamic-client-registration).

@@ -7,7 +7,7 @@ level: practitioner
 order: 34
 category: Frameworks
 readingTimeMinutes: 7
-lastReviewed: "2026-10-21"
+lastReviewed: "2026-11-11"
 metaTitle: Remote MCP Server on Cloudflare Workers (Agents SDK) | mcptest.io
 metaDescription: Build a remote MCP server on Cloudflare Workers with createMcpHandler from the agents package. corsOptions, allowedHostnames, OAuth with a hosted identity provider, and the GET 405 behavior from cloudflare/agents#403.
 relatedSlugs:
@@ -29,22 +29,40 @@ sourceLinks:
     url: "https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http"
 ---
 
-Cloudflare's `agents` package wraps the MCP TypeScript SDK v2 handler for Workers: it adds route matching, CORS, and `Host` and `Origin` checks, and it understands Cloudflare's OAuth provider library. Cloudflare's guide now recommends its stateless `createMcpHandler` for new servers and marks `McpAgent`, the Durable Object class most older tutorials use, as deprecated. This guide builds a complete Worker with that handler and an OAuth check against a hosted identity provider, explains the `GET` `405` that confused developers in [cloudflare/agents#403](https://github.com/cloudflare/agents/issues/403), and shows what mcptest reported.
+Cloudflare's `agents` package wraps the MCP TypeScript SDK v2 handler for Workers. It adds route matching, CORS, and `Host` and `Origin` checks, and it works with Cloudflare's OAuth provider library. Cloudflare's guide builds new servers with its stateless `createMcpHandler`, and the package marks `McpAgent`, the Durable Object class most older tutorials use, as deprecated and feature-frozen. This guide also explains the `GET` `405` behind [cloudflare/agents#403](https://github.com/cloudflare/agents/issues/403).
 
-## What was tested
+## What you will build
+
+- A Worker that serves MCP at `https://mcp.example.com/mcp` with the Agents SDK's stateless `createMcpHandler`, for 2026-07-28 and 2025 clients.
+- One read-only `get-order` tool with a validated `id` argument.
+- `Host` and `Origin` checks for a custom domain, and CORS for several browser origins.
+- An OAuth bearer check for tokens from a hosted identity provider, with Protected Resource Metadata so clients can start sign-in.
+
+## Prerequisites
+
+- Node.js 20 or later, and a Cloudflare account for deployment.
+- An identity provider that signs JWT access tokens, publishes a JWKS, and puts your server's URL in `aud`. The test used a local provider.
+
+These versions were tested:
 
 | Package | Version |
 | --- | --- |
-| `agents` | 0.29.0 |
-| `@modelcontextprotocol/server` | 2.3.1 |
-| `jose` | 6.2.13 |
+| `agents` | 0.33.0 |
+| `@modelcontextprotocol/server` | 2.4.0 |
+| `jose` | 6.2.17 |
 | `zod` | 4.6.7 |
-| `wrangler` (local `workerd`) | 4.151.2 |
+| `wrangler` (local `workerd`) | 4.160.1 |
+
+`agents` pins an exact `@modelcontextprotocol/server` version as a peer dependency, so upgrade the two together.
+
+## Step 1: Install the packages and configure Wrangler
 
 ```bash
 npm install agents @modelcontextprotocol/server jose zod
 npm install -D wrangler @cloudflare/workers-types typescript
 ```
+
+Create `wrangler.jsonc`:
 
 ```json
 {
@@ -57,7 +75,7 @@ npm install -D wrangler @cloudflare/workers-types typescript
 
 The Agents templates enable `nodejs_compat`. This Worker also ran without the flag at this compatibility date.
 
-## The complete Worker
+## Step 2: Write the Worker
 
 ```typescript
 // src/index.ts
@@ -163,6 +181,15 @@ export default {
 } satisfies ExportedHandler;
 ```
 
+## Step 3: Run it locally and deploy
+
+```bash
+npx wrangler dev
+npx wrangler deploy
+```
+
+Add your custom domain to the Worker in the Cloudflare dashboard or in `wrangler.jsonc`. The `PUBLIC_URL` constant in `src/index.ts` must name that hostname.
+
 ## What the handler does for you
 
 `createMcpHandler` from `agents/mcp/server` returns a function you can call as `mcp(request, env, ctx)` and an object method, `mcp.fetch(request, { authInfo })`, for when your own code has already authenticated the request. Both run the same checks in this order:
@@ -170,12 +197,12 @@ export default {
 | Check | Default | Set here |
 | --- | --- | --- |
 | Path | Exactly `/mcp`; anything else gets `404` | `route` |
-| `Host` | Localhost and the Worker's own `workers.dev` hostname only | `allowedHostnames` with the custom domain |
+| `Host` | Checked only on localhost and `workers.dev` endpoints; on a custom domain it is not checked unless you set the option | `allowedHostnames` with the custom domain |
 | `Origin` | Localhost, `workers.dev`, and the hostname in `corsOptions.origin` | `allowedOriginHostnames`; requests without `Origin` always pass |
 | Preflight | Answered with the `corsOptions` headers | Every MCP request header listed |
 | Protocol | 2026 requests to the SDK handler; 2025 requests to a stateless compatibility lane | Unchanged |
 
-Under `wrangler dev`, the preflight returned `200` with the configured headers, a `POST` with `Origin: https://evil.example` returned `403`, a 2026 `server/discover` returned `supportedVersions: ["2026-07-28"]`, and a 2025 `initialize` returned `2025-11-25` as an SSE response.
+Under `wrangler dev`, the preflight returned `200` with the configured headers. With a valid token, a `POST` with `Origin: https://evil.example` returned `403`; without a token, the bearer check runs first and answers `401`. A 2026 `server/discover` returned `supportedVersions: ["2026-07-28"]`, and a 2025 `initialize` returned `2025-11-25` as an SSE response.
 
 Two CORS details are easy to miss. `corsOptions.origin` is one string that every response carries, so a browser at a second allowed origin would be rejected; `withRequestOrigin` swaps in the request's `Origin` when it is on the list. And each `corsOptions` field replaces its default as a whole. The default `exposeHeaders` is `mcp-session-id` alone, which hides `WWW-Authenticate` from browser OAuth clients until you restate it.
 
@@ -199,9 +226,9 @@ Access-Control-Expose-Headers: Mcp-Session-Id, MCP-Protocol-Version, WWW-Authent
 
 ## The GET 405 pitfall
 
-In August 2025, a developer following Cloudflare's remote server guide opened [cloudflare/agents#403](https://github.com/cloudflare/agents/issues/403), "MCP should handle GET requests?". The `wrangler dev` log showed `POST /mcp 200`, then `GET /mcp 405 Method Not Allowed`, and they expected the `GET` to open a stream for server notifications. The issue was closed two days later.
+In August 2025, a developer following Cloudflare's remote server guide opened [cloudflare/agents#403](https://github.com/cloudflare/agents/issues/403), "MCP should handle GET requests?". The `wrangler dev` log showed `POST /mcp 200`, then `GET /mcp 405 Method Not Allowed`, and they expected the `GET` to open a stream for server notifications. The issue was closed two days later, after a fix build made `GET /mcp` return `200`, and `McpAgent` gained the `GET` stream in September 2025 ([cloudflare/agents#415](https://github.com/cloudflare/agents/pull/415)).
 
-The behavior is still there, by design, and still correct:
+Today's stateless `createMcpHandler` answers that `GET` with `405` again. That is by design, and it is correct:
 
 - **2025-era clients** may send `GET` to the MCP endpoint after `initialize` to open a server-to-client SSE stream. The 2025 transport specification lets a server answer `405` when it offers no such stream, and clients must carry on. The Agents handler's compatibility lane creates a fresh server per `POST`, keeps no session, and answers `GET` and `DELETE` with `405`. Requests the server pushes on its own, such as elicitation and sampling, fail immediately in that lane.
 - **2026-07-28 clients** never send that `GET`. The revision removed the standalone stream; change notifications travel on a `subscriptions/listen` `POST`, and interactive input uses the `input_required` result instead of a pushed request. The 2026 path through this handler supports both.
@@ -210,16 +237,29 @@ If a 2025-era run probes the stream, mcptest records `transport.get-stream-405` 
 
 One related limit: `mcp.notify` reaches `subscriptions/listen` streams open in the same isolate only. Another isolate serving the same Worker does not see the event.
 
+## Step 4: Verify the deployed Worker
+
+Check the challenge and the metadata on the custom domain:
+
+```bash
+curl -i -X POST https://mcp.example.com/mcp -H 'Origin: https://app.example.com' -H 'Content-Type: application/json' -d '{}'
+curl -s https://mcp.example.com/.well-known/oauth-protected-resource/mcp
+```
+
+The first must return a `401` like the one above, with `resource_metadata` on your public hostname and the CORS headers. The second must return your exact `resource` URL.
+
 ## What mcptest reported for this Worker
 
-Run under `wrangler dev` behind a local TLS proxy, with a token minted for that URL, the headless gate scored it 89 out of 95. Core Protocol Adherence was 15 for the 2026-07-28 lifecycle, MCP Capabilities 4 of 10 because only tools are offered, Transport 15 for Streamable HTTP, Security Posture 40 for the metadata, token endpoint, and PKCE `S256`, and Performance 15. The run negotiated 2026, so it sent no `GET` and reported no `405`. The decision was **review**, from host-compatibility observations such as token refresh that depend on the identity provider.
+When this guide was first tested, run under `wrangler dev` behind a local TLS proxy, with a token minted for that URL, the headless gate scored it 89 out of 95. Core Protocol Adherence was 15 for the 2026-07-28 lifecycle, MCP Capabilities 4 of 10 because only tools are offered, Transport 15 for Streamable HTTP, Security Posture 40 for the metadata, token endpoint, and PKCE `S256`, and Performance 15. The run negotiated 2026, so it sent no `GET` and reported no `405`. The decision was **review**, from host-compatibility observations such as token refresh that depend on the identity provider.
 
-## Worker pitfalls
+## Common failures
 
-- **A custom domain without `allowedHostnames`.** The default `Host` allowlist only has localhost and `workers.dev`. Custom domains rely on Cloudflare routing unless you set the option; set it.
+- **A custom domain without `allowedHostnames`.** Without the option, `Host` is not checked on a custom domain at all, so the Worker relies on Cloudflare routing alone. Set it. If you set it and forget a hostname, requests get `403`; see [Invalid Host header](/learn/mcp-error-invalid-host-header).
+- **Browsers at a second origin are rejected.** The origin is missing from `allowedOriginHostnames`, or `withRequestOrigin` is not applied. See the [CORS reference](/learn/mcp-cors-headers-for-browser-clients).
+- **Every token gets `401`.** Check `iss`, `aud` and the JWKS URL against your provider's tokens. The [401 checklist](/learn/remote-mcp-server-401-unauthorized) walks through each step.
 - **Fetching at module scope.** Workers block network I/O during global initialization. `createRemoteJWKSet` fetches on first use, which is safe; `await fetch(...)` at the top of the module is not.
 - **Edge rules before the Worker.** A WAF or rate-limiting rule answers `403` or `429` without your CORS headers, so a browser client reports a network error. See [Deploying a remote MCP server](/learn/deploy-remote-mcp-server#cloudflare-workers).
 
-## Check the deployed Worker
+## Test it on mcptest.io
 
 After `npx wrangler deploy`, open the custom-domain URL in the [MCP Playground](/) to sign in from the browser, confirm the preflight and `401` are readable, and call `get-order`. Then add the same URL to the [release gate](/learn/test-mcp-server-before-deploying#run-the-same-checks-in-ci) in CI.

@@ -714,26 +714,26 @@ const ReportView: React.FC = () => {
           type="text"
           className="form-control"
           aria-label="MCP server URL"
-          placeholder="Enter server URL (e.g., mcp.paypal.com)"
+          placeholder="Server URL, for example mcp.paypal.com"
           value={serverUrl}
           onChange={(e) => setServerUrl(e.target.value)}
           disabled={isRunning}
         />
         <button className="btn btn-primary" onClick={() => handleRunReport(serverUrl)} disabled={isRunning}>
-          {isRunning ? 'Running...' : 'Run Report'}
+          {isRunning ? 'Running…' : 'Run report'}
         </button>
       </div>
 
       <label className="d-block mb-3">
         <input type="checkbox" checked={sessionResilience} disabled={isRunning}
           onChange={event => setSessionResilience(event.target.checked)} />{' '}
-        Check session resilience (optional; 8 sequential and 4 parallel pings, temporary sessions only)
+        Check session resilience (optional): unknown session IDs, re-initialization, DELETE and 8 sequential then 4 parallel pings, on temporary sessions only
       </label>
 
       {testedServers.length > 0 && (
         <section className="report-section mb-3" aria-labelledby="report-history-servers-title">
           <div className="report-section-heading">
-            <h5 id="report-history-servers-title" className="mb-0">Previously Tested Servers</h5>
+            <h5 id="report-history-servers-title" className="mb-0">Previously tested servers</h5>
           </div>
           <div className="report-section-body">
             <div className="list-group">
@@ -945,7 +945,7 @@ const ReportView: React.FC = () => {
                         className="btn btn-primary mt-3"
                         disabled={isRunning}
                       >
-                        {isRunning ? 'Retrying report...' : 'Retry report with credential'}
+                        {isRunning ? 'Retrying report…' : 'Retry report with credential'}
                       </button>
                     </form>
                   </section>
@@ -1025,7 +1025,7 @@ const ReportView: React.FC = () => {
                         </div>
                       )}
                       <button type="submit" className="btn btn-primary mt-3" disabled={isRunning}>
-                        {isRunning ? 'Retrying report...' : 'Retry report with credential'}
+                        {isRunning ? 'Retrying report…' : 'Retry report with credential'}
                       </button>
                     </form>
                   </section>

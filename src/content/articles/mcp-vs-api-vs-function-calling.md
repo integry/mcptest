@@ -6,7 +6,7 @@ level: practitioner
 order: 23
 category: Strategy
 readingTimeMinutes: 5
-lastReviewed: "2026-10-20"
+lastReviewed: "2026-11-11"
 metaTitle: "MCP vs API vs Function Calling: When to Use Each | mcptest.io"
 metaDescription: "MCP does not replace APIs. Compare REST APIs, model function calling and the Model Context Protocol, and see where each fits in an AI integration."
 relatedSlugs:
@@ -28,9 +28,17 @@ sourceLinks:
     url: "https://platform.claude.com/docs/en/agents-and-tools/tool-use/overview"
   - title: "Claude API: MCP connector"
     url: "https://platform.claude.com/docs/en/agents-and-tools/mcp-connector"
+  - title: "OpenAI API: MCP and connectors"
+    url: "https://developers.openai.com/api/docs/guides/tools-connectors-mcp"
 ---
 
-The three terms describe different layers, and most real integrations use all of them. An **API** is how software exposes a service. **Function calling** is how a language model asks your code to run something. **MCP** is a protocol that standardizes how AI applications discover and call capabilities that live outside the application. MCP does not replace APIs; an MCP server is usually a thin layer in front of one.
+The three terms name different layers, and most real integrations use all three:
+
+- An **API** is how software exposes a service to other software.
+- **Function calling** is how a language model asks your code to run something.
+- **MCP** is a protocol that standardizes how AI applications discover and call capabilities that live outside the application.
+
+MCP does not replace APIs; an MCP server is usually a thin layer in front of one.
 
 ## The three layers in one request
 
@@ -40,7 +48,7 @@ Take a request to an assistant: "Which of my open invoices are overdue?"
 2. The **host application** receives that request. If the tool came from an MCP server, the host's MCP client sends a `tools/call` request to that server.
 3. The **MCP server** translates the call into a request to the billing system's **API**, for example `GET /v1/invoices?status=open`, and returns the result in MCP's format.
 
-Without MCP, step 2 is your own code calling the API directly. With MCP, step 2 is a standard protocol that any MCP host can perform against any MCP server.
+Without MCP, step 2 is your own code calling the API directly. With MCP, step 2 is a standard protocol, so any MCP host can make the same call to any MCP server.
 
 ## Comparison table
 
@@ -51,13 +59,13 @@ Without MCP, step 2 is your own code calling the API directly. With MCP, step 2 
 | **Where definitions live** | API docs or an OpenAPI file, read by developers | In your application, sent with each model request | On the server, discovered at runtime with `tools/list` |
 | **Portability** | Any HTTP client | Tied to one model provider's request format | Any MCP host can use any MCP server |
 | **Transport** | HTTP and others | Inside the model provider's API | JSON-RPC over stdio (local) or Streamable HTTP (remote) |
-| **Authentication** | Whatever the API defines | Your application's own credentials | Defined for remote servers: OAuth 2.1 with protected resource metadata |
+| **Authentication** | Whatever the API defines | Your application's own credentials | Optional; for remote servers the specification defines OAuth 2.1 with protected resource metadata |
 | **Output shape** | Designed for programs | Whatever your function returns | Content for the model, plus optional `structuredContent` that matches an `outputSchema` |
 | **Typical owner** | The service provider | The application developer | The service provider or a third party |
 
 ## What function calling does
 
-Function calling, also called tool use, is a capability of the model API. You send the model a list of tools, each with a name, a description and a JSON Schema for its arguments. When the model decides a tool would help, it returns a structured call instead of plain text. OpenAI's guide puts the division plainly: when the model calls a function, you must execute it and return the result. Anthropic's documentation describes the same round trip with `tool_use` and `tool_result` blocks.
+Function calling, also called tool use, is a feature of the model API. You send the model a list of tools, each with a name, a description and a JSON Schema for its arguments. When the model decides a tool would help, it returns a structured call instead of plain text. OpenAI's guide states the division of work: "When the model calls a function, you must execute it and return the result." Anthropic's documentation describes the same round trip with `tool_use` and `tool_result` blocks.
 
 Function calling says nothing about where the function's code lives, how it is discovered, or how it authenticates to anything. Those are your application's problems.
 
@@ -67,12 +75,12 @@ MCP takes the tool definition out of your application and puts it on a server th
 
 That standardization gives you:
 
-- **Discovery.** Tools, resources and prompts are listed by the server at runtime, with pagination and change notifications.
+- **Discovery.** The server lists its tools, resources and prompts at run time, with pagination and notifications when the lists change.
 - **One integration for many hosts.** A server written once works in desktop chat apps, code editors and agent frameworks that speak MCP.
 - **A defined auth model for remote servers.** Clients discover the authorization server from the MCP server's protected resource metadata and request tokens bound to that one server.
 - **Result conventions.** Tool errors the model can learn from (`isError: true`) are separated from protocol errors, and structured output can be validated against a schema.
 
-Model providers have also built MCP into their APIs. The Claude API's MCP connector and OpenAI's MCP tool both let a single API request attach a remote MCP server, so you get function calling against server-defined tools without writing an MCP client yourself.
+Model providers have also built MCP into their APIs. The [Claude API's MCP connector](https://platform.claude.com/docs/en/agents-and-tools/mcp-connector) and [OpenAI's MCP tool](https://developers.openai.com/api/docs/guides/tools-connectors-mcp) both let one API request attach a remote MCP server. The provider then calls the server's tools for you, so you do not write an MCP client yourself.
 
 ## What MCP does not replace
 

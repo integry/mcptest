@@ -38,7 +38,7 @@ test('breaking changes: classifies two pasted tools/list payloads from the mock 
   await expect(page).toHaveTitle('MCP Breaking Change Checker for tools/list | mcptest.io');
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://mcptest.io/tools/breaking-changes');
   const main = page.getByRole('main');
-  await expect(main.getByRole('heading', { level: 1, name: 'MCP breaking-change check' })).toBeVisible();
+  await expect(main.getByRole('heading', { level: 1, name: 'MCP breaking-change checker' })).toBeVisible();
   await expect(page.locator('#app-sidenav-desktop a[href="/tools/breaking-changes"]')).toHaveClass(/active/);
 
   await main.getByLabel('Before (currently deployed)').fill(JSON.stringify(before, null, 2));

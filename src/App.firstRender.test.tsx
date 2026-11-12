@@ -81,7 +81,7 @@ const mount = () => {
 
 const FIRST_FRAME = {
   header: true,
-  sidebarLinks: ['Playground', 'Catalog', 'Reports', 'Breaking changes', 'OAuth check', 'Discovery check'],
+  sidebarLinks: ['Playground', 'Catalog', 'Reports', 'Breaking changes', 'OAuth checker', 'Discovery checker'],
   dashboards: ['My first dashboard'],
   tabs: ['New Connection'],
   landing: 'Test remote MCP servers online',
