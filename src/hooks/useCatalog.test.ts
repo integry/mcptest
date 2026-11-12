@@ -9,7 +9,7 @@ import {
 } from 'react-router-dom';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CATALOG_CATEGORY_ALL } from '../types/catalog';
-import { logEvent } from '../utils/analytics';
+import { trackEvent } from '../utils/analytics';
 import {
   buildCatalogSearchParams,
   getCatalogFiltersFromParams,
@@ -17,10 +17,10 @@ import {
 } from './useCatalog';
 
 vi.mock('../utils/analytics', () => ({
-  logEvent: vi.fn(),
+  trackEvent: vi.fn(),
 }));
 
-const mockedLogEvent = vi.mocked(logEvent);
+const mockedTrackEvent = vi.mocked(trackEvent);
 
 beforeAll(() => {
   (
@@ -87,7 +87,7 @@ describe('catalog query params', () => {
 
   beforeEach(() => {
     vi.useFakeTimers();
-    mockedLogEvent.mockClear();
+    mockedTrackEvent.mockClear();
   });
 
   afterEach(() => {
@@ -165,22 +165,44 @@ describe('catalog query params', () => {
       vi.advanceTimersByTime(1000);
     });
 
-    expect(mockedLogEvent).not.toHaveBeenCalled();
+    expect(mockedTrackEvent).not.toHaveBeenCalled();
     view.unmount();
   });
 
   it('hydrates category, auth, and sort together and produces filtered name order', () => {
-    const view = renderCatalogHook('/catalog?category=Finance&auth=no-auth&sort=name');
+    const view = renderCatalogHook('/catalog/finance?auth=no-auth&sort=name');
 
     expect(view.catalog.category).toBe('Finance');
+    expect(view.catalog.categoryNotFound).toBe(false);
     expect(view.catalog.oauthFilter).toBe('no-auth');
     expect(view.catalog.sortOrder).toBe('name');
     expect(view.catalog.filteredServers.map(({ name }) => name)).toEqual([
       'CoinGecko',
       'Yahoo Finance',
     ]);
-    expect(view.location.search).toBe('?category=Finance&auth=no-auth&sort=name');
-    expect(mockedLogEvent).not.toHaveBeenCalled();
+    expect(view.location.pathname).toBe('/catalog/finance');
+    expect(view.location.search).toBe('?auth=no-auth&sort=name');
+    expect(view.catalog.filterSearch).toBe('?auth=no-auth&sort=name');
+    expect(mockedTrackEvent).not.toHaveBeenCalled();
+    view.unmount();
+  });
+
+  it('redirects the legacy category parameter to the category page, keeping other filters', () => {
+    const view = renderCatalogHook('/catalog?category=Finance&auth=no-auth&sort=name');
+
+    expect(view.location.pathname).toBe('/catalog/finance');
+    expect(view.location.search).toBe('?auth=no-auth&sort=name');
+    expect(view.catalog.category).toBe('Finance');
+    expect(mockedTrackEvent).not.toHaveBeenCalled();
+    view.unmount();
+  });
+
+  it('reports an unknown category slug without filtering the catalog by it', () => {
+    const view = renderCatalogHook('/catalog/not-a-category');
+
+    expect(view.catalog.categoryNotFound).toBe(true);
+    expect(view.catalog.category).toBe(CATALOG_CATEGORY_ALL);
+    expect(view.location.pathname).toBe('/catalog/not-a-category');
     view.unmount();
   });
 
@@ -188,7 +210,7 @@ describe('catalog query params', () => {
     const view = renderCatalogHook('/catalog?sort=name');
 
     expect(view.catalog.sortOrder).toBe('name');
-    expect(mockedLogEvent).not.toHaveBeenCalled();
+    expect(mockedTrackEvent).not.toHaveBeenCalled();
 
     act(() => {
       view.catalog.setSortOrder('browser-ready');
@@ -198,14 +220,14 @@ describe('catalog query params', () => {
     });
 
     expect(view.location.search).toBe('?sort=browser-ready');
-    expect(mockedLogEvent).toHaveBeenCalledWith('catalog_sort', {
+    expect(mockedTrackEvent).toHaveBeenCalledWith('catalog_sort', {
       sort: 'browser-ready',
     });
     view.unmount();
   });
 
-  it('pushes category changes so browser back and forward restore selection', () => {
-    const view = renderCatalogHook();
+  it('navigates category changes to the category URL so back and forward restore selection', () => {
+    const view = renderCatalogHook('/catalog?sort=name');
 
     act(() => {
       view.catalog.setCategory('Finance');
@@ -213,15 +235,39 @@ describe('catalog query params', () => {
     act(() => {
       vi.advanceTimersByTime(300);
     });
-    expect(view.location.search).toBe('?category=Finance');
+    expect(view.location.pathname).toBe('/catalog/finance');
+    expect(view.location.search).toBe('?sort=name');
+    expect(mockedTrackEvent).toHaveBeenCalledWith('catalog_filter_category', { category: 'Finance' });
 
     act(() => view.navigate(-1));
-    expect(view.location.search).toBe('');
+    expect(view.location.pathname).toBe('/catalog');
     expect(view.catalog.category).toBe(CATALOG_CATEGORY_ALL);
 
     act(() => view.navigate(1));
-    expect(view.location.search).toBe('?category=Finance');
+    expect(view.location.pathname).toBe('/catalog/finance');
     expect(view.catalog.category).toBe('Finance');
+
+    act(() => {
+      view.catalog.setCategory(CATALOG_CATEGORY_ALL);
+    });
+    expect(view.location.pathname).toBe('/catalog');
+    expect(view.location.search).toBe('?sort=name');
+    view.unmount();
+  });
+
+  it('restores changed URL queries through back and forward navigation', () => {
+    const view = renderCatalogHook('/catalog?q=crypto');
+    act(() => {
+      view.catalog.setSearchQuery('github');
+      view.catalog.setSortOrder('name');
+    });
+    act(() => { vi.advanceTimersByTime(300); });
+    expect(view.location.search).toBe('?q=github&sort=name');
+
+    act(() => view.navigate(-1));
+    expect(view.catalog.searchQuery).toBe('crypto');
+    act(() => view.navigate(1));
+    expect(view.catalog.searchQuery).toBe('github');
     view.unmount();
   });
 
@@ -232,15 +278,15 @@ describe('catalog query params', () => {
       view.catalog.setSearchQuery('  crypto  ');
     });
 
-    expect(mockedLogEvent).not.toHaveBeenCalled();
+    expect(mockedTrackEvent).not.toHaveBeenCalled();
 
     act(() => {
       vi.advanceTimersByTime(500);
     });
 
     expect(view.location.search).toBe('?q=crypto');
-    expect(mockedLogEvent).toHaveBeenCalledTimes(1);
-    expect(mockedLogEvent).toHaveBeenLastCalledWith('catalog_search', {
+    expect(mockedTrackEvent).toHaveBeenCalledTimes(1);
+    expect(mockedTrackEvent).toHaveBeenLastCalledWith('catalog_search', {
       query_length: 6,
     });
 
@@ -253,15 +299,15 @@ describe('catalog query params', () => {
     });
 
     expect(view.location.search).toBe('');
-    expect(mockedLogEvent).toHaveBeenCalledTimes(1);
+    expect(mockedTrackEvent).toHaveBeenCalledTimes(1);
 
     act(() => {
       view.catalog.setSearchQuery('crypto');
       vi.advanceTimersByTime(500);
     });
 
-    expect(mockedLogEvent).toHaveBeenCalledTimes(2);
-    expect(mockedLogEvent).toHaveBeenLastCalledWith('catalog_search', {
+    expect(mockedTrackEvent).toHaveBeenCalledTimes(2);
+    expect(mockedTrackEvent).toHaveBeenLastCalledWith('catalog_search', {
       query_length: 6,
     });
     view.unmount();

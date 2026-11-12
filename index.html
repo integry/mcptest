@@ -2,24 +2,28 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; script-src 'self' https://apis.google.com https://www.googletagmanager.com https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob: https:; connect-src 'self' http: https: ws: wss:; frame-src https:; form-action 'self' https:" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; script-src 'self' https://apis.google.com https://www.googletagmanager.com https://static.cloudflareinsights.com https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob: https:; connect-src 'self' http: https: ws: wss:; frame-src https:; form-action 'self' https:" />
     <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <!-- Sets data-theme before the stylesheets apply; see public/theme-init.js. -->
+    <script src="/theme-init.js"></script>
     <!-- MCP/AI Favicon -->
-    <link rel="icon" type="image/png" href="/logo.png" />
+    <link rel="icon" type="image/png" href="/logo-96.png" />
     <link rel="canonical" href="https://mcptest.io" />
+    <!-- One robots tag: 404.html replaces it with noindex; the app updates it per route. -->
+    <meta name="robots" content="index, follow" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Test Remote MCP Servers | MCP Inspector Online | mcptest.io</title>
-    <meta name="description" content="Inspect, debug and evaluate remote MCP servers in your browser. An MCP inspector online: test remote MCP server protocol negotiation, OAuth 2.1, CORS and tool contracts, then share a report." />
+    <title>MCP Inspector Online &amp; Playground: Test Remote MCP Servers | mcptest.io</title>
+    <meta name="description" content="Test remote MCP servers in an online inspector and playground. Check connections, OAuth, CORS and tools in your browser, then share a report." />
 
     <!-- Open Graph meta tags -->
-    <meta property="og:title" content="Test Remote MCP Servers | MCP Inspector Online | mcptest.io" />
-    <meta property="og:description" content="Inspect, debug and evaluate remote MCP servers in your browser. An MCP inspector online: test remote MCP server protocol negotiation, OAuth 2.1, CORS and tool contracts, then share a report." />
+    <meta property="og:title" content="MCP Inspector Online &amp; Playground: Test Remote MCP Servers | mcptest.io" />
+    <meta property="og:description" content="Test remote MCP servers in an online inspector and playground. Check connections, OAuth, CORS and tools in your browser, then share a report." />
     <meta property="og:image" content="https://mcptest.io/logo.png" />
     <meta property="og:url" content="https://mcptest.io" />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary" />
-    <meta name="twitter:title" content="Test Remote MCP Servers | MCP Inspector Online | mcptest.io" />
-    <meta name="twitter:description" content="Inspect, debug and evaluate remote MCP servers in your browser. An MCP inspector online: test remote MCP server protocol negotiation, OAuth 2.1, CORS and tool contracts, then share a report." />
+    <meta name="twitter:title" content="MCP Inspector Online &amp; Playground: Test Remote MCP Servers | mcptest.io" />
+    <meta name="twitter:description" content="Test remote MCP servers in an online inspector and playground. Check connections, OAuth, CORS and tools in your browser, then share a report." />
     <meta name="twitter:image" content="https://mcptest.io/logo.png" />
 
   </head>

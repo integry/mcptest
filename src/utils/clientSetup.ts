@@ -16,7 +16,7 @@ export interface PreferredCatalogEndpoint {
   url: string;
   provenance: EndpointProvenance;
   provenanceLabel: string;
-  transport: CatalogTransport;
+  transport?: CatalogTransport;
 }
 
 export interface ClientSetup {
@@ -103,7 +103,7 @@ const normalizedEndpointUrl = (value: string): string | undefined => {
 export const resolveCatalogEndpointTransport = (
   server: CatalogServer,
   endpoint: string
-): CatalogTransport => {
+): CatalogTransport | undefined => {
   const observedTransport = server.transport === 'streamable-http'
     || server.transport === 'legacy-sse'
     ? server.transport
@@ -114,10 +114,12 @@ export const resolveCatalogEndpointTransport = (
     : undefined;
   // A validated URL ties the validation transport to that exact endpoint. Older
   // validation records without one describe the selected catalog endpoint.
-  const observedTransportApplies = observedTransport && (
-    !normalizedValidatedUrl || normalizedValidatedUrl === normalizedEndpoint
+  const observedTransportApplies = normalizedEndpoint && (
+    normalizedValidatedUrl
+      ? normalizedValidatedUrl === normalizedEndpoint
+      : normalizedEndpointUrl(server.browserUrl || server.url) === normalizedEndpoint
   );
-  if (observedTransportApplies) return observedTransport;
+  if (observedTransportApplies && observedTransport) return observedTransport;
 
   let normalizedPath = '';
   try {
@@ -127,7 +129,10 @@ export const resolveCatalogEndpointTransport = (
   }
   if (normalizedPath.endsWith('/sse')) return 'legacy-sse';
   if (normalizedPath.endsWith('/mcp')) return 'streamable-http';
-  return server.declaredTransport;
+  if (observedTransportApplies && server.transport === 'both') return 'streamable-http';
+  // Validation did not establish a transport for this endpoint. In particular,
+  // an unverified seed declaration must not fabricate an HTTP setup.
+  return undefined;
 };
 
 /** Select the endpoint used by the Playground and every client setup surface. */
@@ -294,7 +299,14 @@ const preRegisteredOAuth = (
 const oauthEnvironmentVariable = (
   requirement: CatalogOAuthRegistrationEvidence['clientId'],
   fallback: string
-): string => requirement.environmentVariable || fallback;
+): string | undefined => {
+  const name = requirement.environmentVariable === undefined
+    ? fallback
+    : requirement.environmentVariable;
+  return typeof name === 'string' && /^[A-Z][A-Z0-9_]{0,63}$/.test(name)
+    ? name
+    : undefined;
+};
 
 const oauthRedirects = (
   registration: CatalogOAuthRegistrationEvidence,
@@ -460,7 +472,7 @@ const claudeSetup = (server: CatalogServer, endpoint: PreferredCatalogEndpoint):
   const requirements = headerRequirements(server, selectedAuthType);
   const transport = endpoint.transport === 'legacy-sse' ? 'sse' : 'http';
   const clientIdEnvironment = registration
-    ? oauthEnvironmentVariable(registration.clientId, `${key.replace(/-/g, '_').toUpperCase()}_CLIENT_ID`)
+    ? oauthEnvironmentVariable(registration.clientId, `${key.replace(/-/g, '_').toUpperCase().slice(0, 50)}_CLIENT_ID`)
     : undefined;
   const claudeRedirects = registration
     ? exactCallbackRedirects(
@@ -582,11 +594,11 @@ const codexSetup = (server: CatalogServer, endpoint: PreferredCatalogEndpoint): 
 
     const clientIdEnvironment = oauthEnvironmentVariable(
       registration.clientId,
-      `${key.replace(/-/g, '_').toUpperCase()}_CLIENT_ID`
+      `${key.replace(/-/g, '_').toUpperCase().slice(0, 50)}_CLIENT_ID`
     );
     const clientSecretEnvironment = oauthEnvironmentVariable(
       registration.clientSecret,
-      `${key.replace(/-/g, '_').toUpperCase()}_CLIENT_SECRET`
+      `${key.replace(/-/g, '_').toUpperCase().slice(0, 50)}_CLIENT_SECRET`
     );
     const bridgeRuntimeScript = [
       'const { spawnSync } = require("node:child_process");',
@@ -702,11 +714,11 @@ const cursorSetup = (server: CatalogServer, endpoint: PreferredCatalogEndpoint):
   if (registration) {
     const clientIdEnvironment = oauthEnvironmentVariable(
       registration.clientId,
-      `${key.replace(/-/g, '_').toUpperCase()}_CLIENT_ID`
+      `${key.replace(/-/g, '_').toUpperCase().slice(0, 50)}_CLIENT_ID`
     );
     const clientSecretEnvironment = oauthEnvironmentVariable(
       registration.clientSecret,
-      `${key.replace(/-/g, '_').toUpperCase()}_CLIENT_SECRET`
+      `${key.replace(/-/g, '_').toUpperCase().slice(0, 50)}_CLIENT_SECRET`
     );
     config.auth = {
       CLIENT_ID: `\${env:${clientIdEnvironment}}`,
@@ -798,10 +810,38 @@ const vsCodeSetup = (server: CatalogServer, endpoint: PreferredCatalogEndpoint):
 /** Generate the complete, deterministic client setup model without touching the DOM. */
 export const generateClientSetups = (server: CatalogServer): ClientSetup[] => {
   const endpoint = getPreferredCatalogEndpoint(server);
-  return [
-    claudeSetup(server, endpoint),
-    codexSetup(server, endpoint),
-    cursorSetup(server, endpoint),
-    vsCodeSetup(server, endpoint),
+  // Validate both fields independently, even for clients that collect the
+  // secret through a prompt. Do this before any metadata is interpolated.
+  const invalidCredentials = server.oauthRegistration
+    ? (['clientId', 'clientSecret'] as const).filter((field) => {
+      const requirement = server.oauthRegistration[field];
+      return requirement.environmentVariable !== undefined
+        && !oauthEnvironmentVariable(requirement, 'MCP_CREDENTIAL');
+    })
+    : [];
+  const generators = [claudeSetup, codexSetup, cursorSetup, vsCodeSetup];
+  const clients: [ClientSetupId, string][] = [
+    ['claude-code', 'Claude Code'], ['codex-cli', 'Codex CLI'],
+    ['cursor', 'Cursor'], ['vs-code', 'VS Code'],
   ];
+  return generators.map((generate, index) => {
+    const [id, label] = clients[index];
+    const reasons = invalidCredentials.map((field) => (
+      `The catalog OAuth ${field === 'clientId' ? 'client-ID' : 'client-secret'} environment-variable name is invalid. Ask the publisher to correct the catalog metadata before configuring this client.`
+    ));
+    if (!endpoint.transport && id !== 'cursor') {
+      reasons.push('The endpoint transport is unverified. Confirm a concrete transport with the publisher before configuring this client.');
+    }
+    if (!reasons.length) return generate(server, endpoint);
+    return {
+      id, label, heading: `${label} setup`,
+      documentationUrl: CLIENT_DOCUMENTATION[id],
+      documentationLabel: `${label} MCP documentation`,
+      location: 'Review the publisher and client documentation before configuring this server.',
+      copyText: unsupportedCopyText(label, reasons),
+      format: 'text', supported: false, unsupportedReasons: reasons, endpoint,
+      authSummary: authSummary(server, setupAuthType(server)),
+      notes: commonNotes(server, endpoint, setupAuthType(server)),
+    };
+  });
 };

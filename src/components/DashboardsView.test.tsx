@@ -1,10 +1,9 @@
 import React from 'react';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import DashboardsView from './DashboardsView';
 import { Space } from '../types';
+import { readStylesheet } from '../styles/readStylesheet';
 
 const space: Space = {
   id: 'dashboard-1',
@@ -86,7 +85,7 @@ describe('DashboardsView toolbar', () => {
   });
 
   it('styles the segmented control as a grey container with a raised active pill', () => {
-    const css = readFileSync(resolve('src/index.css'), 'utf8');
+    const css = readStylesheet();
 
     expect(css).toMatch(/\.segmented-control\s*\{[^}]*background-color:\s*var\(--card-bg-secondary\)/);
     expect(css).toMatch(/\.segmented-control-item\s*\{[^}]*border:\s*none/);
@@ -96,7 +95,7 @@ describe('DashboardsView toolbar', () => {
   });
 
   it('gives ghost buttons no border and a grey hover wash', () => {
-    const css = readFileSync(resolve('src/index.css'), 'utf8');
+    const css = readStylesheet();
 
     expect(css).toMatch(/\.btn-ghost\s*\{[^}]*border:\s*none/);
     expect(css).toMatch(/\.btn-ghost:hover[^{]*\{[^}]*background-color:\s*rgba\(15, 23, 42, 0\.06\)/);

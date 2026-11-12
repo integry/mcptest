@@ -1,3 +1,4 @@
+import { resolveCatalogEndpointTransport } from './clientSetup';
 import serverCatalog from '../data/serverCatalog.json';
 import catalogValidation from '../data/catalogValidation.json';
 import catalogCapabilities from '../data/catalogCapabilities.json';
@@ -26,8 +27,19 @@ const CATALOG_VALIDATION = Array.isArray(catalogValidation)
   ? (catalogValidation as CatalogValidationResult[])
   : [];
 const CATALOG_CAPABILITIES = catalogCapabilities as Record<string, unknown>;
+// These build-time snapshots never change during a page visit. Normalizing
+// every inventory again for each catalog lookup creates long tasks on mount.
+const inventoryCache = new Map<string, ReturnType<typeof validateCapabilityInventory>>();
+const getInventory = (serverId: string) => {
+  if (!inventoryCache.has(serverId)) {
+    inventoryCache.set(serverId, validateCapabilityInventory(CATALOG_CAPABILITIES[serverId]));
+  }
+  return inventoryCache.get(serverId)!;
+};
 
 export interface CatalogEndpointDiagnosticEvidence {
+  /** Concrete, endpoint-scoped hint; diagnostic evidence may remain broad. */
+  preferredTransport?: CatalogTransport;
   transport: CatalogValidationTransport | CatalogTransport;
   authType: CatalogAuthType;
   supportsBearerToken: boolean;
@@ -107,6 +119,10 @@ const supportsAuthType = (server: CatalogServer, authType: CatalogAuthType): boo
   return server.authType === authType || server.alternativeAuthTypes?.includes(authType) === true;
 };
 
+const isResponseClass = (value: unknown): value is NonNullable<CatalogServer['responseClass']> => (
+  value === 'bot-protection' || value === 'rate-limited' || value === 'payment-required'
+);
+
 export const getCatalogServers = (): CatalogServer[] => {
   const validationByServerId = new Map(
     CATALOG_VALIDATION.map((result) => [result.serverId, result])
@@ -141,8 +157,9 @@ export const getCatalogServers = (): CatalogServer[] => {
       authorizationServers: validation?.authorizationServers,
       checkedAt: validation?.checkedAt,
       validationMessage: validation?.message,
+      ...(isResponseClass(validation?.responseClass) ? { responseClass: validation.responseClass } : {}),
       ...(CATALOG_CAPABILITIES[seed.id]
-        ? { capabilityInventory: validateCapabilityInventory(CATALOG_CAPABILITIES[seed.id]) }
+        ? { capabilityInventory: getInventory(seed.id) }
         : {}),
     };
   });
@@ -187,6 +204,7 @@ export const getCatalogEndpointDiagnosticEvidence = (
       const validatedEndpointMatches = server.validatedUrl
         && normalizedEndpointKey(server.validatedUrl) === endpointKey;
       return {
+        preferredTransport: resolveCatalogEndpointTransport(server, endpoint),
         transport: validatedEndpointMatches && server.transport !== 'unknown'
           ? server.transport
           : server.declaredTransport,
@@ -202,6 +220,7 @@ export const getCatalogEndpointDiagnosticEvidence = (
     ));
     if (alternative) {
       return {
+        preferredTransport: resolveCatalogEndpointTransport(server, endpoint),
         transport: server.declaredTransport,
         authType: alternative.authType || server.authType,
         supportsBearerToken: alternative.authType === 'bearer-token'

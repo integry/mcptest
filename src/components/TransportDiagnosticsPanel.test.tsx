@@ -5,6 +5,7 @@ import type { ConnectionErrorDetails } from '../utils/connectionDiagnostics';
 import type { ObservedTransportRequest } from '../utils/transportDetection';
 import { collectTransportDiagnostics } from '../utils/transportDiagnostics';
 import ConnectionErrorCard from './ConnectionErrorCard';
+import { checkSessionResilience } from '../utils/sessionResilience';
 
 beforeAll(() => {
   (
@@ -60,6 +61,15 @@ const render = (
 };
 
 describe('ConnectionErrorCard transport diagnostics', () => {
+  it('keeps passing session probes out of the error summary and displays pass badges', async () => {
+    const baseline = render({}).querySelector('.alert-heading')?.textContent;
+    act(() => root?.unmount());
+    const diagnostics = await checkSessionResilience({ endpoint: ENDPOINT, fetch: vi.fn(), stateless: true });
+    const container = render({ transportDiagnostics: diagnostics });
+    expect(container.querySelector('.alert-heading')?.textContent).toBe(baseline);
+    expect(Array.from(container.querySelectorAll('.transport-diagnostic .badge')).map(item => item.textContent)).toEqual(['Pass', 'Pass', 'Pass', 'Pass']);
+    expect(container.querySelectorAll('.transport-diagnostic .bg-success')).toHaveLength(4);
+  });
   it('explains a target 406 with evidence, remediation and code hints', () => {
     const container = render({
       attempts: [{
@@ -83,6 +93,12 @@ describe('ConnectionErrorCard transport diagnostics', () => {
     expect(container.querySelector('h6.alert-heading')?.textContent)
       .toBe('Server rejected the Accept header (HTTP 406)');
     expect(text).toContain('transport.accept-header-406');
+    const reference = container.querySelector<HTMLAnchorElement>('a.transport-diagnostic__id');
+    expect(reference?.getAttribute('href'))
+      .toBe('/learn/mcp-transport-diagnostics-reference#transport-accept-header-406');
+    expect(reference?.getAttribute('target')).toBeNull();
+    expect(reference?.querySelector('code')?.textContent).toBe('transport.accept-header-406');
+    expect(reference?.textContent).toContain('Learn more');
     expect(text).toContain('must send an Accept header that lists both application/json and text/event-stream');
     expect(text).toContain('Sent: accept: application/json, text/event-stream');
     expect(text).toContain('How to fix:');

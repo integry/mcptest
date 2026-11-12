@@ -1,0 +1,341 @@
+import { describe, expect, it, vi } from 'vitest';
+import proxyWorker, { discoveryRouteDependencies, DISCOVERY_REQUESTS_PER_PERIOD, handleProxyRequest, type Env, type RateLimiter } from './index';
+import {
+  DISCOVERY_FINAL_URL_HEADER,
+  DISCOVERY_MAX_RESPONSE_BYTES,
+  handleDiscoveryRequest,
+  isAllowedDiscoveryTarget,
+  type DiscoveryRouteDependencies,
+} from './discovery';
+
+const WORKER = 'https://proxy.example.workers.dev';
+const routeUrl = (target: string) => `${WORKER}/discovery?target=${encodeURIComponent(target)}`;
+const isForbidden = (hostname: string) => hostname === 'localhost' || hostname.startsWith('10.') || hostname === '127.0.0.1';
+
+const dependencies = (fetchImpl: typeof fetch, overrides: Partial<DiscoveryRouteDependencies> = {}): DiscoveryRouteDependencies => ({
+  isForbiddenHostname: isForbidden,
+  admitCaller: async () => ({ admitted: true }),
+  fetchImpl,
+  ...overrides,
+});
+
+const json = (body: unknown, init: ResponseInit = {}) => new Response(JSON.stringify(body), {
+  ...init,
+  headers: { 'Content-Type': 'application/json', ...(init.headers as Record<string, string> | undefined) },
+});
+
+describe('isAllowedDiscoveryTarget', () => {
+  it.each([
+    'https://example.com/.well-known/mcp/server-card.json',
+    'https://example.com/.well-known/mcp/server-cards.json',
+    'https://example.com/.well-known/mcp-server-card',
+    'https://example.com/.well-known/mcp.json',
+    'https://example.com/.well-known/ai-catalog.json',
+    'https://example.com/.well-known/oauth-protected-resource',
+    'https://example.com/.well-known/oauth-protected-resource/v1/mcp',
+    'https://auth.example.com/.well-known/oauth-authorization-server/tenant',
+    'https://auth.example.com/.well-known/openid-configuration',
+    'https://auth.example.com/tenant/.well-known/openid-configuration',
+    'https://example.com/mcp/server-card',
+    'https://registry.modelcontextprotocol.io/v0.1/servers?search=com.example&version=latest&limit=100',
+    'https://registry.modelcontextprotocol.io/v0/servers?cursor=abc',
+  ])('allows %s', target => {
+    expect(isAllowedDiscoveryTarget(new URL(target), isForbidden)).toBe(true);
+  });
+
+  it.each([
+    'http://example.com/.well-known/mcp.json',
+    'https://example.com:8443/.well-known/mcp.json',
+    'https://user:pass@example.com/.well-known/mcp.json',
+    'https://localhost/.well-known/mcp.json',
+    'https://10.0.0.1/.well-known/oauth-protected-resource',
+    'https://example.com/',
+    'https://example.com/mcp',
+    'https://example.com/api/users',
+    'https://example.com/server-card',
+    'https://example.com/.well-known/mcp.json?redirect=https://evil.test',
+    'https://example.com/.well-known/oauth-protected-resource/../../admin',
+    'https://example.com/.well-known/oauth-protected-resourcex',
+    'https://example.com/a%2Fb/server-card',
+    'https://example.com/.well-known/change-password',
+    'https://registry.modelcontextprotocol.io/v0.1/publish',
+    'https://registry.modelcontextprotocol.io/v0.1/servers?search=x&token=y',
+  ])('refuses %s', target => {
+    expect(isAllowedDiscoveryTarget(new URL(target), isForbidden)).toBe(false);
+  });
+});
+
+describe('handleDiscoveryRequest', () => {
+  it('GETs an allowed document with only Accept, MCP-Protocol-Version and a User-Agent', async () => {
+    const fetchImpl = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => json({ name: 'com.example/x' }, {
+      headers: { 'Content-Type': 'application/mcp-server-card+json', 'Set-Cookie': 'session=1', 'X-Internal': 'secret' },
+    }));
+    const target = 'https://example.com/mcp/server-card';
+    const response = await handleDiscoveryRequest(new Request(routeUrl(target), {
+      headers: {
+        Accept: 'application/mcp-server-card+json',
+        'MCP-Protocol-Version': '2026-07-28',
+        Authorization: 'Bearer firebase-token',
+        Cookie: 'a=b',
+        'X-MCP-Authorization': 'Bearer target-token',
+      },
+    }), dependencies(fetchImpl as unknown as typeof fetch));
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ name: 'com.example/x' });
+    expect(response.headers.get('Content-Type')).toBe('application/mcp-server-card+json');
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('*');
+    expect(response.headers.get('X-MCP-Proxy-Response-Source')).toBe('target');
+    expect(response.headers.get(DISCOVERY_FINAL_URL_HEADER)).toBe(target);
+    expect(response.headers.get('Set-Cookie')).toBeNull();
+    expect(response.headers.get('X-Internal')).toBeNull();
+
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe(target);
+    expect(init?.method).toBe('GET');
+    expect(init?.redirect).toBe('manual');
+    expect([...new Headers(init?.headers).keys()].sort()).toEqual(['accept', 'mcp-protocol-version', 'user-agent']);
+  });
+
+  it('refuses other targets and methods before contacting anything', async () => {
+    const fetchImpl = vi.fn();
+    const admitCaller = vi.fn(async () => ({ admitted: true as const }));
+    const deps = dependencies(fetchImpl as unknown as typeof fetch, { admitCaller });
+
+    const refused = await handleDiscoveryRequest(new Request(routeUrl('https://example.com/admin')), deps);
+    expect(refused.status).toBe(403);
+    expect(await refused.json()).toMatchObject({ error: 'target_not_allowed' });
+    expect(refused.headers.get('X-MCP-Proxy-Response-Source')).toBe('proxy');
+
+    const post = await handleDiscoveryRequest(new Request(routeUrl('https://example.com/.well-known/mcp.json'), { method: 'POST', body: '{}' }), deps);
+    expect(post.status).toBe(405);
+    const missing = await handleDiscoveryRequest(new Request(`${WORKER}/discovery`), deps);
+    expect(missing.status).toBe(400);
+
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(admitCaller).not.toHaveBeenCalled();
+  });
+
+  it('answers the preflight for the headers the checker sends', async () => {
+    const response = await handleDiscoveryRequest(new Request(routeUrl('https://example.com/.well-known/mcp.json'), { method: 'OPTIONS' }), dependencies(vi.fn() as unknown as typeof fetch));
+    expect(response.status).toBe(204);
+    expect(response.headers.get('Access-Control-Allow-Methods')).toBe('GET, OPTIONS');
+    expect(response.headers.get('Access-Control-Allow-Headers')).toBe('Accept, Authorization, MCP-Protocol-Version');
+  });
+
+  it('follows redirects only to other discovery locations', async () => {
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === 'https://example.com/.well-known/mcp.json') return new Response(null, { status: 301, headers: { Location: 'https://www.example.com/.well-known/mcp.json' } });
+      if (url === 'https://www.example.com/.well-known/mcp.json') return json({ ok: true });
+      if (url === 'https://example.com/.well-known/ai-catalog.json') return new Response(null, { status: 302, headers: { Location: 'https://example.com/login' } });
+      if (url === 'https://example.com/.well-known/oauth-protected-resource') return new Response(null, { status: 307, headers: { Location: 'https://localhost/.well-known/oauth-protected-resource' } });
+      return new Response('nope', { status: 404 });
+    });
+    const deps = dependencies(fetchImpl as unknown as typeof fetch);
+
+    const followed = await handleDiscoveryRequest(new Request(routeUrl('https://example.com/.well-known/mcp.json')), deps);
+    expect(followed.status).toBe(200);
+    expect(followed.headers.get(DISCOVERY_FINAL_URL_HEADER)).toBe('https://www.example.com/.well-known/mcp.json');
+
+    const login = await handleDiscoveryRequest(new Request(routeUrl('https://example.com/.well-known/ai-catalog.json')), deps);
+    expect(login.status).toBe(403);
+    const privateHost = await handleDiscoveryRequest(new Request(routeUrl('https://example.com/.well-known/oauth-protected-resource')), deps);
+    expect(privateHost.status).toBe(403);
+    expect(fetchImpl.mock.calls.map(([url]) => String(url))).not.toContain('https://localhost/.well-known/oauth-protected-resource');
+  });
+
+  it('stops after three redirects', async () => {
+    let hop = 0;
+    const fetchImpl = vi.fn(async () => new Response(null, { status: 302, headers: { Location: `https://example.com/${hop++}/server-card` } }));
+    const response = await handleDiscoveryRequest(new Request(routeUrl('https://example.com/mcp/server-card')), dependencies(fetchImpl as unknown as typeof fetch));
+    expect(response.status).toBe(502);
+    expect(await response.json()).toMatchObject({ error: 'too_many_redirects' });
+    expect(fetchImpl).toHaveBeenCalledTimes(4);
+  });
+
+  it('caps the response size and the upstream time', async () => {
+    const big = vi.fn(async () => new Response('x'.repeat(DISCOVERY_MAX_RESPONSE_BYTES + 1)));
+    const tooLarge = await handleDiscoveryRequest(new Request(routeUrl('https://example.com/.well-known/mcp.json')), dependencies(big as unknown as typeof fetch));
+    expect(tooLarge.status).toBe(502);
+    expect(await tooLarge.json()).toMatchObject({ error: 'too_large' });
+
+    const hanging = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+    }));
+    const timedOut = await handleDiscoveryRequest(
+      new Request(routeUrl('https://example.com/.well-known/mcp.json')),
+      dependencies(hanging as unknown as typeof fetch, { timeoutMs: 10 })
+    );
+    expect(timedOut.status).toBe(504);
+    expect(await timedOut.json()).toMatchObject({ error: 'timeout' });
+  });
+
+  it('passes target statuses through, so a missing document reads as a 404', async () => {
+    const fetchImpl = vi.fn(async () => new Response('Not found', { status: 404, headers: { 'Content-Type': 'text/plain' } }));
+    const response = await handleDiscoveryRequest(new Request(routeUrl('https://example.com/.well-known/mcp.json')), dependencies(fetchImpl as unknown as typeof fetch));
+    expect(response.status).toBe(404);
+    expect(response.headers.get('X-MCP-Proxy-Response-Source')).toBe('target');
+    expect(await response.text()).toBe('Not found');
+  });
+
+  it('keeps the challenge, rate-limit and payment evidence of a target response readable', async () => {
+    const challenge = await handleDiscoveryRequest(
+      new Request(routeUrl('https://example.com/.well-known/oauth-protected-resource')),
+      dependencies((async () => new Response('<!DOCTYPE html><title>Just a moment...</title>', {
+        status: 403,
+        headers: { 'Content-Type': 'text/html; charset=UTF-8', 'cf-mitigated': 'challenge', 'Set-Cookie': '__cf_bm=secret' },
+      })) as unknown as typeof fetch)
+    );
+    expect(challenge.status).toBe(403);
+    expect(challenge.headers.get('cf-mitigated')).toBe('challenge');
+    expect(challenge.headers.get('Content-Type')).toBe('text/html; charset=UTF-8');
+    expect(challenge.headers.get('Set-Cookie')).toBeNull();
+    const exposed = challenge.headers.get('Access-Control-Expose-Headers')?.split(', ') ?? [];
+    expect(exposed).toEqual(expect.arrayContaining(['cf-mitigated', 'x-vercel-mitigated', 'PAYMENT-REQUIRED', 'Retry-After']));
+    expect(new Set(exposed).size).toBe(exposed.length);
+
+    const limited = await handleDiscoveryRequest(
+      new Request(routeUrl('https://example.com/.well-known/oauth-authorization-server')),
+      dependencies((async () => new Response('slow down', {
+        status: 429,
+        headers: { 'Retry-After': '30', 'x-vercel-mitigated': 'deny' },
+      })) as unknown as typeof fetch)
+    );
+    expect(limited.headers.get('Retry-After')).toBe('30');
+    expect(limited.headers.get('x-vercel-mitigated')).toBe('deny');
+    expect(limited.headers.get('X-MCP-Proxy-Response-Source')).toBe('target');
+
+    const paid = await handleDiscoveryRequest(
+      new Request(routeUrl('https://example.com/.well-known/mcp.json')),
+      dependencies((async () => new Response('{}', {
+        status: 402,
+        headers: { 'Content-Type': 'application/json', 'PAYMENT-REQUIRED': 'eyJ4NDAyVmVyc2lvbiI6Mn0=' },
+      })) as unknown as typeof fetch)
+    );
+    expect(paid.status).toBe(402);
+    expect(paid.headers.get('PAYMENT-REQUIRED')).toBe('eyJ4NDAyVmVyc2lvbiI6Mn0=');
+  });
+
+  it('keeps WWW-Authenticate on an HTML 403, so an authentication challenge is not read as bot protection', async () => {
+    const challenged = await handleDiscoveryRequest(
+      new Request(routeUrl('https://example.com/.well-known/oauth-protected-resource')),
+      dependencies((async () => new Response('<html><body>Sign in</body></html>', {
+        status: 403,
+        headers: { 'Content-Type': 'text/html', 'WWW-Authenticate': 'Bearer realm="example", error="insufficient_scope"' },
+      })) as unknown as typeof fetch)
+    );
+    expect(challenged.status).toBe(403);
+    expect(challenged.headers.get('Content-Type')).toBe('text/html');
+    expect(challenged.headers.get('WWW-Authenticate')).toBe('Bearer realm="example", error="insufficient_scope"');
+    expect(challenged.headers.get('Access-Control-Expose-Headers')?.split(', ')).toContain('WWW-Authenticate');
+
+    const oversized = await handleDiscoveryRequest(
+      new Request(routeUrl('https://example.com/.well-known/oauth-protected-resource')),
+      dependencies((async () => new Response('<html></html>', {
+        status: 403,
+        headers: { 'Content-Type': 'text/html', 'WWW-Authenticate': `Bearer realm="${'x'.repeat(2000)}"` },
+      })) as unknown as typeof fetch)
+    );
+    expect(oversized.headers.get('WWW-Authenticate')).toBe('Bearer');
+
+    const absent = await handleDiscoveryRequest(
+      new Request(routeUrl('https://example.com/.well-known/oauth-protected-resource')),
+      dependencies((async () => new Response('<html></html>', { status: 403, headers: { 'Content-Type': 'text/html' } })) as unknown as typeof fetch)
+    );
+    expect(absent.headers.get('WWW-Authenticate')).toBeNull();
+  });
+});
+
+describe('the worker dispatch', () => {
+  const rateLimiter = (success: boolean) => ({ limit: vi.fn(async () => ({ success })) }) satisfies RateLimiter;
+
+  it('routes /discovery through its own limiter without consuming the proxy allowance', async () => {
+    const env: Env = { FIREBASE_PROJECT_ID: 'test', ANON_RATE_LIMITER: rateLimiter(true), DISCOVERY_RATE_LIMITER: rateLimiter(false) };
+    const response = await proxyWorker.fetch(new Request(routeUrl('https://example.com/.well-known/mcp.json'), {
+      headers: { 'CF-Connecting-IP': '203.0.113.9' },
+    }), env);
+    expect(response.status).toBe(429);
+    expect(response.headers.get('X-MCP-Proxy-Limit')).toBe('anonymous');
+    expect(env.DISCOVERY_RATE_LIMITER?.limit).toHaveBeenCalledWith({ key: 'ip:203.0.113.9' });
+    expect(env.ANON_RATE_LIMITER?.limit).not.toHaveBeenCalled();
+    expect(response.headers.get('Retry-After')).toBe('60');
+    expect(response.headers.get('X-MCP-Proxy-Response-Source')).toBe('proxy');
+    expect(response.headers.get('X-MCP-Proxy-Limit-Kind')).toBe('requests');
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('*');
+    await expect(response.json()).resolves.toMatchObject({
+      error: 'rate_limited', signInLiftsLimit: false,
+      message: expect.stringContaining('150 requests per 60s'),
+    });
+
+    const refused = await proxyWorker.fetch(new Request(routeUrl('https://example.com/anything')), env);
+    expect(refused.status).toBe(403);
+  });
+
+  it('uses the proxy private-network check and rejects an invalid sign-in token', async () => {
+    const deps = discoveryRouteDependencies({ FIREBASE_PROJECT_ID: 'test' }, async () => null);
+    expect(deps.isForbiddenHostname('192.168.1.1')).toBe(true);
+    expect(deps.isForbiddenHostname('example.com')).toBe(false);
+    const admission = await deps.admitCaller(new Request(routeUrl('https://example.com/.well-known/mcp.json'), { headers: { Authorization: 'Bearer bad' } }));
+    expect(admission.admitted).toBe(false);
+    expect('response' in admission && admission.response.status).toBe(401);
+    if ('response' in admission) {
+      expect(admission.response.headers.get('X-MCP-Proxy-Response-Source')).toBe('proxy');
+      expect(admission.response.headers.get('Access-Control-Expose-Headers')).toContain('X-MCP-Proxy-Response-Source');
+      expect(admission.response.headers.get('Cache-Control')).toBe('no-store');
+      await expect(admission.response.json()).resolves.toMatchObject({ error: 'invalid_token' });
+    }
+  });
+
+  it.each([false, true])('allows five full checks independently of an exhausted proxy bucket (signed in: %s)', async signedIn => {
+    let remaining = DISCOVERY_REQUESTS_PER_PERIOD;
+    const env: Env = {
+      FIREBASE_PROJECT_ID: 'test',
+      ANON_RATE_LIMITER: rateLimiter(false),
+      USER_RATE_LIMITER: rateLimiter(false),
+      DISCOVERY_RATE_LIMITER: { limit: vi.fn(async () => ({ success: remaining-- > 0 })) },
+    };
+    const request = new Request(routeUrl('https://example.com/.well-known/mcp.json'), {
+      headers: {
+        'CF-Connecting-IP': '203.0.113.9',
+        ...(signedIn ? { Authorization: 'Bearer valid' } : {}),
+      },
+    });
+    const deps = discoveryRouteDependencies(env, async () => 'test-user');
+    for (let i = 0; i < 5 * 30; i++) {
+      expect(await deps.admitCaller(request)).toEqual({ admitted: true });
+    }
+    const refused = await deps.admitCaller(request);
+    expect('response' in refused && refused.response.status).toBe(429);
+    expect(env.DISCOVERY_RATE_LIMITER?.limit).toHaveBeenCalledWith({
+      key: signedIn ? 'uid:test-user' : 'ip:203.0.113.9',
+    });
+    expect(env.ANON_RATE_LIMITER?.limit).not.toHaveBeenCalled();
+    expect(env.USER_RATE_LIMITER?.limit).not.toHaveBeenCalled();
+
+    // The main route continues to use its original bucket.
+    const proxyResponse = await handleProxyRequest(
+      new Request(`${WORKER}/?target=https://example.com/mcp`), env
+    );
+    expect(proxyResponse.status).toBe(429);
+    expect(env.ANON_RATE_LIMITER?.limit).toHaveBeenCalled();
+    expect(env.DISCOVERY_RATE_LIMITER?.limit).toHaveBeenCalledTimes(151);
+  });
+
+  it('keeps discovery admission available when its binding is missing or fails', async () => {
+    const request = new Request(routeUrl('https://example.com/.well-known/mcp.json'));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const env: Env = { FIREBASE_PROJECT_ID: 'test', ANON_RATE_LIMITER: rateLimiter(false) };
+      expect(await discoveryRouteDependencies(env).admitCaller(request)).toEqual({ admitted: true });
+      env.DISCOVERY_RATE_LIMITER = { limit: vi.fn().mockRejectedValue(new Error('unavailable')) };
+      expect(await discoveryRouteDependencies(env).admitCaller(request)).toEqual({ admitted: true });
+      expect(env.ANON_RATE_LIMITER?.limit).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+      error.mockRestore();
+    }
+  });
+
+});

@@ -4,6 +4,8 @@ import type {
   TransportDiagnosticEvidence,
 } from '../types/transportDiagnostics';
 import { formatRetryWait } from '../utils/transportDiagnostics';
+import { RESPONSE_CLASS_CONTENT } from '../utils/responseClassification';
+import FindingReferenceLink from './FindingReferenceLink';
 import './TransportDiagnosticsPanel.css';
 
 interface TransportDiagnosticsPanelProps {
@@ -18,12 +20,14 @@ interface TransportDiagnosticsPanelProps {
 
 const severityLabel = (diagnostic: TransportDiagnostic): string => {
   if (diagnostic.status === 'not-checked') return 'Not checked';
+  if (diagnostic.outcome === 'pass') return 'Pass';
   if (diagnostic.status === 'suspected') return 'Possible';
   return diagnostic.severity === 'error' ? 'Error' : diagnostic.severity === 'warning' ? 'Warning' : 'Info';
 };
 
 const severityBadge = (diagnostic: TransportDiagnostic): string => {
   if (diagnostic.status === 'not-checked') return 'bg-secondary';
+  if (diagnostic.outcome === 'pass') return 'bg-success';
   if (diagnostic.status === 'suspected') return 'bg-light text-dark border';
   return diagnostic.severity === 'error' ? 'bg-danger' : diagnostic.severity === 'warning' ? 'bg-warning text-dark' : 'bg-info text-dark';
 };
@@ -55,16 +59,19 @@ const TransportDiagnosticsPanel: React.FC<TransportDiagnosticsPanelProps> = ({
           const modifier = diagnostic.status === 'detected' ? diagnostic.severity : diagnostic.status;
           const rateLimited = diagnostic.id === 'transport.target-rate-limited-429'
             && diagnostic.status === 'detected';
+          const responseClass = diagnostic.evidence.find((evidence) => evidence.responseClass)?.responseClass;
+          const learnMore = responseClass ? RESPONSE_CLASS_CONTENT[responseClass.kind]?.learnMore : undefined;
           return (
             <article
               key={diagnostic.id}
               className={`transport-diagnostic transport-diagnostic--${modifier}`}
               aria-label={diagnostic.title}
+              data-testid="transport-diagnostic"
             >
               <div className="transport-diagnostic__header">
                 <span className={`badge ${severityBadge(diagnostic)}`}>{severityLabel(diagnostic)}</span>
                 <h6 className="transport-diagnostic__title">{diagnostic.title}</h6>
-                <code className="transport-diagnostic__id">{diagnostic.id}</code>
+                <FindingReferenceLink id={diagnostic.id} className="transport-diagnostic__id" />
               </div>
 
               {diagnostic.status === 'not-checked' ? (
@@ -111,6 +118,9 @@ const TransportDiagnosticsPanel: React.FC<TransportDiagnosticsPanelProps> = ({
                     </ul>
                   )}
                   <p className="small mb-1"><strong>How to fix:</strong> {diagnostic.remediation.summary}</p>
+                  {learnMore && (
+                    <p className="small mb-1">Learn more: <a href={learnMore.path}>{learnMore.title}</a></p>
+                  )}
                   <details>
                     <summary className="small">Code hints for common stacks</summary>
                     {diagnostic.remediation.hints.map((hint) => (

@@ -7,6 +7,7 @@ import {
   safeParsePublicReport,
   type PublicReport,
 } from './reportArtifact';
+import { endpointIdentity } from './endpointIdentity';
 import {
   createCompatibilityMatrix,
   createReleaseDecision,
@@ -27,17 +28,6 @@ export interface ReportSnapshotV1 {
 
 type ReadStorage = Pick<Storage, 'getItem'>;
 type WriteStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
-
-const endpointIdentity = (value: string): string => {
-  const redactedValue = redactReportString(value.trim());
-  try {
-    const url = new URL(redactedValue);
-    url.hostname = url.hostname.toLowerCase();
-    return url.toString();
-  } catch {
-    return redactedValue;
-  }
-};
 
 const snapshotId = (createdAt: string): string => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {

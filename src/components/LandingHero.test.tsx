@@ -5,7 +5,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { getCatalogServers } from '../utils/catalogUtils';
 import type { CatalogServer } from '../types/catalog';
-import { LandingHero, selectLandingQuickPicks } from './LandingHero';
+import { LandingHero, getRecentServerLabel, selectLandingQuickPicks } from './LandingHero';
 
 beforeAll(() => {
   (
@@ -144,5 +144,79 @@ describe('landing hero', () => {
       endpoint: { url: firstPick.browserUrl },
       protocolEra: firstPick.protocolEra,
     });
+  });
+});
+
+describe('landing hero for returning users', () => {
+  const recentServers = ['https://mcp.example.com/mcp', 'http://localhost:3001/sse', 'not a url'];
+
+  it('labels recent chips by host and keeps the full URL as the tooltip', () => {
+    expect(getRecentServerLabel('https://mcp.example.com/mcp')).toBe('mcp.example.com');
+    expect(getRecentServerLabel('http://localhost:3001/sse')).toBe('localhost:3001');
+    expect(getRecentServerLabel('mcp.example.com/mcp')).toBe('mcp.example.com');
+    expect(getRecentServerLabel('not a url')).toBe('not a url');
+  });
+
+  it('replaces the quick picks with recent chips that connect and remove through their callbacks', () => {
+    const onConnectRecent = vi.fn();
+    const onRemoveRecentServer = vi.fn();
+    const { container, onConnect } = renderLanding({ recentServers, onConnectRecent, onRemoveRecentServer });
+
+    expect(container.querySelector('[data-server-id]')).toBeNull();
+    expect(container.querySelector('#landing-recent-label')?.textContent).toBe('Recent');
+    const chips = container.querySelectorAll<HTMLButtonElement>('.landing-recent-connect');
+    expect(Array.from(chips, chip => chip.textContent?.trim())).toEqual(['mcp.example.com', 'localhost:3001', 'not a url']);
+    expect(chips[0].title).toBe('https://mcp.example.com/mcp');
+
+    act(() => chips[1].dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    expect(onConnectRecent).toHaveBeenCalledWith('http://localhost:3001/sse');
+    expect(onConnect).not.toHaveBeenCalled();
+
+    const remove = container.querySelector<HTMLButtonElement>(
+      '[aria-label="Remove https://mcp.example.com/mcp from recent connections"]'
+    );
+    act(() => remove?.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    expect(onRemoveRecentServer).toHaveBeenCalledWith('https://mcp.example.com/mcp');
+
+    // The audience rows and coverage strip stay for returning users.
+    expect(container.querySelectorAll('.landing-path')).toHaveLength(3);
+    expect(container.querySelector('.landing-coverage')).not.toBeNull();
+  });
+
+  it('keeps the quick picks when there is no recent-connect handler and caps recent chips at six', () => {
+    const noHandler = renderLanding({ recentServers });
+    expect(noHandler.container.querySelector('.landing-recent-connect')).toBeNull();
+    expect(noHandler.container.querySelectorAll('[data-server-id]')).toHaveLength(3);
+    act(() => root?.unmount());
+
+    const many = Array.from({ length: 9 }, (_, index) => `https://server-${index}.example/mcp`);
+    const capped = renderLanding({ recentServers: many, onConnectRecent: vi.fn() });
+    expect(capped.container.querySelectorAll('.landing-recent-connect')).toHaveLength(6);
+  });
+
+  it('swaps the connect row for the advanced options panel in place', () => {
+    const { container } = renderLanding({
+      serverUrl: 'https://example.com/mcp',
+      advancedOptions: <div className="connection-console" data-testid="advanced">panel</div>,
+    });
+    const toggle = container.querySelector<HTMLButtonElement>('.landing-advanced-toggle')!;
+
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(toggle.textContent).toContain('Advanced options');
+    expect(container.querySelector('[data-testid="advanced"]')).toBeNull();
+
+    act(() => toggle.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(toggle.getAttribute('aria-controls')).toBe('landing-advanced-panel');
+    expect(container.querySelector('#landing-advanced-panel [data-testid="advanced"]')).not.toBeNull();
+    expect(container.querySelector('.landing-connect')).toBeNull();
+    expect(container.querySelector('#landing-title')).not.toBeNull();
+    expect(container.querySelector('.landing-paths')).not.toBeNull();
+  });
+
+  it('offers no advanced toggle without a panel to show', () => {
+    const { container } = renderLanding();
+    expect(container.querySelector('.landing-advanced-toggle')).toBeNull();
   });
 });

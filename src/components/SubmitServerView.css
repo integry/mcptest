@@ -1,0 +1,204 @@
+/* /submit: catalog submission form with a live endpoint check. */
+.submit-server {
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: var(--space-2) 0 var(--space-8);
+}
+
+.submit-server-header {
+  margin-bottom: var(--space-5);
+  padding-bottom: var(--space-5);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.submit-server-header h1,
+.submit-server-done h1 {
+  margin-bottom: var(--space-2);
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  line-height: 1.15;
+}
+
+.submit-server-header p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.9375rem;
+}
+
+.submit-server-section {
+  padding-bottom: var(--space-5);
+  margin-bottom: var(--space-5);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.submit-server-section h2 {
+  margin-bottom: var(--space-3);
+  font-size: 1.1rem;
+}
+
+.submit-server-section .form-label {
+  margin-top: var(--space-3);
+  font-weight: 600;
+}
+
+.submit-server-check-row {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.submit-server-check-row .form-control {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--font-family-mono);
+  font-size: 0.875rem;
+}
+
+.submit-server-check-row .btn {
+  flex: 0 0 auto;
+}
+
+.submit-server-hint {
+  margin: var(--space-1) 0 0;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+.submit-server-note {
+  margin: var(--space-2) 0 0;
+  color: var(--text-accent);
+  font-size: 0.875rem;
+}
+
+.submit-server-evidence {
+  margin-top: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  background: var(--card-bg);
+}
+
+.submit-server-evidence.is-ready {
+  border-color: color-mix(in srgb, var(--success-color) 45%, var(--border-color));
+}
+
+.submit-server-evidence.is-blocked {
+  border-color: color-mix(in srgb, var(--danger-color) 45%, var(--border-color));
+}
+
+.submit-server-evidence-summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+  font-weight: 600;
+}
+
+.submit-server-evidence.is-ready .submit-server-evidence-summary i {
+  color: var(--success-color);
+}
+
+.submit-server-evidence.is-blocked .submit-server-evidence-summary i {
+  color: var(--danger-color);
+}
+
+.submit-server-evidence dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+  gap: var(--space-3) var(--space-4);
+  margin: 0 0 var(--space-3);
+}
+
+.submit-server-evidence dt {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.submit-server-evidence dd {
+  margin: 0;
+  color: var(--text-color);
+  font-size: 0.9375rem;
+}
+
+.submit-server-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+  gap: 0 var(--space-4);
+}
+
+.submit-server-fieldset {
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  border: 0;
+}
+
+.submit-server-section .submit-server-fieldset legend {
+  float: none;
+  width: auto;
+  margin: 0 0 var(--space-1);
+  font-size: 1rem;
+}
+
+/* Bootstrap offsets .form-check inputs into the gutter; keep them inside the column. */
+.submit-server-choice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 2rem;
+  margin-bottom: 0;
+  padding-left: 0;
+}
+
+.submit-server-choice .form-check-input {
+  flex: 0 0 auto;
+  float: none;
+  margin: 0;
+}
+
+.submit-server-confirm {
+  margin-top: var(--space-4);
+}
+
+.submit-server-turnstile {
+  margin-bottom: var(--space-4);
+  min-height: 65px;
+}
+
+.submit-server-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.submit-server-done {
+  padding: var(--space-6);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  background: var(--card-bg);
+}
+
+.submit-server-done code {
+  word-break: break-all;
+}
+
+@media (max-width: 768px) {
+  .submit-server-check-row {
+    flex-direction: column;
+  }
+
+  .submit-server-check-row .btn,
+  .submit-server-actions .btn {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .submit-server-choice {
+    min-height: 44px;
+  }
+
+  .submit-server-choice .form-check-input {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+}

@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { getLearnPageViewTitle } from './App';
 import {
   attachSavedCardOAuthChallenge,
   beginSavedCardOAuthFlow,
   classifySavedCardAuthenticationFailure,
-  getLearnPageViewTitle,
   resumeSavedCardAuthenticatedMcpRetry,
-} from './App';
+} from './utils/savedCardRuntime';
 import {
   ProxiedAuthenticationError,
   TransportConnectionError,

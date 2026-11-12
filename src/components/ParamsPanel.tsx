@@ -35,6 +35,9 @@ interface ParamsPanelProps {
   // Execution state
   isExecuting: boolean;
   executionStartTime: number | null;
+  /** Renders the server's call history; `showRequest` switches back to the form. */
+  renderCallHistory?: (showRequest: () => void) => React.ReactNode;
+  callHistoryCount?: number;
 }
 
 const ParamsPanel: React.FC<ParamsPanelProps> = ({
@@ -59,7 +62,12 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
   setResourceArgs,
   isExecuting,
   executionStartTime,
+  renderCallHistory,
+  callHistoryCount = 0,
 }) => {
+  const [view, setView] = React.useState<'request' | 'history'>('request');
+  const showingHistory = view === 'history' && Boolean(renderCallHistory) && isConnected;
+
   // Timer state
   const [elapsedTime, setElapsedTime] = React.useState<string>('');
   
@@ -330,16 +338,32 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
     // Add conditional class for deactivated state
     <div className={`card request-panel ${!isConnected ? 'panel-deactivated' : ''}`}>
       <div className="card-header">
-        <h5 className="mb-0 text-truncate">
-          {selectedTool?.name
-           || selectedPrompt?.name
-           || selectedResourceTemplate?.name
-           || selectedResourceTemplate?.uriTemplate
-           || 'Select a capability'}
-        </h5>
+        <div className="request-panel-heading">
+          <h5 className="mb-0 text-truncate">
+            {showingHistory
+             ? 'History'
+             : selectedTool?.name
+             || selectedPrompt?.name
+             || selectedResourceTemplate?.name
+             || selectedResourceTemplate?.uriTemplate
+             || 'Select a capability'}
+          </h5>
+          {renderCallHistory && isConnected && (
+            <div className="request-view-switch" role="group" aria-label="Request panel view">
+              <button type="button" className="btn" aria-pressed={!showingHistory} onClick={() => setView('request')}>
+                Request
+              </button>
+              <button type="button" className="btn" aria-pressed={showingHistory} onClick={() => setView('history')}>
+                History{callHistoryCount > 0 ? ` (${callHistoryCount})` : ''}
+              </button>
+            </div>
+          )}
+        </div>
       </div>
       <div className="card-body request-panel-body">
-        {!isConnected ? (
+        {showingHistory ? (
+          renderCallHistory!(() => setView('request'))
+        ) : !isConnected ? (
           <p className="text-muted p-2">Please connect to an MCP server to begin.</p>
         ) : !selectedTool && !selectedResourceTemplate && !selectedPrompt ? (
           <p className="text-muted p-2">Select a tool from the left to view its parameters and execute.</p>
@@ -368,7 +392,7 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
         )}
 
         {/* Buttons */}
-        {(selectedTool || selectedPrompt || selectedResourceTemplate) && (
+        {!showingHistory && (selectedTool || selectedPrompt || selectedResourceTemplate) && (
           <div className="request-actions">
             {missingRequiredParams.length > 0 && (
               <p className="request-validation" role="status">

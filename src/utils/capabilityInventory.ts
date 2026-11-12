@@ -37,9 +37,33 @@ export interface CreateCapabilityInventoryInput {
 
 const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f-\u009f]/g;
 const SECRET_ASSIGNMENT = /\b(authorization|cookie|password|passwd|secret|client[_ -]?secret|access[_ -]?token|refresh[_ -]?token|id[_ -]?token|api[_ -]?key|private[_ -]?key|credential|session|token)\s*[:=]\s*(?:\[REDACTED\]|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,;&]+)/gi;
-const BEARER_VALUE = /\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi;
+const decodesToUserPass = (candidate: string): boolean => {
+  try {
+    return atob(candidate.replace(/-/g, '+').replace(/_/g, '/')).includes(':');
+  } catch {
+    return false;
+  }
+};
+/**
+ * Basic credentials encode a user/password pair; ordinary prose after "basic" is public.
+ * The token and each prefix before `.`, `_`, `~` or `-` are decoded (standard and URL-safe), so
+ * trailing punctuation or a suffix cannot hide a credential.
+ */
+export const redactCapabilityAuthValues = (value: string): string => value
+  .replace(/\b(Bearer)\s+[A-Za-z0-9._~+/=-]+/gi, '$1 [REDACTED]')
+  .replace(/\b(Basic)\s+([A-Za-z0-9._~+/=-]+)/gi, (match, scheme: string, token: string) => {
+    const credential = token.replace(/\.+$/, '');
+    const prefixes = [...credential.matchAll(/[._~-]/g)].map(({ index }) => credential.slice(0, index));
+    return [credential, ...prefixes].some(decodesToUserPass)
+      ? `${scheme} [REDACTED]${token.slice(credential.length)}`
+      : match;
+  });
 const JWT_VALUE = /\beyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g;
 const STANDALONE_CREDENTIAL = /(?<![A-Za-z0-9])(?:gh[pousr]_[A-Za-z0-9]{20,255}|github_pat_[A-Za-z0-9_]{20,255}|(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,255}|sk-(?:proj-)?[A-Za-z0-9_-]{20,255}|(?:AKIA|ASIA)[A-Z0-9]{16}|AIza[A-Za-z0-9_-]{35}|xox(?:b|p|a|r|s)-[A-Za-z0-9-]{20,255}|npm_[A-Za-z0-9]{20,255}|glpat-[A-Za-z0-9_-]{20,255}|hf_[A-Za-z0-9]{20,255})(?![A-Za-z0-9])/g;
+/** Replaces well-known provider credential shapes (GitHub, OpenAI, AWS, Slack, …) that carry no key name. */
+export const redactStandaloneCredentials = (value: string): string => (
+  value.replace(STANDALONE_CREDENTIAL, '[REDACTED]')
+);
 const SAFE_IDENTIFIER = /^[A-Za-z0-9](?:[A-Za-z0-9._/-]{0,127})$/;
 const SAFE_MIME_TYPE = /^[A-Za-z0-9!#$&^_.+-]+\/[A-Za-z0-9!#$&^_.+-]+(?:\s*;\s*charset=[A-Za-z0-9._-]+)?$/i;
 const SCHEMA_TYPES = new Set(['array', 'boolean', 'integer', 'null', 'number', 'object', 'string']);
@@ -85,9 +109,8 @@ const cleanText = (
   if (typeof value !== 'string') return { changed: value !== undefined };
   const withoutControls = value.replace(CONTROL_CHARACTERS, ' ');
   const normalized = withoutControls.replace(/\s+/g, ' ').trim();
-  const redacted = redactUrlSecrets(normalized)
-    .replace(SECRET_ASSIGNMENT, '$1=[REDACTED]')
-    .replace(BEARER_VALUE, '$1 [REDACTED]')
+  const redacted = redactCapabilityAuthValues(redactUrlSecrets(normalized)
+    .replace(SECRET_ASSIGNMENT, '$1=[REDACTED]'))
     .replace(JWT_VALUE, '[REDACTED]')
     .replace(STANDALONE_CREDENTIAL, '[REDACTED]');
   if (!redacted) return { changed: value.length > 0 };
@@ -194,13 +217,24 @@ const sanitizeTool = (raw: unknown): { item?: CapabilityInventoryToolV1; changed
   const input = value.inputSchema !== undefined
     ? sanitizeArguments(value.inputSchema, 'schema')
     : sanitizeArguments(value.input, 'prompt');
+  // Only presence is kept, never the schema. A raw tools/list entry always
+  // carries inputSchema, so its missing outputSchema is a recorded "no"; a
+  // canonical item carries the boolean itself.
+  const outputSchema = typeof value.outputSchema === 'boolean'
+    ? value.outputSchema
+    : record(value.outputSchema)
+      ? true
+      : value.inputSchema !== undefined ? false : undefined;
   return {
     item: {
       name,
       ...(description.value ? { description: description.value } : {}),
       ...(input.items ? { input: input.items } : {}),
+      ...(outputSchema !== undefined ? { outputSchema } : {}),
     },
-    changed: description.changed || input.changed,
+    changed: description.changed || input.changed
+      || (value.outputSchema !== undefined && typeof value.outputSchema !== 'boolean'
+        && !record(value.outputSchema)),
   };
 };
 

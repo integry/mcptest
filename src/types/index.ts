@@ -1,5 +1,6 @@
-import { z } from 'zod';
-import { ToolSchema, ResourceSchema, ResourceTemplateSchema, PromptSchema } from "@modelcontextprotocol/core";
+// Type-only: the SDK schemas and zod must not enter the initial bundle through this module.
+import type { z } from 'zod';
+import type { ToolSchema, ResourceSchema, ResourceTemplateSchema, PromptSchema } from "@modelcontextprotocol/core";
 import type { CatalogAuthType, CatalogRequiredHeader } from './catalog';
 import type { CatalogProtocolEra } from './catalog';
 import type { OutputContractResult } from '../utils/outputContract';
@@ -87,6 +88,8 @@ export interface ConnectionTab {
   connectionStatus: 'Disconnected' | 'Connecting' | 'Connected' | 'Error';
   /** Endpoint-scoped input hint. Cleared when serverUrl changes. */
   preferredTransportHint?: TransportType;
+  /** Only an explicit shared-link transport choice is persisted in the URL. */
+  forcedTransport?: TransportType;
   /** Transport negotiated by the latest connection attempt. */
   transportType?: TransportType | null;
   useProxy?: boolean; // Whether to use proxy for this connection

@@ -1,3 +1,4 @@
+import type { ResponseClass } from '../utils/responseClassification';
 /**
  * Sentinel category value used by the catalog UI to represent an unfiltered
  * category selection.
@@ -7,7 +8,7 @@ export const CATALOG_CATEGORY_ALL = 'all' as const;
 /**
  * Remote MCP transport variants the catalog can advertise or validate.
  */
-export type CatalogTransport = 'streamable-http' | 'legacy-sse';
+export type CatalogTransport = import('./index').TransportType;
 
 /**
  * Transport result values produced by catalog validation. Validation can prove
@@ -38,7 +39,8 @@ export type CatalogServerStatus = 'online' | 'offline' | 'unknown';
 export type CatalogBrowserAccess = 'direct' | 'proxy-required' | 'unknown';
 
 /** How a catalog listing was discovered. This is independent of live validation. */
-export type CatalogListingSourceKind = 'publisher' | 'mcp-registry' | 'community';
+/** `community-submission` entries came through the in-app /submit flow and were reviewed by a maintainer. */
+export type CatalogListingSourceKind = 'publisher' | 'mcp-registry' | 'community' | 'community-submission';
 
 export interface CatalogListingSource {
   /** Curated source class; it must not be inferred from tags or validation results. */
@@ -280,6 +282,13 @@ export interface CatalogValidationResult {
   authorizationServers?: string[];
   /** ISO timestamp for when validation completed. */
   checkedAt: string;
+  /**
+   * Set when bot protection, a rate limit or a 402 answered instead of an MCP
+   * handshake. `payment-required` keeps status `online`: the server works but
+   * charges for access. The others leave status `unknown` with errorCode
+   * `bot_protection` or `rate_limited`.
+   */
+  responseClass?: ResponseClass;
   /** Optional machine-readable failure code for diagnostics. */
   errorCode?: string;
   /** Optional human-readable validation detail for maintainers. */
@@ -313,6 +322,8 @@ export interface CatalogServer extends Omit<CatalogServerSeed, 'transport'> {
   checkedAt?: string;
   /** Optional validation detail surfaced to maintainers or debug views. */
   validationMessage?: string;
+  /** Bot protection, rate limit or payment wall met by the latest validation run. */
+  responseClass?: ResponseClass;
   /** Durable, public-safe capability snapshot maintained separately from reachability evidence. */
   capabilityInventory?: CapabilityInventoryV1;
 }

@@ -12,12 +12,14 @@ import {
   getCatalogServerPath,
   getEffectiveCatalogTransport,
 } from '../utils/catalogSeo';
+import { getCatalogCategoryPath } from '../utils/catalogCategories';
 import { CatalogServerLogo } from './CatalogServerLogo';
 
 export interface CatalogServerCardProps {
   server: CatalogServer;
   onTest: (server: CatalogServer) => void;
-  onCategorySelect?: (category: string) => void;
+  /** Query string (search, auth, sort) the category link keeps. */
+  categorySearch?: string;
 }
 
 const formatValidationTime = (checkedAt?: string): string => {
@@ -106,6 +108,11 @@ const getListingSourceDetails = (
         label: 'MCP Registry',
         description: 'Listing sourced from an official MCP Registry record; publisher identity is not proven',
       };
+    case 'community-submission':
+      return {
+        label: 'Community submission',
+        description: 'Listing submitted through mcptest.io, checked live and reviewed by a maintainer',
+      };
     case 'community':
     default:
       return {
@@ -118,7 +125,7 @@ const getListingSourceDetails = (
 export const CatalogServerCard: React.FC<CatalogServerCardProps> = ({
   server,
   onTest,
-  onCategorySelect,
+  categorySearch = '',
 }) => {
   const statusDetails = getStatusDetails(server.status, server.checkedAt);
   const transportIsDeclaredOnly = server.transport === 'unknown';
@@ -133,162 +140,150 @@ export const CatalogServerCard: React.FC<CatalogServerCardProps> = ({
         <svg
           className="catalog-listing-source-icon"
           viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
           aria-hidden="true"
           focusable="false"
         >
-          <path d="M15 3h6v6" />
-          <path d="m10 14 11-11" />
-          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+          <path d="M15 3h6v6M10 14l11-11M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
         </svg>
       )}
     </>
   );
 
   return (
-    <div className="card h-100 catalog-server-card">
-      <div className="card-body d-flex flex-column">
-        <div className="catalog-server-main">
-          <div className="d-flex align-items-start gap-3 mb-3">
-            <CatalogServerLogo
-              name={server.name}
-              logoUrl={server.logoUrl}
-              className="catalog-server-card-logo flex-shrink-0"
-            />
-            <div className="catalog-server-heading">
-              <div className="catalog-server-title-row d-flex align-items-start justify-content-between gap-2 mb-1">
-                <div className="catalog-server-name-source">
-                  <h3 className="h5 mb-0">
-                    <Link
-                      className="catalog-server-title"
-                      to={getCatalogServerPath(server.id)}
-                    >
-                      {server.name}
-                    </Link>
-                  </h3>
-                  {server.listingSource.url ? (
-                    <a
-                      className="catalog-listing-source"
-                      href={server.listingSource.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      title={listingSource.description}
-                      aria-label={`${listingSource.label} source for ${server.name}. ${listingSource.description}.`}
-                    >
-                      {provenanceContent}
-                    </a>
-                  ) : (
-                    <span
-                      className="catalog-listing-source"
-                      title={listingSource.description}
-                      aria-label={`${listingSource.label} source for ${server.name}. ${listingSource.description}.`}
-                    >
-                      {provenanceContent}
-                    </span>
-                  )}
-                </div>
-                <span
-                  className={`catalog-runtime-status${
-                    server.status === 'online' ? ' catalog-runtime-status--online' : ''
-                  }`}
-                  title={statusDetails.tooltip}
-                  aria-label={statusDetails.tooltip}
-                >
-                  <span
-                    className={`catalog-status-dot rounded-circle ${statusDetails.className}`}
-                    aria-hidden="true"
-                  />
-                  {statusDetails.label}
-                </span>
-              </div>
-              <p
-                className="catalog-server-url small text-truncate mb-0"
-                title={server.url}
-                aria-label={`Endpoint hostname ${hostname}. Full endpoint ${server.url}`}
-              >
-                {hostname}
-              </p>
-            </div>
-          </div>
+    <article className="catalog-server-row">
+      <CatalogServerLogo
+        name={server.name}
+        logoUrl={server.logoUrl}
+        className="catalog-server-card-logo flex-shrink-0"
+      />
 
-          <p className="card-text catalog-server-description">{server.description}</p>
-        </div>
-
-        <div className="catalog-server-footer mt-auto">
-          <div
-            className="catalog-server-badges d-flex flex-wrap align-items-center mb-2"
-            role="group"
-            aria-label="Server summary"
-          >
-            <button
-              type="button"
-              className="badge catalog-metadata-badge catalog-metadata-badge--category"
-              onClick={() => onCategorySelect?.(server.category)}
-              aria-label={`Show ${server.category} servers`}
-            >
-              {server.category}
-            </button>
-            <span className="badge catalog-metadata-badge catalog-metadata-badge--auth">
-              {formatCatalogAuth(server.authType)}
-            </span>
-            {transportLabels.map((label) => (
-              <span
-                key={label}
-                className="badge catalog-metadata-badge catalog-metadata-badge--transport"
-                title={transportIsDeclaredOnly ? 'Catalog-declared transport; live validation pending' : undefined}
+      <div className="catalog-server-heading">
+        <div className="catalog-server-title-row">
+          <div className="catalog-server-name-source">
+            <h3>
+              <Link
+                className="catalog-server-title"
+                to={getCatalogServerPath(server.id)}
               >
-                {label}
-              </span>
-            ))}
-            {server.protocolEra !== 'unknown' && (
-              <span
-                className="badge catalog-metadata-badge catalog-metadata-badge--architecture"
-                title={server.protocolVersion || undefined}
+                {server.name}
+              </Link>
+            </h3>
+            {server.listingSource.url ? (
+              <a
+                className="catalog-listing-source"
+                href={server.listingSource.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                title={listingSource.description}
+                aria-label={`${listingSource.label} source for ${server.name}. ${listingSource.description}.`}
               >
-                {formatProtocolEra(server.protocolEra)}
+                {provenanceContent}
+              </a>
+            ) : (
+              <span
+                className="catalog-listing-source"
+                title={listingSource.description}
+                aria-label={`${listingSource.label} source for ${server.name}. ${listingSource.description}.`}
+              >
+                {provenanceContent}
               </span>
             )}
           </div>
-
-          {(server.browserAccess === 'direct' || server.browserAccess === 'proxy-required') && (
-            <div
-              className="catalog-browser-evidence mb-3"
-              role="group"
-              aria-label="Browser access evidence"
-            >
-              {server.browserAccess === 'direct' ? (
-                <span className="badge catalog-status-badge catalog-status-badge--verified" title="Observed with an in-browser MCP connection and call">
-                  Browser ready
-                </span>
-              ) : (
-                <span className="badge catalog-status-badge catalog-status-badge--warning" title="The server was reachable but did not permit a direct browser connection">
-                  Proxy required
-                </span>
-              )}
-            </div>
-          )}
-
-          <div className="catalog-card-actions align-items-center">
-            <Link className="catalog-report-link" to={getCatalogServerPath(server.id)}>
-              View report
-            </Link>
-            <button
-              type="button"
-              className="btn btn-sm btn-outline-primary catalog-test-button"
-              onClick={() => onTest(server)}
-              disabled={isOffline}
-              title={isOffline ? 'Testing is unavailable while this server is offline' : undefined}
-            >
-              Test in Playground
-            </button>
-          </div>
+          <span
+            className={`catalog-runtime-status${
+              server.status === 'online' ? ' catalog-runtime-status--online' : ''
+            }`}
+            title={statusDetails.tooltip}
+            aria-label={statusDetails.tooltip}
+          >
+            <span
+              className={`catalog-status-dot rounded-circle ${statusDetails.className}`}
+              aria-hidden="true"
+            />
+            {statusDetails.label}
+          </span>
         </div>
+        <p
+          className="catalog-server-url"
+          title={server.url}
+          aria-label={`Endpoint hostname ${hostname}. Full endpoint ${server.url}`}
+        >
+          {hostname}
+        </p>
+        <p className="catalog-server-description" title={server.description}>
+          {server.description}
+        </p>
       </div>
-    </div>
+
+      <div className="catalog-server-meta">
+        <div
+          className="catalog-server-badges"
+          role="group"
+          aria-label="Server summary"
+        >
+          <Link
+            className="badge catalog-metadata-badge catalog-metadata-badge--category"
+            to={{ pathname: getCatalogCategoryPath(server.category), search: categorySearch }}
+            aria-label={`Show ${server.category} servers`}
+          >
+            {server.category}
+          </Link>
+          <span className="badge catalog-metadata-badge catalog-metadata-badge--auth">
+            {formatCatalogAuth(server.authType)}
+          </span>
+          {transportLabels.map((label) => (
+            <span
+              key={label}
+              className="badge catalog-metadata-badge catalog-metadata-badge--transport"
+              title={transportIsDeclaredOnly ? 'Catalog-declared transport; live validation pending' : undefined}
+            >
+              {label}
+            </span>
+          ))}
+          {server.protocolEra !== 'unknown' && (
+            <span
+              className="badge catalog-metadata-badge catalog-metadata-badge--architecture"
+              title={server.protocolVersion || undefined}
+            >
+              {formatProtocolEra(server.protocolEra)}
+            </span>
+          )}
+        </div>
+
+        {(server.browserAccess === 'direct' || server.browserAccess === 'proxy-required') && (
+          <div
+            className="catalog-browser-evidence"
+            role="group"
+            aria-label="Browser access evidence"
+          >
+            {server.browserAccess === 'direct' ? (
+              <span className="badge catalog-status-badge catalog-status-badge--verified" title="Observed with an in-browser MCP connection and call">
+                Browser ready
+              </span>
+            ) : (
+              <span className="badge catalog-status-badge catalog-status-badge--warning" title="The server was reachable but did not permit a direct browser connection">
+                Proxy required
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="catalog-card-actions">
+        <Link className="catalog-report-link" to={getCatalogServerPath(server.id)}>
+          View report
+        </Link>
+        <button
+          type="button"
+          className="btn btn-sm btn-outline-primary catalog-test-button"
+          onClick={() => onTest(server)}
+          disabled={isOffline}
+          title={isOffline ? 'Testing is unavailable while this server is offline' : undefined}
+        >
+          Test in Playground
+        </button>
+      </div>
+    </article>
   );
 };
 

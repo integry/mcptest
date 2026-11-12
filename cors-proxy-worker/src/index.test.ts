@@ -1,7 +1,8 @@
+/// <reference types="node" />
 import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
 import { URL as NodeURL } from 'node:url';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import proxyWorker, {
   ANONYMOUS_MAX_RESPONSE_BYTES,
   HostedOAuthBroker,
@@ -222,6 +223,10 @@ describe('proxy target credential forwarding', () => {
   });
 
   it('keeps the sanitized header set across same-origin redirects', async () => {
+    // Vitest's jsdom Request shim spreads `init`, which drops the method and
+    // headers when `init` is itself a Request. Use the runtime Request it wraps.
+    vi.stubGlobal('Request', Object.getPrototypeOf(Request));
+    onTestFinished(() => { vi.unstubAllGlobals(); });
     const requests: Request[] = [];
     await fetchTargetRequest(new Request('https://example.com/mcp', {
       method: 'POST',
@@ -287,6 +292,27 @@ describe('proxy target credential forwarding', () => {
     );
     expect(proxiedResponse.headers.get('access-control-expose-headers')?.toLowerCase())
       .toContain('www-authenticate');
+    expect(proxiedResponse.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('target');
+  });
+
+  it('forwards and exposes the target headers that classify bot protection, rate limits and 402', () => {
+    const proxiedResponse = withCorsResponseHeaders(new Response('<html>blocked</html>', {
+      status: 403,
+      headers: {
+        'Content-Type': 'text/html',
+        'cf-mitigated': 'challenge',
+        'x-vercel-mitigated': 'challenge',
+        'Retry-After': '10',
+        'PAYMENT-REQUIRED': 'eyJ4NDAyVmVyc2lvbiI6Mn0=',
+      },
+    }), 'target');
+
+    expect(proxiedResponse.status).toBe(403);
+    expect(proxiedResponse.headers.get('cf-mitigated')).toBe('challenge');
+    expect(proxiedResponse.headers.get('x-vercel-mitigated')).toBe('challenge');
+    expect(proxiedResponse.headers.get('payment-required')).toBe('eyJ4NDAyVmVyc2lvbiI6Mn0=');
+    expect(proxiedResponse.headers.get('access-control-expose-headers')?.toLowerCase().split(', '))
+      .toEqual(expect.arrayContaining(['cf-mitigated', 'x-vercel-mitigated', 'retry-after', 'payment-required', 'content-type']));
     expect(proxiedResponse.headers.get(PROXY_RESPONSE_SOURCE_HEADER)).toBe('target');
   });
 
@@ -2598,11 +2624,12 @@ describe('caller-based proxy limits', () => {
     await expect(response.text()).resolves.toContain('http or https');
   });
 
-  it('declares both Cloudflare rate-limit bindings with a 60 second period', () => {
+  it('declares the three independent Cloudflare rate-limit bindings with a 60 second period', () => {
     const workerConfiguration = readFileSync(new NodeURL('../wrangler.toml', import.meta.url), 'utf8');
 
     expect(workerConfiguration).toMatch(/name = "ANON_RATE_LIMITER"[\s\S]*?simple = \{ limit = 60, period = 60 \}/);
     expect(workerConfiguration).toMatch(/name = "USER_RATE_LIMITER"[\s\S]*?simple = \{ limit = 600, period = 60 \}/);
+    expect(workerConfiguration).toMatch(/name = "DISCOVERY_RATE_LIMITER"[\s\S]*?namespace_id = "3322"[\s\S]*?simple = \{ limit = 150, period = 60 \}/);
   });
 });
 

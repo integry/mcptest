@@ -13,9 +13,26 @@ import {
   type RedirectPolicy,
   type SessionBehavior,
   type TransportKind,
-} from './types';
+} from './types.ts';
+import {
+  CAPABILITY_NAMES,
+  getClientCompatibilityForHost,
+  listCells,
+  type CapabilityName,
+  type ClientCompatibilityEntry,
+  type ClientRuntime,
+  type OAuthCallback,
+  type SourcedCell,
+  type SupportLevel,
+} from '../data/clientCompatibility.ts';
+import {
+  TOOL_ANNOTATIONS_SPEC_URL,
+  TOOL_HINT_CLIENT_BEHAVIORS,
+  type ToolHintClientBehavior,
+} from '../data/toolHintClientBehaviors.ts';
 
 const MCP_AUTH_SPEC = 'https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization';
+const MCP_AUTH_SPEC_REVIEWED_ON = '2026-08-11';
 const MCP_TRANSPORT_SPEC = 'https://modelcontextprotocol.io/specification/2025-06-18/basic/transports';
 
 const remediation = (
@@ -50,7 +67,7 @@ const observed = (fact: CompatibilityFactPath, value: string | boolean): Compati
 
 function condition(
   fact: CompatibilityFactPath,
-  operator: 'one-of' | 'contains-any',
+  operator: 'one-of' | 'contains-any' | 'contains-all',
   value: readonly (string | boolean)[]
 ): CompatibilityConditionV1 {
   return { fact, operator, value } as CompatibilityConditionV1;
@@ -68,20 +85,16 @@ interface ProfileConstraints {
   authSchemes: readonly AuthorizationScheme[];
   oauthRegistrationModes: readonly OAuthRegistrationMode[];
   callbackKind: 'hosted-https' | 'loopback' | 'flexible';
+  /** Runtime the profile models, for clients whose callbacks differ by runtime. */
+  runtime?: ClientRuntime;
+  /** Every exact URI the modeled runtime always uses; empty when none is established. */
   callbackUris: readonly string[];
+  /** The runtime's callback depends on connection details the engine does not observe. */
+  callbacksConditional: boolean;
   supportedCapabilities: readonly CapabilityName[];
   ignoredCapabilities: readonly CapabilityName[];
   browserCors: 'irrelevant' | 'runtime-dependent';
 }
-
-type CapabilityName =
-  | 'tools'
-  | 'resources'
-  | 'prompts'
-  | 'resourceSubscriptions'
-  | 'sampling'
-  | 'elicitation'
-  | 'tasks';
 
 const all = (...conditions: CompatibilityConditionV1[]): CompatibilityConditionV1 => ({ all: conditions });
 const any = (...conditions: CompatibilityConditionV1[]): CompatibilityConditionV1 => ({ any: conditions });
@@ -343,7 +356,7 @@ const makeRules = (profile: ProfileConstraints): readonly CompatibilityRuleV1[] 
         observed('authorization.oauth.dynamicRedirectRegistration', true),
         condition('authorization.oauth.redirectPolicy', 'one-of', callbackPolicies),
         ...(profile.callbackUris.length > 0
-          ? [condition('authorization.oauth.registeredRedirectUris', 'contains-any', profile.callbackUris)]
+          ? [condition('authorization.oauth.registeredRedirectUris', 'contains-all', profile.callbackUris)]
           : [])
       ),
       onPass: result('pass', 'OAuth redirect constraints are compatible', `The authorization server can accept ${profile.name}'s callback style.`),
@@ -354,7 +367,7 @@ const makeRules = (profile: ProfileConstraints): readonly CompatibilityRuleV1[] 
         remediation(
           'authorization-server-change',
           profile.callbackUris.length > 0
-            ? `Register an exact callback URI: ${profile.callbackUris.join(' or ')}.`
+            ? `Register ${profile.callbackUris.length > 1 ? 'every' : 'the exact'} callback URI: ${profile.callbackUris.join(' and ')}.`
             : `Allow ${profile.callbackKind} redirect URIs supplied during client registration.`,
           MCP_AUTH_SPEC
         )
@@ -362,14 +375,18 @@ const makeRules = (profile: ProfileConstraints): readonly CompatibilityRuleV1[] 
       onUnknown: result(
         'unknown',
         'OAuth redirect compatibility is unknown',
-        profile.callbackUris.length === 0
-          ? `No verified ${profile.name} callback URI is available to compare with the authorization server's exact-match policy.`
-          : 'The available redirect evidence does not establish whether the authorization server accepts the host callback URI.',
+        profile.callbacksConditional
+          ? `${profile.name}'s callback URI depends on how the server is connected, so it cannot be compared with the authorization server's exact-match policy.`
+          : profile.callbackUris.length === 0
+            ? `No verified ${profile.name} callback URI is available to compare with the authorization server's exact-match policy.`
+            : 'The available redirect evidence does not establish whether the authorization server accepts the host callback URI.',
         remediation(
           'observation-needed',
-          profile.callbackUris.length === 0
-            ? `Verify ${profile.name}'s exact callback URI and compare it with the registered redirect URIs.`
-            : 'Record accepted redirect URI classes or the exact registered callbacks.'
+          profile.callbacksConditional
+            ? `Compare the callback URI ${profile.name} shows for this server with the registered redirect URIs.`
+            : profile.callbackUris.length === 0
+              ? `Verify ${profile.name}'s exact callback URI and compare it with the registered redirect URIs.`
+              : 'Record accepted redirect URI classes or the exact registered callbacks.'
         )
       ),
       evidenceFacts: [
@@ -486,8 +503,122 @@ const source = (
   id: string,
   title: string,
   url: string,
-  notes: string
-): HostAssumptionSourceV1 => ({ id, title, url, accessedOn: '2026-08-11', notes });
+  notes: string,
+  accessedOn: string
+): HostAssumptionSourceV1 => ({ id, title, url, accessedOn, notes });
+
+const supported = (cell: SourcedCell<SupportLevel>) => cell.value === 'supported';
+
+const cellLabels: Record<string, string> = {
+  'transports.streamableHttp': 'Streamable HTTP',
+  'transports.legacySse': 'legacy SSE',
+  'transports.stdio': 'stdio',
+  'protocolVersions': 'protocol versions',
+  'auth.oauthDcr': 'OAuth dynamic client registration',
+  'auth.preRegisteredClient': 'pre-registered OAuth clients',
+  'auth.cimd': 'Client ID Metadata Documents',
+  'auth.bearerToken': 'bearer tokens',
+  'auth.apiKeyHeader': 'API key headers',
+  'auth.none': 'authless servers',
+  'oauthCallbacks': 'OAuth callback URIs',
+  'headers.custom': 'custom headers',
+  'privateHosts': 'private hosts',
+  'capabilities.tools': 'tools',
+  'capabilities.resources': 'resources',
+  'capabilities.prompts': 'prompts',
+  'capabilities.resourceSubscriptions': 'resource subscriptions',
+  'capabilities.sampling': 'sampling',
+  'capabilities.elicitation': 'elicitation',
+  'capabilities.tasks': 'tasks',
+};
+
+const describeCallback = ({ uri, use, runtimes }: OAuthCallback): string => {
+  const qualifiers = [...(runtimes ?? []), ...(use === 'conditional' ? ['conditional'] : [])];
+  return qualifiers.length > 0 ? `${uri} (${qualifiers.join(', ')})` : uri;
+};
+
+const describeCell = (path: string, cell: SourcedCell<unknown>): string => {
+  const label = cellLabels[path] ?? path;
+  const value = Array.isArray(cell.value)
+    ? cell.value.map((item) => (typeof item === 'string' ? item : describeCallback(item as OAuthCallback))).join(', ')
+    : String(cell.value);
+  return `${label}: ${value}`;
+};
+
+/**
+ * Host-profile assumptions cite the client compatibility data: one assumption
+ * per source page, listing the engine-relevant cells that page establishes.
+ */
+const clientAssumptions = (entry: ClientCompatibilityEntry): HostAssumptionSourceV1[] => {
+  const cells = listCells(entry).filter((item): item is { path: string; cell: SourcedCell<unknown> } => (
+    'value' in item.cell && item.path in cellLabels
+  ));
+  return entry.sources.flatMap((link, index) => {
+    const cited = cells.filter(({ cell }) => cell.source === link.url);
+    if (cited.length === 0) return [];
+    const verifiedOn = cited.map(({ cell }) => cell.verifiedOn).sort()[0];
+    return [source(
+      `${entry.id}-${index + 1}`,
+      link.title,
+      link.url,
+      `${entry.name}: ${cited.map(({ path, cell }) => describeCell(path, cell)).join('; ')}.`,
+      verifiedOn
+    )];
+  });
+};
+
+/**
+ * The callbacks the modeled runtime uses. Callbacks of another runtime are
+ * dropped; a conditional callback leaves the exact URI undetermined.
+ */
+const selectCallbacks = (entry: ClientCompatibilityEntry, runtime: ClientRuntime | undefined) => {
+  if (entry.oauthCallbacks.value === 'unknown') return { callbackUris: [], callbacksConditional: false };
+  const applicable = entry.oauthCallbacks.value.filter(({ runtimes }) => {
+    if (!runtimes) return true;
+    if (!runtime) throw new Error(`${entry.id} callbacks are runtime-specific; its host profile must name a runtime.`);
+    return runtimes.includes(runtime);
+  });
+  if (applicable.some(({ use }) => use === 'conditional')) return { callbackUris: [], callbacksConditional: true };
+  return { callbackUris: applicable.map(({ uri }) => uri), callbacksConditional: false };
+};
+
+/** Profile constraints that describe the client itself, read from clientCompatibility.json. */
+const fromClientData = (entry: ClientCompatibilityEntry, runtime: ClientRuntime | undefined) => {
+  const transports: TransportKind[] = [];
+  if (supported(entry.transports.streamableHttp)) transports.push('streamable-http');
+  if (supported(entry.transports.legacySse)) transports.push('legacy-sse');
+
+  const oauthRegistrationModes: OAuthRegistrationMode[] = [];
+  if (supported(entry.auth.cimd)) oauthRegistrationModes.push('client-id-metadata-document');
+  if (supported(entry.auth.oauthDcr)) oauthRegistrationModes.push('dynamic-client-registration');
+  // A client that accepts a user-supplied client ID can use both a client the
+  // server already registered for it and credentials the user registers.
+  if (supported(entry.auth.preRegisteredClient)) oauthRegistrationModes.push('pre-registered', 'manual-client-credentials');
+
+  const authSchemes: AuthorizationScheme[] = [];
+  if (oauthRegistrationModes.length > 0) authSchemes.push('oauth');
+  if (supported(entry.auth.bearerToken)) authSchemes.push('bearer');
+  if (supported(entry.auth.apiKeyHeader)) authSchemes.push('api-key');
+
+  return {
+    assumptions: clientAssumptions(entry),
+    transports,
+    authSchemes,
+    oauthRegistrationModes,
+    // Only exact URIs are usable for exact-match redirect checks.
+    ...selectCallbacks(entry, runtime),
+    supportedCapabilities: CAPABILITY_NAMES.filter((name) => supported(entry.capabilities[name])),
+    ignoredCapabilities: CAPABILITY_NAMES.filter((name) => !supported(entry.capabilities[name])),
+  };
+};
+
+const mcpAuthAssumption = (notes: string) => source(
+  'mcp-auth',
+  'MCP authorization specification',
+  MCP_AUTH_SPEC,
+  notes,
+  MCP_AUTH_SPEC_REVIEWED_ON
+);
 
 const common = {
   protocolEras: ['2024', '2025', '2026'] as const,
@@ -502,115 +633,222 @@ export const HOST_IDS = Object.freeze([
   'generic-sdk',
 ] as const satisfies readonly HostId[]);
 
-const constraints: readonly ProfileConstraints[] = [
-  {
-    id: 'chatgpt',
+type ProfileModel = Omit<
+  ProfileConstraints,
+  'id' | 'assumptions' | 'transports' | 'authSchemes' | 'oauthRegistrationModes' | 'callbackUris' | 'callbacksConditional' | 'supportedCapabilities' | 'ignoredCapabilities'
+> & { authNotes: string };
+
+/**
+ * Client facts (transports, credentials, registration, callbacks, consumed
+ * capabilities and their sources) come from clientCompatibility.json. What
+ * stays here is modeling: protocol eras, session handling, callback style,
+ * the runtime a profile describes and whether browser CORS matters for the host.
+ */
+const models: Readonly<Record<HostId, ProfileModel>> = {
+  chatgpt: {
     name: 'ChatGPT',
     description: 'ChatGPT custom remote MCP apps/connectors.',
-    assumptions: [
-      source('chatgpt-apps', 'Developer mode and MCP apps in ChatGPT', 'https://help.openai.com/en/articles/12584461-developer-mode-and-full-mcp-connectors-in-chatgpt', 'Remote servers may be public or OAuth-protected; refresh tokens improve continued connectivity.'),
-      source('mcp-auth', 'MCP authorization specification', MCP_AUTH_SPEC, 'Discovery, PKCE, registration, and redirect requirements.'),
-    ],
     ...common,
-    transports: ['streamable-http', 'legacy-sse'],
     statefulIsCaveat: true,
-    authSchemes: ['oauth'],
-    oauthRegistrationModes: ['client-id-metadata-document', 'dynamic-client-registration', 'pre-registered'],
     callbackKind: 'hosted-https',
-    callbackUris: [],
-    supportedCapabilities: ['tools'],
-    ignoredCapabilities: ['resources', 'prompts', 'resourceSubscriptions', 'sampling', 'elicitation', 'tasks'],
     browserCors: 'irrelevant',
+    authNotes: 'Discovery, PKCE, registration, and redirect requirements.',
   },
-  {
-    id: 'claude',
+  claude: {
     name: 'Claude',
     description: 'Claude web and desktop remote custom connectors.',
-    assumptions: [
-      source('claude-connectors', 'Building custom integrations via remote MCP servers', 'https://support.anthropic.com/en/articles/11503834-building-custom-integrations-via-remote-mcp-servers', 'Supports Streamable HTTP and SSE, authless and OAuth, DCR, tools, prompts, and resources; advanced capabilities are not supported.'),
-      source('mcp-auth', 'MCP authorization specification', MCP_AUTH_SPEC, 'Discovery, PKCE, registration, and redirect requirements.'),
-    ],
     ...common,
-    transports: ['streamable-http', 'legacy-sse'],
-    authSchemes: ['oauth'],
-    oauthRegistrationModes: ['dynamic-client-registration', 'pre-registered', 'manual-client-credentials'],
     callbackKind: 'hosted-https',
-    callbackUris: ['https://claude.ai/api/mcp/auth_callback'],
-    supportedCapabilities: ['tools', 'resources', 'prompts'],
-    ignoredCapabilities: ['resourceSubscriptions', 'sampling', 'elicitation', 'tasks'],
     browserCors: 'irrelevant',
+    authNotes: 'Discovery, PKCE, registration, and redirect requirements.',
   },
-  {
-    id: 'cursor',
+  cursor: {
     name: 'Cursor',
     description: 'Cursor IDE remote MCP clients.',
-    assumptions: [
-      source('cursor-mcp', 'Cursor MCP documentation', 'https://docs.cursor.com/context/model-context-protocol', 'Supports remote SSE and Streamable HTTP with OAuth and tool consumption.'),
-      source('mcp-auth', 'MCP authorization specification', MCP_AUTH_SPEC, 'Local public clients use PKCE and loopback redirect URIs.'),
-    ],
     ...common,
-    transports: ['streamable-http', 'legacy-sse'],
-    authSchemes: ['oauth', 'bearer', 'api-key'],
-    oauthRegistrationModes: ['dynamic-client-registration', 'pre-registered', 'manual-client-credentials'],
     callbackKind: 'loopback',
-    callbackUris: [],
-    supportedCapabilities: ['tools'],
-    ignoredCapabilities: ['resources', 'prompts', 'resourceSubscriptions', 'sampling', 'elicitation', 'tasks'],
+    runtime: 'desktop',
     browserCors: 'irrelevant',
+    authNotes: 'Local public clients use PKCE and loopback redirect URIs.',
   },
-  {
-    id: 'vscode-copilot',
+  'vscode-copilot': {
     name: 'VS Code/Copilot',
     description: 'VS Code MCP support used by GitHub Copilot chat.',
-    assumptions: [
-      source('vscode-mcp', 'Add and manage MCP servers in VS Code', 'https://code.visualstudio.com/docs/agent-customization/mcp-servers', 'Supports HTTP with SSE fallback, OAuth, tools, resources, prompts, and interactive apps.'),
-      source('vscode-config', 'VS Code MCP configuration reference', 'https://code.visualstudio.com/docs/agents/reference/mcp-configuration', 'Supports configured HTTP headers and pre-registered OAuth client IDs.'),
-    ],
     ...common,
-    transports: ['streamable-http', 'legacy-sse'],
-    authSchemes: ['oauth', 'bearer', 'api-key'],
-    oauthRegistrationModes: ['client-id-metadata-document', 'dynamic-client-registration', 'pre-registered', 'manual-client-credentials'],
     callbackKind: 'loopback',
-    callbackUris: [],
-    supportedCapabilities: ['tools', 'resources', 'prompts', 'elicitation', 'tasks'],
-    ignoredCapabilities: ['resourceSubscriptions', 'sampling'],
+    runtime: 'desktop',
     browserCors: 'irrelevant',
+    authNotes: 'Local public clients use PKCE and loopback redirect URIs.',
   },
-  {
-    id: 'generic-sdk',
+  'generic-sdk': {
     name: 'Generic MCP SDK',
     description: 'A configurable client built on a current MCP SDK.',
-    assumptions: [
-      source('typescript-sdk', 'MCP TypeScript SDK client guide', 'https://ts.sdk.modelcontextprotocol.io/v2/clients/connect', 'The SDK supports Streamable HTTP, legacy SSE, OAuth composition, and the protocol capability surface; application wiring still determines behavior.'),
-      source('mcp-auth', 'MCP authorization specification', MCP_AUTH_SPEC, 'Generic clients can select any standardized registration and redirect strategy.'),
-    ],
     ...common,
-    transports: ['streamable-http', 'legacy-sse'],
-    authSchemes: ['oauth', 'bearer', 'api-key'],
-    oauthRegistrationModes: ['client-id-metadata-document', 'dynamic-client-registration', 'pre-registered', 'manual-client-credentials'],
     callbackKind: 'flexible',
-    callbackUris: [],
-    supportedCapabilities: ['tools', 'resources', 'prompts', 'resourceSubscriptions', 'sampling', 'elicitation', 'tasks'],
-    ignoredCapabilities: [],
     browserCors: 'runtime-dependent',
+    authNotes: 'Generic clients can select any standardized registration and redirect strategy.',
   },
-];
+};
+
+const toolHintSourceId = (behavior: ToolHintClientBehavior): string => `${behavior.clientId}-tool-hints`;
+
+/**
+ * Rules for client behaviour that depends on tool annotation hints, verified
+ * in the client's own changelog (src/data/toolHintClientBehaviors.ts). The
+ * rules cite only that source. A missing hint is a caveat, never a failure,
+ * and an unobserved tool list does not change the assessment.
+ */
+const toolHintRules = (behavior: ToolHintClientBehavior): CompatibilityRuleV1[] => {
+  const base = {
+    schemaVersion: COMPATIBILITY_SCHEMA_VERSION,
+    scope: 'target-server' as const,
+    // No appliesWhen: the tools.* facts exist only when a complete, non-empty
+    // tool list was analyzed, so they already establish that the rule applies.
+    // Gating on capabilities.tools would leave applicability unresolved when
+    // tool discovery did not complete, and the evaluator then reports the
+    // possible caveat as an unknown finding instead of staying neutral.
+    unknownWhen: observed('capabilities.tools', 'absent'),
+    assumptionSourceIds: [toolHintSourceId(behavior)],
+  };
+  if (behavior.behavior === 'retry-after-dropped-connection') {
+    return [{
+      ...base,
+      id: 'tools.retry-hints',
+      passWhen: observed('tools.retryHintsDeclared', true),
+      onPass: result(
+        'pass',
+        'Tools state whether they are safe to retry',
+        `Every tool declares readOnlyHint: true, idempotentHint: true, or both readOnlyHint and idempotentHint, so ${behavior.clientName} can tell which calls to retry when an HTTP connection closes mid-call.`
+      ),
+      onFail: result(
+        'caveat',
+        `${behavior.clientName} will not retry some tools after a dropped connection`,
+        `Since ${behavior.sinceVersion}, ${behavior.clientName} retries an HTTP MCP tool call that was cut off mid-call only when the tool is read-only or idempotent. Tools that leave those hints unset fall back to the spec defaults (not read-only, not idempotent), so a dropped connection surfaces as an error instead of a retry.`,
+        remediation('server-change', 'Declare readOnlyHint: true on tools that only read, and idempotentHint on every other tool (true when repeating a call with the same arguments has no additional effect).', TOOL_ANNOTATIONS_SPEC_URL)
+      ),
+      onUnknown: result('pass', 'Tool retry hints were not observed', 'The server does not advertise tools, or its tool list was not fully analyzed, so retry hints do not affect this assessment.'),
+      evidenceFacts: ['tools.retryHintsDeclared'],
+    }];
+  }
+  return [{
+    ...base,
+    id: 'tools.parallel-read-only',
+    passWhen: observed('tools.readOnlyHintDeclared', true),
+    onPass: result(
+      'pass',
+      'Tools state whether they are read-only',
+      `Every tool declares readOnlyHint, so ${behavior.clientName} can run the read-only ones concurrently.`
+    ),
+    onFail: result(
+      'caveat',
+      `${behavior.clientName} runs some tools sequentially`,
+      `Since ${behavior.sinceVersion}, ${behavior.clientName} runs MCP tools concurrently only when they advertise readOnlyHint: true. Tools without readOnlyHint are treated as able to modify their environment and run one at a time, even if they only read.`,
+      remediation('server-change', 'Declare readOnlyHint on every tool: true on tools that only read.', TOOL_ANNOTATIONS_SPEC_URL)
+    ),
+    onUnknown: result('pass', 'Tool read-only hints were not observed', 'The server does not advertise tools, or its tool list was not fully analyzed, so read-only hints do not affect this assessment.'),
+    evidenceFacts: ['tools.readOnlyHintDeclared'],
+  }];
+};
+
+const toolHintBehaviorsFor = (clientId: string): ToolHintClientBehavior[] => (
+  TOOL_HINT_CLIENT_BEHAVIORS.filter((behavior) => behavior.clientId === clientId)
+);
+
+/** FNV-1a over the text, as eight hex digits. */
+const fnv1a = (text: string, seed: number): string => {
+  let hash = seed;
+  for (let index = 0; index < text.length; index += 1) {
+    hash = Math.imul(hash ^ text.charCodeAt(index), 0x01000193) >>> 0;
+  }
+  return hash.toString(16).padStart(8, '0');
+};
+
+/**
+ * Digest of everything that decides an assessment: the rules and the
+ * assumptions they cite. Verification dates are freshness, not identity, so
+ * re-checking a cell without changing it keeps the version.
+ */
+const contentVersion = (profile: Omit<HostProfileV1, 'profileVersion'>): string => {
+  const text = JSON.stringify({
+    ...profile,
+    assumptions: profile.assumptions.map(({ accessedOn: _accessedOn, ...assumption }) => assumption),
+  });
+  return `${fnv1a(text, 0x811c9dc5)}${fnv1a(text, 0x050c5d1f)}`;
+};
+
+/**
+ * Host profile for `hostId` built from a client compatibility entry. `name`
+ * replaces the model's name when the model stands in for another client.
+ */
+export const buildHostProfile = (hostId: HostId, entry: ClientCompatibilityEntry, name?: string): HostProfileV1 => {
+  const { authNotes, ...model } = models[hostId];
+  const { assumptions, ...client } = fromClientData(entry, model.runtime);
+  const constraints: ProfileConstraints = {
+    id: hostId,
+    ...model,
+    ...(name ? { name } : {}),
+    ...client,
+    assumptions: [...assumptions, mcpAuthAssumption(authNotes)],
+  };
+  const hintBehaviors = toolHintBehaviorsFor(entry.id);
+  const profile = {
+    schemaVersion: COMPATIBILITY_SCHEMA_VERSION,
+    id: hostId,
+    name: constraints.name,
+    description: constraints.description,
+    assumptions: [
+      ...constraints.assumptions,
+      ...hintBehaviors.map((behavior) => source(
+        toolHintSourceId(behavior),
+        behavior.sourceTitle,
+        behavior.sourceUrl,
+        `${behavior.clientName} ${behavior.sinceVersion}: "${behavior.quote}"`,
+        behavior.verifiedOn
+      )),
+    ],
+    rules: [...makeRules(constraints), ...hintBehaviors.flatMap(toolHintRules)],
+  };
+  // A stored assessment keeps this version, which changes whenever the rules
+  // or the assumptions behind them change.
+  return Object.freeze({ ...profile, profileVersion: contentVersion(profile) });
+};
 
 export const HOST_PROFILES: Readonly<Record<HostId, HostProfileV1>> = Object.freeze(
-  Object.fromEntries(constraints.map((profile) => [
-    profile.id,
-    Object.freeze({
-      schemaVersion: COMPATIBILITY_SCHEMA_VERSION,
-      profileVersion: '2026-08-11.1',
-      id: profile.id,
-      name: profile.name,
-      description: profile.description,
-      assumptions: profile.assumptions,
-      rules: makeRules(profile),
-    }),
-  ])) as Record<HostId, HostProfileV1>
+  Object.fromEntries(HOST_IDS.map((id) => [id, buildHostProfile(id, getClientCompatibilityForHost(id))])) as Record<HostId, HostProfileV1>
 );
 
 export const HOST_PROFILE_LIST: readonly HostProfileV1[] = Object.freeze(
   HOST_IDS.map((id) => HOST_PROFILES[id])
 );
+
+/**
+ * Host model for clients without a host profile of their own: Claude Desktop
+ * adds remote servers as claude.ai connectors (hosted callback); the CLI and
+ * editor clients sign in through a local loopback callback, like Cursor.
+ */
+const CLIENT_MODEL_HOSTS: Readonly<Record<string, HostId>> = {
+  'claude-desktop': 'claude',
+  'claude-code': 'cursor',
+  'codex-cli': 'cursor',
+  windsurf: 'cursor',
+  'gemini-cli': 'cursor',
+};
+
+const clientProfiles = new Map<string, HostProfileV1>();
+
+/**
+ * Profile that assesses one client of clientCompatibility.json: its own host
+ * profile when it has one, otherwise its own data under the closest host
+ * model, named after the client. Undefined for a client with neither.
+ */
+export const getClientHostProfile = (entry: ClientCompatibilityEntry): HostProfileV1 | undefined => {
+  if (entry.hostProfileId) return HOST_PROFILES[entry.hostProfileId];
+  const modelHost = CLIENT_MODEL_HOSTS[entry.id];
+  if (!modelHost) return undefined;
+  let profile = clientProfiles.get(entry.id);
+  if (!profile) {
+    profile = buildHostProfile(modelHost, entry, entry.name);
+    clientProfiles.set(entry.id, profile);
+  }
+  return profile;
+};

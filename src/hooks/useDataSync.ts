@@ -111,24 +111,13 @@ export const useDataSync = ({ spaces, tabs, setSpaces, setTabs }: DataSyncProps)
         fetchDataFromDO();
       }
     } else if (!currentUser && !loading) {
-      // Only set defaults on the very first load when not logged in
+      // Keep the local workspace when initial auth resolves signed out
       if (!hasInitialized.current) {
         hasInitialized.current = true;
         
-        // Check localStorage to see if we have existing data
-        let hasExistingData = false;
-        try {
-          const storedSpaces = localStorage.getItem(SPACES_KEY);
-          hasExistingData = storedSpaces && JSON.parse(storedSpaces).length > 0;
-        } catch (e) {
-          console.error('Failed to parse localStorage data:', e);
-        }
-        
-        if (!hasExistingData) {
-          // Only set defaults if there's no existing data in localStorage
-          setSpaces([{ id: 'default', name: 'My first dashboard', cards: [] }]);
-          setTabs([{ id: 'default-tab', title: 'New Connection', serverUrl: '', connectionStatus: 'Disconnected' }]);
-        }
+        // App initializes spaces and tabs synchronously from local storage.
+        // Reapplying defaults after auth resolves discards restored tabs and
+        // briefly brings the landing back for signed-out returning visitors.
       }
     }
     

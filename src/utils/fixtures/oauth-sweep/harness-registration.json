@@ -1,0 +1,4 @@
+{
+  "error": "insufficient_scope",
+  "error_description": "Policy 'DCR Trusted hosts ' rejected request to client-registration service. Details: URL doesn't match any trusted host or trusted domain"
+}

@@ -8,6 +8,12 @@ interface CatalogServerLogoProps {
   decorative?: boolean;
 }
 
+/**
+ * The largest size a logo image renders at (the server profile hero). The
+ * build serves PNG logos at 96px, enough for this size on high-density screens.
+ */
+export const LOGO_SIZE_PX = 40;
+
 export const getCatalogServerInitials = (name: string): string => {
   const words = name.match(/[\p{L}\p{N}]+/gu) || [];
   const initials = words.length > 1
@@ -46,6 +52,12 @@ export const CatalogServerLogo: React.FC<CatalogServerLogoProps> = ({
         <img
           src={logoUrl}
           alt={decorative ? '' : `${name} logo`}
+          // Every placement sizes the image with CSS; the attributes reserve its square box before it loads.
+          width={LOGO_SIZE_PX}
+          height={LOGO_SIZE_PX}
+          // The catalog lists 200+ logos; only those near the viewport download up front.
+          loading="lazy"
+          decoding="async"
           onError={() => setFailed(true)}
         />
       ) : (

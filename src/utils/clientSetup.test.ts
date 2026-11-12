@@ -4,10 +4,14 @@ import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CatalogServer } from '../types/catalog';
+import { createServerConnectModel } from './serverConnect';
+import { attemptParallelConnections, getTransportCandidates } from './transportDetection';
+import type { PreferredCatalogEndpoint } from './clientSetup';
 import { getCatalogServerById } from './catalogUtils';
 import {
   generateClientSetups,
   getPreferredCatalogEndpoint,
+  resolveCatalogEndpointTransport,
   sanitizeClientSetupKey,
 } from './clientSetup';
 
@@ -666,5 +670,87 @@ describe('client setup transports and authentication', () => {
     }));
     expect(setups.flatMap(({ notes }) => notes).join(' ')).toContain('Confirm the authentication method');
     expect(setups.map(({ copyText }) => copyText).join(' ')).not.toMatch(/TOKEN|API_KEY|Authorization/);
+  });
+});
+
+
+describe('untrusted OAuth environment names', () => {
+  const malformed = ['BAD}NAME', 'BAD"NAME', "BAD'NAME", 'BAD$(id)', 'BAD;id', 'BAD&&id', 'BAD`id`', 'BAD\nNAME', '', 'lowercase', '_NAME', 'A'.repeat(65)];
+  for (const field of ['clientId', 'clientSecret'] as const) {
+    it.each(malformed)(`rejects ${field} independently: %j`, (name) => {
+      const server = makePreRegisteredServer();
+      server.oauthRegistration![field].environmentVariable = name;
+      const setups = generateClientSetups(server);
+      for (const setup of setups) {
+        expect(setup.supported).toBe(false);
+        expect(setup.format).toBe('text');
+        expect(setup.copyText).toContain('environment-variable name is invalid');
+        expect(setup.copyText).not.toContain('claude mcp add');
+        expect(setup.unsupportedReasons).toHaveLength(1);
+      }
+      if (name) expect(JSON.stringify(createServerConnectModel(server))).not.toContain(JSON.stringify(name).slice(1, -1));
+    });
+  }
+  it('keeps generated credential names bounded and distinct for a long server id', () => {
+    const server = makePreRegisteredServer();
+    server.id = 'a'.repeat(64);
+    delete server.oauthRegistration!.clientId.environmentVariable;
+    delete server.oauthRegistration!.clientSecret.environmentVariable;
+    const cursor = generateClientSetups(server).find(({ id }) => id === 'cursor')!;
+    const config = JSON.parse(cursor.copyText).mcpServers[server.id].auth;
+    expect(config.CLIENT_ID).toBe(`\${env:${'A'.repeat(50)}_CLIENT_ID}`);
+    expect(config.CLIENT_SECRET).toBe(`\${env:${'A'.repeat(50)}_CLIENT_SECRET}`);
+  });
+  it('accepts one-letter names and absent names with safe generated defaults', () => {
+    const server = makePreRegisteredServer();
+    server.oauthRegistration!.clientId.environmentVariable = 'A';
+    delete server.oauthRegistration!.clientSecret.environmentVariable;
+    expect(generateClientSetups(server).every(({ supported }) => supported)).toBe(true);
+  });
+});
+
+describe('concrete endpoint transport boundaries', () => {
+  it.each(['both', 'unknown'] as const)('resolves suffix-free %s without forwarding it', (transport) => {
+    const server = makeServer({ url: 'https://example.com/endpoint', transport });
+    const endpoint = getPreferredCatalogEndpoint(server);
+    expect(endpoint.transport).toBe(transport === 'both' ? 'streamable-http' : undefined);
+    const candidates = getTransportCandidates(endpoint.url, false, endpoint.transport);
+    expect(candidates.every(({ transportType }) => ['streamable-http', 'legacy-sse'].includes(transportType))).toBe(true);
+    if (transport === 'unknown') {
+      for (const setup of generateClientSetups(server).filter(({ id }) => id !== 'cursor')) {
+        expect(setup.supported).toBe(false);
+        expect(setup.copyText).toContain('transport is unverified');
+      }
+      expect(createServerConnectModel(server).agentPrompt).toContain('Transport: Not yet verified');
+    }
+  });
+  it('infers SSE from unknown and keeps definitive evidence scoped to its endpoint', () => {
+    expect(getPreferredCatalogEndpoint(makeServer({ url: 'https://example.com/sse', transport: 'unknown' })).transport).toBe('legacy-sse');
+    expect(getPreferredCatalogEndpoint(makeServer({
+      url: 'https://example.com/mcp', browserUrl: 'https://example.com/custom',
+      validatedUrl: 'https://example.com/mcp', transport: 'legacy-sse',
+    })).transport).toBeUndefined();
+  });
+  it('does not reuse observations for a different alternative endpoint', () => {
+    const server = makeServer({ transport: 'legacy-sse' });
+    expect(resolveCatalogEndpointTransport(server, 'https://alternative.example/custom')).toBeUndefined();
+    expect(resolveCatalogEndpointTransport(server, 'https://alternative.example/sse')).toBe('legacy-sse');
+    expect(getPreferredCatalogEndpoint(makeServer({
+      transport: 'both', validatedUrl: 'https://example.com/mcp', browserUrl: 'https://example.com/custom',
+    })).transport).toBeUndefined();
+  });
+  it.each(['both', 'unknown'] as const)('ignores invalid runtime candidate hint %s', (transport) => {
+    // @ts-expect-error Non-concrete catalog states cannot become attempt hints.
+    const candidates = getTransportCandidates('https://example.com/endpoint', false, transport);
+    expect(candidates.every(({ transportType }) => transportType !== (transport as string))).toBe(true);
+  });
+  it('requires a concrete preferred-endpoint type', () => {
+    // @ts-expect-error Preferred endpoints cannot expose broad validation states.
+    const both: PreferredCatalogEndpoint['transport'] = 'both';
+    // @ts-expect-error Unknown must be represented by an absent hint.
+    const unknown: PreferredCatalogEndpoint['transport'] = 'unknown';
+    // @ts-expect-error Connection attempts accept concrete hints only.
+    const attemptHint: Parameters<typeof attemptParallelConnections>[7] = 'both';
+    expect([both, unknown, attemptHint]).toEqual(['both', 'unknown', 'both']);
   });
 });

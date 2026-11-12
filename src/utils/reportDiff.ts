@@ -1,4 +1,8 @@
 import type { PublicReport } from './reportArtifact';
+import type { ToolContextCostDeltaV1 } from '../types/toolContextCost';
+import {
+  computeToolContextCost, contextCostAccessLimitation, diffToolContextCost, isToolContextCost,
+} from './toolTokenCost';
 
 export type ReportDiffClassification =
   | 'breaking'
@@ -33,6 +37,8 @@ export interface ReportDiff {
   changes: ReportDiffChange[];
   counts: Record<ReportDiffClassification, number>;
   hasBreakingChanges: boolean;
+  /** Before/after estimated context cost, when both reports let it be compared. */
+  contextCost?: ToolContextCostDeltaV1;
 }
 
 type JsonRecord = Record<string, unknown>;
@@ -119,7 +125,7 @@ const collectRedactedSchemaPaths = (
   }
 };
 
-const redactedSchemaChanges = (
+export const redactedSchemaChanges = (
   before: unknown,
   after: unknown,
   toolName: string,
@@ -309,7 +315,7 @@ function compareSchemaAcceptance(beforeValue: unknown, afterValue: unknown): Sch
   return 'widened';
 }
 
-const schemaChanges = (
+export const schemaChanges = (
   before: unknown,
   after: unknown,
   toolName: string,
@@ -1154,13 +1160,100 @@ const compareScores = (before: PublicReport, after: PublicReport): ReportDiffCha
   return changes;
 };
 
+const ACCESS_SENSITIVE_PATH = /^(?:tools|capabilities)\.[^.]+$/;
+// The credential scheme the evaluator sent is the access state itself, not server metadata.
+const ACCESS_STATE_EVIDENCE_PATH = 'oauth.metadata.authorizationSchemes';
+
+/**
+ * Tool and capability membership compared across a change in access state
+ * (authenticated vs unauthenticated) is not evidence of drift.
+ */
+const respectAccessState = (
+  before: PublicReport,
+  after: PublicReport,
+  changes: ReportDiffChange[]
+): ReportDiffChange[] => {
+  const left = before.capabilityInventory?.authentication;
+  const right = after.capabilityInventory?.authentication;
+  if (!left || !right || left === right) return changes;
+  return [
+    makeChange(
+      'unknown', 'authentication', 'capabilityInventory.authentication',
+      'Tool list access state changed',
+      `${accessChangeDetail(left, right)} Compare reports obtained the same way to detect drift.`
+    ),
+    ...changes.map((change) => (
+      ((change.category === 'tools' || change.category === 'capabilities')
+        && ACCESS_SENSITIVE_PATH.test(change.path)
+        && (change.classification === 'removal' || change.classification === 'addition' || change.classification === 'change'))
+        || change.path === ACCESS_STATE_EVIDENCE_PATH
+        ? {
+            ...change,
+            classification: 'unknown' as const,
+            breaking: false,
+            detail: `${change.detail} The access state changed between these reports.`,
+          }
+        : change
+    )),
+  ];
+};
+
+const DEFINITIONS_BASIS_LIMITATION = 'At least one report predates the per-tool breakdown, so both are estimated from the stored names, descriptions and input schemas; output schemas and annotations are not included.';
+const PARTIAL_DEFINITIONS_LIMITATION = 'Some stored definitions were redacted or omitted, so added and removed tools are not listed.';
+
+/**
+ * Context-cost delta between two reports. Uses the stored breakdowns when both
+ * have one with the same method; otherwise re-estimates both from the stored
+ * tool definitions, so the two numbers always share one method and basis.
+ */
+export const diffReportContextCost = (
+  before: PublicReport,
+  after: PublicReport
+): ToolContextCostDeltaV1 | undefined => {
+  // Reports obtained with different access list different tools by design.
+  const accessLimitation = contextCostAccessLimitation(
+    before.capabilityInventory?.authentication,
+    after.capabilityInventory?.authentication
+  );
+  const accessOptions = accessLimitation ? { beforeComplete: false, afterComplete: false } : {};
+  const withAccess = (limitation?: string): { limitation?: string } => {
+    const text = [limitation, accessLimitation].filter(Boolean).join(' ');
+    return text ? { limitation: text } : {};
+  };
+  const left = before.toolSurfaceAnalysis?.contextCost;
+  const right = after.toolSurfaceAnalysis?.contextCost;
+  const beforeDefinitions = before.toolSurfaceAnalysis?.toolDefinitions;
+  const afterDefinitions = after.toolSurfaceAnalysis?.toolDefinitions;
+  if (isToolContextCost(left) && isToolContextCost(right) && left.method.id === right.method.id) {
+    // The breakdown records an incomplete listing itself (`listingIncomplete`).
+    return diffToolContextCost(left, right, { ...withAccess(), ...accessOptions });
+  }
+  if (!beforeDefinitions || !afterDefinitions
+      || beforeDefinitions.status === 'unavailable' || afterDefinitions.status === 'unavailable') {
+    return undefined;
+  }
+  const partial = beforeDefinitions.status !== 'complete' || afterDefinitions.status !== 'complete';
+  return diffToolContextCost(
+    computeToolContextCost(beforeDefinitions.tools, { toolLimit: Number.POSITIVE_INFINITY }),
+    computeToolContextCost(afterDefinitions.tools, { toolLimit: Number.POSITIVE_INFINITY }),
+    {
+      ...withAccess(partial
+        ? `${DEFINITIONS_BASIS_LIMITATION} ${PARTIAL_DEFINITIONS_LIMITATION}`
+        : DEFINITIONS_BASIS_LIMITATION),
+      beforeComplete: beforeDefinitions.status === 'complete',
+      afterComplete: afterDefinitions.status === 'complete',
+      ...accessOptions,
+    }
+  );
+};
+
 export const diffPublicReports = (before: PublicReport, after: PublicReport): ReportDiff => {
-  const changes: ReportDiffChange[] = [
+  const changes: ReportDiffChange[] = respectAccessState(before, after, [
     ...compareOAuth(before, after),
     ...compareTools(before, after),
     ...compareCapabilities(before, after),
     ...compareFindings(before, after),
-  ];
+  ]);
 
   const beforeTransport = before.transport?.type;
   const afterTransport = after.transport?.type;
@@ -1288,9 +1381,275 @@ export const diffPublicReports = (before: PublicReport, after: PublicReport): Re
     breaking: 0, removal: 0, risk: 0, unknown: 0, addition: 0, change: 0,
   };
   changes.forEach((change) => { counts[change.classification] += 1; });
+  const contextCost = diffReportContextCost(before, after);
   return {
     beforeGeneratedAt: before.generatedAt,
     afterGeneratedAt: after.generatedAt,
+    changes,
+    counts,
+    hasBreakingChanges: changes.some((change) => change.breaking),
+    ...(contextCost ? { contextCost } : {}),
+  };
+};
+
+// --- Playground interface diff ---
+
+export interface InterfaceToolSnapshot {
+  name: string;
+  title?: string;
+  description?: string;
+  /** Omitted when the stored snapshot kept only a fingerprint. */
+  inputSchema?: unknown;
+  inputSchemaFingerprint: string;
+  outputSchema?: unknown;
+  /** Absent when the tool declares no outputSchema. */
+  outputSchemaFingerprint?: string;
+}
+
+/** The capability surface a playground visit observed, already redacted for storage. */
+export interface InterfaceSnapshot {
+  observedAt: string;
+  source: 'playground' | 'report';
+  protocolVersion?: string;
+  transport?: string;
+  /** Absent when the source could not prove the complete tool list. */
+  tools?: InterfaceToolSnapshot[];
+  /** Report-derived snapshots do not carry output schemas. */
+  outputSchemasObserved: boolean;
+  resources?: string[];
+  resourceTemplates?: string[];
+  prompts?: string[];
+  /** How the lists were obtained, when recorded (report snapshots). */
+  authentication?: 'authenticated' | 'unauthenticated';
+}
+
+export type InterfaceChangeKind =
+  | 'tool-added'
+  | 'tool-removed'
+  | 'description-changed'
+  | 'input-schema-changed'
+  | 'output-schema-changed'
+  | 'resource-added'
+  | 'resource-removed'
+  | 'prompt-added'
+  | 'prompt-removed'
+  | 'protocol-changed'
+  | 'transport-changed';
+
+export interface InterfaceChange extends ReportDiffChange {
+  kind: InterfaceChangeKind;
+  /** The tool, resource, prompt or scalar the change belongs to. */
+  subject: string;
+  /** Detailed schema findings for input-schema changes, from the report diff rules. */
+  schemaChanges?: ReportDiffChange[];
+}
+
+export interface InterfaceDiff {
+  beforeSource: InterfaceSnapshot['source'];
+  beforeObservedAt: string;
+  afterObservedAt: string;
+  changes: InterfaceChange[];
+  counts: Record<InterfaceChangeKind, number>;
+  hasBreakingChanges: boolean;
+}
+
+const INTERFACE_KIND_ORDER: InterfaceChangeKind[] = [
+  'tool-removed', 'tool-added', 'input-schema-changed', 'output-schema-changed',
+  'description-changed', 'resource-removed', 'resource-added', 'prompt-removed',
+  'prompt-added', 'protocol-changed', 'transport-changed',
+];
+
+const interfaceChange = (
+  kind: InterfaceChangeKind,
+  subject: string,
+  change: ReportDiffChange,
+  schemaDetails?: ReportDiffChange[]
+): InterfaceChange => ({
+  ...change,
+  kind,
+  subject,
+  ...(schemaDetails && schemaDetails.length > 0 ? { schemaChanges: schemaDetails } : {}),
+});
+
+const inputSchemaChange = (
+  left: InterfaceToolSnapshot,
+  right: InterfaceToolSnapshot
+): InterfaceChange | undefined => {
+  if (left.inputSchemaFingerprint === right.inputSchemaFingerprint) return undefined;
+  const path = `tools.${right.name}.inputSchema`;
+  // Redacted portions are only worth naming when no comparable change explains
+  // why the fingerprints differ; otherwise every visit would repeat them.
+  const details = left.inputSchema !== undefined && right.inputSchema !== undefined
+    ? (() => {
+      const redacted = redactedSchemaChanges(left.inputSchema, right.inputSchema, right.name);
+      const redactedPaths = new Set(redacted.map((change) => change.path));
+      const comparable = schemaChanges(left.inputSchema, right.inputSchema, right.name).filter((change) => (
+        !redactedPaths.has(change.path)
+      ));
+      return comparable.length > 0 ? comparable : redacted;
+    })()
+    : [];
+  const breaking = details.some((change) => change.breaking);
+  return interfaceChange('input-schema-changed', right.name, makeChange(
+    breaking ? 'breaking' : details.some((change) => change.classification === 'unknown') ? 'unknown' : 'change',
+    'tools', path, `${right.name} input schema changed`,
+    details.length > 0
+      ? details.map((change) => change.title).join('; ')
+      : 'The stored schema fingerprints differ.',
+    breaking
+  ), details);
+};
+
+const outputSchemaChange = (
+  left: InterfaceToolSnapshot,
+  right: InterfaceToolSnapshot
+): InterfaceChange | undefined => {
+  if (left.outputSchemaFingerprint === right.outputSchemaFingerprint) return undefined;
+  const path = `tools.${right.name}.outputSchema`;
+  if (!left.outputSchemaFingerprint) {
+    return interfaceChange('output-schema-changed', right.name, makeChange(
+      'addition', 'tools', path, `${right.name} now declares an output schema`,
+      'Structured results are now validated against a declared contract.'
+    ));
+  }
+  if (!right.outputSchemaFingerprint) {
+    return interfaceChange('output-schema-changed', right.name, makeChange(
+      'risk', 'tools', path, `${right.name} no longer declares an output schema`,
+      'Clients that relied on structuredContent lose their declared contract.'
+    ));
+  }
+  return interfaceChange('output-schema-changed', right.name, makeChange(
+    'risk', 'tools', path, `${right.name} output schema changed`,
+    'Clients that parse structuredContent should be checked against the new contract.'
+  ));
+};
+
+const compareInterfaceTools = (before: InterfaceSnapshot, after: InterfaceSnapshot): InterfaceChange[] => {
+  if (!before.tools || !after.tools) return [];
+  const beforeTools = new Map(before.tools.map((tool) => [tool.name, tool]));
+  const afterTools = new Map(after.tools.map((tool) => [tool.name, tool]));
+  const changes: InterfaceChange[] = [];
+  for (const name of [...afterTools.keys()].filter((name) => !beforeTools.has(name)).sort()) {
+    changes.push(interfaceChange('tool-added', name, makeChange(
+      'addition', 'tools', `tools.${name}`, `Tool added: ${name}`, 'A new tool is available.'
+    )));
+  }
+  for (const name of [...beforeTools.keys()].filter((name) => !afterTools.has(name)).sort()) {
+    changes.push(interfaceChange('tool-removed', name, makeChange(
+      'removal', 'tools', `tools.${name}`, `Tool removed: ${name}`,
+      'Clients that call this tool will break.', true
+    )));
+  }
+  const compareOutputs = before.outputSchemasObserved && after.outputSchemasObserved;
+  // Report snapshots do not keep tool titles, so only same-source titles compare.
+  const compareTitles = before.source === after.source;
+  for (const name of [...beforeTools.keys()].filter((name) => afterTools.has(name)).sort()) {
+    const left = beforeTools.get(name)!;
+    const right = afterTools.get(name)!;
+    if ((left.description ?? '') !== (right.description ?? '')
+        || (compareTitles && (left.title ?? '') !== (right.title ?? ''))) {
+      changes.push(interfaceChange('description-changed', name, makeChange(
+        'change', 'tools', `tools.${name}.description`, `${name} description changed`,
+        'Tool guidance changed; models may choose or call this tool differently.'
+      )));
+    }
+    const input = inputSchemaChange(left, right);
+    if (input) changes.push(input);
+    const output = compareOutputs ? outputSchemaChange(left, right) : undefined;
+    if (output) changes.push(output);
+  }
+  return changes;
+};
+
+const compareNameSets = (
+  before: readonly string[] | undefined,
+  after: readonly string[] | undefined,
+  label: 'Resource' | 'Resource template' | 'Prompt',
+  kinds: { added: InterfaceChangeKind; removed: InterfaceChangeKind }
+): InterfaceChange[] => {
+  // An unrecorded list cannot prove membership changed in either direction.
+  if (!before || !after) return [];
+  const left = new Set(before);
+  const right = new Set(after);
+  const path = label === 'Prompt' ? 'prompts' : label === 'Resource' ? 'resources' : 'resourceTemplates';
+  return [
+    ...[...right].filter((name) => !left.has(name)).sort().map((name) => interfaceChange(
+      kinds.added, name, makeChange(
+        'addition', 'capabilities', `${path}.${name}`, `${label} added: ${name}`,
+        `A new ${label.toLowerCase()} is available.`
+      )
+    )),
+    ...[...left].filter((name) => !right.has(name)).sort().map((name) => interfaceChange(
+      kinds.removed, name, makeChange(
+        'removal', 'capabilities', `${path}.${name}`, `${label} removed: ${name}`,
+        `Clients that read this ${label.toLowerCase()} will no longer find it.`, true
+      )
+    )),
+  ];
+};
+
+const MEMBERSHIP_KINDS = new Set<InterfaceChangeKind>([
+  'tool-added', 'tool-removed', 'resource-added', 'resource-removed', 'prompt-added', 'prompt-removed',
+]);
+
+const accessChangeDetail = (before: string, after: string): string => (
+  `The earlier list was obtained ${before} and the later one ${after}; servers often list different capabilities to signed-in callers, so this is not treated as drift.`
+);
+
+/** Compares two playground capability snapshots of the same server. */
+export const diffInterfaceSnapshots = (
+  before: InterfaceSnapshot,
+  after: InterfaceSnapshot
+): InterfaceDiff => {
+  const changes: InterfaceChange[] = [
+    ...compareInterfaceTools(before, after),
+    ...compareNameSets(before.resources, after.resources, 'Resource', {
+      added: 'resource-added', removed: 'resource-removed',
+    }),
+    ...compareNameSets(before.resourceTemplates, after.resourceTemplates, 'Resource template', {
+      added: 'resource-added', removed: 'resource-removed',
+    }),
+    ...compareNameSets(before.prompts, after.prompts, 'Prompt', {
+      added: 'prompt-added', removed: 'prompt-removed',
+    }),
+  ];
+  if (before.protocolVersion && after.protocolVersion && before.protocolVersion !== after.protocolVersion) {
+    changes.push(interfaceChange('protocol-changed', 'protocol', makeChange(
+      'change', 'protocol', 'protocol.version', 'Protocol version changed',
+      `Changed from ${before.protocolVersion} to ${after.protocolVersion}.`
+    )));
+  }
+  if (before.transport && after.transport && before.transport !== after.transport) {
+    const regressed = before.transport === 'streamable-http' && after.transport === 'legacy-sse';
+    changes.push(interfaceChange('transport-changed', 'transport', makeChange(
+      regressed ? 'breaking' : 'change', 'transport', 'transport.type', 'Transport changed',
+      `Changed from ${before.transport} to ${after.transport}.`
+    )));
+  }
+  if (before.authentication && after.authentication && before.authentication !== after.authentication) {
+    // A change in access state, not drift: membership differences are not proof of removal.
+    for (const [index, change] of changes.entries()) {
+      if (!MEMBERSHIP_KINDS.has(change.kind)) continue;
+      changes[index] = {
+        ...change,
+        classification: 'unknown',
+        breaking: false,
+        detail: `${change.detail} ${accessChangeDetail(before.authentication, after.authentication)}`,
+      };
+    }
+  }
+  changes.sort((left, right) => (
+    INTERFACE_KIND_ORDER.indexOf(left.kind) - INTERFACE_KIND_ORDER.indexOf(right.kind)
+    || left.subject.localeCompare(right.subject)
+  ));
+  const counts = Object.fromEntries(
+    INTERFACE_KIND_ORDER.map((kind) => [kind, 0])
+  ) as Record<InterfaceChangeKind, number>;
+  changes.forEach((change) => { counts[change.kind] += 1; });
+  return {
+    beforeSource: before.source,
+    beforeObservedAt: before.observedAt,
+    afterObservedAt: after.observedAt,
     changes,
     counts,
     hasBreakingChanges: changes.some((change) => change.breaking),

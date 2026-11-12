@@ -1,6 +1,7 @@
-import { HOST_IDS, HOST_PROFILE_LIST, HOST_PROFILES } from './profiles';
+import { HOST_IDS, HOST_PROFILE_LIST, HOST_PROFILES } from './profiles.ts';
 import {
   COMPATIBILITY_SCHEMA_VERSION,
+  OPTIONAL_FACT_SECTIONS,
   type CompatibilityConditionV1,
   type CompatibilityEvidenceV1,
   type CompatibilityFactPath,
@@ -14,7 +15,7 @@ import {
   type ObservedValueV1,
   type PartialCompatibilityMatrixV1,
   type RuleResultDefinitionV1,
-} from './types';
+} from './types.ts';
 
 type TruthValue = true | false | 'unknown';
 
@@ -29,6 +30,10 @@ const getFact = (
   facts: ObservedServerFactsV1,
   path: CompatibilityFactPath
 ): ObservedValueV1<unknown> => {
+  const [section] = path.split('.');
+  if (OPTIONAL_FACT_SECTIONS.has(section) && (facts as unknown as Record<string, unknown>)[section] === undefined) {
+    return { value: 'unknown', evidence: [] };
+  }
   let current: unknown = facts;
   for (const segment of path.split('.')) {
     if (!current || typeof current !== 'object') {

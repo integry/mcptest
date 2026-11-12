@@ -1,0 +1,4 @@
+{
+  "error": "registration_not_supported",
+  "error_description": "Dynamic client registration is not supported. Only pre-registered MCP trusted partners are allowed."
+}

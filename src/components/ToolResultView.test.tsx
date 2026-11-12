@@ -108,6 +108,10 @@ describe('ToolResultView', () => {
     const verdict = container.querySelector('.output-contract--fail')!;
     expect(verdict.getAttribute('role')).toBe('alert');
     expect(verdict.textContent).toContain('Output contract broken: 2 problems found');
+    const reference = verdict.querySelector<HTMLAnchorElement>('.output-contract-heading a');
+    expect(reference?.getAttribute('href'))
+      .toBe('/learn/mcp-transport-diagnostics-reference#tool-output-contract-violation');
+    expect(reference?.textContent).toBe('tool.output-contract-violation Learn more');
     expect([...verdict.querySelectorAll('li')].map(item => [
       item.querySelector('code')?.textContent,
       item.querySelector('span')?.textContent,

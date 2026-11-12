@@ -7,13 +7,19 @@ import type { CatalogServerStatus } from '../types/catalog';
 
 export const BADGE_SITE_URL = 'https://mcptest.io';
 
-/** A badge either names a release result from the evaluator or is the neutral brand badge. */
-export type BadgeVariant = ReleaseReadinessStatus | 'neutral';
+/**
+ * A badge names a release result from the evaluator, is the neutral brand
+ * badge, or (live report badges only) reports a breaking interface change the
+ * weekly watch found after the newest published run. `payment-required` marks a
+ * server that answered HTTP 402: reachable and deliberate, so neither blocked
+ * nor unknown.
+ */
+export type BadgeVariant = ReleaseReadinessStatus | 'neutral' | 'breaking-change' | 'payment-required';
 
 interface BadgeDefinition {
   label: string;
   message: string;
-  /** Right-hand segment color, taken from the light-theme semantic tokens in src/index.css. */
+  /** Right-hand segment color, taken from the light-theme semantic tokens in src/styles/tokens.css. */
   color: string;
   /** File name under public/badge/. */
   file: string;
@@ -23,7 +29,7 @@ const LABEL_COLOR = '#555';
 
 export const BADGE_DEFINITIONS: Record<BadgeVariant, BadgeDefinition> = {
   neutral: { label: 'tested on', message: 'mcptest.io', color: '#047857', file: 'mcptest' },
-  ready: { label: 'mcptest.io', message: 'ready', color: '#047857', file: 'ready' },
+  ready: { label: 'mcptest.io', message: 'ready', color: '#03664a', file: 'ready' },
   review: { label: 'mcptest.io', message: 'review', color: '#d97706', file: 'review' },
   'authorization-required': {
     label: 'mcptest.io',
@@ -33,6 +39,8 @@ export const BADGE_DEFINITIONS: Record<BadgeVariant, BadgeDefinition> = {
   },
   blocked: { label: 'mcptest.io', message: 'blocked', color: '#dc2626', file: 'blocked' },
   unknown: { label: 'mcptest.io', message: 'unknown', color: '#64748b', file: 'unknown' },
+  'breaking-change': { label: 'mcptest.io', message: 'breaking change', color: '#dc2626', file: 'breaking-change' },
+  'payment-required': { label: 'mcptest.io', message: 'payment required', color: '#0789a8', file: 'payment-required' },
 };
 
 export const BADGE_VARIANTS = Object.keys(BADGE_DEFINITIONS) as BadgeVariant[];
@@ -52,18 +60,20 @@ export interface CatalogBadgeEvidence {
   requiresOAuth?: boolean;
   authType?: string;
   protocolVersion?: string;
+  responseClass?: string;
 }
 
 /**
  * Maps the latest catalog validation run onto the evaluator's result vocabulary.
  * Catalog validation is a connection probe, so it can only claim what it observed:
  * an offline endpoint is blocked, a negotiated MCP session without credentials is
- * ready, an authentication challenge is authorization-required, and anything else
- * is unknown.
+ * ready, an authentication challenge is authorization-required, an HTTP 402 is
+ * payment-required, and anything else (including bot protection) is unknown.
  */
 export const getCatalogBadgeVariant = (evidence: CatalogBadgeEvidence | undefined): BadgeVariant => {
   if (!evidence) return 'neutral';
   if (evidence.status === 'offline') return 'blocked';
+  if (evidence.responseClass === 'payment-required' && !evidence.protocolVersion) return 'payment-required';
   if (evidence.status !== 'online') return 'unknown';
   if (evidence.protocolVersion) return 'ready';
   if (evidence.requiresOAuth || (evidence.authType && evidence.authType !== 'none')) {
@@ -96,6 +106,19 @@ export const getBadgeTitle = (variant: BadgeVariant) => {
   return `${label}: ${message}`;
 };
 
+/** Pixel width of a variant's badge; its height is always 20. */
+export const getBadgeWidth = (variant: BadgeVariant): number => {
+  const { label, message } = BADGE_DEFINITIONS[variant];
+  return textWidth(label) + 10 + textWidth(message) + 10;
+};
+
+/** Width of a static badge (`/badge/<variant>.svg`, see getStaticBadgeUrl), or undefined for live badges. */
+export const getStaticBadgeWidth = (src: string): number | undefined => {
+  const file = src.match(/\/badge\/([\w-]+)\.svg$/)?.[1];
+  const variant = BADGE_VARIANTS.find(candidate => BADGE_DEFINITIONS[candidate].file === file);
+  return variant ? getBadgeWidth(variant) : undefined;
+};
+
 /** Renders a flat shields.io-style badge using system fonts and a <title> for screen readers. */
 export const renderBadgeSvg = (variant: BadgeVariant): string => {
   const { label, message, color } = BADGE_DEFINITIONS[variant];
@@ -103,7 +126,7 @@ export const renderBadgeSvg = (variant: BadgeVariant): string => {
   const messageTextWidth = textWidth(message);
   const labelWidth = labelTextWidth + 10;
   const messageWidth = messageTextWidth + 10;
-  const width = labelWidth + messageWidth;
+  const width = getBadgeWidth(variant);
   const title = escapeXml(getBadgeTitle(variant));
   const labelX = labelWidth / 2;
   const messageX = labelWidth + messageWidth / 2;
@@ -134,6 +157,11 @@ export const getStaticBadgeUrl = (variant: BadgeVariant, siteUrl = BADGE_SITE_UR
 /** URL of the worker-served badge for a catalog server. */
 export const getCatalogBadgeUrl = (serverId: string, siteUrl = BADGE_SITE_URL) => (
   `${siteUrl}/badge/server/${encodeURIComponent(serverId)}.svg`
+);
+
+/** URL of the worker-served badge that follows the latest published report for an endpoint. */
+export const getPublishedReportBadgeUrl = (endpoint: string, siteUrl = BADGE_SITE_URL) => (
+  `${siteUrl}/badge/report/${encodeURIComponent(endpoint)}.svg`
 );
 
 /** Canonical public report URL for an endpoint, matching ReportView's /report/<encoded> route. */
@@ -183,6 +211,13 @@ export const createReportBadgeSnippets = (endpoint: string, variant: BadgeVarian
   imageUrl: getStaticBadgeUrl(variant),
   linkUrl: getReportUrl(endpoint),
   alt: getBadgeTitle(variant),
+});
+
+/** Snippets for a published report: the live badge that follows the latest published snapshot. */
+export const createPublishedReportBadgeSnippets = (endpoint: string) => createBadgeSnippets({
+  imageUrl: getPublishedReportBadgeUrl(endpoint),
+  linkUrl: getReportUrl(endpoint),
+  alt: 'Tested on mcptest.io',
 });
 
 /** Snippets for a catalog server: the worker badge that follows the latest validation data. */

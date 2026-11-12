@@ -1,15 +1,23 @@
-import React from 'react';
+import { renderServerActions, renderServerNextSteps } from '../utils/serverNextSteps';
+import { getCatalogServers } from '../utils/catalogUtils';
+import { enhanceEngagement } from '../utils/pageEngagement';
+import React, { Suspense, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import type { CatalogServer } from '../types/catalog';
+import { trackEvent } from '../utils/analytics';
 import {
+  getCatalogAuthAnswer,
+  getCatalogServerHeading,
+  getCatalogServerIntro,
   formatCatalogAuth,
   formatCatalogTimestamp,
   formatCatalogTransport,
   formatProtocolEra,
 } from '../utils/catalogSeo';
-import CapabilitiesProvided from './CapabilitiesProvided';
+import ServerToolInventory from './ServerToolInventory';
+import { getCatalogCategoryPath } from '../utils/catalogCategories';
 import { CatalogServerLogo } from './CatalogServerLogo';
-import ClientSetup from './ClientSetup';
+import { ServerConnect, ViewFallback } from '../views/deferredViews';
 import { getPreferredCatalogEndpoint } from '../utils/clientSetup';
 import { createAuthorizationGuidance } from '../utils/authorizationGuidance';
 import AuthorizationSetup from './AuthorizationSetup';
@@ -74,7 +82,13 @@ const alternativeAuthLabel = (server: CatalogServer) => {
   return alternatives.length ? `Also supports ${alternatives.join(' and ')}` : authEvidenceNote(server);
 };
 
-const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestServer }) => {
+const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestServer: openInPlayground }) => {
+  const pageRef = useRef<HTMLElement>(null);
+  useEffect(() => pageRef.current ? enhanceEngagement(pageRef.current) : undefined, [server?.id]);
+  const onTestServer = (selected: CatalogServer) => {
+    trackEvent('catalog_open_server', { server_id: selected.id, surface: 'profile' });
+    openInPlayground(selected);
+  };
   if (!server) {
     return (
       <div className="server-profile-empty card">
@@ -103,11 +117,14 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
   const catalogBadgeVariant = getCatalogBadgeVariant(server.checkedAt ? server : undefined);
 
   return (
-    <article className="server-profile">
+    <article className="server-profile" ref={pageRef}>
       <nav aria-label="Breadcrumb" className="server-profile-breadcrumb">
         <ol className="breadcrumb mb-0">
           <li className="breadcrumb-item server-profile-breadcrumb-parent">
             <Link to="/catalog">Server Catalog</Link>
+          </li>
+          <li className="breadcrumb-item server-profile-breadcrumb-parent">
+            <Link to={getCatalogCategoryPath(server.category)}>{server.category}</Link>
           </li>
           <li className="breadcrumb-item active server-profile-breadcrumb-current" aria-current="page">
             {server.name}
@@ -116,7 +133,6 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
       </nav>
 
       <header className="server-profile-hero">
-        <div className="server-profile-glow" aria-hidden="true"></div>
         <div className="server-profile-identity">
           <CatalogServerLogo
             name={server.name}
@@ -124,23 +140,22 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
             className="server-profile-logo"
           />
           <div>
-            <h1>{server.name}</h1>
+            <h1 className="text-break">{getCatalogServerHeading(server)}</h1>
+            <p className="text-break">{getCatalogServerIntro(server)}</p>
             <p>{server.description}</p>
           </div>
         </div>
 
-        <div className="server-profile-actions">
-          <button className="btn btn-primary server-profile-action" type="button" onClick={() => onTestServer(server)}>
-            <i className="bi bi-play-fill me-1" aria-hidden="true"></i>
-            Test in Playground
-          </button>
-          {server.homepageUrl && (
-            <a className="btn btn-outline-secondary server-profile-action" href={server.homepageUrl} target="_blank" rel="noopener noreferrer">
-              Product site <i className="bi bi-box-arrow-up-right ms-1" aria-hidden="true"></i>
-            </a>
-          )}
-        </div>
+        <div dangerouslySetInnerHTML={{ __html: renderServerActions(server) }} />
       </header>
+
+      <section className="card server-profile-section" aria-labelledby="server-auth-title">
+        <div className="card-body">
+          <h2 id="server-auth-title">How do I authenticate?</h2>
+          <p>{getCatalogAuthAnswer(server).detail}</p>
+          <Link to={getCatalogAuthAnswer(server).guide}>Authentication and connection guide</Link>
+        </div>
+      </section>
 
       <section className="server-profile-signal-grid" aria-label="Connection summary">
         <div className="server-signal-card">
@@ -175,7 +190,7 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
         </div>
         <div className="server-signal-card">
           <span className="server-signal-label">Category</span>
-          <strong>{server.category}</strong>
+          <strong><Link to={getCatalogCategoryPath(server.category)}>{server.category}</Link></strong>
           <small>{server.tags.filter((tag) => tag !== 'suggested').slice(0, 3).join(' · ')}</small>
         </div>
       </section>
@@ -291,7 +306,11 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
 
       <AuthorizationSetup guidance={authorizationGuidance} />
 
-      <ClientSetup server={server} />
+      <Suspense fallback={<ViewFallback label="Loading client setup" />}>
+        <ServerConnect server={server} />
+      </Suspense>
+
+      <div dangerouslySetInnerHTML={{ __html: renderServerNextSteps(server, getCatalogServers()) }} />
 
       <section className="card server-profile-section">
         <div className="card-body">
@@ -303,22 +322,12 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
             previewAlt={getBadgeTitle(catalogBadgeVariant)}
             linkUrl={getServerProfileUrl(server.id)}
             snippets={createCatalogBadgeSnippets(server.id)}
+            analyticsSurface="server_profile"
           />
         </div>
       </section>
 
-      {server.capabilityInventory && (
-        <section className="card server-profile-section" aria-labelledby="server-capabilities-title">
-          <div className="card-body">
-            <CapabilitiesProvided
-              inventory={server.capabilityInventory}
-              serverName={server.name}
-              titleId="server-capabilities-title"
-              titleLevel={2}
-            />
-          </div>
-        </section>
-      )}
+      <ServerToolInventory server={server} />
 
       <section className="card server-profile-section">
         <div className="card-body">
@@ -336,6 +345,7 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
             {server.sourceUrl && <a href={server.sourceUrl} target="_blank" rel="noopener noreferrer">Source repository <i className="bi bi-arrow-up-right"></i></a>}
             {server.listingSource.url && server.listingSource.url !== server.homepageUrl && <a href={server.listingSource.url} target="_blank" rel="noopener noreferrer">Official listing documentation <i className="bi bi-arrow-up-right"></i></a>}
             {server.registryUrl && <a href={server.registryUrl} target="_blank" rel="noopener noreferrer">Official MCP Registry record <i className="bi bi-arrow-up-right"></i></a>}
+            <Link to={getCatalogCategoryPath(server.category)}>More {server.category} MCP servers <i className="bi bi-arrow-right"></i></Link>
             <Link to="/docs/testing-guide">MCP testing guide <i className="bi bi-arrow-right"></i></Link>
           </div>
           {(server.requiredHeaders?.length || server.authorizationServers?.length) ? (

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { LogEntry } from '../types';
-import type { OutputContractResult } from '../utils/outputContract';
+import { OUTPUT_CONTRACT_FINDING_ID, type OutputContractResult } from '../utils/outputContract';
+import FindingReferenceLink from './FindingReferenceLink';
 import McpResponseDisplay from './McpResponseDisplay';
 import './ToolResultView.css';
 
@@ -37,6 +38,7 @@ export const OutputContractVerdict: React.FC<{ contract: OutputContractResult; h
           <span>
             Output contract broken: {count} {count === 1 ? 'problem' : 'problems'} found against the declared output schema.
           </span>
+          <FindingReferenceLink id={OUTPUT_CONTRACT_FINDING_ID} />
         </div>
         <ul className="output-contract-violations">
           {contract.violations.map((violation, index) => (

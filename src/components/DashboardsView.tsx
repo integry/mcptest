@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+// Bootstrap's dropdown behaviour; loaded with this chunk rather than on every page.
+import 'bootstrap';
 import { Space, SpaceCard } from '../types';
 import McpResponseDisplay from './McpResponseDisplay'; // Import the new display component
 import LayoutColumnsIcon from './LayoutColumnsIcon';

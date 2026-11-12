@@ -10,7 +10,7 @@ beforeAll(() => {
   ).IS_REACT_ACT_ENVIRONMENT = true;
 });
 
-const renderResourceAccessHook = (client: Client, addLogEntry: ReturnType<typeof vi.fn>) => {
+const renderResourceAccessHook = (client: Client, addLogEntry: Parameters<typeof useResourceAccess>[1]) => {
   let resourceAccess: ReturnType<typeof useResourceAccess> | undefined;
   const container = document.createElement('div');
   const root: Root = createRoot(container);

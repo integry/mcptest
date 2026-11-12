@@ -1,0 +1,15 @@
+/* --- Sidebar Learn group: the guide hub plus collapsible tracks --- */
+
+.content-track-label {
+  letter-spacing: 0;
+}
+
+/* The track owning the current page reads as the active section even when collapsed. */
+.content-track-label.is-current {
+  color: var(--text-color);
+}
+
+.content-track-nav .sidenav-sublink {
+  white-space: normal;
+  line-height: 1.35;
+}

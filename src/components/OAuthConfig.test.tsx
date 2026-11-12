@@ -287,6 +287,8 @@ describe('OAuth hardening prerequisites', () => {
 
     expect(view.querySelector('#clientSecret')).toBeNull();
     expect(view.querySelector('input[type="password"]')).toBeNull();
+    expect(view.querySelector('a[href="/learn/mcp-oauth-2-1-reference#pre-login-troubleshooting"]')?.textContent)
+      .toContain('OAuth troubleshooting for server authors');
     typeInto(view.querySelector<HTMLInputElement>('#authorizationEndpoint')!, 'https://login.metadata-less.example/authorize');
     typeInto(view.querySelector<HTMLInputElement>('#tokenEndpoint')!, 'https://login.metadata-less.example/token');
     typeInto(view.querySelector<HTMLInputElement>('#clientId')!, 'public-client');

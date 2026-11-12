@@ -1,7 +1,9 @@
+import { canonicalKey, isSensitiveQueryKey } from './urlUtils';
 import { z } from 'zod';
 import packageJson from '../../package.json';
 import type { CompatibilityMatrixV1 } from '../compatibility';
 import type { ToolSurfaceAnalysisV1 } from '../types/toolSurfaceAnalysis';
+import { contextCostSummaryLines, isToolContextCost } from './toolTokenCost';
 import type { CapabilityInventoryV1 } from '../types/capabilityInventory';
 import { validateCapabilityInventory } from './capabilityInventory';
 import {
@@ -17,6 +19,7 @@ import type { OAuthTraceV1 } from './oauthTrace';
 import type { ReleaseDecision } from './releaseReadiness';
 import { VERSION_INFO } from './versionInfo';
 import { getTrustedAuthorizationGuidanceForEndpoint } from './authorizationGuidanceLookup';
+import { documentedEvidenceIdFor, isCanonicalReferenceUrl, referenceUrlFor, toolSurfaceReferenceId } from './referenceLinks';
 
 export const REPORT_SCHEMA_VERSION = '2.0.0' as const;
 export const REPORT_SCHEMA_URL = 'https://mcptest.io/schemas/report/v2.schema.json' as const;
@@ -52,6 +55,7 @@ const ReleaseDecisionSchema = z.object({
     detail: z.string(),
     remediation: z.string().min(1),
     source: z.enum(['Host compatibility', 'Tool surface', 'Evaluation']),
+    referenceUrl: z.string().url().optional(),
   }).strict()),
 }).strict();
 
@@ -120,6 +124,7 @@ const ToolSurfaceFindingArtifactSchema = z.object({
     'schema-quality',
     'capability-risk',
     'prompt-like-description',
+    'annotations',
   ]),
   severity: z.enum(['critical', 'high', 'medium', 'low', 'info']),
   kind: z.enum(['measurement', 'quality-signal', 'capability-signal', 'review-signal']),
@@ -129,6 +134,43 @@ const ToolSurfaceFindingArtifactSchema = z.object({
   omittedEvidenceCount: z.number().int().nonnegative(),
   remediation: z.string(),
 }).strict();
+
+// Optional and passthrough: reports made before the breakdown existed have
+// none, and later versions may add fields without breaking older readers.
+const ToolContextCostArtifactSchema = z.object({
+  version: z.string().min(1),
+  method: z.object({
+    id: z.string().min(1),
+    label: z.string().min(1),
+    description: z.string(),
+  }).passthrough(),
+  estimatedTotal: z.number().nonnegative(),
+  toolCount: z.number().int().nonnegative(),
+  medianPerTool: z.number().nonnegative(),
+  tools: z.array(z.object({
+    name: z.string(),
+    estimate: z.number().nonnegative(),
+    share: z.number().nonnegative(),
+    parts: z.record(z.string(), z.number().nonnegative()),
+    parameters: z.array(z.object({
+      name: z.string(),
+      estimate: z.number().nonnegative(),
+      required: z.boolean(),
+    }).passthrough()),
+    parameterCount: z.number().int().nonnegative(),
+    omittedParameterCount: z.number().int().nonnegative(),
+  }).passthrough()),
+  omittedToolCount: z.number().int().nonnegative(),
+  listingIncomplete: z.literal(true).optional(),
+  findings: z.array(z.object({
+    id: z.string().min(1),
+    severity: z.enum(['high', 'medium', 'low', 'info']),
+    title: z.string(),
+    summary: z.string(),
+    subject: z.string().optional(),
+    remediation: z.string(),
+  }).passthrough()),
+}).passthrough();
 
 const ToolSurfaceArtifactSchema = z.object({
   version: z.string().min(1),
@@ -151,6 +193,7 @@ const ToolSurfaceArtifactSchema = z.object({
       inputSchema: JsonValueSchema,
     }).strict()),
   }).strict().optional(),
+  contextCost: ToolContextCostArtifactSchema.optional(),
   findings: z.object({
     critical: z.array(ToolSurfaceFindingArtifactSchema),
     high: z.array(ToolSurfaceFindingArtifactSchema),
@@ -197,6 +240,7 @@ const CapabilityInventoryArtifactSchema: z.ZodType<CapabilityInventoryV1> = z.ob
       name: z.string().min(1).max(128),
       description: z.string().min(1).max(600).optional(),
       input: z.array(CapabilityInventoryArgumentSchema).optional(),
+      outputSchema: z.boolean().optional(),
     }).strict()),
   }).strict(),
   resources: CapabilityInventorySectionBaseSchema.extend({
@@ -565,128 +609,6 @@ export interface CreatePublicReportOptions {
   toolSurfaceAnalysis?: ToolSurfaceAnalysisV1;
   oauthTrace?: OAuthTraceV1;
 }
-
-const EXACT_SENSITIVE_KEYS = new Set([
-  'key',
-  'accesskey',
-  'subscriptionkey',
-  'authorization',
-  'proxyauthorization',
-  'xmcpauthorization',
-  'cookie',
-  'setcookie',
-  'cookies',
-  'password',
-  'passwd',
-  'secret',
-  'secrets',
-  'clientsecret',
-  'credential',
-  'credentials',
-  'accesstoken',
-  'refreshtoken',
-  'idtoken',
-  'jwt',
-  'idtokenhint',
-  'clientassertion',
-  'devicecode',
-  'usercode',
-  'apikey',
-  'xapikey',
-  'authorizationcode',
-  'authorizationcodes',
-  'oauthcode',
-  'oauthcodes',
-  'code',
-  'token',
-  'tokens',
-  'sid',
-  'sessionid',
-  'phpsessid',
-  'connectsid',
-  'signature',
-  'sig',
-  'privatekey',
-  'auth',
-  'codeverifier',
-  'state',
-  'nonce',
-  'csrf',
-]);
-
-const canonicalKey = (key: string): string => (
-  key.trim().toLowerCase().replace(/[^a-z0-9]/g, '')
-);
-
-const SENSITIVE_KEY_COMPONENTS = new Set([
-  'auth',
-  'authorization',
-  'cookie',
-  'cookies',
-  'credential',
-  'credentials',
-  'passwd',
-  'password',
-  'secret',
-  'secrets',
-  'token',
-  'tokens',
-  'signature',
-]);
-
-const NON_SENSITIVE_COMPOUND_KEYS = new Set([
-  'codechallengemethodssupported',
-  'estimatedcontexttokens',
-]);
-
-const WRAPPED_CREDENTIAL_KEY = /(?:api|private)key(?:value|header)$/;
-const SESSION_CREDENTIAL_KEY = /(?:session|sessionid|sessionkey|sessiontoken)s?$/;
-
-const keyComponents = (key: string): string[] => key
-  .trim()
-  .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
-  .toLowerCase()
-  .split(/[^a-z0-9]+/)
-  .filter(Boolean);
-
-const isSensitiveKey = (key: string): boolean => {
-  const canonical = canonicalKey(key);
-  if (NON_SENSITIVE_COMPOUND_KEYS.has(canonical)) return false;
-  const components = keyComponents(key);
-  if (components.some((component) => SENSITIVE_KEY_COMPONENTS.has(component))) {
-    return true;
-  }
-  return EXACT_SENSITIVE_KEYS.has(canonical)
-    || /(?:tokens?|secrets?|password|passwd|credentials?|authorizationcodes?|oauthcodes?|apikey|privatekey)$/.test(canonical)
-    || WRAPPED_CREDENTIAL_KEY.test(canonical)
-    || SESSION_CREDENTIAL_KEY.test(canonical)
-    || components.includes('code')
-      && components.some((component) => component === 'authorization' || component === 'oauth');
-};
-
-const decodeFormComponent = (value: string): string => (
-  decodeURIComponent(value.replace(/\+/g, ' '))
-);
-
-const isSensitiveQueryKey = (key: string): boolean => {
-  let decoded = key;
-
-  for (let pass = 0; pass <= MAX_URL_COMPONENT_DECODE_PASSES; pass += 1) {
-    if (isSensitiveKey(decoded)) return true;
-
-    let next: string;
-    try {
-      next = decodeFormComponent(decoded);
-    } catch {
-      return true;
-    }
-    if (next === decoded) return false;
-    if (pass === MAX_URL_COMPONENT_DECODE_PASSES) return true;
-    decoded = next;
-  }
-
-  return true;
-};
 
 const balancedAssignmentValueEnd = (value: string, start: number): number | undefined => {
   const opening = value[start];
@@ -1796,6 +1718,9 @@ const redactReportValueAtPath = (
     inputSchemaSanitized = true;
   }
   if (value === undefined) return undefined;
+  // Generated reference links carry a public anchor, not a credential; only
+  // the exact canonical URLs are exempt from fragment redaction.
+  if (key === 'referenceUrl' && isCanonicalReferenceUrl(value)) return value;
   if (typeof value === 'string') {
     // This field is generated only from catalog templates that validation has
     // proved contain one named placeholder and no credential value. Preserve
@@ -1941,10 +1866,37 @@ const sectionStatus = (
   return 'evaluated';
 };
 
+/**
+ * Adds `referenceUrl` next to the documented id recorded in evidence metadata:
+ * inside `transportDiagnostic` for a transport diagnostic, or beside a
+ * top-level `findingId` such as `tool.output-contract-violation`.
+ */
+const withDiagnosticReferenceUrl = (metadata: unknown): unknown => {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return metadata;
+  const diagnostic = (metadata as { transportDiagnostic?: unknown }).transportDiagnostic;
+  if (diagnostic && typeof diagnostic === 'object' && !Array.isArray(diagnostic)) {
+    const id = (diagnostic as { id?: unknown }).id;
+    const referenceUrl = typeof id === 'string' ? referenceUrlFor(id) : undefined;
+    if (referenceUrl) return { ...metadata, transportDiagnostic: { ...diagnostic, referenceUrl } };
+  }
+  const findingId = (metadata as { findingId?: unknown }).findingId;
+  const referenceUrl = typeof findingId === 'string' ? referenceUrlFor(findingId) : undefined;
+  return referenceUrl ? { ...metadata, referenceUrl } : metadata;
+};
+
 const redactEvidence = (detail: DetailItem): PublicReport['sections'][number]['evidence'][number] => ({
   message: detail.text,
   ...(detail.context ? { context: detail.context } : {}),
-  ...(detail.metadata !== undefined ? { metadata: detail.metadata } : {}),
+  ...(detail.metadata !== undefined ? { metadata: withDiagnosticReferenceUrl(detail.metadata) } : {}),
+});
+
+/** Adds the canonical reference URL next to each documented priority id. */
+const withReferenceUrls = (decision: ReleaseDecision): ReleaseDecision => ({
+  ...decision,
+  priorities: decision.priorities.map((priority) => {
+    const referenceUrl = referenceUrlFor(priority.id);
+    return referenceUrl ? { ...priority, referenceUrl } : priority;
+  }),
 });
 
 const normalizeGeneratedAt = (generatedAt: string | Date | undefined): string => {
@@ -2077,7 +2029,7 @@ export const createPublicReport = (
         checks,
       },
     } : {}),
-    ...(options.releaseDecision ? { releaseDecision: options.releaseDecision } : {}),
+    ...(options.releaseDecision ? { releaseDecision: withReferenceUrls(options.releaseDecision) } : {}),
     ...(options.compatibilityMatrix ? {
       compatibility: options.compatibilityMatrix as unknown as NonNullable<PublicReport['compatibility']>,
     } : {}),
@@ -2170,6 +2122,26 @@ const markdownInline = (value: string): string => value
   .replace(/\\/g, '\\\\')
   .replace(/([`*_{}\[\]<>])/g, '\\$1')
   .replace(/[\r\n]+/g, ' ');
+
+/** An id as a Markdown link to its reference section, or escaped text when it has none. */
+const markdownFindingId = (id: string): string => {
+  const url = referenceUrlFor(id);
+  return url ? `[${markdownInline(id)}](${url})` : markdownInline(id);
+};
+
+/**
+ * Links the documented id of an evidence item to its reference section: the
+ * `(id)` suffix of the message when present, otherwise an appended link.
+ */
+const markdownEvidenceMessage = (message: string, metadata: unknown): string => {
+  const text = markdownInline(message);
+  const id = documentedEvidenceIdFor(metadata);
+  if (!id) return text;
+  const suffix = `(${markdownInline(id)})`;
+  return text.endsWith(suffix)
+    ? `${text.slice(0, -suffix.length)}(${markdownFindingId(id)})`
+    : `${text} (${markdownFindingId(id)})`;
+};
 
 const scoreLabel = (section: PublicReport['sections'][number]): string => (
   section.score.earned === null
@@ -2371,7 +2343,7 @@ export const serializePublicReportMarkdown = (report: PublicReport): string => {
     for (const priority of value.releaseDecision.priorities) {
       lines.push(
         `- [${priority.severity}] ${markdownInline(priority.title)} (${markdownInline(priority.source)})`,
-        `  - Id: ${markdownInline(priority.id)}`,
+        `  - Id: ${markdownFindingId(priority.id)}`,
         `  - ${markdownInline(priority.detail)}`,
         `  - Remediation: ${markdownInline(priority.remediation)}`
       );
@@ -2402,10 +2374,32 @@ export const serializePublicReportMarkdown = (report: PublicReport): string => {
       `- Tools: ${analysis.metrics.toolCount}`,
       `- Resources: ${analysis.metrics.resourceCount}`,
       `- Prompts: ${analysis.metrics.promptCount}`,
-      `- Estimated context tokens: ${analysis.metrics.estimatedContextTokens}`,
+      `- Estimated context tokens: ${analysis.metrics.estimatedContextTokens}${isToolContextCost(analysis.contextCost) ? '' : ' (bytes / 4)'}`,
       `- Fingerprint: ${markdownInline(analysis.fingerprint.algorithm)}:${markdownInline(analysis.fingerprint.value)}`,
       ''
     );
+    if (isToolContextCost(analysis.contextCost)) {
+      const cost = analysis.contextCost;
+      const [total, ...heaviest] = contextCostSummaryLines(cost, 10);
+      lines.push('### Context cost (estimated)', '', markdownInline(total), '', markdownInline(cost.method.description), '');
+      if (heaviest.length > 0) {
+        lines.push('Heaviest tools:', '', ...heaviest.map((line) => markdownInline(line)), '');
+      }
+      // A large total is already reported above with its tool-count context.
+      const surfaceReportsTotal = Object.values(analysis.findings).flat()
+        .some((finding) => finding.id === 'context.large-tool-surface');
+      const costFindings = cost.findings.filter((finding) => (
+        !surfaceReportsTotal || finding.id !== 'context-cost.total-above-threshold'
+      ));
+      for (const finding of costFindings) {
+        lines.push(
+          `- [${finding.severity}] ${markdownInline(finding.title)}`,
+          `  - ${markdownInline(finding.summary)}`,
+          `  - Remediation: ${markdownInline(finding.remediation)}`
+        );
+      }
+      if (costFindings.length > 0) lines.push('');
+    }
     for (const severity of ['critical', 'high', 'medium', 'low', 'info'] as const) {
       for (const finding of analysis.findings[severity]) {
         lines.push(
@@ -2413,6 +2407,17 @@ export const serializePublicReportMarkdown = (report: PublicReport): string => {
           `  - ${markdownInline(finding.summary)}`,
           `  - Remediation: ${markdownInline(finding.remediation)}`
         );
+        // Documented findings carry per-tool evidence the summary does not repeat.
+        const referenceId = toolSurfaceReferenceId(finding.id);
+        if (referenceUrlFor(referenceId)) {
+          lines.push(`  - Reference: ${markdownFindingId(referenceId)}`);
+          for (const item of finding.evidence) {
+            lines.push(`  - Evidence: ${markdownInline(item.tool)} at ${markdownInline(item.path)}: ${markdownInline(item.detail)}`);
+          }
+          if (finding.omittedEvidenceCount > 0) {
+            lines.push(`  - ${finding.omittedEvidenceCount} more evidence items omitted.`);
+          }
+        }
       }
     }
     if (analysis.findingCount > 0) lines.push('');
@@ -2444,7 +2449,7 @@ export const serializePublicReportMarkdown = (report: PublicReport): string => {
       ''
     );
     for (const evidence of section.evidence) {
-      lines.push(`- ${markdownInline(evidence.message)}`);
+      lines.push(`- ${markdownEvidenceMessage(evidence.message, evidence.metadata)}`);
       if (evidence.context) lines.push(`  - Context: ${markdownInline(evidence.context)}`);
       if (evidence.metadata !== undefined) {
         lines.push('  - Metadata:', '', '    ```json');

@@ -1,11 +1,9 @@
 import {
-  discoverAuthorizationServerMetadata,
-  discoverOAuthProtectedResourceMetadata,
   type Client,
   type FetchLike,
-  type OAuthProtectedResourceMetadata,
   type ProtocolEra,
 } from '@modelcontextprotocol/client';
+import { discoverOAuthMetadata } from './oauthMetadataDiscovery';
 import {
   OUTPUT_CONTRACT_FINDING_ID,
   getRecordedOutputContractResults,
@@ -13,6 +11,14 @@ import {
   type OutputContractEvidenceV1,
   type OutputContractResult,
 } from './outputContract';
+import { callHistoryCounts, type CallHistoryCounts } from './callHistory';
+import {
+  latestSavedPlanRun,
+  runSavedTestPlan,
+  type SavedPlanRunCounts,
+  type SavedTestPlanV1,
+} from './savedTestPlans';
+import type { DiscoveredTool } from './deterministicTests';
 import {
   ProxiedAuthenticationError,
   attemptParallelConnections,
@@ -46,6 +52,21 @@ import {
   transportDiagnosticSourcesFromFailures,
   type TransportDiagnosticSource,
 } from './transportDiagnostics';
+
+import type { ToolListConsistencyV1 } from '../types/toolListConsistency';
+import {
+  assessToolListConsistency,
+  clampToolListSamples,
+  collectToolListPages,
+  notCheckedToolListConsistency,
+  pickInstanceHeaders,
+  sampleToolLists,
+  type ToolListObservation,
+} from './toolListConsistency';
+import {
+  TOOL_LIST_CONSISTENCY_SECTION_ID,
+  toolListConsistencyReportDetail,
+} from './toolListConsistencyReport';
 
 const getProxyUrl = (): string | undefined => import.meta.env.VITE_PROXY_URL;
 
@@ -183,11 +204,38 @@ export interface EvaluationOptions {
    * the same evaluator but omit that browser-only observation from scoring.
    */
   runtime?: 'browser' | 'headless';
+  /** Explicit opt-in: creates isolated sessions and sends a bounded ping burst. */
+  sessionResilience?: boolean;
+  /**
+   * Lists tools a few more times, on fresh connections, to detect servers
+   * that answer differently per request (mixed deploys, stale replicas). On
+   * by default; `false` disables it. Never runs when the first list failed.
+   */
+  toolListConsistency?: false | { samples?: number; spacingMs?: number };
   /**
    * Output-contract verdicts to include. Defaults to the verdicts recorded for
    * this server by playground tool calls and deterministic test runs.
    */
   outputContractResults?: readonly OutputContractResult[];
+  /**
+   * Playground call-history counts to include. Defaults to this browser's
+   * stored history for the server; contents are never included.
+   */
+  playgroundCallCounts?: CallHistoryCounts;
+  /**
+   * A saved deterministic plan to run on the evaluation's own connection. Only
+   * its pass/fail counts reach the report.
+   */
+  savedPlan?: Pick<SavedTestPlanV1, 'id' | 'plan'> & {
+    /** The endpoint the plan is saved under, when it differs from the evaluated URL. */
+    endpoint?: string;
+    confirmedUnsafeToolNames?: readonly string[];
+  };
+  /**
+   * Saved-plan run counts to include when no plan runs. Defaults to the newest
+   * run stored for this server in this browser; `null` includes none.
+   */
+  savedPlanRunCounts?: SavedPlanRunCounts | null;
 }
 
 export const isAuthenticationRequired = (report: EvaluationReport): boolean => (
@@ -699,6 +747,8 @@ interface CapabilityEvaluation {
   targetAuthenticationFailures: Array<EvaluationRouteFailure & { method: string }>;
   toolSurfaceAnalysis?: ToolSurfaceAnalysisV1;
   capabilityInventory: CapabilityInventoryV1;
+  /** Raw tools/list entries for running a saved plan; never copied into the report. */
+  tools: DiscoveredTool[];
 }
 
 const DISCOVERY_PAGE_LIMIT = 64;
@@ -993,6 +1043,11 @@ const evaluateCapabilities = async (
   return {
     section,
     targetAuthenticationFailures,
+    tools: Array.isArray(discovered.tools)
+      ? discovered.tools.filter((tool): tool is DiscoveredTool => (
+        Boolean(tool) && typeof tool === 'object' && typeof (tool as { name?: unknown }).name === 'string'
+      ))
+      : [],
     capabilityInventory: createCapabilityInventory({
       testedEndpoint: getEvaluationTargetUrl(connection.url, connection.usedProxy),
       route: connection.usedProxy ? 'authenticated-proxy' : 'direct',
@@ -1030,9 +1085,35 @@ const outputContractDetail = (evidence: OutputContractEvidenceV1): DetailItem =>
   };
 };
 
-type AuthorizationServerMetadata = NonNullable<
-  Awaited<ReturnType<typeof discoverAuthorizationServerMetadata>>
->;
+// Counts only, and no `method`: report diffs key capability evidence by method.
+const playgroundCallDetail = (counts: CallHistoryCounts): DetailItem => ({
+  text: `ℹ ${counts.calls} playground tool ${counts.calls === 1 ? 'call' : 'calls'} recorded, `
+    + `${counts.failures} ${counts.failures === 1 ? 'failure' : 'failures'}`,
+  context: 'Counted from the recent tool calls this browser keeps for this server; call contents are not included.',
+  metadata: {
+    playgroundCalls: counts.calls,
+    playgroundCallFailures: counts.failures,
+  },
+});
+
+// Counts only, and no `method`, like the playground call evidence.
+const savedPlanDetail = (counts: SavedPlanRunCounts, ranInThisReport: boolean): DetailItem => ({
+  text: `ℹ Saved test plan: ${counts.passed} passed, ${counts.failed} failed`
+    + `${counts.blocked > 0 ? `, ${counts.blocked} blocked` : ''}${counts.cancelled > 0 ? `, ${counts.cancelled} cancelled` : ''}`,
+  context: `${ranInThisReport
+    ? 'Ran the saved deterministic test plan for this endpoint during this report.'
+    : `Last run of a saved deterministic test plan for this endpoint (${counts.source}, ${counts.ranAt}).`
+  } Case arguments and results are not included.${counts.blocked > 0
+    ? ' Blocked cases target write-capable tools that were not confirmed.'
+    : ''}`,
+  metadata: {
+    savedPlanCases: counts.total,
+    savedPlanPassed: counts.passed,
+    savedPlanFailed: counts.failed,
+    savedPlanBlocked: counts.blocked,
+    savedPlanCancelled: counts.cancelled,
+  },
+});
 
 const metadataFetchForEvaluation = (firebaseToken: string | undefined): FetchLike => (
   input,
@@ -1051,41 +1132,16 @@ const evaluateSecurityPosture = async (
   firebaseToken: string | undefined
 ): Promise<EvaluationSection | undefined> => {
   const endpoint = getEvaluationTargetUrl(connection.url, connection.usedProxy);
-  const metadataFetch = metadataFetchForEvaluation(firebaseToken);
-  let resourceMetadata: OAuthProtectedResourceMetadata | undefined;
-
-  try {
-    resourceMetadata = await discoverOAuthProtectedResourceMetadata(
-      endpoint,
-      { protocolVersion: connection.protocolVersion },
-      metadataFetch
-    );
-  } catch {
-    // Protected-resource metadata is optional for older OAuth-enabled servers.
-  }
-
-  const endpointUrl = new URL(endpoint);
-  const authorizationServers = resourceMetadata?.authorization_servers?.length
-    ? resourceMetadata.authorization_servers
-    : [endpointUrl.origin];
-  let authorizationServer: string | undefined;
-  let authorizationMetadata: AuthorizationServerMetadata | undefined;
-
-  for (const candidate of authorizationServers) {
-    try {
-      const metadata = await discoverAuthorizationServerMetadata(candidate, {
-        fetchFn: metadataFetch,
-        protocolVersion: connection.protocolVersion,
-      });
-      if (metadata) {
-        authorizationServer = candidate;
-        authorizationMetadata = metadata;
-        break;
-      }
-    } catch {
-      // Continue when one advertised authorization server has unavailable metadata.
-    }
-  }
+  const {
+    resourceMetadata,
+    authorizationServers,
+    authorizationServer,
+    authorizationMetadata,
+  } = await discoverOAuthMetadata(endpoint, {
+    fetchFn: metadataFetchForEvaluation(firebaseToken),
+    protocolVersion: connection.protocolVersion,
+    originFallback: true,
+  });
 
   if (!resourceMetadata && !authorizationMetadata) return undefined;
 
@@ -1246,6 +1302,90 @@ const appendTransportDiagnostics = (
   for (const diagnostic of collectTransportDiagnostics(sources, runtime)) {
     section.details.push(transportDiagnosticReportDetail(diagnostic));
   }
+};
+
+const toolsListObservation = (
+  requests: readonly ObservedTransportRequest[] | undefined
+): Pick<ToolListObservation, 'instanceHeaders' | 'crossOrigin'> => {
+  const listed = (requests || []).filter((request) => request.mcpMethod === 'tools/list');
+  const withHeaders = [...listed].reverse().find((request) => request.instanceHeaders);
+  const crossOrigin = listed.some((request) => request.crossOrigin);
+  return {
+    ...(withHeaders?.instanceHeaders ? { instanceHeaders: pickInstanceHeaders(withHeaders.instanceHeaders) } : {}),
+    ...(listed.length > 0 && listed.every((request) => request.crossOrigin !== undefined)
+      ? { crossOrigin }
+      : {}),
+  };
+};
+
+/**
+ * Re-lists tools on fresh connections bound to the evaluation's route,
+ * transport, endpoint and credentials. Only tools/list is sent; tools are
+ * never called.
+ */
+const evaluateToolListConsistency = async (
+  connection: ConnectedEvaluation,
+  capabilityEvaluation: CapabilityEvaluation,
+  credentials: { firebaseToken?: string; oauthToken: string | null; targetHeaders?: HeadersInit },
+  authentication: 'authenticated' | 'unauthenticated',
+  settings: { samples?: number; spacingMs?: number },
+  onProgress: (message: string) => void
+): Promise<ToolListConsistencyV1> => {
+  const context = {
+    authentication,
+    route: connection.usedProxy ? 'proxy' as const : 'direct' as const,
+    transportType: connection.transportType,
+    requestedSamples: clampToolListSamples(settings.samples),
+  };
+  const toolsStatus = capabilityEvaluation.capabilityInventory.tools.status;
+  if (toolsStatus !== 'complete') {
+    return notCheckedToolListConsistency(context, toolsStatus === 'unsupported'
+      ? 'The server does not implement tools/list, so there was no list to repeat.'
+      : 'The first tools/list did not complete, so no extra requests were sent.');
+  }
+  onProgress(`Listing tools ${context.requestedSamples - 1} more times on fresh connections to detect mixed deploys...`);
+  const freshSample = async (): Promise<ToolListObservation> => {
+    const requests: ObservedTransportRequest[] = [];
+    const record = (request: ObservedTransportRequest) => { requests.push(request); };
+    let fresh: Awaited<ReturnType<typeof attemptParallelConnections>> | undefined;
+    try {
+      if (connection.usedProxy) {
+        const proxiedTargetHeaders = new Headers(credentials.targetHeaders);
+        if (credentials.oauthToken) proxiedTargetHeaders.set('Authorization', `Bearer ${credentials.oauthToken}`);
+        fresh = await attemptParallelConnections(
+          connection.url, undefined, credentials.firebaseToken, proxiedTargetHeaders, true,
+          connection.protocolEra === 'legacy' ? 'stateful' : undefined, record, connection.transportType
+        );
+      } else {
+        fresh = await attemptParallelConnections(
+          connection.url, undefined, credentials.oauthToken || undefined, credentials.targetHeaders, false,
+          connection.protocolEra === 'legacy' ? 'stateful' : undefined, record, connection.transportType
+        );
+      }
+      const client = fresh.client;
+      const { tools, pageCount } = await collectToolListPages((cursor) => (
+        requestCapabilityDiscoveryPage(client, 'tools/list', cursor)
+      ));
+      return {
+        connection: client === connection.client ? 'same' : 'fresh',
+        tools,
+        pageCount,
+        ...toolsListObservation(fresh.observedRequests?.length ? fresh.observedRequests : requests),
+      };
+    } catch (error) {
+      return { connection: 'fresh', error, ...toolsListObservation(requests) };
+    } finally {
+      if (fresh && fresh.client !== connection.client) {
+        await fresh.client.close().catch(() => undefined);
+      }
+    }
+  };
+  const observations = await sampleToolLists({
+    connection: 'evaluation',
+    tools: capabilityEvaluation.tools,
+    ...toolsListObservation(connection.observedRequests),
+  }, freshSample, settings);
+  return assessToolListConsistency(observations, context);
 };
 
 const performanceSection = (durationMs: number): EvaluationSection => {
@@ -1542,12 +1682,10 @@ export async function evaluateServer(
     onProgress(`Negotiated ${connection.protocolEra} MCP${connection.protocolVersion ? ` ${connection.protocolVersion}` : ''}.`);
 
     onProgress('Exercising tools, resources, resource templates, and prompts discovery...');
-    const capabilityEvaluation = await evaluateCapabilities(
-      connection,
-      oauthToken || hasExplicitTargetCredential(targetHeaders)
-        ? 'authenticated'
-        : 'unauthenticated'
-    );
+    const capabilityAuthentication = oauthToken || hasExplicitTargetCredential(targetHeaders)
+      ? 'authenticated' as const
+      : 'unauthenticated' as const;
+    const capabilityEvaluation = await evaluateCapabilities(connection, capabilityAuthentication);
     report.sections.capabilities = capabilityEvaluation.section;
     if (capabilityEvaluation.targetAuthenticationFailures.length > 0) {
       report.outcome = 'authorization-required';
@@ -1605,6 +1743,29 @@ export async function evaluateServer(
       report.outputContracts = outputContracts;
       report.sections.capabilities.details.push(outputContractDetail(outputContracts));
     }
+    const playgroundCalls = options.playgroundCallCounts
+      ?? (runtime === 'browser' ? callHistoryCounts(serverUrl) : { calls: 0, failures: 0 });
+    if (playgroundCalls.calls > 0) {
+      report.sections.capabilities.details.push(playgroundCallDetail(playgroundCalls));
+    }
+    let savedPlanRun: SavedPlanRunCounts | undefined;
+    if (options.savedPlan) {
+      onProgress('Running the saved test plan...');
+      try {
+        savedPlanRun = await runSavedTestPlan(connection.client, options.savedPlan.endpoint ?? serverUrl, options.savedPlan, capabilityEvaluation.tools, {
+          source: 'report',
+          confirmedUnsafeToolNames: options.savedPlan.confirmedUnsafeToolNames,
+        });
+      } catch (error) {
+        onProgress(`The saved test plan could not run: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    const storedPlanRun = options.savedPlanRunCounts !== undefined
+      ? options.savedPlanRunCounts ?? undefined
+      : runtime === 'browser' ? latestSavedPlanRun(serverUrl) : undefined;
+    if (savedPlanRun || storedPlanRun) {
+      report.sections.capabilities.details.push(savedPlanDetail((savedPlanRun ?? storedPlanRun)!, Boolean(savedPlanRun)));
+    }
     if (capabilityEvaluation.section.status === 'partial') {
       report.outcome = 'partial';
     }
@@ -1660,6 +1821,44 @@ export async function evaluateServer(
         requests: connection.observedRequests || [],
       },
     ], runtime);
+
+    if (options.toolListConsistency !== false) {
+      const consistency = await evaluateToolListConsistency(
+        connection,
+        capabilityEvaluation,
+        { firebaseToken, oauthToken, targetHeaders },
+        capabilityAuthentication,
+        options.toolListConsistency ?? {},
+        onProgress
+      );
+      report.sections[TOOL_LIST_CONSISTENCY_SECTION_ID] = {
+        name: 'Tool list consistency',
+        description: 'Repeats tools/list on fresh connections and compares canonical hashes; tools are never called.',
+        score: 0,
+        maxScore: 0,
+        details: [toolListConsistencyReportDetail(consistency)],
+      };
+    }
+
+    if (options.sessionResilience && connection.transportType === 'streamable-http') {
+      onProgress('Checking session resilience (8 sequential and 4 parallel pings)...');
+      const [{ checkSessionResilience }, { sessionResilienceConnection }] = await Promise.all([
+        import('./sessionResilience'), import('./sessionResilienceConnection'),
+      ]);
+      const diagnostics = await checkSessionResilience({
+        ...sessionResilienceConnection({
+          endpoint: getEvaluationTargetUrl(connection.url, connection.usedProxy),
+          ...(connection.usedProxy ? { proxyUrl: getProxyUrl(), firebaseToken } : {}),
+          oauthToken, headers: targetHeaders,
+        }),
+        protocolVersion: connection.protocolVersion,
+        stateless: connection.protocolEra === 'modern',
+      });
+      report.sections.sessionResilience = {
+        name: 'Session resilience', description: 'Opt-in active session checks; no tools are executed.',
+        score: 0, maxScore: 0, details: diagnostics.map(transportDiagnosticReportDetail),
+      };
+    }
 
     report.sections.performance = performanceSection(durationMs);
     report.finalScore = Object.entries(report.sections)

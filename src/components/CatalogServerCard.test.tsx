@@ -1,11 +1,10 @@
 import React from 'react';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import type { CatalogServer } from '../types/catalog';
 import { CatalogServerCard } from './CatalogServerCard';
+import { readStylesheet } from '../styles/readStylesheet';
 
 const server: CatalogServer = {
   id: 'example',
@@ -36,7 +35,7 @@ describe('CatalogServerCard presentation', () => {
   it('styles metadata semantically and keeps testing secondary to card details', () => {
     const markup = renderToStaticMarkup(
       <MemoryRouter>
-        <CatalogServerCard server={server} onTest={vi.fn()} onCategorySelect={vi.fn()} />
+        <CatalogServerCard server={server} onTest={vi.fn()} />
       </MemoryRouter>
     );
     const container = document.createElement('div');
@@ -49,7 +48,7 @@ describe('CatalogServerCard presentation', () => {
     const listingSourceIcon = container.querySelector<SVGElement>(
       '.catalog-listing-source-icon'
     );
-    const catalogCss = readFileSync(resolve('src/index.css'), 'utf8');
+    const catalogCss = readStylesheet();
     const listingSourceIconRule =
       catalogCss.match(/\.catalog-listing-source-icon\s*\{([^}]*)\}/)?.[1] ?? '';
     const onlineStatusRule =
@@ -73,11 +72,11 @@ describe('CatalogServerCard presentation', () => {
     expect(container.querySelector('.catalog-status-dot--online')).not.toBeNull();
     expect(container.querySelector('.catalog-runtime-status--online')).not.toBeNull();
     expect(container.querySelector('.catalog-refresh')).toBeNull();
-    expect(container.querySelector('.catalog-server-footer')?.classList.contains('mt-auto')).toBe(
-      true
-    );
-    expect(container.querySelector('.catalog-server-footer .catalog-server-badges')).not.toBeNull();
-    expect(container.querySelector('.catalog-server-footer .catalog-card-actions')).not.toBeNull();
+    expect(container.querySelector('article.catalog-server-row')).not.toBeNull();
+    expect(container.querySelector('.catalog-server-row .card')).toBeNull();
+    expect(container.querySelector('.catalog-server-meta .catalog-server-badges')).not.toBeNull();
+    expect(container.querySelector('.catalog-server-meta .catalog-browser-evidence')).not.toBeNull();
+    expect(container.querySelector('.catalog-server-row > .catalog-card-actions')).not.toBeNull();
     expect(reportLink?.classList.contains('btn')).toBe(false);
     expect(reportLink?.getAttribute('href')).toBe('/servers/example/');
     expect(badges?.tagName).toBe('DIV');
@@ -87,19 +86,21 @@ describe('CatalogServerCard presentation', () => {
     );
     expect(container.querySelector('.catalog-listing-source')?.textContent).toContain('Publisher');
     expect(container.querySelector('.catalog-listing-source')?.textContent).not.toContain('Verified');
-    expect(listingSourceIcon?.getAttribute('stroke-width')).toBe('1.5');
+    expect(listingSourceIcon).not.toBeNull();
     expect(listingSourceIconRule).toMatch(/stroke-width:\s*1\.5;/);
     expect(onlineStatusRule).toMatch(/color:\s*var\(--success-color\);/);
     expect(container.querySelector('.catalog-runtime-status')?.textContent).toBe(
       'Online'
     );
     expect(container.querySelector('a a, a button, button a')).toBeNull();
-    expect(buttons).toHaveLength(2);
-    expect(buttons[0]?.textContent).toContain('Developer tools');
-    expect(buttons[0]?.getAttribute('aria-label')).toBe('Show Developer tools servers');
-    expect(buttons[1]?.textContent).toContain('Test in Playground');
-    expect(buttons[1]?.classList).toContain('btn-sm');
-    expect(buttons[1]?.classList).toContain('btn-outline-primary');
+    const categoryLink = container.querySelector<HTMLAnchorElement>('a.catalog-metadata-badge--category');
+    expect(categoryLink?.textContent).toBe('Developer tools');
+    expect(categoryLink?.getAttribute('aria-label')).toBe('Show Developer tools servers');
+    expect(categoryLink?.getAttribute('href')).toBe('/catalog/developer-tools');
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0]?.textContent).toContain('Test in Playground');
+    expect(buttons[0]?.classList).toContain('btn-sm');
+    expect(buttons[0]?.classList).toContain('btn-outline-primary');
   });
 
   it('keeps long endpoint URLs on a truncated line while preserving the full value', () => {
@@ -110,32 +111,34 @@ describe('CatalogServerCard presentation', () => {
         <CatalogServerCard
           server={{ ...server, url: longUrl }}
           onTest={vi.fn()}
-          onCategorySelect={vi.fn()}
+         
         />
       </MemoryRouter>
     );
     const container = document.createElement('div');
     container.innerHTML = markup;
     const endpoint = container.querySelector<HTMLElement>('.catalog-server-url');
-    const catalogCss = readFileSync(resolve('src/index.css'), 'utf8');
+    const catalogCss = readStylesheet();
     const endpointRule =
       catalogCss.match(/\.catalog-server-url\s*\{([^}]*)\}/)?.[1] ?? '';
 
     expect(endpoint?.textContent).toBe('api.enterprise-production-environment.company.com');
     expect(endpoint?.title).toBe(longUrl);
-    expect(endpoint?.classList).toContain('text-truncate');
+    expect(endpointRule).toMatch(/text-overflow:\s*ellipsis;/);
+    expect(endpointRule).toMatch(/overflow:\s*hidden;/);
+    expect(endpointRule).toMatch(/white-space:\s*nowrap;/);
     expect(endpoint?.classList).not.toContain('text-muted');
     expect(endpointRule).toMatch(/color:\s*var\(--catalog-secondary-text\);/);
   });
 
-  it('keeps a long title and runtime status within card bounds at 1024px', () => {
+  it('keeps a long title inside the row and stacks the row below the tablet breakpoint', () => {
     const longName = 'ExampleEnterpriseProductionEnvironmentServer';
     const markup = renderToStaticMarkup(
       <MemoryRouter>
         <CatalogServerCard
           server={{ ...server, name: longName }}
           onTest={vi.fn()}
-          onCategorySelect={vi.fn()}
+         
         />
       </MemoryRouter>
     );
@@ -144,23 +147,30 @@ describe('CatalogServerCard presentation', () => {
 
     const title = container.querySelector<HTMLElement>('.catalog-server-title');
     const runtimeStatus = container.querySelector<HTMLElement>('.catalog-runtime-status');
-    const catalogCss = readFileSync(resolve('src/index.css'), 'utf8');
+    const catalogCss = readStylesheet();
     const titleRule = catalogCss.match(/\.catalog-server-title\s*\{([^}]*)\}/)?.[1] ?? '';
     const statusRule = catalogCss.match(/\.catalog-runtime-status\s*\{([^}]*)\}/)?.[1] ?? '';
-    const constrainedDesktopRule = catalogCss.match(
-      /@media \(min-width: (\d+)px\) and \(max-width: ([\d.]+)px\) \{\s*\.catalog-server-title-row\s*\{([^}]*)\}\s*\.catalog-server-name-source,\s*\.catalog-runtime-status\s*\{([^}]*)\}/
+    const rowRule = catalogCss.match(/\.catalog-server-row\s*\{([^}]*)\}/)?.[1] ?? '';
+    const listItemRule = catalogCss.match(/\.catalog-server-list-item\s*\{([^}]*)\}/)?.[1] ?? '';
+    const stackedRule = catalogCss.match(
+      /@media \(max-width: ([\d.]+)px\) \{[^@]*?\.catalog-server-row\s*\{([^}]*)\}[^@]*?\.catalog-server-title-row\s*\{([^}]*)\}/
     );
-    const viewportWidth = 1024;
 
     expect(title?.textContent).toBe(longName);
     expect(titleRule).toMatch(/overflow-wrap:\s*anywhere;/);
     expect(runtimeStatus?.classList).not.toContain('flex-shrink-0');
     expect(statusRule).toMatch(/min-width:\s*0;/);
     expect(statusRule).toMatch(/max-width:\s*100%;/);
-    expect(constrainedDesktopRule?.[3]).toMatch(/flex-wrap:\s*wrap;/);
-    expect(constrainedDesktopRule?.[4]).toMatch(/flex-basis:\s*100%;/);
-    expect(viewportWidth).toBeGreaterThanOrEqual(Number(constrainedDesktopRule?.[1]));
-    expect(viewportWidth).toBeLessThanOrEqual(Number(constrainedDesktopRule?.[2]));
+    // Desktop: one grid row with logo, identity, badges and actions columns.
+    expect(rowRule).toMatch(/display:\s*grid;/);
+    expect(rowRule).toMatch(/grid-template-columns:\s*2\.5rem minmax\(0, 1\.5fr\) minmax\(0, 1fr\) auto;/);
+    // Rows are divided by a hairline, never boxed.
+    expect(listItemRule).toMatch(/border-bottom:\s*1px solid var\(--border-color\);/);
+    expect(rowRule).not.toMatch(/box-shadow/);
+    // Phones: the identity column keeps the logo beside it, badges and actions wrap underneath.
+    expect(Number(stackedRule?.[1])).toBeLessThanOrEqual(768);
+    expect(stackedRule?.[2]).toMatch(/grid-template-columns:\s*2\.5rem minmax\(0, 1fr\);/);
+    expect(stackedRule?.[3]).toMatch(/flex-wrap:\s*wrap;/);
   });
 
   it('shows initials without a logo and keeps report access enabled offline', () => {
@@ -178,7 +188,7 @@ describe('CatalogServerCard presentation', () => {
             },
           }}
           onTest={vi.fn()}
-          onCategorySelect={vi.fn()}
+         
         />
       </MemoryRouter>
     );

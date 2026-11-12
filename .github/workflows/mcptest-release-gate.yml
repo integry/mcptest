@@ -11,6 +11,16 @@ on:
         description: Newline-delimited remote MCP endpoint URLs
         required: true
         type: string
+      session_resilience:
+        description: Opt in to session resilience probes (temporary sessions and 12 pings)
+        required: false
+        default: false
+        type: boolean
+      tool_list_consistency:
+        description: Re-list tools twice on fresh connections to detect mixed deploys (false disables)
+        required: false
+        default: true
+        type: boolean
       credential_mode:
         description: public, bearer, or api-key
         required: false
@@ -37,6 +47,16 @@ on:
         description: Newline-delimited remote MCP endpoint URLs
         required: true
         type: string
+      session_resilience:
+        description: Opt in to session resilience probes (temporary sessions and 12 pings)
+        required: false
+        default: false
+        type: boolean
+      tool_list_consistency:
+        description: Re-list tools twice on fresh connections to detect mixed deploys (false disables)
+        required: false
+        default: true
+        type: boolean
       credential_mode:
         description: public, bearer, or api-key
         required: false
@@ -81,7 +101,7 @@ jobs:
       - name: Validate reusable workflow ref
         if: inputs.mcptest_ref != ''
         id: reusable_ref
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           MCPTEST_REQUESTED_REF: ${{ inputs.mcptest_ref }}
         with:
@@ -132,12 +152,12 @@ jobs:
             exit 3
           fi
           echo "ref=$MCPTEST_DISPATCH_SHA" >> "$GITHUB_OUTPUT"
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           repository: integry/mcptest
           ref: ${{ steps.reusable_ref.outputs.ref || steps.dispatch_ref.outputs.ref }}
           path: mcptest
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -155,6 +175,8 @@ jobs:
         run: >-
           npm run mcptest --
           --endpoints-env MCPTEST_ENDPOINTS
+          ${{ inputs.session_resilience && '--session-resilience' || '' }}
+          ${{ !inputs.tool_list_consistency && '--no-tool-list-consistency' || '' }}
           --fail-on-result "$MCPTEST_FAIL_RESULTS"
           --fail-on-severity "$MCPTEST_FAIL_SEVERITY"
       - name: Evaluate with bearer token
@@ -164,6 +186,8 @@ jobs:
         run: >-
           npm run mcptest --
           --endpoints-env MCPTEST_ENDPOINTS
+          ${{ inputs.session_resilience && '--session-resilience' || '' }}
+          ${{ !inputs.tool_list_consistency && '--no-tool-list-consistency' || '' }}
           --bearer-token-env MCPTEST_BEARER_TOKEN
           --fail-on-result "$MCPTEST_FAIL_RESULTS"
           --fail-on-severity "$MCPTEST_FAIL_SEVERITY"
@@ -174,12 +198,14 @@ jobs:
         run: >-
           npm run mcptest --
           --endpoints-env MCPTEST_ENDPOINTS
+          ${{ inputs.session_resilience && '--session-resilience' || '' }}
+          ${{ !inputs.tool_list_consistency && '--no-tool-list-consistency' || '' }}
           --api-key-env MCPTEST_API_KEY
           --fail-on-result "$MCPTEST_FAIL_RESULTS"
           --fail-on-severity "$MCPTEST_FAIL_SEVERITY"
       - name: Upload reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mcptest-reports
           path: mcptest/mcptest-reports/

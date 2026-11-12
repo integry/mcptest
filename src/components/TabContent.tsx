@@ -1,6 +1,11 @@
+import NextStepsStrip from './NextStepsStrip';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+// Bootstrap's dropdown behaviour; loaded with this chunk rather than on every page.
+import 'bootstrap';
 import { ConnectionTab, LogEntry, type Resource } from '../types';
-import { logEvent } from '../utils/analytics';
+import { trackEvent, type ConnectSource } from '../utils/analytics';
+
+const SessionResiliencePanel = React.lazy(() => import('./SessionResiliencePanel'));
 
 // Import Components
 import ConnectionPanel from './ConnectionPanel';
@@ -16,12 +21,17 @@ import OAuthConfig from './OAuthConfig';
 import { AwaitingConnectionPanel } from './FirstConnectionOnboarding';
 import { LandingHero } from './LandingHero';
 import DeterministicTestPanel from './DeterministicTestPanel';
+import CallHistoryPanel from './CallHistoryPanel';
+import { createTestPlanFromHistory } from '../utils/historyTestPlan';
+import type { DeterministicTestPlanV1 } from '../types/deterministicTests';
+import InterfaceChangeStrip from './InterfaceChangeStrip';
 
 // Import Hooks
 import { useLogEntries } from '../hooks/useLogEntries';
 import { useConnection } from '../hooks/useConnection';
 import { useToolsAndResources } from '../hooks/useToolsAndResources';
 import { useResourceAccess } from '../hooks/useResourceAccess';
+import { usePlaygroundHistory } from '../hooks/usePlaygroundHistory';
 import { useAuth } from '../context/AuthContext';
 
 // Import Utils
@@ -83,7 +93,7 @@ interface TabContentProps {
 }
 
 const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spaces, onAddCardToSpace, landingEligible }) => {
-  const { currentUser, loginWithGoogle } = useAuth();
+  const { currentUser, loading: authLoading, loginWithGoogle } = useAuth();
   // Track whether this is the first render
   const isFirstRender = useRef(true);
   const isUnmounting = useRef(false);
@@ -133,6 +143,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
   const [isExecuting, setIsExecuting] = useState(false);
   const [executionStartTime, setExecutionStartTime] = useState<number | null>(null);
   const [showDeterministicTests, setShowDeterministicTests] = useState(false);
+  const [historyTestPlan, setHistoryTestPlan] = useState<{ plan: DeterministicTestPlanV1; notice: string } | null>(null);
 
   // Custom Hooks for this tab
   const {
@@ -156,6 +167,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     connectionError,
     clearConnectionError,
     client,
+    shareLinkNotice,
     recentServers,
     handleConnect,
     handleDisconnect,
@@ -179,7 +191,8 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
       onUpdateTab(tab.id, { isAuthFlowActive: true });
       sessionStorage.setItem('oauth_tab_id', tab.id);
     },
-    requestHeaders
+    requestHeaders,
+    tab.serverUrl
   );
 
   const catalogProtocolEndpointRef = useRef(
@@ -230,6 +243,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     setSelectedResourceTemplate,
     prompts,
     setPrompts,
+    discovery,
     selectedPrompt,
     setSelectedPrompt,
     toolParams,
@@ -272,6 +286,24 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
 
   const { handleAccessResource: accessResource } = useResourceAccess(client, addLogEntry, serverUrl);
 
+  const playgroundHistory = usePlaygroundHistory({
+    serverUrl,
+    isConnected: connectionStatus === 'Connected',
+    tools,
+    resources,
+    resourceTemplates,
+    prompts,
+    discovery,
+    protocolVersion,
+    transportType,
+    selectedTool,
+    toolParams,
+    selectTool: handleSelectTool,
+    setToolParams,
+    // Called after render, once the wrapper below is defined.
+    executeTool: () => handleExecuteToolWrapper(),
+  });
+
   // Initialize tab state and handle auto-connection
   const hasAutoConnected = useRef(false);
   useEffect(() => {
@@ -282,9 +314,11 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     
     const shouldAutoConnect = tab.resultShareData || tab.autoConnect;
 
-    // Auto-connect if this tab requested it and we haven't already
+    // Auto-connect if this tab requested it and we haven't already. Waits for
+    // auth so a proxied connection carries the signed-in user's token.
     if (
       shouldAutoConnect &&
+      !authLoading &&
       tab.serverUrl && 
       connectionStatus === 'Disconnected' && 
       !hasAutoConnected.current
@@ -300,6 +334,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
       
       // Use a small timeout to ensure state is properly initialized
       setTimeout(() => {
+        trackEvent('connect_attempt', { source: tab.resultShareData ? 'shared_link' : 'catalog', transport_hint: getPreferredTransportHint(tab.serverUrl) ?? 'auto', proxy: tab.useProxy !== false });
         handleConnect(
           setTools,
           setResources,
@@ -307,7 +342,8 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
           tab.serverUrl,
           tab.useProxy, // Pass the current tab's useProxy value
           getCatalogProtocolEraHint(tab.serverUrl),
-          getPreferredTransportHint(tab.serverUrl)
+          getPreferredTransportHint(tab.serverUrl),
+          tab.forcedTransport
         );
       }, 100);
     }
@@ -318,6 +354,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     tab.useProxy,
     tab.id,
     connectionStatus, 
+    authLoading,
     addLogEntry, 
     handleConnect,
     getCatalogProtocolEraHint,
@@ -675,6 +712,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
       setTimeout(() => {
         console.log('[OAuth] Triggering reconnection after delay...');
         // Trigger reconnection
+        trackEvent('connect_attempt', { source: 'reconnect', transport_hint: getPreferredTransportHint(tab.serverUrl) ?? 'auto', proxy: tab.useProxy !== false });
         handleConnect(
           setTools,
           setResources,
@@ -682,7 +720,8 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
           tab.serverUrl,
           tab.useProxy,
           getCatalogProtocolEraHint(tab.serverUrl),
-          getPreferredTransportHint(tab.serverUrl)
+          getPreferredTransportHint(tab.serverUrl),
+          tab.forcedTransport
         );
       }, 500); // 500ms delay to ensure token is available
     }
@@ -704,7 +743,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
 
   const handleAccessResource = async () => {
     if (!selectedResourceTemplate) return;
-    logEvent('access_resource');
+    trackEvent('access_resource');
     
     setIsExecuting(true);
     setExecutionStartTime(Date.now());
@@ -744,9 +783,11 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
   const handleConnectWrapper = (
     urlToConnect?: string,
     protocolEraHint?: string,
-    preferredTransportHint?: ConnectionTab['preferredTransportHint']
+    preferredTransportHint?: ConnectionTab['preferredTransportHint'],
+    source: ConnectSource = 'manual'
   ) => {
     const requestedUrl = urlToConnect || serverUrl;
+    trackEvent('connect_attempt', { source, transport_hint: preferredTransportHint ?? getPreferredTransportHint(requestedUrl) ?? 'auto', proxy: tab.useProxy !== false });
     return handleConnect(
       setTools,
       setResources,
@@ -758,7 +799,8 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
         || protocolEraHint === 'legacy'
         ? protocolEraHint
         : getCatalogProtocolEraHint(requestedUrl),
-      preferredTransportHint ?? getPreferredTransportHint(requestedUrl)
+      preferredTransportHint ?? getPreferredTransportHint(requestedUrl),
+      tab.forcedTransport
     );
   };
 
@@ -778,7 +820,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
       title,
       preferredTransportHint: endpoint.transport,
     });
-    return handleConnectWrapper(endpoint.url, protocolEra, endpoint.transport);
+    return handleConnectWrapper(endpoint.url, protocolEra, endpoint.transport, 'quick_pick');
   };
 
   useEffect(() => {
@@ -791,7 +833,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     }
 
     startedBearerAttemptId.current = prerequisiteBearerCredential.attemptId;
-    void handleConnectWrapper(prerequisiteBearerCredential.targetUrl);
+    void handleConnectWrapper(prerequisiteBearerCredential.targetUrl, undefined, undefined, 'reconnect');
     setPrerequisiteBearerCredential((current) => (
       current?.attemptId === prerequisiteBearerCredential.attemptId ? null : current
     ));
@@ -805,8 +847,12 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     setExecutionStartTime(Date.now());
     
     const toolName = selectedTool.name;
-    const result = await handleExecuteTool();
+    const startedAt = Date.now();
+    // History keeps the arguments as sent, so copy and replay match the wire.
+    let sentArguments: Record<string, unknown> | undefined;
+    const result = await handleExecuteTool((args) => { sentArguments = args; });
     setLastResult(result);
+    if (sentArguments) playgroundHistory.recordCall(toolName, sentArguments, result, Date.now() - startedAt);
     
     setIsExecuting(false);
     setExecutionStartTime(null);
@@ -917,8 +963,8 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     && isDisconnected
     && !connectionError
     && !isAuthFlowActive;
-  // The landing stays up while a first-time visitor types into its input, so
-  // unlike isFirstConnection it does not depend on the entered URL.
+  // Recent servers are loaded synchronously by useConnection. Returning
+  // visitors start in the workspace on the first commit.
   const showLanding = landingEligible
     && recentServers.length === 0
     && !hasStartedFirstConnection
@@ -931,16 +977,72 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     return selection ? handleSuggestedServerSelect(selection) : handleConnectWrapper();
   };
 
+  // Recent chips reconnect the way RecentServersPanel does: set the URL, then connect to it.
+  const handleLandingRecentConnect = (url: string) => {
+    if (isConnecting) return;
+    setHasStartedFirstConnection(true);
+    handleServerUrlChange(url);
+    return handleConnectWrapper(url, undefined, undefined, 'recent_chip');
+  };
+
   // Wrapper function for the refresh button
   const handleRefreshAllLists = () => {
     if (!isConnected) return;
-    logEvent('refresh_capabilities');
+    trackEvent('refresh_capabilities');
     addLogEntry({ type: 'info', data: 'Refreshing all lists...' });
     handleListTools();
     handleListResources();
     handleListResourceTemplates();
     handleListPrompts();
   };
+
+  // Rendered on its own for tabs with a server, and inside the landing's
+  // "Advanced options" disclosure for empty tabs.
+  const connectionPanel = (
+    <>
+    <ConnectionPanel
+      serverUrl={serverUrl}
+      setServerUrl={handleServerUrlChange}
+      connectionStatus={connectionStatus}
+      transportType={transportType}
+      protocolEra={protocolEra}
+      protocolVersion={protocolVersion}
+      isConnecting={isConnecting}
+      isConnected={isConnected}
+      isDisconnected={isDisconnected}
+      connectionStartTime={connectionStartTime}
+      handleConnect={handleConnectWrapper}
+      handleDisconnect={handleDisconnectWrapper}
+      handleAbortConnection={handleAbortConnection}
+      recentServers={recentServers}
+      connectionError={connectionError}
+      clearConnectionError={clearConnectionError}
+      useProxy={tab.useProxy}
+      setUseProxy={(useProxy: boolean) => onUpdateTab(tab.id, { useProxy })}
+      isProxied={isProxied} // Pass the new prop
+      isAuthFlowActive={isAuthFlowActive}
+      oauthProgress={oauthProgress}
+      oauthUserInfo={oauthUserInfo}
+      isOAuthConnection={isOAuthConnection}
+      catalogAuthType={tab.catalogAuthType}
+      diagnosticTransport={tab.preferredTransportHint || 'unknown'}
+      credentialHeader={credentialHeader}
+      credentialValue={catalogCredential}
+      setCredentialValue={setCatalogCredential}
+      credentialInputId={`${tab.id}-catalog-credential`}
+      autoFocusUrl={isFirstConnection && hasStartedFirstConnection}
+    />
+    {isConnected && transportType === 'streamable-http' && (
+      <React.Suspense fallback={null}>
+        <SessionResiliencePanel key={`${serverUrl}-${isProxied}-${protocolVersion}`}
+          endpoint={normalizeConnectionTarget(serverUrl)} stateless={protocolEra === 'modern'}
+          protocolVersion={protocolVersion} headers={requestHeaders} oauthToken={isOAuthConnection ? accessToken : undefined}
+          proxyUrl={isProxied ? import.meta.env.VITE_PROXY_URL : undefined}
+          getFirebaseToken={async () => currentUser ? currentUser.getIdToken() : undefined} />
+      </React.Suspense>
+    )}
+    </>
+  );
 
   return (
     <div 
@@ -962,41 +1064,14 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
           onServerUrlChange={handleServerUrlChange}
           onConnect={handleLandingConnect}
           isConnecting={isConnecting}
+          recentServers={recentServers}
+          onConnectRecent={handleLandingRecentConnect}
+          onRemoveRecentServer={removeRecentServer}
+          advancedOptions={connectionPanel}
         />
-      ) : (
-        <ConnectionPanel
-            serverUrl={serverUrl}
-            setServerUrl={handleServerUrlChange}
-            connectionStatus={connectionStatus}
-            transportType={transportType}
-            protocolEra={protocolEra}
-            protocolVersion={protocolVersion}
-            isConnecting={isConnecting}
-            isConnected={isConnected}
-            isDisconnected={isDisconnected}
-            connectionStartTime={connectionStartTime}
-            handleConnect={handleConnectWrapper}
-            handleDisconnect={handleDisconnectWrapper}
-            handleAbortConnection={handleAbortConnection}
-            recentServers={recentServers}
-            connectionError={connectionError}
-            clearConnectionError={clearConnectionError}
-            useProxy={tab.useProxy}
-            setUseProxy={(useProxy: boolean) => onUpdateTab(tab.id, { useProxy })}
-            isProxied={isProxied} // Pass the new prop
-            isAuthFlowActive={isAuthFlowActive}
-            oauthProgress={oauthProgress}
-            oauthUserInfo={oauthUserInfo}
-            isOAuthConnection={isOAuthConnection}
-            catalogAuthType={tab.catalogAuthType}
-            diagnosticTransport={tab.preferredTransportHint || 'unknown'}
-            credentialHeader={credentialHeader}
-            credentialValue={catalogCredential}
-            setCredentialValue={setCatalogCredential}
-            credentialInputId={`${tab.id}-catalog-credential`}
-            autoFocusUrl={isFirstConnection && hasStartedFirstConnection}
-          />
-      )}
+      ) : connectionPanel}
+
+      {shareLinkNotice && <p role="status" className="small text-muted px-3">{shareLinkNotice}</p>}
 
       {tab.originalServerUrl && tab.originalServerUrl !== serverUrl && tab.serverUrl === serverUrl && (
         <p className="small text-muted px-3">
@@ -1040,7 +1115,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
                 type: 'info',
                 data: '🔐 OAuth client configured. Continuing secure authorization...'
               });
-              handleConnectWrapper();
+              handleConnectWrapper(undefined, undefined, undefined, 'reconnect');
             } catch (error) {
               console.error('[OAuth Config] Failed to continue auth flow:', error);
               addLogEntry({
@@ -1055,6 +1130,17 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
         />
       )}
 
+      {isConnected && <NextStepsStrip endpoint={tab.serverUrl} onCallTool={() => {
+        const pane = document.querySelector<HTMLElement>('.workbench-capabilities');
+        pane?.scrollIntoView({ block: 'nearest' });
+        pane?.querySelector<HTMLElement>('button')?.focus();
+      }} />}
+      {!showLanding && isConnected && playgroundHistory.interfaceDiff && (
+        <InterfaceChangeStrip
+          diff={playgroundHistory.interfaceDiff}
+          onDismiss={playgroundHistory.dismissInterfaceDiff}
+        />
+      )}
       {!showLanding && (
       <div className={`playground-layout flex-grow-1 ${isConnected ? 'playground-workbench' : 'playground-idle'}`}>
         {!isConnected && (
@@ -1073,7 +1159,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
                     <RecentServersPanel
                       recentServers={recentServers}
                       setServerUrl={handleServerUrlChange}
-                      handleConnect={handleConnectWrapper}
+                      handleConnect={(url) => handleConnectWrapper(url, undefined, undefined, 'recent_chip')}
                       removeRecentServer={removeRecentServer}
                       isConnected={isConnected}
                       isConnecting={isConnecting}
@@ -1109,7 +1195,11 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
               connectionStatus={connectionStatus}
               onRefreshLists={handleRefreshAllLists}
               isConnecting={isConnecting}
-              onOpenTestPlan={() => setShowDeterministicTests(true)}
+              onOpenTestPlan={() => {
+                setHistoryTestPlan(null);
+                setShowDeterministicTests(true);
+              }}
+              shortcutEnabled={isActive}
             />
             </section>
             <section className="workbench-pane workbench-request" aria-label="Request builder">
@@ -1134,6 +1224,35 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
                 setResourceArgs={setResourceArgs}
                 isExecuting={isExecuting}
                 executionStartTime={executionStartTime}
+                callHistoryCount={playgroundHistory.calls.length}
+                renderCallHistory={(showRequest) => (
+                  <CallHistoryPanel
+                    calls={playgroundHistory.calls}
+                    availableToolNames={new Set(tools.map((tool) => tool.name))}
+                    canRun={isConnected && !isConnecting && !isExecuting}
+                    onReplay={(entry) => {
+                      playgroundHistory.replayCall(entry);
+                      if (entry.argumentsRedacted) showRequest();
+                    }}
+                    onClearServer={playgroundHistory.clearServerHistory}
+                    onClearAll={playgroundHistory.clearAllHistory}
+                    onCreateTestPlan={(callIds) => {
+                      const converted = createTestPlanFromHistory(playgroundHistory.calls, tools, tab.serverUrl || serverUrl, { callIds });
+                      const skipped = [
+                        converted.duplicateCount > 0 ? `${converted.duplicateCount} repeated` : '',
+                        converted.unavailableCount > 0 ? `${converted.unavailableCount} for tools no longer listed` : '',
+                      ].filter(Boolean).join(', ');
+                      setHistoryTestPlan({
+                        plan: converted.plan,
+                        notice: `Created ${converted.convertedCount} ${converted.convertedCount === 1 ? 'case' : 'cases'} from call history`
+                          + `${skipped ? ` (skipped ${skipped})` : ''}.`
+                          + `${converted.redactedCount > 0 ? ` ${converted.redactedCount} with redacted arguments are unselected; edit them before running.` : ''}`
+                          + ' Review the assertions, then save the plan to run it again later.',
+                      });
+                      setShowDeterministicTests(true);
+                    }}
+                  />
+                )}
               />
             </section>
             <section className="workbench-pane workbench-response" aria-label="Server response">
@@ -1161,7 +1280,12 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
       )}
       <DeterministicTestPanel
         open={showDeterministicTests}
-        onClose={() => setShowDeterministicTests(false)}
+        onClose={() => {
+          setShowDeterministicTests(false);
+          setHistoryTestPlan(null);
+        }}
+        initialPlan={historyTestPlan?.plan ?? null}
+        initialNotice={historyTestPlan?.notice}
         tools={tools}
         client={client}
         serverUrl={tab.serverUrl || serverUrl}

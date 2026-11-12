@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import type { BadgeSnippets } from '../utils/badges';
+import { trackEvent, type BadgeSurface } from '../utils/analytics';
+import { getStaticBadgeWidth, type BadgeSnippets } from '../utils/badges';
 import './BadgeEmbed.css';
 
 interface BadgeEmbedProps {
@@ -11,6 +12,8 @@ interface BadgeEmbedProps {
   previewAlt: string;
   linkUrl: string;
   snippets: BadgeSnippets;
+  /** Where the badge is offered, for the `badge_copied` event. */
+  analyticsSurface: BadgeSurface;
 }
 
 const SNIPPET_FORMATS: { key: keyof BadgeSnippets; label: string }[] = [
@@ -28,6 +31,7 @@ const BadgeEmbed: React.FC<BadgeEmbedProps> = ({
   previewAlt,
   linkUrl,
   snippets,
+  analyticsSurface,
 }) => {
   const [copied, setCopied] = useState<keyof BadgeSnippets | null>(null);
   const Heading = titleLevel === 2 ? 'h2' : 'h3';
@@ -46,6 +50,7 @@ const BadgeEmbed: React.FC<BadgeEmbedProps> = ({
       await navigator.clipboard.writeText(snippets[key]);
       setCopied(key);
       setCopyFailed(false);
+      trackEvent('badge_copied', { format: key, surface: analyticsSurface });
     } catch {
       setCopied(null);
       setCopyFailed(true);
@@ -64,7 +69,7 @@ const BadgeEmbed: React.FC<BadgeEmbedProps> = ({
         )}
       </div>
       <a className="badge-embed-preview" href={linkUrl} target="_blank" rel="noopener noreferrer">
-        <img src={previewSrc} alt={previewAlt} height={20} />
+        <img src={previewSrc} alt={previewAlt} width={getStaticBadgeWidth(previewSrc)} height={20} />
       </a>
       <div className="badge-embed-snippets">
         {SNIPPET_FORMATS.map(({ key, label }) => {

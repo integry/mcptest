@@ -12,6 +12,8 @@ const {
 const { z } = require('zod');
 
 const REQUEST_TIMEOUT_MS = 12_000;
+// Upper bound for every probe, variant and discovery page of one catalog server.
+const SERVER_TIMEOUT_MS = 120_000;
 const CONCURRENCY = 4;
 const CLIENT_NAME = 'mcptest-catalog-validator';
 const rawDiscoveryPageSchema = z.unknown();
@@ -20,29 +22,112 @@ const catalogPath = path.join(__dirname, '..', 'src', 'data', 'serverCatalog.jso
 const outputPath = path.join(__dirname, '..', 'src', 'data', 'catalogValidation.json');
 const capabilitiesPath = path.join(__dirname, '..', 'src', 'data', 'catalogCapabilities.json');
 
+let responseClassifierPromise;
+// Shared with the browser checkers, so a catalog run judges a challenge page,
+// a rate limit or a 402 exactly like the playground does.
+function responseClassifier() {
+  responseClassifierPromise ||= import('../src/utils/responseClassification.ts');
+  return responseClassifierPromise;
+}
+
+const RESPONSE_CLASS_ERROR_CODES = {
+  'bot-protection': 'bot_protection',
+  'rate-limited': 'rate_limited',
+  'payment-required': 'payment_required',
+};
+
+/** Records one probe response, with its bot-protection, rate-limit or 402 class when it has one. */
+async function observeProbeResponse(responses, response) {
+  const observed = {
+    status: response.status,
+    contentType: response.headers.get('content-type') || '',
+  };
+  if (response.status >= 400) {
+    try {
+      const { classifyFetchResponse } = await responseClassifier();
+      const responseClass = await classifyFetchResponse(response);
+      if (responseClass) observed.responseClass = responseClass;
+    } catch {
+      // Classification is evidence only; it never changes the probe outcome on failure.
+    }
+  }
+  responses.push(observed);
+}
+
+/** A 401, or a 403 that is not a bot-protection page, is an authentication challenge. */
+function isAuthChallengeResponse(observed) {
+  return isAuthStatus(observed.status) && observed.responseClass?.kind !== 'bot-protection';
+}
+
+async function classifiedProbeFailure(endpoint, responses) {
+  const classified = responses.find(({ responseClass }) => responseClass);
+  if (!classified) return undefined;
+  const { describeResponseClassification } = await responseClassifier();
+  const { responseClass } = classified;
+  return {
+    ...endpoint,
+    reachable: true,
+    alive: false,
+    authChallenge: false,
+    protocolEra: 'unknown',
+    statusCode: classified.status,
+    responseClass,
+    errorCode: RESPONSE_CLASS_ERROR_CODES[responseClass.kind],
+    message: describeResponseClassification(responseClass, endpoint.url),
+  };
+}
+
 let canonicalInventoryPromise;
 function canonicalInventory() {
   canonicalInventoryPromise ||= import('../src/utils/capabilityInventory.ts');
   return canonicalInventoryPromise;
 }
 
-function requestDiscoveryPage(client, method, cursor) {
+function throwIfAborted(signal) {
+  if (signal?.aborted) throw signal.reason;
+}
+
+// Settles as soon as the server deadline aborts, without waiting for the SDK to notice.
+function untilAborted(promise, signal) {
+  if (!signal) return promise;
+  promise.catch(() => {});
+  return new Promise((resolve, reject) => {
+    const onAbort = () => reject(signal.reason);
+    if (signal.aborted) {
+      onAbort();
+      return;
+    }
+    signal.addEventListener('abort', onAbort, { once: true });
+    promise.then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort));
+  });
+}
+
+function withAbortSignal(init = {}, signal) {
+  if (!signal) return init;
+  return {
+    ...init,
+    signal: init.signal ? AbortSignal.any([init.signal, signal]) : signal,
+  };
+}
+
+function requestDiscoveryPage(client, method, cursor, signal) {
   return client.request({
     method,
     ...(cursor === undefined ? {} : { params: { cursor } }),
-  }, rawDiscoveryPageSchema);
+  }, rawDiscoveryPageSchema, signal ? { signal } : undefined);
 }
 
-async function paginateDiscovery(client, category, method, timeoutMs) {
+async function paginateDiscovery(client, category, method, timeoutMs, signal) {
   let values = [];
   let cursor;
   let successfulPages = 0;
   const seen = new Set();
   try {
     for (let pageNumber = 0; pageNumber < 64; pageNumber += 1) {
-      const page = await withDiscoveryTimeout(
-        () => requestDiscoveryPage(client, method, cursor), timeoutMs
-      );
+      throwIfAborted(signal);
+      const page = await untilAborted(withDiscoveryTimeout(
+        () => requestDiscoveryPage(client, method, cursor, signal), timeoutMs
+      ), signal);
       if (!page || !Array.isArray(page[category])) throw new Error('Malformed discovery page');
       successfulPages += 1;
       values.push(...page[category]);
@@ -58,6 +143,7 @@ async function paginateDiscovery(client, category, method, timeoutMs) {
     }
     throw new Error('Discovery page limit reached');
   } catch (error) {
+    throwIfAborted(signal);
     if (successfulPages === 0 && error
         && (error.code === -32601 || /method not found/i.test(error.message || ''))) {
       return { status: 'unsupported', values: [], paginationComplete: true };
@@ -83,7 +169,7 @@ function withDiscoveryTimeout(run, timeoutMs) {
   });
 }
 
-async function discoverPublicInventory(client, endpoint, timeoutMs) {
+async function discoverPublicInventory(client, endpoint, timeoutMs, signal) {
   const calls = {
     tools: 'tools/list',
     resources: 'resources/list',
@@ -92,7 +178,7 @@ async function discoverPublicInventory(client, endpoint, timeoutMs) {
   };
   const discovered = {};
   for (const [category, method] of Object.entries(calls)) {
-    discovered[category] = await paginateDiscovery(client, category, method, timeoutMs);
+    discovered[category] = await paginateDiscovery(client, category, method, timeoutMs, signal);
   }
   // Never replace a durable snapshot when any method or page failed.
   if (Object.values(discovered).some(({ status }) => status === 'partial' || status === 'unavailable')) return undefined;
@@ -144,7 +230,7 @@ function exactPortCallback(value, pathname) {
   return { port };
 }
 
-const LISTING_SOURCE_KINDS = new Set(['publisher', 'mcp-registry', 'community']);
+const LISTING_SOURCE_KINDS = new Set(['publisher', 'mcp-registry', 'community', 'community-submission']);
 const OAUTH_REGISTRATION_MODES = new Set([
   'automatic',
   'pre-registered-required',
@@ -175,7 +261,8 @@ function validateOAuthCredentialRequirement(value, label, field) {
     throw new Error(`${label}: oauthRegistration.${field}.required must be boolean`);
   }
   if (value.environmentVariable !== undefined
-      && !/^[A-Z][A-Z0-9_]{1,63}$/.test(value.environmentVariable)) {
+      && (typeof value.environmentVariable !== 'string'
+        || !/^[A-Z][A-Z0-9_]{0,63}$/.test(value.environmentVariable))) {
     throw new Error(`${label}: oauthRegistration.${field}.environmentVariable is invalid`);
   }
   for (const key of Object.keys(value)) {
@@ -388,7 +475,7 @@ function validateCatalogSeed(seed, index = 0) {
   }
 
   if (!LISTING_SOURCE_KINDS.has(listingSource.kind)) {
-    throw new Error(`${label}: listingSource.kind must be publisher, mcp-registry, or community`);
+    throw new Error(`${label}: listingSource.kind must be publisher, mcp-registry, community, or community-submission`);
   }
 
   if (listingSource.url !== undefined && !isHttpsUrl(listingSource.url)) {
@@ -524,18 +611,16 @@ function isAuthStatus(status) {
 
 async function probeStreamableEndpoint(
   endpoint,
-  { fetchImpl = fetch, timeoutMs = REQUEST_TIMEOUT_MS } = {}
+  { fetchImpl = fetch, timeoutMs = REQUEST_TIMEOUT_MS, signal } = {}
 ) {
   const responses = [];
   let resourceMetadataUrl;
   const observingFetch = async (input, init) => {
-    const response = await fetchImpl(input, init);
-    responses.push({
-      status: response.status,
-      contentType: response.headers.get('content-type') || '',
-    });
+    throwIfAborted(signal);
+    const response = await fetchImpl(input, withAbortSignal(init, signal));
+    await observeProbeResponse(responses, response);
 
-    if (isAuthStatus(response.status)) {
+    if (isAuthChallengeResponse(responses.at(-1))) {
       resourceMetadataUrl = extractWWWAuthenticateParams(response).resourceMetadataUrl?.toString();
     }
 
@@ -555,10 +640,13 @@ async function probeStreamableEndpoint(
   });
 
   try {
-    await client.connect(transport, { timeout: timeoutMs });
+    throwIfAborted(signal);
+    await untilAborted(client.connect(transport, { timeout: timeoutMs, signal }), signal);
     const era = client.getProtocolEra();
     const protocolVersion = client.getNegotiatedProtocolVersion();
-    const capabilityInventory = await discoverPublicInventory(client, endpoint.url, timeoutMs);
+    const capabilityInventory = await discoverPublicInventory(
+      client, endpoint.url, timeoutMs, signal
+    );
 
     return {
       ...endpoint,
@@ -572,7 +660,7 @@ async function probeStreamableEndpoint(
       message: `Negotiated ${era === 'modern' ? 'stateless' : 'stateful'} MCP${protocolVersion ? ` ${protocolVersion}` : ''} at ${endpoint.url}`,
     };
   } catch (error) {
-    const authResponse = responses.find(({ status }) => isAuthStatus(status));
+    const authResponse = responses.find(isAuthChallengeResponse);
     const lastResponse = responses.at(-1);
 
     if (authResponse) {
@@ -587,6 +675,9 @@ async function probeStreamableEndpoint(
         message: `Authentication challenge at ${endpoint.url} returned HTTP ${authResponse.status}`,
       };
     }
+
+    const classified = await classifiedProbeFailure(endpoint, responses);
+    if (classified) return classified;
 
     return {
       ...endpoint,
@@ -605,12 +696,15 @@ async function probeStreamableEndpoint(
 
 async function probeSseEndpoint(
   endpoint,
-  { fetchImpl = fetch, timeoutMs = REQUEST_TIMEOUT_MS } = {}
+  { fetchImpl = fetch, timeoutMs = REQUEST_TIMEOUT_MS, signal } = {}
 ) {
   const responses = [];
   let resourceMetadataUrl;
   const observingFetch = async (input, init) => {
-    const result = await fetchWithTimeout(input, init, fetchImpl, timeoutMs);
+    throwIfAborted(signal);
+    const result = await fetchWithTimeout(
+      input, withAbortSignal(init, signal), fetchImpl, timeoutMs
+    );
     if (!result.ok) {
       const error = new Error(result.message);
       error.code = result.errorCode === 'timeout' ? 'REQUEST_TIMEOUT' : result.errorCode;
@@ -618,11 +712,8 @@ async function probeSseEndpoint(
     }
 
     const { response } = result;
-    responses.push({
-      status: response.status,
-      contentType: response.headers.get('content-type') || '',
-    });
-    if (isAuthStatus(response.status)) {
+    await observeProbeResponse(responses, response);
+    if (isAuthChallengeResponse(responses.at(-1))) {
       resourceMetadataUrl = extractWWWAuthenticateParams(response).resourceMetadataUrl?.toString();
     }
     return response;
@@ -638,8 +729,9 @@ async function probeSseEndpoint(
   let connectionTimeout;
 
   try {
-    await Promise.race([
-      client.connect(transport, { timeout: timeoutMs }),
+    throwIfAborted(signal);
+    await untilAborted(Promise.race([
+      client.connect(transport, { timeout: timeoutMs, signal }),
       new Promise((_, reject) => {
         connectionTimeout = setTimeout(() => {
           const error = new Error(`Legacy SSE connection timed out after ${timeoutMs}ms`);
@@ -647,10 +739,12 @@ async function probeSseEndpoint(
           reject(error);
         }, timeoutMs);
       }),
-    ]);
+    ]), signal);
 
     const protocolVersion = client.getNegotiatedProtocolVersion();
-    const capabilityInventory = await discoverPublicInventory(client, endpoint.url, timeoutMs);
+    const capabilityInventory = await discoverPublicInventory(
+      client, endpoint.url, timeoutMs, signal
+    );
     return {
       ...endpoint,
       reachable: true,
@@ -663,7 +757,7 @@ async function probeSseEndpoint(
       message: `Negotiated legacy MCP${protocolVersion ? ` ${protocolVersion}` : ''} at ${endpoint.url}`,
     };
   } catch (error) {
-    const authResponse = responses.find(({ status }) => isAuthStatus(status));
+    const authResponse = responses.find(isAuthChallengeResponse);
     const lastResponse = responses.at(-1);
 
     if (authResponse) {
@@ -678,6 +772,9 @@ async function probeSseEndpoint(
         message: `Authentication challenge at ${endpoint.url} returned HTTP ${authResponse.status}`,
       };
     }
+
+    const classified = await classifiedProbeFailure(endpoint, responses);
+    if (classified) return classified;
 
     return {
       ...endpoint,
@@ -703,10 +800,19 @@ async function probeEndpoint(endpoint, options) {
 
 async function discoverAuthorizationEvidence(
   serverUrl,
-  { protocolVersion, resourceMetadataUrl, fetchImpl = fetch, timeoutMs = REQUEST_TIMEOUT_MS } = {}
+  {
+    protocolVersion,
+    resourceMetadataUrl,
+    fetchImpl = fetch,
+    timeoutMs = REQUEST_TIMEOUT_MS,
+    signal,
+  } = {}
 ) {
   const metadataFetch = async (input, init) => {
-    const result = await fetchWithTimeout(input, init, fetchImpl, timeoutMs);
+    throwIfAborted(signal);
+    const result = await fetchWithTimeout(
+      input, withAbortSignal(init, signal), fetchImpl, timeoutMs
+    );
     if (!result.ok) {
       const error = new Error(result.message);
       error.code = result.errorCode;
@@ -716,11 +822,11 @@ async function discoverAuthorizationEvidence(
   };
 
   try {
-    const metadata = await discoverOAuthProtectedResourceMetadata(
+    const metadata = await untilAborted(discoverOAuthProtectedResourceMetadata(
       serverUrl,
       { protocolVersion, resourceMetadataUrl },
       metadataFetch
-    );
+    ), signal);
     const authorizationServers = Array.isArray(metadata?.authorization_servers)
       ? metadata.authorization_servers
       : [];
@@ -748,8 +854,21 @@ function detectedTransport(probes) {
   return 'unknown';
 }
 
+/** A 402 is a deliberate payment wall: the server is up, so it is never offline or broken. */
+function isPaymentRequiredProbe(probe) {
+  return probe.responseClass?.kind === 'payment-required';
+}
+
+/** The response class that explains why no probe completed, if one does. */
+function failureResponseClass(probes) {
+  if (probes.some((probe) => probe.alive || probe.authChallenge)) return undefined;
+  const payment = probes.find(isPaymentRequiredProbe);
+  if (payment) return payment.responseClass.kind;
+  return probes.find((probe) => probe.responseClass)?.responseClass.kind;
+}
+
 function detectedStatus(probes) {
-  if (probes.some((probe) => probe.alive || probe.authChallenge)) return 'online';
+  if (probes.some((probe) => probe.alive || probe.authChallenge || isPaymentRequiredProbe(probe))) return 'online';
   if (probes.some((probe) => probe.reachable)) return 'unknown';
   return 'offline';
 }
@@ -789,6 +908,11 @@ function resultMessage(status, transport, probes, authType) {
     return `${challengeProbe.message}; endpoint was reachable but did not complete an MCP probe; authentication ${authType}`;
   }
 
+  const classifiedProbe = probes.find(isPaymentRequiredProbe) || probes.find((probe) => probe.responseClass);
+  if (classifiedProbe) {
+    return `${classifiedProbe.message}; endpoint was reachable but did not complete an MCP probe`;
+  }
+
   const reachableProbe = probes.find((probe) => probe.reachable);
   if (reachableProbe) {
     return `${reachableProbe.message}; endpoint was reachable but did not complete an MCP probe`;
@@ -802,13 +926,15 @@ function resultMessage(status, transport, probes, authType) {
 
 function errorCodeForStatus(status, probes) {
   if (status === 'online') return undefined;
+  const responseClass = failureResponseClass(probes);
+  if (responseClass) return RESPONSE_CLASS_ERROR_CODES[responseClass];
   if (status === 'unknown') return 'unexpected_response';
   return probes.some((probe) => probe.errorCode === 'timeout') ? 'timeout' : 'network_error';
 }
 
 async function validateSeed(
   seed,
-  { fetchImpl = fetch, timeoutMs = REQUEST_TIMEOUT_MS } = {}
+  { fetchImpl = fetch, timeoutMs = REQUEST_TIMEOUT_MS, signal } = {}
 ) {
   validateCatalogSeed(seed);
   const probes = [];
@@ -816,10 +942,13 @@ async function validateSeed(
 
   for (const endpoint of endpointVariants(seed)) {
     if (validatedTransports.has(endpoint.transport)) continue;
-    const probe = await probeEndpoint(endpoint, { fetchImpl, timeoutMs });
+    // A probe swallows its own errors, so the deadline is checked before each next one.
+    throwIfAborted(signal);
+    const probe = await probeEndpoint(endpoint, { fetchImpl, timeoutMs, signal });
     probes.push(probe);
     if (probe.alive && !probe.authChallenge) validatedTransports.add(endpoint.transport);
   }
+  throwIfAborted(signal);
 
   const status = detectedStatus(probes);
   const transport = detectedTransport(probes);
@@ -834,8 +963,10 @@ async function validateSeed(
       resourceMetadataUrl: authProbe?.resourceMetadataUrl,
       fetchImpl,
       timeoutMs,
+      signal,
     }
   );
+  throwIfAborted(signal);
   const authType = detectedAuthType(seed, probes, authorizationEvidence);
   const errorCode = errorCodeForStatus(status, probes);
   const result = {
@@ -849,19 +980,46 @@ async function validateSeed(
     message: resultMessage(status, transport, probes, authType),
   };
 
-  if (successfulProbe?.url || challengeProbe?.url) {
-    result.validatedUrl = successfulProbe?.url || challengeProbe.url;
+  const paymentProbe = probes.find(isPaymentRequiredProbe);
+  if (successfulProbe?.url || challengeProbe?.url || paymentProbe?.url) {
+    result.validatedUrl = successfulProbe?.url || challengeProbe?.url || paymentProbe.url;
   }
   if (protocolProbe?.protocolVersion) result.protocolVersion = protocolProbe.protocolVersion;
   if (authorizationEvidence.authorizationServers.length > 0) {
     result.authorizationServers = authorizationEvidence.authorizationServers;
   }
+  if (authType === 'none' && authorizationEvidence.authorizationServers.length > 0) {
+    result.message += '; WARNING: OAuth authorization servers advertised; an anonymous MCP handshake does not establish anonymous tool access';
+  }
+  const responseClass = failureResponseClass(probes);
+  if (responseClass) result.responseClass = responseClass;
   if (errorCode) result.errorCode = errorCode;
   if (successfulProbe?.capabilityInventory) {
     result.capabilityInventory = successfulProbe.capabilityInventory;
   }
 
   return result;
+}
+
+// Aborts `run(signal)` at the deadline and settles only once it has stopped, so a
+// timed-out server keeps its concurrency slot until its probes are cleaned up.
+async function withServerTimeout(run, timeoutMs = SERVER_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const deadline = Object.assign(
+    new Error(`Server validation timed out after ${timeoutMs}ms`),
+    { code: 'SERVER_TIMEOUT' }
+  );
+  const timeout = setTimeout(() => controller.abort(deadline), timeoutMs);
+  try {
+    const value = await run(controller.signal);
+    if (controller.signal.aborted) throw deadline;
+    return value;
+  } catch (error) {
+    if (controller.signal.aborted) throw deadline;
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function mapWithConcurrency(values, concurrency, worker) {
@@ -885,7 +1043,7 @@ async function mapWithConcurrency(values, concurrency, worker) {
           requiresOAuth: authType === 'oauth',
           protocolEra: 'unknown',
           checkedAt: new Date().toISOString(),
-          errorCode: 'validator_error',
+          errorCode: error && error.code === 'SERVER_TIMEOUT' ? 'timeout' : 'validator_error',
           message: error && error.message ? error.message : String(error),
         };
       }
@@ -918,15 +1076,45 @@ async function validateCapabilitySnapshots(snapshots) {
   ]));
 }
 
+const VALIDATION_KEY_ORDER = [
+  'serverId',
+  'status',
+  'transport',
+  'authType',
+  'requiresOAuth',
+  'protocolEra',
+  'checkedAt',
+  'message',
+  'validatedUrl',
+  'protocolVersion',
+  'authorizationServers',
+  'responseClass',
+  'errorCode',
+];
+
+// Emits validation fields in one fixed order so reruns diff only on observed values.
+function orderValidationResult(result) {
+  const known = VALIDATION_KEY_ORDER.filter((key) => result[key] !== undefined);
+  const extra = Object.keys(result)
+    .filter((key) => !VALIDATION_KEY_ORDER.includes(key) && result[key] !== undefined)
+    .sort();
+  return Object.fromEntries([...known, ...extra].map((key) => [key, result[key]]));
+}
+
+function readJsonFile(filePath, fallback) {
+  return fs.existsSync(filePath) ? JSON.parse(fs.readFileSync(filePath, 'utf8')) : fallback;
+}
+
 async function writeResults(
   results,
   paths = { validation: outputPath, capabilities: capabilitiesPath }
 ) {
-  const validationResults = results.map(({ capabilityInventory, ...result }) => result);
+  // Every result was observed in this run, so its checkedAt is kept as observed.
+  const validationResults = results.map(
+    ({ capabilityInventory, ...result }) => orderValidationResult(result)
+  );
   const activeServerIds = new Set(results.map(({ serverId }) => serverId));
-  const previous = fs.existsSync(paths.capabilities)
-    ? JSON.parse(fs.readFileSync(paths.capabilities, 'utf8'))
-    : {};
+  const previous = readJsonFile(paths.capabilities, {});
   // Validate the complete merged file before either durable output is replaced.
   const capabilities = await validateCapabilitySnapshots(
     Object.fromEntries(Object.entries(mergeCapabilitySnapshots(previous, results)).filter(
@@ -949,18 +1137,54 @@ async function main() {
 
   const seeds = JSON.parse(fs.readFileSync(catalogPath, 'utf-8'));
   validateCatalogSeeds(seeds);
-  console.log(`Validating ${seeds.length} catalog servers with concurrency ${CONCURRENCY}...`);
+  const onlyId = parseOnlyOption(process.argv);
+  const targets = onlyId === undefined ? seeds : seeds.filter((seed) => seed.id === onlyId);
+  if (onlyId !== undefined && targets.length === 0) {
+    throw new Error(`--only: no catalog server has the id "${onlyId}"`);
+  }
+  console.log(`Validating ${targets.length} catalog servers with concurrency ${CONCURRENCY}...`);
 
-  const results = await mapWithConcurrency(seeds, CONCURRENCY, async (seed) => {
-    const result = await validateSeed(seed);
+  const results = await mapWithConcurrency(targets, CONCURRENCY, async (seed) => {
+    const result = await withServerTimeout((signal) => validateSeed(seed, { signal }));
     console.log(
       `${seed.id}: ${result.status}, ${result.transport}, ${result.protocolEra}, ${result.authType} - ${result.message}`
     );
     return result;
   });
 
-  await writeResults(results);
+  await writeResults(onlyId === undefined
+    ? results
+    : mergeValidationResults(seeds, readJsonFile(outputPath, []), results));
   console.log(`Catalog validation results written to ${path.relative(process.cwd(), outputPath)}`);
+
+  // A single-server run is an acceptance check: anything but online fails the command.
+  const notOnline = onlyId === undefined ? [] : results.filter((result) => result.status !== 'online');
+  if (notOnline.length > 0) {
+    console.error(`${onlyId} is ${notOnline[0].status}${notOnline[0].errorCode ? ` (${notOnline[0].errorCode})` : ''}; only online servers are accepted.`);
+    process.exitCode = 1;
+  }
+}
+
+/** Returns the id after `--only`, or undefined when the option is absent. */
+function parseOnlyOption(argv) {
+  const index = argv.indexOf('--only');
+  if (index === -1) return undefined;
+  const value = argv[index + 1];
+  if (!value || value.startsWith('--')) throw new Error('--only needs a catalog server id');
+  return value;
+}
+
+/**
+ * Replaces the stored results of the servers validated in this run and keeps
+ * every other stored result as it was, in catalog order. Servers that have
+ * neither a stored nor a fresh result are left out.
+ */
+function mergeValidationResults(seeds, previous, results) {
+  const fresh = new Map(results.map((result) => [result.serverId, result]));
+  const stored = new Map((Array.isArray(previous) ? previous : []).map((result) => [result.serverId, result]));
+  return seeds
+    .map((seed) => fresh.get(seed.id) || stored.get(seed.id))
+    .filter(Boolean);
 }
 
 if (require.main === module) {
@@ -982,9 +1206,13 @@ module.exports = {
   probeStreamableEndpoint,
   requestDiscoveryPage,
   main,
+  mapWithConcurrency,
+  mergeValidationResults,
+  parseOnlyOption,
   validateCapabilitySnapshots,
   validateCatalogSeed,
   validateCatalogSeeds,
   validateSeed,
+  withServerTimeout,
   writeResults,
 };

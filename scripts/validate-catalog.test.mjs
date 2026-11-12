@@ -12,12 +12,16 @@ const {
   detectedAuthType,
   discoverPublicInventory,
   endpointVariants,
+  mapWithConcurrency,
   mergeCapabilitySnapshots,
+  mergeValidationResults,
   paginateDiscovery,
+  parseOnlyOption,
   probeSseEndpoint,
   probeStreamableEndpoint,
   validateCatalogSeed,
   validateSeed,
+  withServerTimeout,
   writeResults,
 } = validator;
 
@@ -147,7 +151,7 @@ describe('catalog seed provenance validation', () => {
     [{ id: 'missing' }, 'listingSource is required'],
     [
       { id: 'kind', listingSource: { kind: 'verified' } },
-      'listingSource.kind must be publisher, mcp-registry, or community',
+      'listingSource.kind must be publisher, mcp-registry, community, or community-submission',
     ],
     [
       { id: 'http', listingSource: { kind: 'community', url: 'http://example.com' } },
@@ -662,6 +666,73 @@ describe('catalog protocol validation', () => {
     });
   });
 
+  it('preserves Port OS OAuth when discovery completes without an auth challenge', () => {
+    const seed = catalogSeeds.find(({ id }) => id === 'portoperatingsystem');
+
+    expect(detectedAuthType(
+      seed,
+      [{ alive: true, authChallenge: false }],
+      { oauthMetadata: true, authorizationServers: ['https://auth.portoperatingsystem.com'] }
+    )).toBe('oauth');
+  });
+
+  it.each([true, false])('records Port OS authorization servers only when discovered (metadata: %s)', async (hasMetadata) => {
+    const seed = catalogSeeds.find(({ id }) => id === 'portoperatingsystem');
+    const issuer = 'https://auth.example.com';
+    const fetchImpl = async (input, init = {}) => {
+      const url = new URL(input instanceof Request ? input.url : input);
+      if (url.pathname.startsWith('/.well-known/oauth-protected-resource') && hasMetadata) {
+        return new Response(JSON.stringify({ resource: seed.url, authorization_servers: [issuer] }), {
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.pathname === '/mcp' && init.method === 'POST') {
+        return jsonRpcResponse(JSON.parse(String(init.body)), {
+          supportedVersions: ['2026-07-28'], capabilities: {},
+        });
+      }
+      return new Response('Not found', { status: 404 });
+    };
+    const result = await validateSeed(seed, { fetchImpl, timeoutMs: 1_000 });
+
+    expect(result).toMatchObject({ status: 'online', authType: 'oauth', requiresOAuth: true });
+    if (hasMetadata) {
+      expect(result.authorizationServers).toEqual([issuer]);
+    } else {
+      expect(result).not.toHaveProperty('authorizationServers');
+    }
+    const stored = [{ serverId: seed.id, authorizationServers: ['https://stale.example.com'] }];
+    expect(mergeValidationResults([seed], stored, [result])).toEqual([result]);
+  });
+
+  it.each([
+    ['none', true, true],
+    ['none', false, false],
+    ['oauth', true, false],
+    ['bearer-token', true, false],
+  ])('flags advertised OAuth for anonymous access (auth: %s, metadata: %s)', async (authType, hasMetadata, warns) => {
+    const seed = { ...catalogSeeds.find(({ id }) => id === 'menloinsurance'), authType, requiresOAuth: authType === 'oauth' };
+    const fetchImpl = async (input, init = {}) => {
+      const url = new URL(input instanceof Request ? input.url : input);
+      if (url.pathname.startsWith('/.well-known/oauth-protected-resource') && hasMetadata) {
+        return Response.json({ resource: seed.url, authorization_servers: ['https://www.menloinsurance.com'] });
+      }
+      if (url.pathname === '/mcp' && init.method === 'POST') {
+        return jsonRpcResponse(JSON.parse(String(init.body)), {
+          supportedVersions: ['2026-07-28'], capabilities: {},
+        });
+      }
+      return new Response('Not found', { status: 404 });
+    };
+    const result = await validateSeed(seed, { fetchImpl, timeoutMs: 1_000 });
+
+    expect(result).toMatchObject({ status: 'online', authType, requiresOAuth: authType === 'oauth' });
+    expect(result.message.includes('WARNING: OAuth authorization servers advertised')).toBe(warns);
+    if (warns) expect(result.message).toContain('an anonymous MCP handshake does not establish anonymous tool access');
+    // A fresh observation replaces old evidence, including a previously stored warning.
+    expect(mergeValidationResults([seed], [{ ...result, message: 'stale warning' }], [result])).toEqual([result]);
+  });
+
   it('uses an auth challenge as bearer evidence without mislabeling it OAuth', () => {
     expect(detectedAuthType(
       { requiresOAuth: false },
@@ -958,5 +1029,227 @@ describe('catalog capability pagination and persistence', () => {
     expect(first.tools.retainedCount + first.tools.omittedCount).toBe(100);
     expect(Object.values(first).filter((value) => value?.status === 'partial').length).toBeGreaterThan(0);
     expect({ ...second, observedAt: first.observedAt }).toEqual(first);
+  });
+
+  it('keeps key order stable and persists fresh timestamps when a rerun observes nothing new', async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'mcptest-catalog-stable-'));
+    const capabilities = path.join(directory, 'catalogCapabilities.json');
+    const validation = path.join(directory, 'catalogValidation.json');
+    const section = { status: 'unsupported', observedCount: 0, retainedCount: 0, omittedCount: 0, paginationComplete: true, items: [] };
+    const inventory = (observedAt, tools) => ({
+      version: 1,
+      observedAt,
+      provenance: { testedEndpoint: 'https://stable.example/mcp', route: 'direct' },
+      authentication: 'unauthenticated',
+      tools: { status: 'complete', observedCount: tools.length, retainedCount: tools.length, omittedCount: 0, paginationComplete: true, items: tools.map((name) => ({ name })) },
+      resources: section,
+      resourceTemplates: section,
+      prompts: section,
+    });
+    const result = (serverId, checkedAt, overrides = {}) => ({
+      // Deliberately out of canonical order, as the validator_error path builds it.
+      message: 'Negotiated stateful MCP',
+      checkedAt,
+      serverId,
+      errorCode: undefined,
+      status: 'online',
+      transport: 'streamable-http',
+      authType: 'none',
+      requiresOAuth: false,
+      protocolEra: 'stateful',
+      ...overrides,
+    });
+    const withTimestamps = (json, checkedAt, observedAt) => json
+      .replaceAll('"checkedAt": "2026-10-13T00:00:00.000Z"', `"checkedAt": "${checkedAt}"`)
+      .replaceAll('"observedAt": "2026-10-13T00:00:00.000Z"', `"observedAt": "${observedAt}"`);
+    try {
+      await writeResults(
+        [
+          { ...result('stable', '2026-10-13T00:00:00.000Z'), capabilityInventory: inventory('2026-10-13T00:00:00.000Z', ['ping']) },
+          // Imported authenticated inventory: not re-observed by the validator.
+          result('imported', '2026-10-13T00:00:00.000Z', { authType: 'oauth', requiresOAuth: true }),
+        ],
+        { capabilities, validation }
+      );
+      fs.writeFileSync(capabilities, `${JSON.stringify({
+        imported: { ...inventory('2026-09-01T00:00:00.000Z', ['secret']), authentication: 'authenticated' },
+        ...JSON.parse(fs.readFileSync(capabilities, 'utf8')),
+      }, null, 2)}\n`);
+      const firstValidation = fs.readFileSync(validation, 'utf8');
+      const firstCapabilities = fs.readFileSync(capabilities, 'utf8');
+      expect(Object.keys(JSON.parse(firstValidation)[0])).toEqual([
+        'serverId', 'status', 'transport', 'authType', 'requiresOAuth', 'protocolEra', 'checkedAt', 'message',
+      ]);
+
+      await writeResults(
+        [
+          { ...result('stable', '2026-10-20T00:00:00.000Z'), capabilityInventory: inventory('2026-10-20T00:00:00.000Z', ['ping']) },
+          result('imported', '2026-10-20T00:00:00.000Z', { authType: 'oauth', requiresOAuth: true }),
+        ],
+        { capabilities, validation }
+      );
+      const secondValidation = fs.readFileSync(validation, 'utf8');
+      const secondCapabilities = fs.readFileSync(capabilities, 'utf8');
+      // Only the observation times of this run change; the imported inventory keeps its own time.
+      expect(secondValidation).toBe(
+        withTimestamps(firstValidation, '2026-10-20T00:00:00.000Z', '2026-10-20T00:00:00.000Z')
+      );
+      expect(secondCapabilities).toBe(
+        withTimestamps(firstCapabilities, '2026-10-20T00:00:00.000Z', '2026-10-20T00:00:00.000Z')
+      );
+      expect(JSON.parse(secondValidation).map(({ checkedAt }) => checkedAt)).toEqual([
+        '2026-10-20T00:00:00.000Z', '2026-10-20T00:00:00.000Z',
+      ]);
+      expect(JSON.parse(secondCapabilities).stable.observedAt).toBe('2026-10-20T00:00:00.000Z');
+      expect(JSON.parse(secondCapabilities).imported.observedAt).toBe('2026-09-01T00:00:00.000Z');
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('records a per-server timeout as an offline timeout result', async () => {
+    const [result] = await mapWithConcurrency(
+      [{ id: 'slow', url: 'https://slow.example/mcp', transport: 'streamable-http', authType: 'none' }],
+      1,
+      () => withServerTimeout((signal) => new Promise((_, reject) => {
+        signal.addEventListener('abort', () => reject(signal.reason));
+      }), 10)
+    );
+
+    expect(result).toMatchObject({ serverId: 'slow', status: 'offline', errorCode: 'timeout' });
+    expect(result.message).toBe('Server validation timed out after 10ms');
+  });
+
+  it('aborts a timed-out validation and settles only after it has cleaned up', async () => {
+    let cleanedUp = false;
+    const outcome = withServerTimeout((signal) => new Promise((_, reject) => {
+      signal.addEventListener('abort', () => setTimeout(() => {
+        cleanedUp = true;
+        reject(new Error('aborted probe'));
+      }, 20));
+    }), 10);
+
+    await expect(outcome).rejects.toMatchObject({ code: 'SERVER_TIMEOUT' });
+    expect(cleanedUp).toBe(true);
+  });
+
+  it('stops every probe and discovery request of a server once its deadline expires', async () => {
+    const requests = [];
+    let active = 0;
+    const fetchImpl = (input, init = {}) => {
+      requests.push(String(input instanceof Request ? input.url : input));
+      active += 1;
+      return new Promise((_, reject) => {
+        // Never answers: only the abort signal ends the request.
+        init.signal?.addEventListener('abort', () => {
+          active -= 1;
+          reject(Object.assign(new Error('aborted'), { name: 'AbortError' }));
+        }, { once: true });
+      });
+    };
+    const seed = {
+      id: 'stalled',
+      url: 'https://stalled.example/mcp',
+      transport: 'streamable-http',
+      authType: 'none',
+      listingSource: { kind: 'community' },
+    };
+
+    await expect(withServerTimeout(
+      (signal) => validateSeed(seed, { fetchImpl, timeoutMs: 60_000, signal }),
+      50
+    )).rejects.toMatchObject({ code: 'SERVER_TIMEOUT' });
+    const requestsAtDeadline = requests.length;
+    expect(requestsAtDeadline).toBeGreaterThan(0);
+    expect(active).toBe(0);
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(requests).toHaveLength(requestsAtDeadline);
+    expect(active).toBe(0);
+  });
+
+  it('aborts discovery at the server deadline instead of requesting further pages or methods', async () => {
+    const methods = [];
+    const client = await connectedClient((method) => {
+      methods.push(method);
+      // The first page answers with a cursor; the second page never answers.
+      return methods.length === 1
+        ? { tools: [{ name: 'first_tool', inputSchema: { type: 'object' } }], nextCursor: 'tools-2' }
+        : new Promise(() => {});
+    });
+    const controller = new AbortController();
+    const deadline = Object.assign(new Error('deadline'), { code: 'SERVER_TIMEOUT' });
+    setTimeout(() => controller.abort(deadline), 30);
+    try {
+      await expect(
+        discoverPublicInventory(client, 'https://example.com/mcp', 60_000, controller.signal)
+      ).rejects.toBe(deadline);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(methods).toEqual(['tools/list', 'tools/list']);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it('keeps timed-out validations inside the concurrency limit until they stop', async () => {
+    let active = 0;
+    let maxActive = 0;
+    const seeds = Array.from({ length: 6 }, (_, index) => ({
+      id: `slow-${index}`, url: `https://slow-${index}.example/mcp`, transport: 'streamable-http', authType: 'none',
+    }));
+
+    const results = await mapWithConcurrency(seeds, 2, () => withServerTimeout(
+      (signal) => new Promise((_, reject) => {
+        active += 1;
+        maxActive = Math.max(maxActive, active);
+        signal.addEventListener('abort', () => setTimeout(() => {
+          active -= 1;
+          reject(signal.reason);
+        }, 15));
+      }),
+      10
+    ));
+
+    expect(results.map(({ errorCode }) => errorCode)).toEqual(Array(6).fill('timeout'));
+    expect(maxActive).toBe(2);
+    expect(active).toBe(0);
+  });
+});
+
+describe('single-server validation (--only)', () => {
+  it('reads the id after --only and rejects a missing one', () => {
+    expect(parseOnlyOption(['node', 'validate-catalog.js'])).toBeUndefined();
+    expect(parseOnlyOption(['node', 'validate-catalog.js', '--only', 'acme'])).toBe('acme');
+    expect(() => parseOnlyOption(['node', 'validate-catalog.js', '--only'])).toThrow(/needs a catalog server id/);
+    expect(() => parseOnlyOption(['node', 'validate-catalog.js', '--only', '--check-runtime'])).toThrow(/needs a catalog server id/);
+  });
+
+  it('replaces only the validated server and keeps every other stored result in catalog order', () => {
+    const seeds = [{ id: 'alpha' }, { id: 'bravo' }, { id: 'charlie' }];
+    const stored = [
+      { serverId: 'charlie', status: 'online', checkedAt: '2026-01-01T00:00:00.000Z' },
+      { serverId: 'alpha', status: 'online', checkedAt: '2026-01-01T00:00:00.000Z' },
+      { serverId: 'removed', status: 'online', checkedAt: '2026-01-01T00:00:00.000Z' },
+    ];
+    const fresh = { serverId: 'bravo', status: 'offline', checkedAt: '2026-10-20T00:00:00.000Z' };
+
+    expect(mergeValidationResults(seeds, stored, [fresh])).toEqual([stored[1], fresh, stored[0]]);
+    expect(mergeValidationResults(seeds, undefined, [fresh])).toEqual([fresh]);
+  });
+});
+
+describe('OAuth environment identifier validation', () => {
+  for (const field of ['clientId', 'clientSecret']) {
+    it.each(['BAD}NAME', 'BAD"NAME', "BAD'NAME", 'BAD$(id)', 'BAD;id', 'BAD&&id', 'BAD`id`', 'BAD\nNAME', '', 'lowercase', '_NAME', 'A'.repeat(65), ['VALID_NAME']])(`rejects ${field}: %j`, (name) => {
+      const seed = structuredClone(catalogSeeds.find(({ id }) => id === 'asana'));
+      seed.oauthRegistration[field].environmentVariable = name;
+      expect(() => validateCatalogSeed(seed)).toThrow(`oauthRegistration.${field}.environmentVariable is invalid`);
+    });
+  }
+  it('accepts uppercase identifiers at both length boundaries', () => {
+    const seed = structuredClone(catalogSeeds.find(({ id }) => id === 'asana'));
+    seed.oauthRegistration.clientId.environmentVariable = 'A';
+    seed.oauthRegistration.clientSecret.environmentVariable = 'A'.repeat(64);
+    expect(() => validateCatalogSeed(seed)).not.toThrow();
   });
 });

@@ -1,0 +1,83 @@
+# Weekly dependency updates. Minor and patch bumps are grouped into one PR per
+# ecosystem and directory; vitest, wrangler and the @modelcontextprotocol/*
+# packages get their own groups so a break in one of them is easy to isolate.
+# Major bumps stay as individual PRs.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      vitest:
+        patterns:
+          - vitest
+          - "@vitest/*"
+      wrangler:
+        patterns:
+          - wrangler
+      modelcontextprotocol:
+        patterns:
+          - "@modelcontextprotocol/*"
+      npm-minor-and-patch:
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: npm
+    directory: /cors-proxy-worker
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      vitest:
+        patterns:
+          - vitest
+          - "@vitest/*"
+      wrangler:
+        patterns:
+          - wrangler
+      modelcontextprotocol:
+        patterns:
+          - "@modelcontextprotocol/*"
+      npm-minor-and-patch:
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: npm
+    directory: /cloudflare-worker
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      vitest:
+        patterns:
+          - vitest
+          - "@vitest/*"
+      wrangler:
+        patterns:
+          - wrangler
+      modelcontextprotocol:
+        patterns:
+          - "@modelcontextprotocol/*"
+      npm-minor-and-patch:
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      github-actions-minor-and-patch:
+        update-types:
+          - minor
+          - patch

@@ -1,3 +1,5 @@
+import { SESSION_RESILIENCE_IDS } from '../utils/sessionResilienceDefinitions';
+import type { ResponseClassification } from '../utils/responseClassification';
 /**
  * Transport-level diagnostics for remote MCP servers.
  *
@@ -5,12 +7,15 @@
  * reference documentation key on them. Never rename or reuse an id.
  */
 export const TRANSPORT_DIAGNOSTIC_IDS = [
+  ...SESSION_RESILIENCE_IDS,
   'transport.accept-header-406',
   'transport.get-stream-405',
   'transport.unsupported-media-type-415',
   'transport.target-rate-limited-429',
   'transport.cors-expose-headers-missing',
   'transport.sse-content-type-mismatch',
+  'transport.bot-protection-challenge',
+  'transport.payment-required-402',
 ] as const;
 
 export type TransportDiagnosticId = typeof TRANSPORT_DIAGNOSTIC_IDS[number];
@@ -19,7 +24,8 @@ export type TransportDiagnosticId = typeof TRANSPORT_DIAGNOSTIC_IDS[number];
 export type TransportDiagnosticSeverity = 'error' | 'warning' | 'info';
 
 /**
- * `detected` means the observed responses prove the problem. `suspected` means
+ * `detected` means the observed responses establish the finding; active probes
+ * additionally carry an explicit pass/fail `outcome`. `suspected` means
  * the responses are consistent with the problem but do not prove it, so it is
  * shown as a possibility and never blocks release. `not-checked` means mcptest
  * could not perform the check and says why; neither is a finding against the
@@ -53,6 +59,8 @@ export interface TransportDiagnosticEvidence {
   responseSource?: 'proxy' | 'target';
   /** Non-credential response headers as read by the browser. */
   headersSeen?: Record<string, string>;
+  /** Response class and the signature that matched, for bot-protection, rate-limit and 402 findings. */
+  responseClass?: ResponseClassification;
   /** Non-credential request headers that were sent. */
   headersSent?: Record<string, string>;
   /** Plain-language note about what this request shows. */
@@ -61,6 +69,8 @@ export interface TransportDiagnosticEvidence {
 
 export interface TransportDiagnostic {
   id: TransportDiagnosticId;
+  /** Explicit active-probe verdict; absent on passive diagnostics. */
+  outcome?: 'pass' | 'fail' | 'warning';
   status: TransportDiagnosticStatus;
   severity: TransportDiagnosticSeverity;
   title: string;

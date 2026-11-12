@@ -1,91 +1,57 @@
-import React from 'react';
-import ReactMarkdown from 'react-markdown';
-import { Link } from 'react-router-dom';
-import remarkBreaks from 'remark-breaks';
-import remarkGfm from 'remark-gfm';
-import type { LearnArticle } from '../../content/learnRegistry';
-import { getRelatedLearnArticles } from '../../content/learnRegistry';
-import { formatReviewedDate } from './articleFormatting';
+import React, { Suspense } from 'react';
+import { useNavigate } from 'react-router-dom';
+import type { LearnArticle, LearnArticleEntry } from '../../content/learnRegistry';
+import { ARTICLE_PROSE_PROPS, getPrerenderedArticle } from '../../content/prerenderedArticle';
+import { handleCodeCopyClick } from '../../utils/codeCopy';
+import { ViewFallback } from '../../views/deferredViews';
+import LearnArticleLayout from './LearnArticleLayout';
+import { markdownLearnArticle } from './deferredMarkdownArticle';
 
 interface LearnArticlePageProps {
-  article: LearnArticle;
+  /** A registry entry, whose body is loaded on demand, or an article that carries its body. */
+  article: LearnArticleEntry | LearnArticle;
 }
 
+const isPlainClick = (event: React.MouseEvent) => (
+  event.button === 0 && !event.defaultPrevented && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey
+);
+
+/**
+ * A guide page. When the app mounted over the page the build prerendered for
+ * this guide, it keeps that body and outline as they are (issue #405), so
+ * neither the Markdown parser, highlight.js nor the guide's body chunk is
+ * downloaded. Otherwise, and for guides with an embedded component,
+ * MarkdownLearnArticle renders it, loading the body on demand.
+ */
 const LearnArticlePage: React.FC<LearnArticlePageProps> = ({ article }) => {
-  const related = getRelatedLearnArticles(article);
+  const navigate = useNavigate();
+  const prerendered = article.component ? null : getPrerenderedArticle(article.slug);
+
+  if (!prerendered) {
+    return (
+      <Suspense fallback={<ViewFallback label="Loading the guide" />}>
+        <markdownLearnArticle.Component article={article} />
+      </Suspense>
+    );
+  }
+
+  // The prerendered body is plain HTML: wire its copy buttons, and keep its
+  // internal links in the app the way ArticleMarkdown's <Link>s do.
+  const handleClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (handleCodeCopyClick(event)) return;
+    const anchor = (event.target as Element).closest('a[href]');
+    const href = anchor?.getAttribute('href') ?? '';
+    if (!href.startsWith('/') || href.startsWith('//') || anchor?.hasAttribute('target') || !isPlainClick(event)) return;
+    event.preventDefault();
+    navigate(href);
+  };
 
   return (
-    <article className="learn-page learn-article">
-      <nav className="learn-breadcrumb" aria-label="Breadcrumb">
-        <Link to="/learn">Learn</Link>
-        <span aria-hidden="true">/</span>
-        <span aria-current="page">{article.title}</span>
-      </nav>
-
-      <header className="learn-article-header">
-        <p className="learn-kicker">{article.category}</p>
-        <h1>{article.title}</h1>
-        <p className="learn-article-summary">{article.summary}</p>
-        <dl className="learn-article-meta">
-          <div>
-            <dt>Reading time</dt>
-            <dd>{article.readingTimeMinutes} minutes</dd>
-          </div>
-          <div>
-            <dt>Last reviewed</dt>
-            <dd><time dateTime={article.lastReviewed}>{formatReviewedDate(article.lastReviewed)}</time></dd>
-          </div>
-        </dl>
-      </header>
-
-      <div className="learn-markdown">
-        <ReactMarkdown
-          remarkPlugins={[remarkGfm, remarkBreaks]}
-          components={{
-            a: ({ href = '', children, ...props }) => {
-              if (href.startsWith('/')) {
-                return <Link to={href}>{children}</Link>;
-              }
-              return (
-                <a href={href} target="_blank" rel="noopener noreferrer" {...props}>
-                  {children}
-                  <span className="visually-hidden"> (opens in a new tab)</span>
-                </a>
-              );
-            },
-          }}
-        >
-          {article.content}
-        </ReactMarkdown>
-      </div>
-
-      <footer className="learn-article-footer">
-        <section aria-labelledby="article-sources-heading">
-          <h2 id="article-sources-heading">Sources</h2>
-          <ul>
-            {article.sourceLinks.map(source => (
-              <li key={source.url}>
-                <a href={source.url} target="_blank" rel="noopener noreferrer">
-                  {source.title}
-                  <span className="visually-hidden"> (opens in a new tab)</span>
-                </a>
-              </li>
-            ))}
-          </ul>
-        </section>
-
-        <section aria-labelledby="related-guides-heading">
-          <h2 id="related-guides-heading">Related guides</h2>
-          <ul>
-            {related.map(item => (
-              <li key={item.slug}>
-                <Link to={`/learn/${item.slug}`}>{item.title}</Link>
-              </li>
-            ))}
-          </ul>
-        </section>
-      </footer>
-    </article>
+    <LearnArticleLayout
+      article={article}
+      outline={prerendered.outline}
+      prose={<div {...ARTICLE_PROSE_PROPS} onClick={handleClick} dangerouslySetInnerHTML={{ __html: prerendered.html }} />}
+    />
   );
 };
 

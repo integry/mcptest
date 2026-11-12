@@ -33,6 +33,10 @@ export type DeterministicAssertion =
   | { path: string; operator: 'exists' | 'not-exists' }
   | { path: string; operator: 'type'; value: StructuralValueType }
   | { path: string; operator: 'equals'; value: unknown }
+  /** Passes when the value is absent or differs; `$.isError` not-equals `true` reads as "isError false". */
+  | { path: string; operator: 'not-equals'; value: unknown }
+  /** The string at `path` includes `value`. */
+  | { path: string; operator: 'contains'; value: string }
   | { path: string; operator: 'length'; value: number }
   | { path: string; operator: 'min-length' | 'max-length'; value: number }
   /** Validates the value at `path` (normally `$.structuredContent`) against the tool's declared outputSchema. */

@@ -61,6 +61,8 @@ See the in-app guides for the complete wire behavior:
 - `/docs/testing-guide`
 - `/docs/troubleshooting`
 
+Every guide is also available as raw Markdown by appending `.md` to its URL, `/llms.txt` indexes all of them, and `/learn/feed.xml` is an RSS feed of every guide, most recently reviewed first.
+
 ## Local development
 
 Requirements: Node.js 22 or newer and npm.
@@ -83,6 +85,60 @@ Set `VITE_CLOUDFLARE_WORKER_URL` for persisted dashboards and reports. Set `VITE
 
 Do not commit `.env` or real server credentials.
 
+## Adding a content page
+
+All `/learn/*` and `/docs/*` guides are Markdown files in `src/content/articles/`. The file name is the slug, so `src/content/articles/my-guide.md` is served at `/learn/my-guide`. No React code changes are needed: the browser registry (`src/content/learnRegistry.ts`) loads every file at build time, and `scripts/generate-seo-pages.js` prerenders the same files into static HTML, `dist/<path>.md`, `sitemap.xml`, and `llms.txt`.
+
+A file starts with YAML frontmatter followed by the body (standard Markdown with GitHub tables; code fences get JetBrains Mono styling and syntax highlighting for `bash`, `http`, `javascript`, `typescript`, `json`, and `yaml`):
+
+```markdown
+---
+title: How to connect to a remote MCP server
+summary: One sentence shown under the title, in the index, and in llms.txt.
+track: use
+level: newcomer
+order: 1
+category: Getting started
+readingTimeMinutes: 8
+lastReviewed: "2026-08-17"
+relatedSlugs:
+  - oauth-for-mcp-explained
+sourceLinks:
+  - title: MCP 2026-07-28 specification
+    url: "https://modelcontextprotocol.io/specification/2026-07-28"
+---
+
+## First heading
+
+Body text. Internal links such as [the testing guide](/docs/testing-guide) use site-relative paths.
+```
+
+Required fields:
+
+| Field | Meaning |
+| --- | --- |
+| `title` | Page `<h1>`; also the default `<title>` as `title \| mcptest.io`. |
+| `summary` | One-line description used in the index, related lists, llms.txt, and as the default meta description. |
+| `track` | Navigation track: `understand`, `use`, `build`, or `reference`. |
+| `level` | Audience: `newcomer`, `practitioner`, or `expert`. |
+| `order` | Position within the track (positive integer, unique per track). Drives the sidebar and previous/next links. |
+| `category` | Free-form editorial section name used in structured data. |
+| `readingTimeMinutes` | Positive integer. |
+| `lastReviewed` | `YYYY-MM-DD` (quote it so it stays a string). |
+| `relatedSlugs` | Slugs of related articles; every slug must exist. |
+| `sourceLinks` | At least one `{ title, url }` reference. |
+
+Optional fields:
+
+| Field | Meaning |
+| --- | --- |
+| `path` | Canonical URL path override, for example `/docs/testing-guide`. Defaults to `/learn/<slug>`. Must be unique and must not collide with the React-only pages. |
+| `navTitle` | Short label for the sidebar (defaults to `title`). |
+| `metaTitle`, `metaDescription` | SEO overrides for `<title>` and the meta description. |
+| `component` | Name of a registered React component (`src/content/componentRegistry.ts`) rendered where the body contains a `<!-- component -->` line, or after the body if the marker is absent. |
+
+Tracks and their descriptions live in `src/content/contentModel.ts`. The registry validates every rule above when the app or the build starts, so a broken article fails `npm test` and `npm run build` rather than shipping. Privacy, Terms, and Contact remain React components; their routes and metadata are registered in the same registry (`COMPONENT_PAGES`) with titles in `src/data/pageMetadata.json`.
+
 ## Verification
 
 ```bash
@@ -94,8 +150,10 @@ npm run build:workers
 npm audit --audit-level=low
 ```
 
-`npm run build` creates the Vite production bundle, generates one static HTML report document per catalog server, and refreshes `sitemap.xml` and `robots.txt`.
+`npm run build` creates the Vite production bundle, generates one static HTML report document per catalog server, and refreshes `sitemap.xml` and `robots.txt`. It also writes the crawler-visible landing copy into `dist/index.html` (the text lives in `src/content/landingCopy.ts`, shared with `LandingHero`) and renders a 1200x630 Open Graph image per page to `dist/og/` with satori and resvg, no browser needed. Images whose inputs have not changed are copied from `node_modules/.cache/og`, so only the first build renders all of them.
 `npm run build:workers` type-checks the TypeScript proxy and creates dry-run Cloudflare bundles for both Workers.
+
+After `npm run build`, the built site has its own checks: `npm run test:first-paint` (cold first load of the home page in headless Chromium), `npm run test:bundle-graph` (the chunk graph in `dist/.vite/manifest.json`: the inspector, Firebase, the Markdown renderer and highlight.js must stay out of the JavaScript every page loads), `npm run test:e2e` (Playwright smoke suite against a mock MCP server) and `npm run test:lighthouse` / `npm run test:lighthouse:mobile` (Lighthouse budgets, desktop and mobile). `npm run analyze` prints what is in each chunk, and `npm run lighthouse-summary` tabulates the last Lighthouse reports.
 
 Install the two Worker package trees separately before running their combined build:
 
@@ -113,6 +171,8 @@ A protected endpoint that returns a valid authentication challenge can be catalo
 
 Server authors can submit a new entry by pull request. See [docs/catalog-submissions.md](docs/catalog-submissions.md) for the required fields, the validation that runs, and the logo licensing rules.
 
+Launch announcement, social, list-submission and press drafts (unpublished) are in [docs/launch/](docs/launch/).
+
 ## Core JSON-RPC methods
 
 - `server/discover` — advertises versions and capabilities for the stateless 2026 era.
@@ -126,3 +186,27 @@ The authoritative references are the [MCP 2026-07-28 release](https://blog.model
 ## License
 
 MIT
+
+## Gate a deploy with GitHub Actions
+
+Check client compatibility and breaking tool changes before releasing your remote MCP server:
+
+```yaml
+- uses: integry/mcptest@v1
+  with:
+    endpoints: https://mcp.example.com/mcp
+    baseline: published
+    publish: 'true'
+```
+
+Use `baseline: none` for the first run. The maintainer publishes the `v1` tag;
+use a reviewed commit SHA before that release, or to pin production gates.
+The action installs itself, writes a job summary, and can update a sticky PR
+comment with `pull-requests: write`. Credentials use secret environment variable
+names, never literal input values. Run the
+[official MCP conformance suite](https://github.com/modelcontextprotocol/conformance)
+alongside mcptest for spec checks.
+
+See the [action guide](docs/headless-release-gate.md) for inputs, outputs,
+permissions, baseline limits and the existing CLI/reusable workflow, or copy a
+complete workflow from [mcptest.io/ci](https://mcptest.io/ci).
