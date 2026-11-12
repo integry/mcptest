@@ -2,7 +2,7 @@ import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import ConnectionProgress from './ConnectionProgress';
-import ConnectedSummary from './ConnectedSummary';
+import ConnectedSummary, { chooseNextAction } from './ConnectedSummary';
 import { UnifiedPanel } from './UnifiedPanel';
 import ParamsPanel from './ParamsPanel';
 import ResultPanel from './ResultPanel';
@@ -101,8 +101,45 @@ describe('ConnectedSummary', () => {
   it('shows the list progress while capabilities load and a failed list afterwards', () => {
     const view = mount(<ConnectedSummary {...props} listStage={{ status: 'active', detail: '1 of 4 lists received' }} />);
     expect(view.textContent).toContain('Listing capabilities');
-    act(() => root!.render(<ConnectedSummary {...props} discovery={{ ...COMPLETE, prompts: 'failed' }} />));
+    const offeredPrompts = { ...props.counts, prompts: { count: 0, offered: true } };
+    act(() => root!.render(<ConnectedSummary {...props} counts={offeredPrompts} discovery={{ ...COMPLETE, prompts: 'failed' }} />));
     expect(view.textContent).toContain('prompts list failed');
+    act(() => root!.render(<ConnectedSummary {...props} counts={offeredPrompts} discovery={{ ...COMPLETE, prompts: 'partial' }} />));
+    expect(view.textContent).toContain('prompts list incomplete');
+    // A capability the server never advertised is absent, not a failed list.
+    act(() => root!.render(<ConnectedSummary {...props} discovery={{ ...COMPLETE, prompts: 'failed' }} />));
+    expect(view.textContent).toContain('No prompts offered');
+    expect(view.textContent).not.toContain('list failed');
+  });
+
+  it('offers a retry, not an absence claim, when the tools list failed', () => {
+    const onRetryLists = vi.fn();
+    const noTools = { ...props.counts, tools: { count: 0, offered: true } };
+    const view = mount(<ConnectedSummary {...props} counts={noTools} discovery={{ ...COMPLETE, tools: 'failed' }} nextAction="retry-lists" onRetryLists={onRetryLists} />);
+    const next = view.querySelector('.connected-summary-next')!;
+    expect(next.textContent).toContain('Retry listing');
+    expect(next.textContent).not.toContain('lists no tools');
+    act(() => next.querySelector('button')!.click());
+    expect(onRetryLists).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ['complete', 'run-report'],
+    ['not-offered', 'run-report'],
+    ['partial', 'run-report'],
+    ['failed', 'retry-lists'],
+  ] as const)('chooses the next action for an empty %s tools list', (toolsOutcome, action) => {
+    expect(chooseNextAction({ hasSuccessfulRun: false, toolCount: 0, listing: false, toolsOutcome })).toBe(action);
+    expect(chooseNextAction({ hasSuccessfulRun: false, toolCount: 0, listing: true, toolsOutcome })).toBe('call-tool');
+    expect(chooseNextAction({ hasSuccessfulRun: true, toolCount: 0, listing: false, toolsOutcome })).toBe('share-report');
+  });
+
+  it('does not say the server lists no tools when the tools list is paged', () => {
+    const noTools = { ...props.counts, tools: { count: 0, offered: true } };
+    const view = mount(<ConnectedSummary {...props} counts={noTools} discovery={{ ...COMPLETE, tools: 'partial' }} nextAction="run-report" />);
+    const next = view.querySelector('.connected-summary-next')!;
+    expect(next.textContent).toContain('later pages');
+    expect(next.textContent).not.toContain('lists no tools');
   });
 });
 
@@ -146,6 +183,30 @@ describe('UnifiedPanel guidance', () => {
     expect(empty).toEqual(['No resources', 'No prompts']);
     act(() => root!.render(panel({ discovery: { ...COMPLETE, prompts: 'loading' } })));
     expect([...view.querySelectorAll('.capability-empty-title')].map((item) => item.textContent)).toEqual(['No resources']);
+  });
+
+  it.each([
+    ['failed', 'Tools list failed'],
+    ['partial', 'Tools list incomplete'],
+  ] as const)('reports a %s tools list instead of claiming the server has none', (state, title) => {
+    const onRefreshLists = vi.fn();
+    const view = mount(panel({ tools: [], discovery: { ...COMPLETE, tools: state }, onRefreshLists }));
+    const titles = [...view.querySelectorAll('.capability-empty-title')].map((item) => item.textContent);
+    expect(titles).toContain(title);
+    expect(titles).not.toContain('No tools');
+    expect(view.textContent).not.toContain('This server lists none, so there is nothing to run here');
+    const retry = [...view.querySelectorAll('button')].find((button) => button.textContent === 'Retry listing');
+    expect(Boolean(retry)).toBe(state === 'failed');
+    if (retry) {
+      act(() => retry.click());
+      expect(onRefreshLists).toHaveBeenCalledOnce();
+    }
+  });
+
+  it('treats a failed list for an unadvertised capability as absence', () => {
+    const view = mount(panel({ discovery: { ...COMPLETE, prompts: 'failed' }, offered: { prompts: false } }));
+    const titles = [...view.querySelectorAll('.capability-empty-title')].map((item) => item.textContent);
+    expect(titles).toEqual(['No resources', 'No prompts']);
   });
 
   it('links an empty tool list to the no-tools article', () => {

@@ -1,10 +1,10 @@
 import React, { useEffect, useId, useRef } from 'react';
-import type { ConnectionStage } from '../utils/connectionStages';
+import { listOutcome, type CapabilitySection, type ConnectionStage, type ListOutcome } from '../utils/connectionStages';
 import type { DiscoveryStatus } from '../hooks/useToolsAndResources';
 import './ConnectedGuide.css';
 
 export type ConnectedAuthMode = 'oauth' | 'api-key' | 'bearer-token' | 'none';
-export type ConnectedNextAction = 'call-tool' | 'share-report' | 'run-report';
+export type ConnectedNextAction = 'call-tool' | 'share-report' | 'run-report' | 'retry-lists';
 
 export interface CapabilityCount {
   count: number;
@@ -26,6 +26,8 @@ interface ConnectedSummaryProps {
   nextAction: ConnectedNextAction;
   reportHref: string;
   onCallTool: () => void;
+  /** Re-requests every list; offered when the tools list failed. */
+  onRetryLists?: () => void;
   /** Changes once per established connection; focus moves here when it does. */
   connectionKey: string;
 }
@@ -43,6 +45,21 @@ const plural = (count: number, singular: string, pluralWord = `${singular}s`) =>
 
 const hostOf = (url: string): string => {
   try { return new URL(url).host; } catch { return url; }
+};
+
+/**
+ * The one next action. "Run the full report" (whose text says the server lists
+ * no tools) needs a settled, empty tools list; a failed tools list is retried.
+ */
+export const chooseNextAction = ({ hasSuccessfulRun, toolCount, listing, toolsOutcome }: {
+  hasSuccessfulRun: boolean;
+  toolCount: number;
+  listing: boolean;
+  toolsOutcome: ListOutcome;
+}): ConnectedNextAction => {
+  if (hasSuccessfulRun) return 'share-report';
+  if (toolCount > 0 || listing) return 'call-tool';
+  return toolsOutcome === 'failed' ? 'retry-lists' : 'run-report';
 };
 
 /** What the report shares, and what it never shares. Kept to one line. */
@@ -66,6 +83,7 @@ const ConnectedSummary: React.FC<ConnectedSummaryProps> = ({
   nextAction,
   reportHref,
   onCallTool,
+  onRetryLists,
   connectionKey,
 }) => {
   const headingId = useId();
@@ -83,9 +101,13 @@ const ConnectedSummary: React.FC<ConnectedSummaryProps> = ({
   }, [connectionKey]);
 
   const listing = listStage.status !== 'done';
-  const failedLists = (Object.entries(discovery) as Array<[keyof DiscoveryStatus, string]>)
-    .filter(([, state]) => state === 'failed')
-    .map(([section]) => section === 'resourceTemplates' ? 'resource templates' : section);
+  // Status per advertised capability: a failed or paged list proves nothing about membership.
+  const outcomes = (['tools', 'resources', 'prompts'] as const).map((section: CapabilitySection) => (
+    [section, listOutcome(discovery, section, counts[section].offered)] as const
+  ));
+  const failedLists = outcomes.filter(([, outcome]) => outcome === 'failed').map(([section]) => section);
+  const partialLists = outcomes.filter(([, outcome]) => outcome === 'partial').map(([section]) => section);
+  const toolsOutcome = outcomes[0][1];
   const countPill = (item: CapabilityCount, singular: string) => (
     item.offered || item.count > 0
       ? <span className="badge bg-light">{plural(item.count, singular)}</span>
@@ -120,6 +142,9 @@ const ConnectedSummary: React.FC<ConnectedSummaryProps> = ({
           {!listing && failedLists.length > 0 && (
             <li><span className="badge bg-warning">{failedLists.join(', ')} list failed</span></li>
           )}
+          {!listing && partialLists.length > 0 && (
+            <li><span className="badge bg-warning">{partialLists.join(', ')} list incomplete</span></li>
+          )}
         </ul>
         <p className="visually-hidden" role="status" aria-live="polite">
           {listing ? 'Listing tools, resources and prompts.' : `Connected. ${listStage.detail || ''}.`}
@@ -147,7 +172,21 @@ const ConnectedSummary: React.FC<ConnectedSummaryProps> = ({
             <a className="btn btn-primary" href={reportHref}>
               <i className="bi bi-clipboard-check" aria-hidden="true"></i> Run the full report
             </a>
-            <p>{listing ? 'Capabilities are still loading.' : 'This server lists no tools to call; the report still checks its protocol, auth and CORS.'}</p>
+            <p>
+              {listing
+                ? 'Capabilities are still loading.'
+                : toolsOutcome === 'partial'
+                  ? 'The server reported more tools on later pages, which this view does not load; the report still checks its protocol, auth and CORS.'
+                  : 'This server lists no tools to call; the report still checks its protocol, auth and CORS.'}
+            </p>
+          </>
+        )}
+        {nextAction === 'retry-lists' && (
+          <>
+            <button type="button" className="btn btn-primary" onClick={onRetryLists}>
+              <i className="bi bi-arrow-clockwise" aria-hidden="true"></i> Retry listing
+            </button>
+            <p>The tools list request failed, so mcptest cannot tell which tools this server offers. Logs &amp; Events has the error.</p>
           </>
         )}
       </div>

@@ -3,10 +3,12 @@ import {
   IDLE_CONNECTION_PROGRESS,
   connectionStages,
   describeConnectionProgress,
+  listOutcome,
   listStageFromDiscovery,
   reduceConnectionProgress,
   type ConnectionProgressEvent,
 } from './connectionStages';
+import type { DiscoveryStatus } from '../hooks/useToolsAndResources';
 
 const run = (...events: ConnectionProgressEvent[]) => events.reduce(reduceConnectionProgress, IDLE_CONNECTION_PROGRESS);
 const statusOf = (progress: ReturnType<typeof run>) => Object.fromEntries(
@@ -89,10 +91,28 @@ describe('connection stage reporting', () => {
       { tools: 'complete', resources: 'complete', resourceTemplates: 'failed', prompts: 'partial' },
       { tools: 2, resources: 1, prompts: 1 },
     );
-    expect(done).toEqual({ status: 'done', detail: '2 tools, 1 resource, 1 prompt' });
+    // A failed or paged list is named, so the summary never reads as complete.
+    expect(done).toEqual({ status: 'done', detail: '2 tools, 1 resource, 1 prompt (resources list failed; prompts list incomplete)' });
+    // An unadvertised capability's failed request is absence, not a failure.
+    expect(listStageFromDiscovery(
+      { tools: 'complete', resources: 'complete', resourceTemplates: 'complete', prompts: 'failed' },
+      { tools: 2, resources: 1, prompts: 0 },
+      { prompts: false },
+    )).toEqual({ status: 'done', detail: '2 tools, 1 resource, 0 prompts' });
     expect(connectionStages(connected, done)[3]).toMatchObject({ id: 'list', status: 'done' });
     // Before a session exists the list stage cannot have started.
     expect(connectionStages(run({ type: 'start' }), done)[3].status).toBe('pending');
+  });
+
+  it('only treats a complete list or an unadvertised capability as settled membership', () => {
+    const settled: DiscoveryStatus = { tools: 'complete', resources: 'complete', resourceTemplates: 'complete', prompts: 'complete' };
+    expect(listOutcome(settled, 'tools')).toBe('complete');
+    expect(listOutcome({ ...settled, tools: 'failed' }, 'tools')).toBe('failed');
+    expect(listOutcome({ ...settled, tools: 'partial' }, 'tools')).toBe('partial');
+    expect(listOutcome({ ...settled, tools: 'loading' }, 'tools')).toBe('pending');
+    expect(listOutcome({ ...settled, resourceTemplates: 'failed' }, 'resources')).toBe('failed');
+    expect(listOutcome({ ...settled, prompts: 'failed' }, 'prompts', false)).toBe('not-offered');
+    expect(listOutcome(undefined, 'tools')).toBe('complete');
   });
 
   it('describes the changed stage for assistive technology', () => {

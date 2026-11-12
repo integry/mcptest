@@ -74,6 +74,39 @@ describe('connection failure guidance', () => {
     })).toBe('server-error');
   });
 
+  it('never reports a proxy-owned response as the target status', () => {
+    expect(idFor({ attempts: [attempt({ route: 'proxy', status: 500, responseSource: 'proxy' })] })).toBe('proxy-error');
+    expect(idFor({ attempts: [attempt({ status: 502, responseSource: 'proxy' })] })).toBe('proxy-error');
+    // Behind an opaque direct attempt, the proxy's own failure leaves the browser block as the evidence.
+    expect(idFor({
+      attempts: [
+        attempt({ browserUnreadable: true, failureKind: 'browser-unreadable' }),
+        attempt({ route: 'proxy', status: 500, responseSource: 'proxy' }),
+      ],
+    })).toBe('browser-blocked');
+  });
+
+  it('prefers a later target 401 over an earlier proxy-login challenge', () => {
+    expect(idFor({
+      attempts: [
+        attempt({ route: 'proxy', status: 401, authenticationSource: 'proxy' }),
+        attempt({ route: 'proxy', status: 401, authenticationSource: 'target', responseSource: 'target' }),
+      ],
+    })).toBe('unauthorized');
+  });
+
+  it('keeps a successful initialize and later browser block ahead of a guessed-path 404', () => {
+    const endpoint = 'https://example.com/mcp';
+    const sequence = [
+      attempt({ candidateUrl: `${endpoint}/`, status: 404, responseSource: 'target' }),
+      attempt({ candidateUrl: endpoint, mcpMethod: 'initialize', status: 200, responseSource: 'target', failureKind: 'success' }),
+      attempt({ candidateUrl: endpoint, mcpMethod: 'notifications/initialized', browserUnreadable: true, failureKind: 'browser-unreadable' }),
+    ];
+    const guidance = getConnectionGuidance(details({ attempts: sequence }));
+    expect(guidance.id).toBe('browser-blocked-after-initialize');
+    expect(guidance.learn?.path).toBe(getLearnArticle(GUIDANCE_ARTICLES.cors)!.path);
+  });
+
   it('uses the transport diagnostics for 429 and 406 findings', () => {
     const diagnostic = (id: TransportDiagnostic['id']) => ({
       id, status: 'detected', severity: 'error', title: id, explanation: '', remediation: '', evidence: [],

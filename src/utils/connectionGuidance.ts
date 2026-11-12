@@ -5,7 +5,7 @@
  * view, and maps the failures the error articles already document.
  */
 import { getLearnArticle } from '../content/learnRegistry';
-import type { ConnectionErrorDetails } from './connectionDiagnostics';
+import type { ConnectionAttemptFact, ConnectionErrorDetails } from './connectionDiagnostics';
 import { referencePathFor } from './referenceLinks';
 import { detectedTransportDiagnostics } from './transportDiagnostics';
 
@@ -52,18 +52,52 @@ const RATE_LIMIT_REFERENCE = (): LearnLink | undefined => {
   return path ? { path, title: 'Transport diagnostics: rate limited (429)' } : undefined;
 };
 
-const statusOf = (details: ConnectionErrorDetails): number | undefined => {
-  const attempts = details.attempts || [];
-  const readable = attempts.filter(({ status, authenticationSource }) => (
-    status !== undefined && status >= 400 && authenticationSource !== 'proxy'
-  ));
-  // A target response wins over a candidate the publisher never serves (404 on a guessed path).
-  return (readable.find(({ status }) => status !== 404) ?? readable[0])?.status;
+/** A readable HTTP error the target itself produced; proxy-owned responses are not target evidence. */
+const isTargetHttpError = ({ route, status, authenticationSource, responseSource }: ConnectionAttemptFact): boolean => (
+  status !== undefined && status >= 400
+  && authenticationSource !== 'proxy'
+  && responseSource !== 'proxy'
+  // Through the proxy, only a response the proxy attributes to the target counts.
+  && (route !== 'proxy' || responseSource === 'target')
+);
+
+/** A target response wins over a candidate the publisher never serves (404 on a guessed path). */
+const preferNon404 = (attempts: readonly ConnectionAttemptFact[]): number | undefined => (
+  (attempts.find(({ status }) => status !== 404) ?? attempts[0])?.status
+);
+
+/**
+ * True when the direct browser read a successful initialize and a later request
+ * for the same candidate and transport was unreadable: the session was reached,
+ * so an earlier error on another candidate does not explain the failure.
+ */
+const laterRequestBrowserBlocked = (attempts: readonly ConnectionAttemptFact[]): boolean => {
+  const direct = attempts.filter(({ route }) => route === 'direct');
+  return direct.some((attempt, index) => attempt.browserUnreadable && direct.some((candidate, candidateIndex) => (
+    candidateIndex < index
+    && candidate.failureKind === 'success'
+    && candidate.mcpMethod === 'initialize'
+    && candidate.status !== undefined
+    && candidate.candidateUrl === attempt.candidateUrl
+    && candidate.transportType !== undefined
+    && candidate.transportType === attempt.transportType
+  )));
 };
 
 const textOf = (details: ConnectionErrorDetails): string => (
   `${details.error || ''} ${details.details || ''}`.toLowerCase()
 );
+
+const unauthorized = (): FailureGuidance => ({
+  id: 'unauthorized',
+  whatFailed: 'The server needs you to sign in or send a credential (HTTP 401).',
+  likelyCause: 'The endpoint is protected and no valid token or API key was sent.',
+  tryThis: [
+    'If the server uses OAuth, retry and complete the sign-in.',
+    'If it uses an API key or bearer token, enter it and connect again.',
+  ],
+  learn: learnLink('unauthorized'),
+});
 
 export const getConnectionGuidance = (details: ConnectionErrorDetails): FailureGuidance => {
   const attempts = details.attempts || [];
@@ -82,6 +116,11 @@ export const getConnectionGuidance = (details: ConnectionErrorDetails): FailureG
     };
   }
 
+  // The target's own challenge is the stronger evidence: an earlier proxy-login
+  // refusal does not explain a request that later reached the target.
+  if (attempts.some(({ authenticationSource, status }) => authenticationSource === 'target' && status === 401)) {
+    return unauthorized();
+  }
   if (attempts.some(({ authenticationSource, status }) => authenticationSource === 'proxy' && (status === 401 || status === 403))) {
     return {
       id: 'proxy-login',
@@ -113,18 +152,42 @@ export const getConnectionGuidance = (details: ConnectionErrorDetails): FailureG
     };
   }
 
-  const status = statusOf(details);
-  if (status === 401 || attempts.some(({ authenticationSource, status: s }) => authenticationSource === 'target' && s === 401)) {
-    return {
-      id: 'unauthorized',
-      whatFailed: 'The server needs you to sign in or send a credential (HTTP 401).',
-      likelyCause: 'The endpoint is protected and no valid token or API key was sent.',
-      tryThis: [
-        'If the server uses OAuth, retry and complete the sign-in.',
-        'If it uses an API key or bearer token, enter it and connect again.',
-      ],
-      learn: learnLink('unauthorized'),
-    };
+  // Same precedence as the technical diagnosis: a status the proxy read from the
+  // target, then a browser block (after a successful initialize, or on any direct
+  // attempt), and only then a status the browser read directly. Proxy-owned
+  // responses never count as the target's status.
+  const targetErrors = attempts.filter(isTargetHttpError);
+  let status = preferNon404(targetErrors.filter(({ route }) => route === 'proxy'));
+  const proxyReachedTarget = attempts.some(({ route, responseSource }) => route === 'proxy' && responseSource === 'target');
+  if (status === undefined && !proxyReachedTarget) {
+    if (laterRequestBrowserBlocked(attempts)) {
+      return {
+        id: 'browser-blocked-after-initialize',
+        whatFailed: 'The server answered the handshake, then your browser blocked a later MCP request.',
+        likelyCause: 'The server’s CORS policy allows the first request but not the headers later ones send, such as MCP-Protocol-Version.',
+        tryThis: [
+          'Retry through the mcptest proxy (it works without signing in).',
+          'To fix it at the source, allow MCP-Protocol-Version and Mcp-Session-Id in the server’s CORS preflight response.',
+        ],
+        learn: learnLink('cors'),
+      };
+    }
+    if (attempts.some(({ route, browserUnreadable }) => route === 'direct' && browserUnreadable)) {
+      return {
+        id: 'browser-blocked',
+        whatFailed: 'Your browser blocked mcptest from reading the server response.',
+        likelyCause: 'The server does not send the CORS headers browser clients need. Desktop clients are not affected.',
+        tryThis: [
+          'Retry through the mcptest proxy (it works without signing in).',
+          'To fix it at the source, allow this origin and expose Mcp-Session-Id on the server.',
+        ],
+        learn: learnLink('cors'),
+      };
+    }
+  }
+  status ??= preferNon404(targetErrors.filter(({ route }) => route === 'direct'));
+  if (status === 401) {
+    return unauthorized();
   }
   if (status === 403) {
     return {
@@ -172,18 +235,13 @@ export const getConnectionGuidance = (details: ConnectionErrorDetails): FailureG
     };
   }
 
-  const browserBlocked = attempts.some(({ route, browserUnreadable }) => route === 'direct' && browserUnreadable)
-    && !attempts.some(({ route, responseSource }) => route === 'proxy' && responseSource === 'target');
-  if (browserBlocked) {
+  if (attempts.some(({ responseSource, status: s }) => responseSource === 'proxy' && s !== undefined && s >= 500)) {
     return {
-      id: 'browser-blocked',
-      whatFailed: 'Your browser blocked mcptest from reading the server response.',
-      likelyCause: 'The server does not send the CORS headers browser clients need. Desktop clients are not affected.',
-      tryThis: [
-        'Retry through the mcptest proxy (it works without signing in).',
-        'To fix it at the source, allow this origin and expose Mcp-Session-Id on the server.',
-      ],
-      learn: learnLink('cors'),
+      id: 'proxy-error',
+      whatFailed: 'The mcptest proxy failed before your server answered.',
+      likelyCause: 'The proxy reported an error of its own; this is not a response from the MCP server.',
+      tryThis: ['Retry in a moment, or connect directly if the server allows browser clients.'],
+      learn: learnLink('connect'),
     };
   }
 

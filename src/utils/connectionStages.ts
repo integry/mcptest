@@ -174,10 +174,43 @@ export const reduceConnectionProgress = (
 
 const LIST_SECTIONS = ['tools', 'resources', 'resourceTemplates', 'prompts'] as const;
 
+export type CapabilitySection = 'tools' | 'resources' | 'prompts';
+/**
+ * What the list requests established about one capability. Only `complete`
+ * (or a capability the server never advertised) supports "the server lists
+ * none"; `failed` and `partial` say nothing about what the server offers.
+ */
+export type ListOutcome = 'pending' | 'complete' | 'partial' | 'failed' | 'not-offered';
+
+const SECTION_REQUESTS: Record<CapabilitySection, readonly (keyof DiscoveryStatus)[]> = {
+  tools: ['tools'],
+  resources: ['resources', 'resourceTemplates'],
+  prompts: ['prompts'],
+};
+
+export const listOutcome = (
+  discovery: DiscoveryStatus | undefined,
+  section: CapabilitySection,
+  offered?: boolean,
+): ListOutcome => {
+  // Older callers without discovery state treat a connected panel's lists as loaded.
+  if (!discovery) return 'complete';
+  const states = SECTION_REQUESTS[section].map((request) => discovery[request]);
+  if (states.some((state) => state === 'idle' || state === 'loading')) return 'pending';
+  // A capability the server never advertised is absent whatever its list request did.
+  if (offered === false) return 'not-offered';
+  if (states.includes('failed')) return 'failed';
+  if (states.includes('partial')) return 'partial';
+  return 'complete';
+};
+
+const SECTION_NOUNS: Record<CapabilitySection, string> = { tools: 'tools', resources: 'resources', prompts: 'prompts' };
+
 /** The list stage from the real list requests; `undefined` until connected. */
 export const listStageFromDiscovery = (
   discovery: DiscoveryStatus,
-  counts?: { tools: number; resources: number; prompts: number }
+  counts?: { tools: number; resources: number; prompts: number },
+  offered?: Partial<Record<CapabilitySection, boolean>>,
 ): Pick<ConnectionStage, 'status' | 'detail'> => {
   const states: DiscoveryState[] = LIST_SECTIONS.map((section) => discovery[section]);
   const loading = states.filter((state) => state === 'idle' || state === 'loading').length;
@@ -187,7 +220,14 @@ export const listStageFromDiscovery = (
   const summary = counts
     ? `${counts.tools} ${counts.tools === 1 ? 'tool' : 'tools'}, ${counts.resources} ${counts.resources === 1 ? 'resource' : 'resources'}, ${counts.prompts} ${counts.prompts === 1 ? 'prompt' : 'prompts'}`
     : 'Lists received';
-  return { status: 'done', detail: summary };
+  const sections = Object.keys(SECTION_REQUESTS) as CapabilitySection[];
+  const failed = sections.filter((section) => listOutcome(discovery, section, offered?.[section]) === 'failed');
+  const partial = sections.filter((section) => listOutcome(discovery, section, offered?.[section]) === 'partial');
+  const qualifiers = [
+    ...(failed.length ? [`${failed.map((section) => SECTION_NOUNS[section]).join(' and ')} list failed`] : []),
+    ...(partial.length ? [`${partial.map((section) => SECTION_NOUNS[section]).join(' and ')} list incomplete`] : []),
+  ];
+  return { status: 'done', detail: qualifiers.length ? `${summary} (${qualifiers.join('; ')})` : summary };
 };
 
 /** All four stages for display. The list stage starts once a session exists. */

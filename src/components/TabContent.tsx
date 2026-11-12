@@ -25,8 +25,8 @@ import CallHistoryPanel from './CallHistoryPanel';
 import { createTestPlanFromHistory } from '../utils/historyTestPlan';
 import type { DeterministicTestPlanV1 } from '../types/deterministicTests';
 import InterfaceChangeStrip from './InterfaceChangeStrip';
-import ConnectedSummary, { type ConnectedAuthMode, type ConnectedNextAction } from './ConnectedSummary';
-import { connectionStages, listStageFromDiscovery } from '../utils/connectionStages';
+import ConnectedSummary, { chooseNextAction, type ConnectedAuthMode } from './ConnectedSummary';
+import { connectionStages, listOutcome, listStageFromDiscovery } from '../utils/connectionStages';
 import { dismissHint } from '../utils/nextStepsProgress';
 import { useOnboardingProgress } from '../hooks/useOnboardingProgress';
 
@@ -302,11 +302,16 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
       prompts: { count: prompts.length, offered: offered('prompts', prompts.length) },
     };
   }, [client, connectionStatus, tools.length, resources.length, resourceTemplates.length, prompts.length]);
+  const offeredCapabilities = useMemo(() => ({
+    tools: capabilityCounts.tools.offered,
+    resources: capabilityCounts.resources.offered,
+    prompts: capabilityCounts.prompts.offered,
+  }), [capabilityCounts]);
   const listStage = listStageFromDiscovery(discovery, {
     tools: capabilityCounts.tools.count,
     resources: capabilityCounts.resources.count,
     prompts: capabilityCounts.prompts.count,
-  });
+  }, offeredCapabilities);
   const stages = connectionStages(connectionProgress, listStage);
   const serverIdentity = connectionStatus === 'Connected' ? client?.getServerVersion?.() : undefined;
   const authMode: ConnectedAuthMode = isOAuthConnection
@@ -314,11 +319,12 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     : requestHeaders
       ? (tab.catalogAuthType === 'api-key' ? 'api-key' : 'bearer-token')
       : 'none';
-  const nextAction: ConnectedNextAction = hasSuccessfulRun
-    ? 'share-report'
-    : tools.length > 0 || listStage.status !== 'done'
-      ? 'call-tool'
-      : 'run-report';
+  const nextAction = chooseNextAction({
+    hasSuccessfulRun,
+    toolCount: tools.length,
+    listing: listStage.status !== 'done',
+    toolsOutcome: listOutcome(discovery, 'tools', offeredCapabilities.tools),
+  });
   const reportHref = `/report/${encodeURIComponent(tab.serverUrl || serverUrl)}`;
   const guideToolPick = connectionStatus === 'Connected'
     && listStage.status === 'done'
@@ -1112,6 +1118,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
           nextAction={nextAction}
           reportHref={reportHref}
           onCallTool={focusFirstTool}
+          onRetryLists={handleRefreshAllLists}
           connectionKey={`${serverUrl}|${protocolVersion}|${transportType}`}
         />
       ) : undefined}
@@ -1282,6 +1289,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
               }}
               shortcutEnabled={isActive}
               discovery={discovery}
+              offered={offeredCapabilities}
               guideToolPick={guideToolPick}
               onDismissToolPickGuide={() => dismissHint('pick-tool')}
             />
