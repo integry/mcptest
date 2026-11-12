@@ -112,6 +112,23 @@ describe('ConnectedSummary', () => {
     expect(view.textContent).not.toContain('list failed');
   });
 
+  it('shows the list stage advancing and completing after connect, and announces each step', () => {
+    const view = mount(<ConnectedSummary {...props} listStage={{ status: 'active', detail: '1 of 4 lists received' }} />);
+    const stage = () => view.querySelector<HTMLElement>('[data-stage="list"]')!;
+    const live = () => view.querySelector('[role="status"]')!.textContent;
+    expect(stage().dataset.status).toBe('active');
+    expect(stage().textContent).toContain('List tools, resources and prompts: in progress');
+    expect(stage().textContent).toContain('1 of 4 lists received');
+    expect(live()).toBe('List tools, resources and prompts: 1 of 4 lists received.');
+    act(() => root!.render(<ConnectedSummary {...props} listStage={{ status: 'active', detail: '3 of 4 lists received' }} />));
+    expect(stage().textContent).toContain('3 of 4 lists received');
+    expect(live()).toBe('List tools, resources and prompts: 3 of 4 lists received.');
+    act(() => root!.render(<ConnectedSummary {...props} />));
+    expect(stage().dataset.status).toBe('done');
+    expect(stage().textContent).toContain('2 tools, 1 resource, 0 prompts');
+    expect(live()).toBe('Connected. 2 tools, 1 resource, 0 prompts.');
+  });
+
   it('offers a retry, not an absence claim, when the tools list failed', () => {
     const onRetryLists = vi.fn();
     const noTools = { ...props.counts, tools: { count: 0, offered: true } };

@@ -7,7 +7,7 @@ import {
 } from '../utils/connectionStages';
 import './ConnectedGuide.css';
 
-const ICONS: Record<ConnectionStageStatus, string> = {
+export const STAGE_ICONS: Record<ConnectionStageStatus, string> = {
   pending: 'bi-circle',
   active: 'bi-arrow-repeat',
   done: 'bi-check-circle-fill',
@@ -36,7 +36,7 @@ const ConnectionProgress: React.FC<ConnectionProgressProps> = ({ stages, title =
       <ol className="connection-stages" aria-labelledby={titleId}>
         {stages.map((stage) => (
           <li key={stage.id} className={`connection-stage connection-stage--${stage.status}`} data-stage={stage.id} data-status={stage.status}>
-            <i className={`bi ${ICONS[stage.status]} connection-stage-icon`} aria-hidden="true"></i>
+            <i className={`bi ${STAGE_ICONS[stage.status]} connection-stage-icon`} aria-hidden="true"></i>
             <span className="connection-stage-text">
               <span className="connection-stage-label">{stage.label}</span>
               <span className="visually-hidden">: {stageStatusWord(stage.status)}</span>

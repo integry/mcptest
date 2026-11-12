@@ -1,5 +1,6 @@
 import React, { useEffect, useId, useRef } from 'react';
-import { listOutcome, type CapabilitySection, type ConnectionStage, type ListOutcome } from '../utils/connectionStages';
+import { STAGE_ICONS } from './ConnectionProgress';
+import { listOutcome, STAGE_LABELS, stageStatusWord, type CapabilitySection, type ConnectionStage, type ListOutcome } from '../utils/connectionStages';
 import type { DiscoveryStatus } from '../hooks/useToolsAndResources';
 import './ConnectedGuide.css';
 
@@ -146,8 +147,22 @@ const ConnectedSummary: React.FC<ConnectedSummaryProps> = ({
             <li><span className="badge bg-warning">{partialLists.join(', ')} list incomplete</span></li>
           )}
         </ul>
+        {/* The fourth connection stage: the panel's stage list is gone once the
+            session exists, so the list requests advance and complete here. */}
+        <ol className="connection-stages connected-summary-list-stage" aria-label="Capability listing">
+          <li className={`connection-stage connection-stage--${listStage.status}`} data-stage="list" data-status={listStage.status}>
+            <i className={`bi ${STAGE_ICONS[listStage.status]} connection-stage-icon`} aria-hidden="true"></i>
+            <span className="connection-stage-text">
+              <span className="connection-stage-label">{STAGE_LABELS.list}</span>
+              <span className="visually-hidden">: {stageStatusWord(listStage.status)}</span>
+              {listStage.detail && <span className="connection-stage-detail">{listStage.detail}</span>}
+            </span>
+          </li>
+        </ol>
         <p className="visually-hidden" role="status" aria-live="polite">
-          {listing ? 'Listing tools, resources and prompts.' : `Connected. ${listStage.detail || ''}.`}
+          {listing
+            ? `${STAGE_LABELS.list}: ${listStage.detail || 'in progress'}.`
+            : `Connected. ${listStage.detail || ''}.`}
         </p>
       </div>
       <div className="connected-summary-next">

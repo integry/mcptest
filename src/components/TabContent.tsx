@@ -332,13 +332,15 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     && !selectedTool
     && onboarding.isActive('pick-tool');
   const showShareHint = connectionStatus === 'Connected' && hasSuccessfulRun && onboarding.isActive('share-report');
-  /** Moves focus to the first tool, so "Call a tool" lands where the choice is made. */
+  /**
+   * "Call a tool": the capabilities panel expands Tools (it owns that state)
+   * and focuses the first tool once rendered, so the action lands on the choice.
+   */
+  const [revealToolsRequest, setRevealToolsRequest] = useState(0);
   const focusFirstTool = useCallback(() => {
-    const pane = document.querySelector<HTMLElement>(`.tab-content-panel[data-tab-id="${tab.id}"] .workbench-capabilities`);
-    const firstTool = pane?.querySelector<HTMLElement>('[role="listbox"][aria-label="Tools"] [role="option"]')
-      || pane?.querySelector<HTMLElement>('input, button');
-    pane?.scrollIntoView?.({ block: 'nearest' });
-    firstTool?.focus();
+    document.querySelector<HTMLElement>(`.tab-content-panel[data-tab-id="${tab.id}"] .workbench-capabilities`)
+      ?.scrollIntoView?.({ block: 'nearest' });
+    setRevealToolsRequest((count) => count + 1);
   }, [tab.id]);
   const handleSelectResourceTemplate = (template: any) => {
     originalHandleSelectResourceTemplate(template);
@@ -1292,6 +1294,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
               offered={offeredCapabilities}
               guideToolPick={guideToolPick}
               onDismissToolPickGuide={() => dismissHint('pick-tool')}
+              revealToolsRequest={revealToolsRequest}
             />
             </section>
             <section className="workbench-pane workbench-request" aria-label="Request builder">

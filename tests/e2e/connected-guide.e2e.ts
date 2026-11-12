@@ -175,3 +175,34 @@ test('a failed connection shows the failed stage and plain guidance before the t
   await testInfo.attach('connection-failure-guidance', { body: await page.screenshot(), contentType: 'image/png' });
   expect(await blockingViolations(page, testInfo, 'failure')).toEqual([]);
 });
+
+test('the list stage advances in the summary as each list request finishes', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('mcptest-next-steps-completed', JSON.stringify(['tool', 'report']));
+  });
+  // Hold the prompts list so the stage is observed between list responses.
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  await page.route(mockUrl('2026'), async route => {
+    if (route.request().method() === 'POST' && route.request().postDataJSON()?.method === 'prompts/list') await gate;
+    await route.fallback();
+  });
+  await connect(page, '2026');
+  const stage = summary(page).locator('[data-stage="list"]');
+  await expect(stage).toHaveAttribute('data-status', 'active');
+  await expect(stage).toContainText('3 of 4 lists received');
+  await expect(summary(page).getByRole('status')).toHaveText('List tools, resources and prompts: 3 of 4 lists received.');
+  release();
+  await expect(stage).toHaveAttribute('data-status', 'done');
+  await expect(stage).toContainText('2 tools, 1 resource, 1 prompt');
+  await expect(summary(page).getByRole('status')).toHaveText(/Connected\. 2 tools, 1 resource, 1 prompt/);
+});
+
+test('"Call a tool" expands a collapsed Tools list and focuses its first tool', async ({ page }) => {
+  await connect(page, '2026');
+  await expect(page.getByRole('listbox', { name: 'Tools' })).toBeVisible();
+  await page.locator('.workbench-capabilities summary', { hasText: 'Tools' }).click();
+  await expect(page.getByRole('listbox', { name: 'Tools' })).toHaveCount(0);
+  await summary(page).getByRole('button', { name: 'Call a tool' }).click();
+  await expect(page.getByRole('listbox', { name: 'Tools' }).getByRole('option').first()).toBeFocused();
+});

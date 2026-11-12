@@ -41,6 +41,11 @@ interface UnifiedPanelProps {
   /** First run: highlight the tool list and say what to do. */
   guideToolPick?: boolean;
   onDismissToolPickGuide?: () => void;
+  /**
+   * Bumped by "Call a tool": expands Tools (and clears a search that hides
+   * every tool), then focuses the first tool once it has rendered.
+   */
+  revealToolsRequest?: number;
 }
 
 /** What each capability is for, and what to do when the server offers none. */
@@ -144,6 +149,7 @@ export const UnifiedPanel: React.FC<UnifiedPanelProps> = ({
   offered,
   guideToolPick = false,
   onDismissToolPickGuide,
+  revealToolsRequest = 0,
 }) => {
   const [filterText, setFilterText] = useState('');
   const [expandedCategories, setExpandedCategories] = useState({
@@ -277,6 +283,32 @@ export const UnifiedPanel: React.FC<UnifiedPanelProps> = ({
     document.addEventListener('keydown', handleShortcut);
     return () => document.removeEventListener('keydown', handleShortcut);
   }, [shortcutEnabled, isConnected]);
+
+  // "Call a tool" must land on a tool: open the category and clear a search
+  // that hides every tool, then focus the first option after it renders.
+  const pendingToolFocus = useRef(false);
+  // The panel remounts on reconnect; a request made before then is spent.
+  const handledRevealRequest = useRef(revealToolsRequest);
+  useEffect(() => {
+    if (revealToolsRequest === handledRevealRequest.current) return;
+    handledRevealRequest.current = revealToolsRequest;
+    if (tools.length === 0) {
+      searchRef.current?.focus();
+      return;
+    }
+    pendingToolFocus.current = true;
+    setExpandedCategories((prev) => (prev.tools ? prev : { ...prev, tools: true }));
+    if (ranked.tools.length === 0) setFilterText('');
+    // Only a new request acts; list or filter changes alone must not move focus.
+  }, [revealToolsRequest]);
+  useEffect(() => {
+    if (!pendingToolFocus.current) return;
+    const firstTool = listRefs.current.tools?.[0];
+    if (!firstTool) return;
+    pendingToolFocus.current = false;
+    setFocusedIndex((current) => ({ ...current, tools: 0 }));
+    firstTool.focus();
+  });
 
   const toggleCategory = (category: keyof typeof expandedCategories) => {
     setExpandedCategories((prev) => ({ ...prev, [category]: !prev[category] }));
