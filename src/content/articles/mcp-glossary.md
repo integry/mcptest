@@ -6,7 +6,7 @@ level: newcomer
 order: 24
 category: Reference
 readingTimeMinutes: 7
-lastReviewed: "2026-10-25"
+lastReviewed: "2026-11-11"
 metaTitle: "MCP Glossary: 41 Model Context Protocol Terms | mcptest.io"
 metaDescription: "Short definitions of 41 MCP terms: host, client, server, tools, transports, Streamable HTTP, sessions, OAuth 2.1, PKCE, CORS, elicitation, sampling and more."
 relatedSlugs:
@@ -42,7 +42,7 @@ sourceLinks:
     url: "https://datatracker.ietf.org/doc/html/rfc7636"
 ---
 
-Definitions follow the current MCP specification, revision 2026-07-28. Where a term belongs only to older revisions, the entry says so, because many servers in production still use them. For a narrative introduction, start with [What is MCP?](/learn/mcp-explained-for-everyone).
+Definitions follow the current MCP specification, revision 2026-07-28. Where a term belongs only to older revisions, the entry says so, because many servers in production still use them. For a plain-English introduction, start with [What is MCP?](/learn/mcp-explained-for-everyone).
 
 ## Terms A to F
 
@@ -84,11 +84,11 @@ A change in a server's behaviour or definitions between two points in time, such
 
 ### Dynamic client registration
 
-An OAuth mechanism (RFC 7591) that lets a client register itself with an authorization server automatically. The 2026-07-28 revision deprecates it in favour of Client ID Metadata Documents, but keeps it for compatibility.
+An OAuth mechanism (RFC 7591) that lets a client register itself with an authorization server automatically. The 2026-07-28 revision deprecates it in favour of Client ID Metadata Documents, where the client ID is a URL pointing to a JSON document that describes the client. It stays available for authorization servers that do not support those documents.
 
 ### Elicitation
 
-A way for a server to ask the user for information in the middle of an operation, through a form or by sending them to a URL. In the current revision it is carried inside an `input_required` result rather than as a separate server-to-client request.
+A way for a server to ask the user for information in the middle of an operation, through a form or by sending them to a URL. In the current revision the server asks by returning a result with `resultType: "input_required"`, and the client retries the request with the answer, instead of the server sending a separate request to the client.
 
 ## Terms H to O
 
@@ -110,7 +110,7 @@ Log messages a server sends to the client with `notifications/message`. The curr
 
 ### MCP-Protocol-Version
 
-The HTTP header that states which protocol revision a request uses, for example `MCP-Protocol-Version: 2026-07-28`. It is required on every Streamable HTTP request since revision 2025-06-18.
+The HTTP header that states which protocol revision a request uses, for example `MCP-Protocol-Version: 2026-07-28`. Revisions 2025-06-18 and 2025-11-25 require it on every request after `initialize`; 2026-07-28 requires it on every POST.
 
 ### Mcp-Session-Id
 
@@ -148,7 +148,7 @@ A reusable message template a server offers, often with arguments, that a user c
 
 ### Protected resource metadata
 
-A JSON document (RFC 9728) that an MCP server publishes to say which authorization servers issue tokens for it and which scopes it supports. A client fetches it after a `401` response to start the sign-in flow.
+A JSON document (RFC 9728) that an MCP server publishes to say which authorization servers issue tokens for it and which scopes it supports. A client usually fetches it after a `401` response to start the sign-in flow.
 
 ### Registry
 

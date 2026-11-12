@@ -67,7 +67,7 @@ describe('CatalogView', () => {
     expect(searchIcon?.classList).toContain('bi-search');
     expect(searchIcon?.getAttribute('aria-hidden')).toBe('true');
     expect(emptyState?.querySelector('h3')?.textContent).toContain(
-      'No servers found matching your criteria'
+      'No servers match your search and filters'
     );
     expect(clearButton?.textContent).toContain('Clear all filters');
 

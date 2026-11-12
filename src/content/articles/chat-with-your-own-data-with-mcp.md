@@ -7,7 +7,7 @@ level: "newcomer"
 order: 400
 category: "Use cases"
 readingTimeMinutes: 6
-lastReviewed: "2026-10-24"
+lastReviewed: "2026-11-11"
 metaTitle: "Chat with your own data | mcptest.io"
 metaDescription: "Connect Supabase, Airtable or Notion to your assistant, start with a small read-only question, and check permissions and results in mcptest.io before trusting the answers."
 relatedSlugs:
@@ -22,64 +22,74 @@ sourceLinks:
     url: "https://support.airtable.com/v1/docs/using-the-airtable-mcp-server"
   - title: "Notion: MCP overview"
     url: "https://developers.notion.com/guides/mcp/overview"
+  - title: "Notion: get started with MCP"
+    url: "https://developers.notion.com/guides/mcp/get-started-with-mcp"
 ---
 
-“Which customers are waiting on us?” is an ordinary question. Answering it usually means finding a table, remembering its filters, and opening the notes behind each row. An MCP connection gives your assistant tools to retrieve that information from its original home.
+"Which customers are waiting on us?" is an ordinary question. Answering it usually means finding a table, remembering its filters and opening the notes behind each row. An MCP connection gives your assistant tools that fetch that information from where it already lives.
 
-You do not need to build a server for these three paths. Each uses a publisher-hosted remote server in the [mcptest.io catalog](/catalog). Start with a small dataset whose answer you already know.
+You do not need to build anything for the three paths below. Each uses a remote MCP server hosted by the service itself, listed in the [mcptest.io catalog](/catalog). Start with a small set of data whose answer you already know.
 
 ## Choose where the data already lives
 
 | Your data | Remote endpoint | A useful first question |
 | --- | --- | --- |
-| A Supabase Postgres project | `https://mcp.supabase.com/mcp` | “List the tables in this test project. Do not change anything.” |
-| An Airtable base: spreadsheet-like tables and records | `https://mcp.airtable.com/mcp` | “Show five open tasks from my Demo base, including their record IDs.” |
-| Notion pages and databases | `https://mcp.notion.com/mcp` | “Find the Demo planning page and summarize its decisions, linking the page.” |
+| A Supabase Postgres project | `https://mcp.supabase.com/mcp` | "List the tables in this test project. Do not change anything." |
+| An Airtable base: spreadsheet-like tables and records | `https://mcp.airtable.com/mcp` | "Show five open tasks from my Demo base, including their record IDs." |
+| Notion pages and databases | `https://mcp.notion.com/mcp` | "Find the Demo planning page and summarize its decisions, linking the page." |
 
-All three have `online` records in this site's `catalogValidation.json`, checked on **20 October 2026**. Those checks reached their OAuth sign-in challenges; they did **not** complete authorization or verify access to anyone's private data. A reachable server is a starting point, not a promise that your account or client can use every tool.
+All three were recorded as `online` in this site's catalog checks on **2 November 2026**. Those checks only reached each server's OAuth sign-in challenge. They did **not** sign in or read anyone's private data. A reachable server is a starting point, not a promise that your account or assistant can use every tool.
 
-Airtable covers the spreadsheet-like path here. These URLs do not connect an arbitrary Excel file or Google Sheet, and Supabase does not connect an unrelated database just because it speaks SQL.
+Airtable is the spreadsheet-like option here. None of these URLs connects an Excel file or a Google Sheet, and Supabase connects only Supabase projects, not any SQL database.
 
 ## Connect the server once
 
-1. Open the server from the [catalog](/catalog) in the playground. Check that the hostname matches the publisher's endpoint above.
-2. Start its OAuth sign-in. Read the requested access, choose your test workspace, and approve only access you intend to grant. Keep credentials out of the chat prompt.
-3. Inspect the discovered tool list. Look for search, list or read tools first; leave update, execute or delete tools alone for this first experiment.
-4. Add the same endpoint in your assistant. Use [the Claude setup guide](/learn/add-remote-mcp-server-to-claude) or [the ChatGPT setup guide](/learn/connect-mcp-server-to-chatgpt) for the current menus and workspace permissions. Signing in to mcptest does not sign the assistant in; each client has its own authorization.
-5. Enable the connection in a new conversation and ask one of the questions above. Ask it to name the tool it used and show the source identifiers.
+1. Open the server from the [catalog](/catalog) in the playground. Check that the hostname matches the endpoint above.
+2. Start its OAuth sign-in. Read the requested access, choose your test workspace, and approve only the access you intend to grant. Never paste passwords or keys into the chat.
+3. Look at the list of tools the server returns. Try search, list or read tools first. Leave update, execute and delete tools alone for this first test.
+4. Add the same endpoint to your assistant. [The Claude setup guide](/learn/add-remote-mcp-server-to-claude) and [the ChatGPT setup guide](/learn/connect-mcp-server-to-chatgpt) cover the current menus and workspace permissions. Signing in on mcptest does not sign your assistant in; each app has its own sign-in.
+5. Turn the connection on in a new conversation and ask one of the questions above. Ask the assistant to name the tool it used and show the record or page IDs.
 
-If your assistant has the service in its own connector directory, that is often the easiest installation route. A missing custom-connection option can be a plan or administrator restriction. It does not mean you should paste a database password into chat.
+If your assistant already lists the service in its own connector directory, installing from there is often easier. If the option to add a custom connection is missing, your plan or administrator may not allow it. That is never a reason to paste a database password into chat.
 
 ## Database path: Supabase
 
-Use a development project or a branch containing synthetic data. In Supabase's MCP setup page, choose the project and its read-only option. Copy the generated endpoint, including its project and feature restrictions, into the playground and the assistant. The base URL above identifies the server; the setup page produces the narrower URL for your project.
+Use a development project, or a branch with made-up data.
 
-[Supabase's documentation](https://supabase.com/docs/guides/ai-tools/mcp) describes project scoping and feature groups. Without a selected project, access can extend across projects. Its guidance recommends development data and careful review of tool calls.
+1. On Supabase's MCP setup page, choose the project and the read-only option.
+2. Copy the URL it generates. It adds settings to the base endpoint, such as `project_ref` (one project), `read_only=true` and `features` (which tool groups are on).
+3. Use that generated URL in both the playground and your assistant.
 
-After listing tables, try: “Count rows in the demo orders table by status. Show the SQL and the counts. Do not include customer emails.” Compare with a saved query in your database dashboard. Read-only SQL can still reveal sensitive information, scan large tables, and incur costs; restrict the account as well as the prompt.
+[Supabase's documentation](https://supabase.com/docs/guides/ai-tools/mcp) explains these settings. Without a `project_ref`, access can extend to every project in your account. Supabase advises connecting to production only when you need to, and then scoping it to one project, using read-only mode and limiting features. It also advises keeping tool approvals on and reviewing each tool call.
+
+After listing tables, try: "Count rows in the demo orders table by status. Show the SQL and the counts. Do not include customer emails." Compare the result with a saved query in your Supabase dashboard. Read-only SQL can still reveal sensitive data, scan large tables and add cost, so limit what the connection can reach, not just what you ask for.
 
 ## Spreadsheet path: Airtable
 
-Make a Demo base with five tasks and known statuses, then connect Airtable and select only the bases needed for the experiment in its consent flow. Ask the assistant to find the base, list its tables, and read a few records before asking for totals.
+1. Make a Demo base with five tasks and known statuses.
+2. Connect Airtable and approve access.
+3. Ask the assistant to find the base, list its tables and read a few records before you ask for totals.
 
-[Airtable's help page](https://support.airtable.com/v1/docs/using-the-airtable-mcp-server) says MCP access follows your Airtable permissions and is available on all Airtable plans. Your AI app's own plan and your organization's integration policy still apply. The server can also create and update records, so “connected successfully” does not imply “read-only.”
+[Airtable's help page](https://support.airtable.com/v1/docs/using-the-airtable-mcp-server) says MCP access follows your existing Airtable permissions and is available on all Airtable plans. You can add or remove the bases a connection can reach afterwards, on Airtable's third-party integrations page. Your AI app's plan and your organization's integration policy still apply. If you can edit a base, the server can also create and update its records, so "connected successfully" does not mean "read-only".
 
-Ask: “How many Demo tasks are open? Include record IDs and tell me if results were paginated.” A filtered view, incomplete pagination, or ambiguous status labels can explain a wrong count. For a change later, request a preview of the exact record IDs and new values, then review the action approval.
+Ask: "How many Demo tasks are open? Include record IDs and tell me if results were paginated." A filtered view, an incomplete set of pages or unclear status labels can explain a wrong count. Before any change later, ask for a preview of the exact record IDs and new values, then review the approval prompt.
 
 ## Docs path: Notion
 
-Connect the hosted endpoint, authorize your test workspace, and create a page named “Demo planning” with three decisions you can recognize. Ask the assistant to search for that title, read the page, and give you a summary with a page link.
+1. Connect the hosted endpoint and sign in to your test workspace.
+2. Create a page named "Demo planning" with three decisions you will recognize.
+3. Ask the assistant to search for that title, read the page and give you a summary with a page link.
 
-[Notion's documentation](https://developers.notion.com/guides/mcp/overview) says its hosted MCP connection uses OAuth and can read and update content you can access. If search finds nothing, check the workspace, the page permissions, and the tools actually returned by the server. An assistant's confident answer without a retrieved page is not evidence it read your notes.
+[Notion's documentation](https://developers.notion.com/guides/mcp/overview) says its hosted MCP server uses OAuth and can read and update the content you can access in the workspace you select. Workspace guests cannot connect. If search finds nothing, check the workspace, the page permissions and the tools the server actually returned. A confident answer without a retrieved page is not evidence the assistant read your notes.
 
-This is retrieval on demand. It does not guarantee every attachment, image, linked document or long page was read. Ask what was searched and what was left out.
+The assistant fetches content when it needs it. That does not guarantee it read every attachment, image, linked page or long page. Ask what it searched and what it left out.
 
 ## Where your information goes
 
-A tool result travels from the data service through its MCP server to the AI host, where it becomes conversation context. Testing a private tool in mcptest also puts its result in your testing session. Use synthetic records for the first pass and avoid sharing reports containing private results or tokens.
+A tool result travels from the service, through its MCP server, to the AI app, where it becomes part of the conversation. Testing a private tool in mcptest also puts the result in your testing session. Use made-up records for the first pass, and do not share reports that contain private results or tokens.
 
-OAuth limits access but does not make retrieved content trustworthy instructions. A document can contain text that tries to redirect the assistant. Keep write approvals enabled, inspect unexpected tool calls, and disconnect in both the assistant and the service when the experiment is over. The [server trust checklist](/learn/mcp-server-trust-checklist) walks through that review.
+Signing in limits what the assistant can reach. It does not make the content it retrieves safe to follow as instructions: a document can contain text that tries to steer the assistant. Keep approvals for changes turned on, look into unexpected tool calls, and disconnect in both the assistant and the service when you finish. The [server trust checklist](/learn/mcp-server-trust-checklist) walks through that review.
 
 ## Test one answer before trusting ten
 
-Return to the [mcptest.io playground](/), authorize the same endpoint, list its tools and make one narrow read call. Compare the raw result with the assistant's answer. If the raw data is right but the answer is wrong, improve the question or retrieval; if the tool result is wrong or inaccessible, fix the connection and permissions first.
+Go back to the [mcptest.io playground](/), sign in to the same endpoint, list its tools and make one narrow read call. Compare the raw result with the assistant's answer. If the raw data is right but the answer is wrong, improve the question. If the tool result is wrong or missing, fix the connection and permissions first.

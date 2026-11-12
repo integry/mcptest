@@ -6,8 +6,8 @@ track: use
 level: practitioner
 order: 31
 category: Client setup
-readingTimeMinutes: 5
-lastReviewed: "2026-10-21"
+readingTimeMinutes: 6
+lastReviewed: "2026-11-11"
 metaTitle: Connect a Remote MCP Server to JetBrains AI Assistant | mcptest.io
 metaDescription: How to add a remote MCP server to JetBrains AI Assistant. The HTTP and STDIO JSON formats, server level, status and logs, and an mcp-remote bridge for servers that need OAuth or an API key.
 relatedSlugs:
@@ -25,13 +25,15 @@ sourceLinks:
     url: "https://youtrack.jetbrains.com/issue/LLM-25012"
   - title: "YouTrack LLM-24541: AI Assistant MCP doesn't provide HTTP authentication"
     url: "https://youtrack.jetbrains.com/issue/LLM-24541"
-  - title: "Junie docs: MCP settings"
-    url: "https://junie.jetbrains.com/docs/junie-plugin-mcp-settings.html"
+  - title: "Junie docs: MCP configuration"
+    url: "https://junie.jetbrains.com/docs/junie-cli-mcp-configuration.html"
+  - title: "IntelliJ IDEA docs: MCP server"
+    url: "https://www.jetbrains.com/help/idea/mcp-server.html"
   - title: mcp-remote
     url: "https://github.com/geelen/mcp-remote"
 ---
 
-AI Assistant, the chat and agent plugin in IntelliJ IDEA, PyCharm, WebStorm, and the other JetBrains IDEs, is an MCP client. It connects to remote servers over Streamable HTTP or the legacy SSE transport, and to local servers over stdio. It does not yet sign in to servers that use OAuth, and its documentation does not describe sending custom headers, so many hosted servers need a small bridge. This guide reflects the AI Assistant 2026.2 documentation and the YouTrack tracker as of 21 October 2026; the latest stable IDE release was 2026.2.3.
+AI Assistant, the chat and agent plugin in IntelliJ IDEA, PyCharm, WebStorm, and the other JetBrains IDEs, is an MCP client. It connects to remote servers over Streamable HTTP or the legacy SSE transport, and to local servers over stdio. It does not yet sign in to servers that use OAuth, and its documentation does not describe sending custom headers, so many hosted servers need a small bridge. This guide reflects the AI Assistant documentation and the YouTrack tracker as of 11 November 2026. The latest IDE release is 2026.3 (5 November 2026), but the published AI Assistant help still describes 2026.2, so menu paths in 2026.3 may differ.
 
 ## Three MCP features with similar names
 
@@ -41,13 +43,16 @@ JetBrains ships three separate MCP features. They are configured in different pl
 | --- | --- | --- |
 | **AI Assistant MCP client** | AI Assistant calls tools on servers you add | **Settings → Tools → AI Assistant → Model Context Protocol (MCP)**; this guide |
 | **Junie MCP client** | JetBrains' coding agent calls tools on servers you add | `.junie/mcp/mcp.json` in the project or `~/.junie/mcp/mcp.json`; Junie documents `headers` and OAuth |
-| **The IDE's MCP server** | The IDE exposes its own tools to outside clients such as Claude Code | **Settings → Tools → MCP Server**, built in since 2025.2 |
+| **The IDE's MCP server** | The IDE exposes its own tools to outside clients such as Claude Code | **Settings → AI → MCP Server** in 2026.3 (**Settings → Tools → MCP Server** in 2026.2); built in since 2025.2 |
 
 A server added to AI Assistant is not available to Junie, and the reverse is also true.
 
-## Check your version
+## Before you start
 
-Native remote transports arrived in 2025.3. The 2025.2 documentation says AI Assistant supported only stdio and suggested `mcp-remote` for remote servers. On 2025.2 or earlier, use the bridge described below for every remote server, or update the IDE.
+- **Your version.** Native remote transports arrived in 2025.3. The 2025.2 documentation says AI Assistant supported only stdio and suggested `mcp-remote` for remote servers. On 2025.2 or earlier, use the bridge described below for every remote server, or update the IDE.
+- **The exact MCP endpoint**, including its path, for example `https://mcp.example.com/mcp`.
+- **The sign-in method.** If the server needs OAuth or an API key, go straight to [Servers that need OAuth or an API key](#servers-that-need-oauth-or-an-api-key); you will also need Node.js for the bridge.
+- **Your organization's policy.** With JetBrains IDE Services or JetBrains Central, an administrator can preconfigure the servers available to you and control whether you can add your own.
 
 ## Add a server that needs no sign-in
 
@@ -72,13 +77,13 @@ Native remote transports arrived in 2025.3. The 2025.2 documentation says AI Ass
 
 If you already use Claude Desktop, **Import from Claude** copies its configured servers into the table.
 
-## Check that it connected
+## Check that it worked
 
 The **Status** column shows the connection state. When it is connected, click the icon in that column to see the tools the server offers. Turn on **Automatically enable new and changed MCP servers** if you want new and edited entries to start without an extra step.
 
 To stop a server, clear its checkbox and click **Apply**; to retry a failed connection, use **Reconnect**. For details, open **Help → Show Log in Finder** on macOS or **Show Log in Explorer** on Windows, then the `mcp` folder, which has one log per configured server.
 
-AI Assistant calls MCP tools on its own when a request needs them. You can also call a tool explicitly by typing `/` in the chat and choosing its command. The Claude Agent and Codex agents inside AI Assistant only see these servers when **Pass custom MCP servers** is enabled for them, and their MCP tools do not appear in the `/` menu.
+AI Assistant calls MCP tools on its own when a request needs them. You can also call a tool explicitly by typing `/` in the chat and choosing its command. Ask for something only one of the server's tools can do to confirm it is used. The Claude Agent and Codex agents inside AI Assistant only see these servers when **Pass custom MCP servers** is enabled under **Settings → Tools → AI Assistant → Agents**.
 
 ## Servers that need OAuth or an API key
 
@@ -102,7 +107,7 @@ The documentation shows no `headers` field for HTTP servers, so do not rely on o
 }
 ```
 
-On first connection, `mcp-remote` opens your browser for the server's sign-in and stores the tokens under `~/.mcp-auth`. If the browser never opens, read the server's `mcp` log in the IDE; the server may not return a usable `401` challenge, which the [401 checklist](/learn/remote-mcp-server-401-unauthorized) covers.
+On first connection, `mcp-remote` opens your browser for the server's sign-in and stores the tokens under `~/.mcp-auth` (in a `mcp-remote-v1` folder in current releases). If the browser never opens, read the server's `mcp` log in the IDE; the server may not return a usable `401` challenge, which the [401 checklist](/learn/remote-mcp-server-401-unauthorized) covers.
 
 ### API key servers
 
@@ -118,7 +123,7 @@ On first connection, `mcp-remote` opens your browser for the server's sign-in an
 }
 ```
 
-`mcp-remote` expands `${AUTH_HEADER}` from its environment. Keeping the space inside the environment value, not in `args`, avoids clients that split arguments on spaces. This configuration was tested with `mcp-remote` 0.15.2 against a server that requires a bearer key: the bridge answered `initialize` and returned the result of an authenticated `tools/call`. `mcp-remote` also has `--header-file` if you prefer not to put the key in the IDE's settings at all.
+`mcp-remote` expands `${AUTH_HEADER}` from its environment. Keeping the space inside the environment value, not in `args`, avoids clients that split arguments on spaces. This configuration was tested with `mcp-remote` 0.15.2 (the current release is 0.16.6) against a server that requires a bearer key: the bridge answered `initialize` and returned the result of an authenticated `tools/call`. `mcp-remote` also has `--header-file` if you prefer not to put the key in the IDE's settings at all.
 
 The bridge needs Node.js. If AI Assistant cannot start `npx`, use its absolute path from `which npx`; IDEs launched from the dock do not always inherit your shell's `PATH`.
 
@@ -126,16 +131,16 @@ The bridge needs Node.js. If AI Assistant cannot start `npx`, use its absolute p
 
 ### The Status column shows an error for an HTTP server
 
-Check the URL path first: `https://mcp.example.com` and `https://mcp.example.com/mcp` are different endpoints, and the configuration needs the one that implements Streamable HTTP. Then check the server's `mcp` log for the HTTP status. A `401` means the server needs authentication: use the bridge. A `405` from a hosted server can have the same cause; LLM-30889 reported exactly that and was closed as a duplicate of the authentication bug. Connect to the URL in the playground to see which status the first `POST` really gets.
+Check the URL path first: `https://mcp.example.com` and `https://mcp.example.com/mcp` are different endpoints, and the configuration needs the one that implements Streamable HTTP. Then check the server's `mcp` log for the HTTP status; [Error POSTing to endpoint](/learn/mcp-error-posting-to-endpoint) decodes each one. A `401` means the server needs authentication: use the bridge. A `405` from a hosted server can have the same cause; LLM-30889 reported exactly that and was closed as a duplicate of the authentication bug. Connect to the URL in the playground to see which status the first `POST` really gets.
 
 ### A local Streamable HTTP server will not connect
 
-LLM-24589 reports AI Assistant failing to connect to a Streamable HTTP server on `localhost` that other clients reach. Until it is fixed, run that server over stdio, or put `mcp-remote` in front of it; `mcp-remote` accepts plain `http://` URLs on localhost without extra flags.
+LLM-24589, still open and reported on Windows, describes AI Assistant failing to connect to a Streamable HTTP server on `localhost` that other clients reach. Until it is fixed, run that server over stdio, or put `mcp-remote` in front of it; `mcp-remote` accepts plain `http://` URLs on localhost without extra flags.
 
 ### Connected, but no tools
 
 Open the tool list from the Status column. If it is empty, the server may list tools only after sign-in, or it may not declare the `tools` capability. [MCP server connected but no tools](/learn/mcp-server-connected-but-no-tools) shows how to tell from the raw messages.
 
-## Test the endpoint first
+## Verify the endpoint before you add it
 
-AI Assistant's status shows that a connection failed, not why. Open the [MCP Playground](/), paste the endpoint, and connect. The log shows the exact status of each request, so you can see before you touch the IDE whether the server needs OAuth, a header, or a different path.
+AI Assistant's status shows that a connection failed, not why. Open the [MCP Playground](/), paste the endpoint and click **Connect**. **Logs & Events** shows the exact status of each request, so you can see before you touch the IDE whether the server needs OAuth, a header, or a different path. A link such as `https://mcptest.io/server/mcp.example.com/mcp` opens the playground with `https://mcp.example.com/mcp` already filled in.

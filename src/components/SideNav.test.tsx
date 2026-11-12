@@ -139,8 +139,8 @@ describe('SideNav information architecture', () => {
       ['Reports', '/report'],
       ['Tool-selection evals', '/evals'],
       ['Breaking changes', '/tools/breaking-changes'],
-      ['OAuth check', '/tools/oauth-check'],
-      ['Discovery check', '/tools/discovery'],
+      ['OAuth checker', '/tools/oauth-check'],
+      ['Discovery checker', '/tools/discovery'],
     ]);
     expect(container.querySelector('a[href="/catalog"]')?.classList).toContain('active');
     expect(container.querySelector('a[href="/catalog"]')?.getAttribute('aria-current')).toBe('page');

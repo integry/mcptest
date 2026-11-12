@@ -7,7 +7,7 @@ import { CLIENT_COMPATIBILITY } from '../data/clientCompatibility';
 import { OAUTH_CHECKER_COPY as copy } from '../content/oauthCheckerCopy';
 import './DiscoveryCheckerView.css';
 
-const labels = { pass: 'Pass', fail: 'Failed', unknown: 'Unverified', skipped: 'Skipped' };
+const labels = { pass: 'Pass', fail: 'Fail', unknown: 'Unverified', skipped: 'Skipped' };
 const styles = { pass: 'found', fail: 'invalid', unknown: 'unreachable', skipped: 'skipped' };
 const GUIDE = '/learn/oauth-for-mcp-explained';
 

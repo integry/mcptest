@@ -239,7 +239,7 @@ describe('Learn index', () => {
       expect(link?.textContent).toBe(article.title);
       expect(container.textContent).toContain(article.summary);
     }
-    expect(container.textContent).toContain('11 min read');
+    expect(container.textContent).toContain(`${LEARN_ARTICLES[0].readingTimeMinutes} min read`);
     expect(container.textContent).toContain('Practitioner');
   });
 });

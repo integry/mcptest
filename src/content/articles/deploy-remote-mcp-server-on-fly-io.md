@@ -7,7 +7,7 @@ level: "practitioner"
 order: 403
 category: "Deployment"
 readingTimeMinutes: 7
-lastReviewed: "2026-10-24"
+lastReviewed: "2026-11-11"
 metaTitle: "Deploy MCP on Fly.io | mcptest.io"
 metaDescription: "Run a tested stateless MCP container on Fly Machines, configure autostop, proxy idle timeouts and custom domains, then verify browser CORS and SSE on mcptest.io."
 relatedSlugs:
@@ -28,13 +28,28 @@ sourceLinks:
     url: "https://fly.io/docs/launch/deploy/"
 ---
 
-Fly.io runs your MCP server as a process in a Machine. That gives you a familiar container and a streaming HTTP connection, with the option to stop idle Machines. It also means that process restarts, proxy timeouts and routing across Machines are your application's concern.
+Fly.io runs your MCP server as a process in a Fly Machine. You get an ordinary container and streaming HTTP, and Fly can stop Machines when they are idle. In exchange, process restarts, proxy timeouts and requests spread across Machines are your application's concern.
 
-This guide deploys the same stateless echo sample used by the other platform guides, with Fly-specific settings checked on 24 October 2026. The [general deployment guide](/learn/deploy-remote-mcp-server) covers the wider hosting decision.
+This guide deploys the same small, tested echo server as the other platform guides. For a comparison of hosting models, see the [general deployment guide](/learn/deploy-remote-mcp-server).
 
-## Run the complete sample locally
+## What you will build
 
-The [complete deployment sample](https://github.com/integry/mcptest/tree/master/src/content/articles/samples/remote-deploy) includes `app.mjs`, `node.mjs`, pinned dependencies, all platform adapters, and a smoke runner. Download just that directory from the repository archive into a fresh folder:
+- A stateless MCP server in a container, served at `https://YOUR-APP.fly.dev/mcp`.
+- One read-only `echo` tool. It takes a required `text` string and an optional `waitMs` delay from 0 to 1000, sends a progress notification when the caller asks for one, and returns the text.
+- One URL for both protocol eras. `createMcpHandler` answers 2026-07-28 requests directly and 2025 clients through `legacy: 'stateless'`. It issues no `Mcp-Session-Id`, and `GET /mcp` returns `405`. A response upgrades to SSE when the tool sends progress. There is no separate `/sse` endpoint.
+- `Host` and `Origin` validation, CORS for browser clients at `https://mcptest.io`, and a `/healthz` route for Fly's health check.
+
+The server has no authentication. Before you connect private data, add [bearer authorization and protected resource metadata](/learn/mcp-server-authentication-patterns).
+
+## Prerequisites
+
+- Node.js 22 and npm. The sample was tested with Node.js 22.23.4.
+- A Fly.io account, and [`flyctl`](https://fly.io/docs/flyctl/install/) signed in with `fly auth login`.
+- `curl`, to check the deployment.
+
+## Step 1: Download and test the sample locally
+
+The [deployment sample](https://github.com/integry/mcptest/tree/master/src/content/articles/samples/remote-deploy) holds the shared app, the entry points for Vercel, AWS Lambda, Cloud Run and Fly.io, pinned dependencies, and a smoke test. Download only that directory into a new folder:
 
 ```bash
 mkdir echo-mcp
@@ -43,18 +58,17 @@ curl -fL https://github.com/integry/mcptest/archive/refs/heads/master.tar.gz \
   | tar -xz --strip-components=6 mcptest-master/src/content/articles/samples/remote-deploy
 npm install
 npm run smoke
-npm start
 ```
 
-Use Node.js 22.23.4. `npm start` serves `http://localhost:3000/mcp`; stop it before rerunning smoke, which uses ports 3000–3003. Leave `PUBLIC_URL` unset locally. The sample pins `@modelcontextprotocol/server` 2.3.1, `@hono/node-server` 2.1.5 and `zod` 4.6.7. The smoke client is SDK 2.3.1.
+The smoke test starts every entry point on ports 3000 to 3003. For each one it connects with the 2026-07-28 protocol and with the 2025 handshake, lists and calls `echo`, receives SSE progress, and checks that no session ID is issued. It also checks the CORS preflight, the `405` on `GET`, and the `403` for a foreign `Host` or `Origin`. Each entry point prints one `passed` line.
 
-The app registers one read-only `echo` tool with a required `text` string and optional `waitMs` from 0 to 1000. It emits progress when the caller requests it, then returns the text. `createMcpHandler` serves **2026-07-28 stateless requests** and uses `legacy: 'stateless'` for 2025 clients. It issues no session ID; `GET /mcp` returns `405`. The same URL handles JSON responses and POST responses that upgrade to SSE when progress is emitted. There is no separate legacy `/sse` endpoint.
+To try the server by hand, run `npm start` and open `http://localhost:3000/mcp` in the [mcptest.io playground](/). Leave `PUBLIC_URL` unset locally. Stop the server before you run the smoke test again.
 
-This is an unauthenticated echo demonstration. Before attaching private data, add [real bearer authorization and protected resource metadata](/learn/mcp-server-authentication-patterns). The [Hono guide](/learn/remote-mcp-server-with-hono) provides a complete authenticated application if that is your next step.
+The sample pins `@modelcontextprotocol/server` 2.3.1, `@hono/node-server` 2.1.5 and `zod` 4.6.7, and the smoke client is `@modelcontextprotocol/client` 2.3.1.
 
-## Configure the Machine and proxy
+## Step 2: Edit `fly.toml`
 
-The sample contains a Node 22 Dockerfile and a `node.mjs` entry that binds `0.0.0.0` on `PORT`. It uses port 8080 in the container. Here is the complete `fly.toml`:
+The sample has a Node.js 22 Dockerfile and a `node.mjs` entry that listens on `0.0.0.0` at `PORT`, which is 8080 in the container. This is the complete `fly.toml`:
 
 ```toml
 app = "replace-with-your-unique-mcp-app"
@@ -82,13 +96,17 @@ primary_region = "iad"
       Host = "replace-with-your-unique-mcp-app.fly.dev"
 ```
 
-Replace all occurrences of the app name with your globally unique name before deployment. The health check uses `/healthz`, which the shared app implements with `200 ok`; `/mcp` deliberately returns `405` on GET and is a poor health-check target. The explicit check `Host` matches the app's allowlist; Fly's internal health probe would otherwise use a different host. Update that check header when changing `PUBLIC_URL` to a custom domain.
+Replace all three occurrences of `replace-with-your-unique-mcp-app` with an app name that is unique on Fly.io. Then check these settings:
 
-[Fly's configuration reference](https://fly.io/docs/reference/configuration/) documents `internal_port`, the HTTP proxy idle timeout and the autostart controls. Keep the internal port, container `PORT` and actual listener aligned. The public endpoint is HTTPS on port 443; do not give clients the private port 8080.
+- **`internal_port`, `PORT` and the listener must match.** Clients use HTTPS on port 443. Never give them the internal port 8080.
+- **The health check uses `/healthz`.** The app answers it with `200 ok`. `/mcp` returns `405` on `GET`, so it is a poor health-check target.
+- **The health check sets `Host`.** Fly runs checks against the Machine over the private network, not through the public `.fly.dev` hostname. The app rejects any `Host` other than the `PUBLIC_URL` hostname, so the check sends that hostname explicitly. Update this header whenever you change `PUBLIC_URL`.
 
-## Deploy the container
+[Fly's configuration reference](https://fly.io/docs/reference/configuration/) documents every key in this file.
 
-Install `flyctl` and sign in in your environment. From the sample root, after editing `fly.toml`:
+## Step 3: Create the app and deploy
+
+From the sample directory, using the app name from `fly.toml`:
 
 ```bash
 fly apps create YOUR-UNIQUE-MCP-APP
@@ -97,48 +115,90 @@ fly status
 fly logs
 ```
 
-Replace `YOUR-UNIQUE-MCP-APP` with the same name used in the file. `fly deploy` reads the included Dockerfile and configuration. Follow the CLI's provisioning instructions for your organization, billing and networking; the guide does not assume an existing app or IP allocation.
+`fly deploy` builds the included Dockerfile and starts Machines with the settings in `fly.toml`. Follow the CLI's prompts for your organization and billing.
 
-The process was run locally through the fixture's Node entry. The Dockerfile and TOML were inspected and syntax checked, but neither a container build nor a Fly deployment was run in the authoring environment.
+## Step 4: Verify the deployment
+
+Replace `YOUR-APP.fly.dev` with your app's hostname.
+
+```bash
+# The endpoint offers no GET stream: expect 405.
+curl -s -o /dev/null -w '%{http_code}\n' https://YOUR-APP.fly.dev/mcp
+
+# A 2026 discovery request: expect 200 and "supportedVersions":["2026-07-28"].
+curl -s https://YOUR-APP.fly.dev/mcp \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -H 'MCP-Protocol-Version: 2026-07-28' \
+  -H 'Mcp-Method: server/discover' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"curl-check","version":"1.0.0"},"io.modelcontextprotocol/clientCapabilities":{}}}}'
+
+# A browser preflight: expect 204 and access-control-allow-origin: https://mcptest.io.
+curl -s -i -X OPTIONS https://YOUR-APP.fly.dev/mcp \
+  -H 'Origin: https://mcptest.io' \
+  -H 'Access-Control-Request-Method: POST' \
+  -H 'Access-Control-Request-Headers: content-type,mcp-method,mcp-protocol-version'
+```
+
+Then test it on mcptest.io:
+
+1. Open the endpoint in the playground: `https://mcptest.io/server/` followed by the endpoint without the scheme and a final `/mcp`, for example `mcptest.io/server/YOUR-APP.fly.dev/mcp/mcp`.
+2. Confirm that discovery succeeds, that `tools/list` shows `echo`, and that no session ID is issued.
+3. Call `echo` with `{"text":"hello","waitMs":500}` and confirm the result is `hello`, with a progress notification first.
+4. Repeat once after the app has been idle and once after a new deployment, to catch cold-start and redeploy problems.
+
+When the URL is stable, add the [pre-deployment release gate](/learn/test-mcp-server-before-deploying) to your pipeline.
+
+The smoke test above passed locally with the pinned versions, through the same Node entry the container runs. It does not exercise Fly's proxy. No container build or Fly deployment was run for this guide, so check DNS, TLS, timeouts and live streaming in your own account.
 
 ## Decide whether an idle server should stop
 
-[Autostop/autostart](https://fly.io/docs/launch/autostop-autostart/) lets the proxy stop excess capacity and restart a Machine for a new request. With one Machine, a zero minimum permits stopping when idle. This saves running capacity at the cost of startup latency. A new request can include the time needed to start the process and establish downstream connections.
+With [autostop and autostart](https://fly.io/docs/launch/autostop-autostart/), Fly's proxy stops Machines that have no traffic and starts one again when a request arrives. With `min_machines_running = 0`, every Machine can stop. That saves cost, but the next request waits for the Machine and the process to start.
 
-For a server used throughout the day, set `min_machines_running = 1` and redeploy. That minimum applies in the **primary region** when autostop is enabled; it is not a promise of a warm Machine in every region. Autostop controls existing Machines, not a complete capacity-planning strategy.
+For a server used throughout the day, set `min_machines_running = 1` and deploy again. That minimum applies to the primary region only. It does not keep a Machine warm in every region.
 
-Test a cold request after the app has been idle. If it fails while warm requests succeed, inspect startup logs, health-check grace periods and connection timeouts before changing MCP code.
+If a request after an idle period fails while warm requests succeed, check the startup logs, the health-check grace period and connection timeouts before you change MCP code.
 
-## Preserve SSE without assuming unlimited requests
+## Keep SSE streams within the proxy timeout
 
-The sample's tool can emit SSE progress on a POST. Return that stream directly through the Node adapter; do not collect it into a string. Fly Proxy supports streaming HTTP, but a quiet response is still subject to its idle timeout. The sample explicitly configures `idle_timeout = 120` seconds. That is an idle deadline, not a guarantee that clients or upstream APIs will wait two minutes.
+The `echo` tool can stream SSE progress on a `POST`. The Node adapter passes that stream through; do not collect it into a string first. Fly's proxy streams HTTP responses, but can close a connection that stays quiet for longer than its idle timeout. The sample sets `idle_timeout = 120` under `http_options`. Fly's reference shows the key but does not state its unit or default, so check a deliberately quiet call against your deployed app. Bytes on the stream reset an idle timer. They do not extend a client's own total deadline.
 
-Set an application deadline for long tool calls and send meaningful progress when supported by the client. Bytes can prevent an idle timeout; they do not extend a client's total request deadline. Extra CDNs or reverse proxies can introduce buffering and shorter limits, so check the production endpoint with a delayed call.
+Set an application deadline for long tool calls, and send progress notifications while they run. A CDN or reverse proxy in front of Fly can buffer responses or have shorter limits, so test the production endpoint with a delayed call.
 
-A long-lived subscription is tied to a live connection. Deployments and Machine stops can end it. Reconnection and any shared notification bus need a deliberate design; keeping one Machine warm does not make a stream permanent.
+Deployments and Machine stops end open streams. A long-lived subscription needs reconnection logic in the client, and cross-Machine notifications need a shared event bus. Keeping one Machine warm does not make a stream permanent.
 
 ## Keep sessions out of the Machine's memory
 
-The SDK handler is stateless, including its 2025 compatibility leg. Requests can land on different Machines without a session lookup. If you later introduce an in-memory session table, the next request can reach another Machine or a restarted process and fail. Sticky routing alone cannot restore state lost on restart.
+The SDK handler is stateless, including its 2025 compatibility path, so any Machine can answer any request. If you later add an in-memory session table, the next request can reach another Machine or a restarted process and fail with `Session not found`. Sticky routing cannot bring back state lost in a restart. [Session not found after deploy](/learn/mcp-session-not-found-after-deploy) covers the alternatives.
 
-Keep durable application records in an external store. For cross-Machine notifications, use a shared event bus rather than assuming the handler's process-local bus reaches every connection. Avoid coupling a user's authorization state to the last request a warm process happened to serve.
+Keep application data in an external store, and do not tie a user's authorization state to whichever warm process served their last request.
 
-## Put your own domain in front
+## Add a custom domain
 
-Follow [Fly's custom-domain instructions](https://fly.io/docs/networking/custom-domain/) to add the hostname, configure the requested DNS records and provision a certificate. Wait for TLS to be ready, change `PUBLIC_URL` in `fly.toml` to `https://YOUR-DOMAIN/mcp`, and deploy again.
+Follow [Fly's custom-domain instructions](https://fly.io/docs/networking/custom-domain/): add the hostname with `fly certs add YOUR-DOMAIN`, create the DNS records it asks for, and wait for the certificate. Then change `PUBLIC_URL` and the health-check `Host` in `fly.toml` to the new hostname, and deploy again.
 
-The app validates Host. If you intentionally keep both the `.fly.dev` address and a custom domain, extend the host allowlist explicitly and choose one canonical OAuth resource URL for protected tools. Do not disable the check to hide an unexpected proxy Host value.
+The app accepts one hostname. To keep both the `.fly.dev` address and a custom domain, extend the host allowlist in `app.mjs` explicitly, and pick one canonical OAuth resource URL for protected tools. Do not turn the check off to hide an unexpected `Host`.
 
 ## CORS and the public URL
 
-Set `PUBLIC_URL` to your exact production endpoint, including `/mcp`. The app validates the incoming `Host` against that hostname and rejects other Origins. It allows browser requests from `https://mcptest.io`, answers `OPTIONS` before the MCP handler, allows the MCP request headers, and exposes `WWW-Authenticate`, `MCP-Protocol-Version`, `Mcp-Session-Id` and `Retry-After`.
+`PUBLIC_URL` must be the exact production endpoint, including `/mcp`. The app:
 
-To support another browser app, add its exact origin to the `origins` array in `app.mjs`. The SDK Origin check compares hostnames; the CORS response uses the exact origin allowlist. CORS is not user authentication. Non-browser clients can omit Origin, so protect private tools independently. The [CORS reference](/learn/mcp-cors-headers-for-browser-clients) covers the browser checks in detail.
+- rejects a `Host` other than the `PUBLIC_URL` hostname with `403`;
+- rejects an `Origin` that is not on its allowlist with `403`, and lets requests without an `Origin` through;
+- answers the `OPTIONS` preflight itself, before the MCP handler, for `https://mcptest.io`;
+- allows the MCP request headers, and exposes `WWW-Authenticate`, `MCP-Protocol-Version`, `Mcp-Session-Id` and `Retry-After`.
 
-A new custom domain means a new canonical resource URL if you later add OAuth. Update `PUBLIC_URL`, protected resource metadata and the provider's resource/audience configuration together. Test redirects too: an HTML landing page or a login page in front of `/mcp` is not a successful MCP response.
+To allow another browser app, add its exact origin to the `origins` array in `app.mjs`. The SDK's `Origin` check compares hostnames, and the CORS headers echo only exact origins on the list. CORS is not authentication: non-browser clients can omit `Origin`, so protect private tools separately. The [CORS reference](/learn/mcp-cors-headers-for-browser-clients) explains each header.
 
-## Test it on mcptest.io
+A new domain is also a new resource URL if you add OAuth later. Change `PUBLIC_URL`, the protected resource metadata, and the identity provider's resource or audience setting together.
 
-Open the **deployed HTTPS `/mcp` endpoint** in the [mcptest.io playground](/). Check discovery, list tools, and call `echo` with `{"text":"hello","waitMs":500}`. Confirm the result is `hello`, the browser preflight succeeds, the response headers are readable, and there is no session ID. Repeat once after the platform has been idle and once after a new deployment.
+## Common failures
 
-The fixture's `npm run smoke` was run locally: pinned 2026 discovery, legacy initialization, tool listing/calling, SSE progress, no-session behavior, allowed-origin preflight, rejected Host/Origin, and GET `405` all passed. Local success does not verify the cloud front door. Deployment CLIs and credentials were unavailable during authoring; cloud deployment, DNS/TLS, platform timeouts and live streaming must be checked in your account. Add the [pre-deployment release gate](/learn/test-mcp-server-before-deploying) once the public URL is stable.
+| Symptom | Likely cause | Fix |
+| --- | --- | --- |
+| `403` with `Invalid Host: …` | `PUBLIC_URL` names another hostname, for example after adding a custom domain | Set it to the exact public URL and deploy again. See [Invalid Host header](/learn/mcp-error-invalid-host-header). |
+| The health check fails and Machines restart | The check's `Host` header does not match `PUBLIC_URL`, or it targets `/mcp` | Point the check at `/healthz` and set its `Host` to the public hostname. |
+| The first request after idle times out; a retry works | The Machine was stopped and is starting | Set `min_machines_running = 1`, or keep startup small. See [Request timed out](/learn/mcp-error-request-timed-out). |
+| A quiet, long call is cut off | The proxy's idle timeout closed the connection | Send progress while the tool runs, or raise `idle_timeout`. See [SSE stream disconnected](/learn/mcp-error-sse-stream-disconnected). |
+| The browser reports a network error; `curl` works | The browser's origin is not in `origins`, or a header is missing from the preflight | Add the origin and check the preflight. See the [CORS reference](/learn/mcp-cors-headers-for-browser-clients). |
+| `GET /mcp` returns `405` | Expected: the server offers no GET stream | Nothing to fix. See [406, 415 and 405](/learn/mcp-406-not-acceptable-415-and-405). |

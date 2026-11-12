@@ -1,7 +1,7 @@
 /** Shared static CI landing-page copy. It adds no dependency to the app entry. */
 export const CI_PATH = '/ci';
 export const CI_TITLE = 'Gate your MCP deploy in GitHub Actions';
-export const CI_DESCRIPTION = 'Check client compatibility and breaking tool changes before releasing a remote MCP server. Copy a workflow and review the PR summary.';
+export const CI_DESCRIPTION = 'Check client compatibility and breaking tool changes before you release a remote MCP server. Copy the workflow and read the result in a PR comment.';
 export const CI_WORKFLOW = `name: MCP release gate
 on: [pull_request, workflow_dispatch]
 permissions:
@@ -23,7 +23,14 @@ jobs:
           name: mcptest-reports
           path: mcptest-reports/
 `;
+/** The action's comment for this example (renderActionSummary in src/cli/githubAction.ts), without its hidden marker. */
 export const CI_EXAMPLE_COMMENT = `## mcptest: blocked — gate failed
+
+[Remote MCP release gate](https://mcptest.io/ci)
+
+### https://mcp.example.com/mcp
+
+Decision: **blocked**
 
 | Client | Compatibility |
 | --- | --- |
@@ -32,13 +39,22 @@ export const CI_EXAMPLE_COMMENT = `## mcptest: blocked — gate failed
 | cursor | compatible |
 | codex-cli | compatible |
 
+Browser CORS and interactive OAuth remain unverified in headless CI; these are evidence-based verdicts, not client application launches.
+
+Context cost vs baseline: ≈32 → ≈59 estimated tokens \\(+27, +84%\\)
+
+- lookup: added \\(≈17, +17\\)
+- search: ≈32 → ≈42 \\(+10\\)
+
+At least one report predates the per-tool breakdown, so both are estimated from the stored names, descriptions and input schemas; output schemas and annotations are not included.
+
 Changes: 1 breaking, 1 safe
 
-- **search** (breaking): Required input "filter" added.
-- **lookup** (safe): Tool added.
+- **search** (breaking)
+  - [Input "filter" is now required](https://mcptest.io/learn/which-mcp-tool-changes-break-clients#adding-a-required-input) — breaking
+- **lookup** (safe)
+  - [Tool added](https://mcptest.io/learn/which-mcp-tool-changes-break-clients#changes-that-are-safe) — safe
 
-Browser CORS and interactive OAuth remain unverified in headless CI.
-Output schemas and annotations were not recorded in both snapshots.
-
-Full report: a public mcptest.io/r permalink appears when publishing is enabled.
+- Output schemas were not recorded in both snapshots, so output contracts were not compared.
+- Tool annotations were not recorded in both snapshots, so behavior hints were not compared.
 `;

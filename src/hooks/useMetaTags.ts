@@ -14,7 +14,7 @@ import {
   getCatalogServerSeo,
   SITE_URL,
 } from '../utils/catalogSeo';
-import { OAUTH_CHECKER_METADATA, BREAKING_CHANGES_METADATA, CATALOG_METADATA, DISCOVERY_METADATA, HOME_METADATA } from '../utils/pageMetadata';
+import { OAUTH_CHECKER_METADATA, BREAKING_CHANGES_METADATA, CATALOG_METADATA, DISCOVERY_METADATA, HOME_METADATA, REPORT_METADATA, SUBMIT_METADATA } from '../utils/pageMetadata';
 import { BREAKING_CHANGES_TOOL_PATH } from '../utils/breakingChangesRoute';
 import { OG_IMAGE_HEIGHT, OG_IMAGE_WIDTH, getOgImagePath } from '../utils/ogImage';
 import { parseResultShareUrl } from '../utils/urlUtils';
@@ -233,6 +233,11 @@ export const useMetaTags = () => {
         ...DISCOVERY_METADATA,
         canonicalUrl: `${SITE_URL}${DISCOVERY_CHECKER_PATH}`,
         imageUrl: ogImage(DISCOVERY_CHECKER_PATH),
+      });
+    } else if (location.pathname === '/report' || location.pathname === '/submit') {
+      applyMetadata({
+        ...(location.pathname === '/report' ? REPORT_METADATA : SUBMIT_METADATA),
+        canonicalUrl: `${SITE_URL}${location.pathname}`,
       });
     } else if (!isKnownAppPath(location.pathname)) {
       applyMetadata({

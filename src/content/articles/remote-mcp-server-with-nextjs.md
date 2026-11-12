@@ -7,7 +7,7 @@ level: practitioner
 order: 33
 category: Frameworks
 readingTimeMinutes: 6
-lastReviewed: "2026-10-21"
+lastReviewed: "2026-11-11"
 metaTitle: Remote MCP Server in Next.js (mcp-handler v2) | mcptest.io
 metaDescription: Build a remote MCP server in a Next.js route handler with mcp-handler 2.x and the MCP SDK v2. withMcpAuth, protectedResourceHandler, CORS and OPTIONS, Origin validation, and the checks mcptest runs.
 relatedSlugs:
@@ -27,26 +27,40 @@ sourceLinks:
     url: "https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization"
 ---
 
-In a Next.js app, an MCP server is a route handler. Vercel's documentation still points to `mcp-handler` from Vercel Labs for this, and version 2 is built on the official TypeScript SDK v2, so the same handler serves 2026-07-28 clients natively and 2025 clients through a stateless fallback. This guide builds a complete server with OAuth, CORS, and `Origin` checks, the parts the package does not do for you. It was built with `next build`, served with `next start`, and checked with mcptest.
+In a Next.js app, an MCP server is a route handler. Vercel's documentation uses `mcp-handler` from Vercel Labs for this. Version 2 is built on the official TypeScript SDK v2, so the same handler serves 2026-07-28 clients natively and 2025 clients through a stateless fallback. The server was built with `next build`, served with `next start`, and checked with mcptest.
 
-## What was tested
+## What you will build
+
+- An App Router route that serves MCP at `https://mcp.example.com/mcp`.
+- One read-only `get-order` tool with a validated `id` argument.
+- An OAuth bearer check through `withMcpAuth`, and a Protected Resource Metadata route.
+- The parts `mcp-handler` leaves to you: `Origin` validation, CORS, and an `OPTIONS` handler for browser preflights.
+
+## Prerequisites
+
+- A Next.js 13 or later App Router project, and Node.js 20 or later. These are `mcp-handler` 2.x's minimums.
+- An identity provider that signs JWT access tokens, publishes a JWKS, and puts your server's URL in `aud`. The test used a local provider.
+
+These versions were tested:
 
 | Package | Version |
 | --- | --- |
-| `next` | 16.4.2 |
+| `next` | 16.4.6 |
 | `react`, `react-dom` | 19.3.1 |
-| `mcp-handler` | 2.3.0 |
-| `@modelcontextprotocol/server` | 2.3.1 |
-| `jose` | 6.2.13 |
+| `mcp-handler` | 2.3.1 |
+| `@modelcontextprotocol/server` | 2.4.0 |
+| `jose` | 6.2.17 |
 | `zod` | 4.6.7 |
+
+## Step 1: Install the packages
 
 ```bash
 npm install mcp-handler@^2 @modelcontextprotocol/server@^2 zod@^4 jose
 ```
 
-`mcp-handler` 2.x needs Node.js 20 or later and Next.js 13 or later. If your project still uses `@modelcontextprotocol/sdk` 1.x, stay on `mcp-handler` 1.x until you migrate; the 2.x `inputSchema` takes a full schema such as `z.object(...)`, not a raw shape, and its Redis-backed SSE transport is gone.
+`mcp-handler` 2.x needs `zod` 4.2 or later. If your project still uses `@modelcontextprotocol/sdk` 1.x, stay on `mcp-handler` 1.x until you migrate. In 2.x, write `inputSchema` as a full schema such as `z.object(...)`; the raw-shape form is deprecated. The Redis-backed SSE transport from 1.x is gone.
 
-## Three files
+## Step 2: Add three files
 
 The server lives at `/mcp`, so clients get `https://mcp.example.com/mcp`. Vercel's examples use `/api/mcp`; the package does not inspect the path, so either works as long as the metadata names the same URL.
 
@@ -157,7 +171,14 @@ const options = metadataCorsOptionsRequestHandler();
 export { handler as GET, options as OPTIONS };
 ```
 
-`next build` listed both as dynamic routes, `ƒ /mcp` and `ƒ /.well-known/oauth-protected-resource/mcp`. A folder whose name starts with a dot is an ordinary route segment in the App Router.
+## Step 3: Build and run it
+
+```bash
+MCP_PUBLIC_URL=https://mcp.example.com/mcp OAUTH_ISSUER=https://auth.example.com npx next build
+MCP_PUBLIC_URL=https://mcp.example.com/mcp OAUTH_ISSUER=https://auth.example.com npx next start
+```
+
+`next build` listed both as dynamic routes, `ƒ /mcp` and `ƒ /.well-known/oauth-protected-resource/mcp`. A folder whose name starts with a dot is an ordinary route segment in the App Router. On Vercel, set the same variables in the project's environment settings.
 
 ## What each part does, and what it does not
 
@@ -175,21 +196,33 @@ export { handler as GET, options as OPTIONS };
 
 **The `OPTIONS` export is required for browsers.** Without it, Next.js answers the preflight itself. A test route with only `POST` returned `204` with `allow: OPTIONS, POST` and no `Access-Control-*` headers, so a browser blocks the request. The `withCors` wrapper also decorates `401` responses, which is what lets a browser client read `WWW-Authenticate`.
 
+## Step 4: Verify the server
+
+Check the challenge and the metadata through the public hostname:
+
+```bash
+curl -i -X POST https://mcp.example.com/mcp -H 'Content-Type: application/json' -d '{}'
+curl -s https://mcp.example.com/.well-known/oauth-protected-resource/mcp
+```
+
+The first must return `401` with a `resource_metadata` URL on your public hostname, like the challenge below. The second must return your exact `resource` URL. A preflight from an allowed origin must return `204` with `Authorization` and `Mcp-Method` in `Access-Control-Allow-Headers`.
+
 ## What mcptest reported for this server
 
-Served by `next start` behind a local TLS proxy, with a token minted for that URL, the headless gate scored it 89 out of 95. Core Protocol Adherence was 15 for the stateless 2026-07-28 lifecycle, MCP Capabilities 4 of 10 because only `tools/list` exists, Transport 15 for Streamable HTTP, Security Posture 40 for the metadata, token endpoint, and PKCE `S256`, and Performance 15. The decision was **review** because of unknown host-compatibility observations, such as refresh-token support, that need the identity provider's configuration to settle. A `curl` check through the same proxy showed the challenge clients see:
+When this guide was first tested, served by `next start` behind a local TLS proxy, with a token minted for that URL, the headless gate scored it 89 out of 95. Core Protocol Adherence was 15 for the stateless 2026-07-28 lifecycle, MCP Capabilities 4 of 10 because only `tools/list` exists, Transport 15 for Streamable HTTP, Security Posture 40 for the metadata, token endpoint, and PKCE `S256`, and Performance 15. The decision was **review** because of unknown host-compatibility observations, such as refresh-token support, that need the identity provider's configuration to settle. A `curl` check through the same proxy showed the challenge clients see:
 
 ```http
 HTTP/1.1 401 Unauthorized
 www-authenticate: Bearer error="invalid_token", error_description="No authorization provided", scope="orders:read", resource_metadata="https://localhost:8443/.well-known/oauth-protected-resource/mcp"
 ```
 
-## Next.js and Vercel pitfalls
+## Common failures
 
-- **An auth proxy that redirects.** Next.js 16 renamed `middleware.ts` to `proxy.ts`. If it protects every route with a session check, MCP clients get a `302` to your login page instead of a `401`, and never start OAuth. Exclude `/mcp` and `/.well-known/` from its `matcher`.
-- **`maxDuration`.** A route's function stops at its maximum duration. Set it to the longest tool call you support within your plan's limit.
+- **An auth proxy that redirects.** Next.js 16 renamed `middleware.ts` to `proxy.ts`. If it protects every route with a session check, MCP clients get a `302` to your login page instead of a `401`, and never start OAuth. Exclude `/mcp` and `/.well-known/` from its `matcher`. See the [401 checklist](/learn/remote-mcp-server-401-unauthorized).
+- **A challenge URL that does not exist.** `resourceUrl` must be the origin only. A full URL produces `.../mcp/.well-known/...`, and clients stop at a `404`. See [Failed to discover OAuth metadata](/learn/mcp-error-failed-to-discover-oauth-metadata).
+- **`maxDuration`.** A route's function stops at its maximum duration. Set it to the longest tool call you support within your plan's limit. See [Request timed out](/learn/mcp-error-request-timed-out).
 - **Preview deployments behind Vercel Authentication.** A protected preview answers with Vercel's own authentication response, not MCP. Test the production domain or configure a protection bypass for automation. [Deploying a remote MCP server](/learn/deploy-remote-mcp-server#vercel) covers this and the catch-all rewrite that turns `GET /mcp` into an HTML page.
 
-## Run it against your preview
+## Test it on mcptest.io
 
 Deploy, then paste the production URL into the [MCP Playground](/) to complete OAuth in the browser and see the Web Client Accessibility result, or run the [release gate](/learn/test-mcp-server-before-deploying#run-the-same-checks-in-ci) from CI with a bearer token before you promote the deployment.
