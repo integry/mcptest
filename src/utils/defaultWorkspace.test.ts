@@ -22,6 +22,8 @@ describe('default dashboards', () => {
   it.each([
     ['renamed', [{ ...createFirstDashboard(), name: 'Production' }]],
     ['with cards', [{ ...createFirstDashboard(), cards: [card] }]],
+    ['with a customized column layout', [{ ...createFirstDashboard(), columns: 3 }]],
+    ['with the default column count chosen explicitly', [{ ...createFirstDashboard(), columns: 2 }]],
     ['beside other dashboards', [createFirstDashboard(), { id: '2', name: 'Staging', cards: [] }]],
     ['created by the visitor with the same name', [{ id: '1700000000000', name: FIRST_DASHBOARD_NAME, cards: [] }]],
   ])('keeps an existing user\'s dashboards: %s', (_label, spaces) => {

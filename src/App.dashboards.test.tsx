@@ -77,6 +77,14 @@ describe('App dashboards for new and existing visitors', () => {
     expect(dashboardNames()).toEqual(['My first dashboard', 'Staging']);
   });
 
+  it('keeps a saved default dashboard whose column layout the visitor customized', async () => {
+    const customized = { id: 'default', name: 'My first dashboard', cards: [], columns: 3 };
+    localStorage.setItem('mcpSpaces', JSON.stringify([customized]));
+    await mount('/catalog');
+    expect(dashboardNames()).toEqual(['My first dashboard']);
+    expect(JSON.parse(localStorage.getItem('mcpSpaces') ?? 'null')).toEqual([customized]);
+  });
+
   it('explains dashboards on /space and creates the first one from there', async () => {
     await mount('/space');
     const page = container.querySelector('.view-panel:not(.d-none) .dashboards-home')!;
