@@ -6,6 +6,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { getCatalogServers } from '../utils/catalogUtils';
 import type { CatalogServer } from '../types/catalog';
 import { LandingHero, getRecentServerLabel, selectLandingQuickPicks } from './LandingHero';
+import { LANDING_FIXTURE } from '../data/publicFixtures';
 
 beforeAll(() => {
   (
@@ -249,6 +250,30 @@ describe('landing hero', () => {
   });
 });
 
+describe('landing hero echo fixture preset', () => {
+  it('offers the public echo fixture first and connects it as a stateless Streamable HTTP endpoint', () => {
+    const { container, onConnect } = renderLanding();
+    const picks = Array.from(container.querySelectorAll<HTMLButtonElement>('.landing-quick-pick'));
+    expect(picks[0].dataset.serverId).toBe(LANDING_FIXTURE.id);
+    expect(picks[0].title).toBe('https://mcptest.io/fixtures/echo/mcp');
+    expect(picks.slice(1).map(pick => pick.dataset.serverId))
+      .toEqual(selectLandingQuickPicks(getCatalogServers()).map(server => server.id));
+
+    act(() => picks[0].dispatchEvent(new MouseEvent('click', { bubbles: true })));
+
+    expect(onConnect).toHaveBeenCalledOnce();
+    expect(onConnect.mock.calls[0][0]).toMatchObject({
+      endpoint: { url: 'https://mcptest.io/fixtures/echo/mcp', transport: 'streamable-http' },
+      protocolEra: 'stateless',
+    });
+  });
+
+  it('links to the public test servers page', () => {
+    const { container } = renderLanding();
+    expect(container.querySelector('.landing-test-servers a')?.getAttribute('href')).toBe('/mcp-test-servers');
+  });
+});
+
 describe('landing hero for returning users', () => {
   const recentServers = ['https://mcp.example.com/mcp', 'http://localhost:3001/sse', 'not a url'];
 
@@ -288,7 +313,8 @@ describe('landing hero for returning users', () => {
   it('keeps the quick picks when there is no recent-connect handler and caps recent chips at six', () => {
     const noHandler = renderLanding({ recentServers });
     expect(noHandler.container.querySelector('.landing-recent-connect')).toBeNull();
-    expect(noHandler.container.querySelectorAll('.landing-quick-pick[data-server-id]')).toHaveLength(3);
+    // mcptest's echo fixture, then the three catalog picks.
+    expect(noHandler.container.querySelectorAll('.landing-quick-pick[data-server-id]')).toHaveLength(4);
     act(() => root?.unmount());
 
     const many = Array.from({ length: 9 }, (_, index) => `https://server-${index}.example/mcp`);

@@ -31,3 +31,5 @@ export const getDocsMetadata = (pathname: string): PageMetadata | undefined =>
   /^\/docs\/[^/]+\/?$/.test(pathname) ? getContentPageMetadata(pathname) : undefined;
 
 export const OAUTH_CHECKER_METADATA: PageMetadata = pageMetadata.tools['oauth-check'];
+export const MCP_TEST_SERVERS_METADATA: PageMetadata = pageMetadata.mcpTestServers;
+export const MCP_TEST_CLIENT_METADATA: PageMetadata = pageMetadata.mcpTestClient;

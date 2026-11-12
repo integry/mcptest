@@ -220,7 +220,7 @@ describe('static first frame (header, sidebar, playground landing)', () => {
     expect(shell.querySelector('#serverUrl-help')).not.toBeNull();
     expect(shell.querySelectorAll('[onclick], script')).toHaveLength(0);
     expect(Array.from(shell.querySelectorAll('.landing-quick-pick'), button => button.dataset.serverId))
-      .toEqual(selectLandingQuickPicks(getCatalogServers()).map(server => server.id));
+      .toEqual(['mcptest-echo', ...selectLandingQuickPicks(getCatalogServers()).map(server => server.id)]);
     // The one-click sample is the first preset, replayed on the app's button by id.
     expect(shell.querySelector('#landingSampleBtn').dataset.serverId)
       .toBe(selectLandingQuickPicks(getCatalogServers())[0].id);

@@ -38,6 +38,8 @@ const {
   LANDING_LEDE,
   LANDING_PATHS_LABEL,
   LANDING_REPORT_COVERAGE,
+  LANDING_TEST_SERVERS_LINK,
+  LANDING_TEST_SERVERS_PATH,
   LANDING_STEPS,
   LANDING_STEPS_TITLE,
   LANDING_TRUST_LABEL,
@@ -84,6 +86,8 @@ const {
   APP_ROUTE_PREFIXES,
   DISCOVERY_CHECKER_PATH,
   EXACT_APP_ROUTES,
+  MCP_TEST_CLIENT_PATH,
+  MCP_TEST_SERVERS_PATH,
   NOT_FOUND_LINKS,
   NOT_FOUND_SUMMARY,
   NOT_FOUND_TITLE,
@@ -106,6 +110,10 @@ const { getToolInventoryProperties, getCatalogServerTitle, getCatalogServerHeadi
 const { getToolInventoryFeatureList } = require('../src/utils/toolInventory.ts');
 
 const { CI_PATH, CI_TITLE, CI_DESCRIPTION, CI_WORKFLOW, CI_EXAMPLE_COMMENT } = require('../src/content/ciCopy.ts');
+const { MCP_TEST_SERVERS_COPY, MCP_TEST_SERVERS_FAQ } = require('../src/content/mcpTestServersCopy.ts');
+const { LANDING_FIXTURE, PUBLIC_FIXTURES } = require('../src/data/publicFixtures.ts');
+const { MCP_TEST_CLIENT_COPY, MCP_TEST_CLIENT_FAQ } = require('../src/content/mcpTestClientCopy.ts');
+const { CLIENT_CHECKLISTS } = require('../src/content/mcpTestClientChecklist.ts');
 
 const SITE_URL = 'https://mcptest.io';
 const projectRoot = path.join(__dirname, '..');
@@ -956,16 +964,25 @@ const STRUCTURED_DATA_PATTERN = /[ \t]*<script id="server-structured-data" type=
 const LANDING_FALLBACK_PATTERN = /<div id="root">\s*<section class="landing seo-landing-fallback"[\s\S]*?<\/section>\s*<\/div>/;
 
 function renderQuickPicks(quickPicks) {
-  if (quickPicks.length === 0) return [];
+  // The one-click sample is the first catalog pick; the list still offers
+  // mcptest's echo fixture when the catalog has none.
   const [sample] = quickPicks;
   return [
     '    <div class="landing-quick-picks">',
     `      <span class="landing-quick-picks-label" id="landing-quick-picks-label">${escapeHtml(LANDING_ALTERNATIVES_LABEL)}</span>`,
-    '      <div class="landing-sample">',
-    `        <button id="landingSampleBtn" type="button" class="btn landing-sample-button" data-server-id="${escapeHtml(sample.id)}" title="${escapeHtml(getPreferredCatalogEndpoint(sample).url)}" aria-describedby="landing-sample-note"><i class="bi bi-play-fill" aria-hidden="true"></i>${escapeHtml(LANDING_SAMPLE_LABEL)}</button>`,
-    `        <span id="landing-sample-note" class="landing-sample-note">${escapeHtml(LANDING_SAMPLE_NOTE_PREFIX)} ${escapeHtml(sample.name)}${escapeHtml(LANDING_SAMPLE_NOTE_SUFFIX)}</span>`,
-    '      </div>',
+    ...(sample ? [
+      '      <div class="landing-sample">',
+      `        <button id="landingSampleBtn" type="button" class="btn landing-sample-button" data-server-id="${escapeHtml(sample.id)}" title="${escapeHtml(getPreferredCatalogEndpoint(sample).url)}" aria-describedby="landing-sample-note"><i class="bi bi-play-fill" aria-hidden="true"></i>${escapeHtml(LANDING_SAMPLE_LABEL)}</button>`,
+      `        <span id="landing-sample-note" class="landing-sample-note">${escapeHtml(LANDING_SAMPLE_NOTE_PREFIX)} ${escapeHtml(sample.name)}${escapeHtml(LANDING_SAMPLE_NOTE_SUFFIX)}</span>`,
+      '      </div>',
+    ] : []),
     '      <ul aria-labelledby="landing-quick-picks-label">',
+    // LandingHero offers mcptest's own echo fixture first, then the catalog picks.
+    [
+      `        <li><button type="button" class="landing-quick-pick" data-server-id="${escapeHtml(LANDING_FIXTURE.id)}" title="${escapeHtml(LANDING_FIXTURE.url)}">`,
+      `<span class="catalog-server-logo landing-quick-pick-logo" aria-hidden="true" data-catalog-server-logo="true"><img src="${escapeHtml(LANDING_FIXTURE.logoUrl)}" alt="" width="${LOGO_SIZE_PX}" height="${LOGO_SIZE_PX}" loading="lazy" decoding="async"></span>`,
+      `${escapeHtml(LANDING_FIXTURE.name)}</button></li>`,
+    ].join(''),
     ...quickPicks.map(server => [
       `        <li><button type="button" class="landing-quick-pick" data-server-id="${escapeHtml(server.id)}" title="${escapeHtml(getPreferredCatalogEndpoint(server).url)}">`,
       `<span class="catalog-server-logo landing-quick-pick-logo" aria-hidden="true" data-catalog-server-logo="true"><img src="${escapeHtml(server.logoUrl)}" alt="" width="${LOGO_SIZE_PX}" height="${LOGO_SIZE_PX}" loading="lazy" decoding="async"></span>`,
@@ -1080,6 +1097,9 @@ function renderLandingFallback(catalogCount, quickPicks = [], { advancedToggle =
     '  </div>',
     '  <p class="landing-catalog">',
     `    <a href="/catalog">${escapeHtml(LANDING_CATALOG_LINK_PREFIX)} ${catalogCount} ${escapeHtml(LANDING_CATALOG_LINK_SUFFIX)} <span aria-hidden="true">&rarr;</span></a>`,
+    '  </p>',
+    '  <p class="landing-catalog landing-test-servers">',
+    `    <a href="${escapeHtml(LANDING_TEST_SERVERS_PATH)}">${escapeHtml(LANDING_TEST_SERVERS_LINK)} <span aria-hidden="true">&rarr;</span></a>`,
     '  </p>',
     '  <section class="landing-faq" aria-labelledby="landing-faq-title">',
     `    <h2 id="landing-faq-title" class="landing-section-title">${escapeHtml(LANDING_FAQ_TITLE)}</h2>`,
@@ -1701,6 +1721,8 @@ function buildOgCards({ servers, articles, pageMetadata }) {
       summary: DISCOVERY_COPY.cardSummary,
     },
     { pagePath: CI_PATH, eyebrow: 'GitHub Actions', title: CI_TITLE, summary: CI_DESCRIPTION },
+    { pagePath: MCP_TEST_SERVERS_PATH, eyebrow: 'Free test servers', title: MCP_TEST_SERVERS_COPY.heading, summary: pageMetadata.mcpTestServers.description },
+    { pagePath: MCP_TEST_CLIENT_PATH, eyebrow: 'Client checklist', title: MCP_TEST_CLIENT_COPY.heading, summary: pageMetadata.mcpTestClient.description },
     { pagePath: '/learn', eyebrow: 'Guides', title: pageMetadata.learn.title, summary: pageMetadata.learn.description },
     ...Object.entries(pageMetadata.tools || {}).map(([slug, metadata]) => ({
       pagePath: `/tools/${slug}`,
@@ -1833,6 +1855,129 @@ function writeToolPages(indexHtml, toolsMetadata, { shell, prerender }) {
   }), 'utf8');
 }
 
+/**
+ * JSON-LD for /mcp-test-servers: the page, its FAQ (the same questions and
+ * answers the page shows) and the fixture endpoints as a list.
+ */
+function getMcpTestServersStructuredData(metadata) {
+  const url = canonicalUrlFor(MCP_TEST_SERVERS_PATH);
+  return {
+    '@context': 'https://schema.org',
+    '@graph': [
+      {
+        '@type': 'WebPage',
+        '@id': url,
+        url,
+        name: metadata.title,
+        description: metadata.description,
+        isPartOf: { '@type': 'WebSite', name: 'mcptest.io', url: `${SITE_URL}/` },
+      },
+      {
+        '@type': 'FAQPage',
+        '@id': `${url}#faq`,
+        mainEntity: MCP_TEST_SERVERS_FAQ.map(entry => ({
+          '@type': 'Question',
+          name: entry.question,
+          acceptedAnswer: { '@type': 'Answer', text: entry.answer },
+        })),
+      },
+      {
+        '@type': 'ItemList',
+        '@id': `${url}#servers`,
+        name: MCP_TEST_SERVERS_COPY.heading,
+        itemListElement: PUBLIC_FIXTURES.map((fixture, index) => ({
+          '@type': 'ListItem',
+          position: index + 1,
+          name: `${fixture.name} MCP test server`,
+          url: fixture.url,
+          description: fixture.purpose,
+        })),
+      },
+    ],
+  };
+}
+
+/**
+ * /mcp-test-servers as mcp-test-servers/index.html: the app shell around the
+ * page as src/prerender/contentPages.tsx renders it, mounting on first input
+ * like the guides, so the copy buttons work from the static HTML.
+ */
+function writeMcpTestServersPage(indexHtml, metadata, { shell, prerender }) {
+  const outputDirectory = distPathFor(MCP_TEST_SERVERS_PATH);
+  fs.mkdirSync(outputDirectory, { recursive: true });
+  fs.writeFileSync(path.join(outputDirectory, 'index.html'), renderStaticPageHtml(indexHtml, MCP_TEST_SERVERS_PATH, metadata, {
+    structuredData: getMcpTestServersStructuredData(metadata),
+    fallbackHtml: renderAppShell({
+      ...shell,
+      content: prerender.renderMcpTestServersPage(),
+      attributes: { 'data-deferred-mount': true, 'data-page-view-title': MCP_TEST_SERVERS_COPY.pageViewTitle },
+      view: 'mcp-test-servers',
+      pathname: MCP_TEST_SERVERS_PATH,
+      panelStyle: '',
+    }),
+  }), 'utf8');
+}
+
+/**
+ * JSON-LD for /mcp-test-client: the page, its FAQ (the same questions and
+ * answers the page shows) and the checklist as a HowTo, one step per check.
+ */
+function getMcpTestClientStructuredData(metadata) {
+  const url = canonicalUrlFor(MCP_TEST_CLIENT_PATH);
+  return {
+    '@context': 'https://schema.org',
+    '@graph': [
+      {
+        '@type': 'WebPage',
+        '@id': url,
+        url,
+        name: metadata.title,
+        description: metadata.description,
+        isPartOf: { '@type': 'WebSite', name: 'mcptest.io', url: `${SITE_URL}/` },
+      },
+      {
+        '@type': 'FAQPage',
+        '@id': `${url}#faq`,
+        mainEntity: MCP_TEST_CLIENT_FAQ.map(entry => ({
+          '@type': 'Question',
+          name: entry.question,
+          acceptedAnswer: { '@type': 'Answer', text: entry.answer },
+        })),
+      },
+      {
+        '@type': 'HowTo',
+        '@id': `${url}#checklist`,
+        name: MCP_TEST_CLIENT_COPY.heading,
+        description: metadata.description,
+        step: CLIENT_CHECKLISTS.flatMap(checklist => checklist.items).map((item, index) => ({
+          '@type': 'HowToStep',
+          position: index + 1,
+          name: item.check,
+          text: item.detail,
+          url: `${url}#check-${item.id}`,
+        })),
+      },
+    ],
+  };
+}
+
+/** /mcp-test-client as mcp-test-client/index.html, prerendered like /mcp-test-servers. */
+function writeMcpTestClientPage(indexHtml, metadata, { shell, prerender }) {
+  const outputDirectory = distPathFor(MCP_TEST_CLIENT_PATH);
+  fs.mkdirSync(outputDirectory, { recursive: true });
+  fs.writeFileSync(path.join(outputDirectory, 'index.html'), renderStaticPageHtml(indexHtml, MCP_TEST_CLIENT_PATH, metadata, {
+    structuredData: getMcpTestClientStructuredData(metadata),
+    fallbackHtml: renderAppShell({
+      ...shell,
+      content: prerender.renderMcpTestClientPage(),
+      attributes: { 'data-deferred-mount': true, 'data-page-view-title': MCP_TEST_CLIENT_COPY.pageViewTitle },
+      view: 'mcp-test-client',
+      pathname: MCP_TEST_CLIENT_PATH,
+      panelStyle: '',
+    }),
+  }), 'utf8');
+}
+
 /** A standalone static action setup page; no App route or hydration is needed. */
 function writeCiPage(indexHtml) {
   const markdown = [
@@ -1920,6 +2065,8 @@ function getSitemapEntries(servers, articles, docsSlugs = []) {
     { pathname: '/learn', lastModified: guidesReviewed },
     { pathname: '/tools/breaking-changes' },
     { pathname: '/tools/oauth-check' },
+    { pathname: MCP_TEST_SERVERS_PATH },
+    { pathname: MCP_TEST_CLIENT_PATH },
     ...articles.map(article => ({ pathname: article.path, lastModified: isoDay(article.lastReviewed) })),
     ...docsSlugs.map(slug => ({ pathname: `/docs/${slug}` })),
     ...servers.map(server => ({ pathname: serverPath(server.id), lastModified: isoDay(server.checkedAt) })),
@@ -2175,7 +2322,7 @@ function validateLearnIndex(learnIndex) {
 }
 
 function validatePageMetadata(pageMetadata) {
-  for (const key of ['home', 'catalog', 'discovery']) {
+  for (const key of ['home', 'catalog', 'discovery', 'mcpTestServers', 'mcpTestClient']) {
     if (!pageMetadata[key]?.title || !pageMetadata[key]?.description) {
       throw new Error(`pageMetadata.json requires a title and description for ${key}.`);
     }
@@ -2224,6 +2371,8 @@ async function main() {
   fs.writeFileSync(`${distPathFor('/tools/oauth-check')}.html`, renderStaticPageHtml(indexHtml, '/tools/oauth-check', pageMetadata.tools['oauth-check'], {
     fallbackHtml: renderAppShell({ ...contentShell, content: prerender.renderOAuthCheckerPage(), attributes: { 'data-deferred-mount': true, 'data-page-view-title': 'MCP OAuth checker' }, view: 'oauth-check', pathname: '/tools/oauth-check', panelStyle: '' }),
   }), 'utf8');
+  writeMcpTestServersPage(indexHtml, pageMetadata.mcpTestServers, { shell: contentShell, prerender });
+  writeMcpTestClientPage(indexHtml, pageMetadata.mcpTestClient, { shell: contentShell, prerender });
   writeDiscoveryPage(indexHtml, pageMetadata.discovery, {
     shell: contentShell,
     proxyConfigured: Boolean(readBuildEnv('VITE_PROXY_URL')),
@@ -2285,6 +2434,8 @@ module.exports = {
   renderServerLogo,
   renderAuthorizationSetup,
   canonicalUrlFor,
+  getMcpTestClientStructuredData,
+  getMcpTestServersStructuredData,
   getSitemapEntries,
   render404Html,
   setIndexableRobots,

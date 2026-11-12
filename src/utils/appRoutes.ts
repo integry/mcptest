@@ -18,6 +18,12 @@ export const OAUTH_CHECKER_PATH = '/tools/oauth-check';
 /** The dashboards page: what dashboards are, the create action and the list (src/components/DashboardsHome.tsx). */
 export const DASHBOARDS_PATH = '/space';
 
+/** The public MCP test servers page (src/components/McpTestServersView.tsx). */
+export const MCP_TEST_SERVERS_PATH = '/mcp-test-servers';
+
+/** The MCP client protocol checklist page (src/components/McpTestClientView.tsx). */
+export const MCP_TEST_CLIENT_PATH = '/mcp-test-client';
+
 /**
  * The keyword landing pages: the connect form with their own copy
  * (src/content/keywordLandingPages.ts, src/components/KeywordLandingView.tsx).
@@ -43,6 +49,8 @@ export const EXACT_APP_ROUTES: readonly string[] = [
   DISCOVERY_CHECKER_PATH,
   OAUTH_CHECKER_PATH,
   DASHBOARDS_PATH,
+  MCP_TEST_SERVERS_PATH,
+  MCP_TEST_CLIENT_PATH,
   ...KEYWORD_LANDING_PATHS,
   '/oauth/callback',
   '/install-integration',

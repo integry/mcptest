@@ -32,6 +32,8 @@ sourceLinks:
 
 Get the exact MCP endpoint from the publisher, for example `https://mcp.example.com/mcp`. A marketing homepage, a REST API base URL, an SSE event URL and an MCP endpoint are not interchangeable. Before you give the server access to data, also note the publisher, the tools you expect, the authentication method and the scopes it asks for.
 
+If you only want to check that a client can reach a remote MCP server at all, connect it first to the [public echo test server](/mcp-test-servers#fixture-echo) at `https://mcptest.io/fixtures/echo/mcp`. It needs no sign-in and its tools always return the same results.
+
 For a new remote deployment, prefer **Streamable HTTP**. It uses one endpoint: the client sends JSON-RPC messages with HTTP POST and the server answers with JSON or an event stream. In the 2025 protocol versions the client may also open a GET stream; the current version, `2026-07-28`, is POST only. Clients label this transport `http`, `streamable-http` or simply "remote". An explicit `sse` option normally means the older two-endpoint HTTP+SSE transport. [MCP protocol versions explained](/learn/mcp-protocol-versions-explained) covers the differences, and the [glossary](/learn/mcp-glossary#streamable-http) defines the terms.
 
 Not every client can reach every server. Clients that run in the vendor's cloud, such as claude.ai and ChatGPT, need a public HTTPS endpoint; desktop and command-line clients connect from your own machine. The [client support matrix](/learn/mcp-client-support-matrix) lists each client's transports and sign-in options.

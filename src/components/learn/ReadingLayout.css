@@ -174,15 +174,16 @@
   font-weight: 650;
 }
 
-.reading-prose a {
+/* Buttons rendered as links (e.g. "Test in mcptest.io") keep their own colours. */
+.reading-prose a:not(.btn) {
   color: var(--link-color);
   text-decoration: underline;
   text-decoration-thickness: 1px;
   text-underline-offset: 0.15em;
 }
 
-.reading-prose a:hover,
-.reading-prose a:focus-visible {
+.reading-prose a:not(.btn):hover,
+.reading-prose a:not(.btn):focus-visible {
   color: var(--link-hover);
 }
 

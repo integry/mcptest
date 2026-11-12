@@ -102,6 +102,8 @@ Rerun the remote checks on every pull request against a preview deployment and a
 
 Use the complete published MCP URL, including its path, for example `https://your-server.example.com/custom/mcp`. mcptest.io tries that exact URL first, then conventional path fallbacks only when needed. A valid auth challenge means the service is reachable but does not, by itself, prove that anonymous MCP negotiation passed.
 
+To check your client, proxy or curl setup before pointing it at your own server, use the [public MCP test servers](/mcp-test-servers). They answer deterministically, need no account, and cover the happy path, a bearer token, every error type, slow calls and complex schemas.
+
 ## Interactive testing in the playground
 
 To test a remote MCP server online, open [mcptest.io](/), enter the endpoint and connect. No install or account is needed. The playground first probes with `server/discover`. If the server offers `2026-07-28`, the client uses stateless, self-describing requests. If the endpoint is 2025-only, it falls back to `initialize`, sends `notifications/initialized`, and preserves a server-issued `Mcp-Session-Id`. The deprecated HTTP+SSE transport is the last fallback. Authentication responses are surfaced instead of being misclassified as an old protocol.
@@ -116,6 +118,24 @@ Check the connection log before testing features. For a stateless server, confir
 - **Prompts:** list templates, exercise required and optional arguments, and verify the returned messages and roles.
 - **2026 caches:** where list results provide `ttlMs` and `cacheScope`, verify they reflect the data's real freshness and privacy boundary.
 - **2026 multi-round trips:** exercise calls that return `input_required`, then verify the retried request carries the expected `inputResponses` and request state.
+
+### Test a two-tool workflow
+
+A tool can work on its own while the client still fails to finish a task that depends on another tool's output. Add one small workflow check alongside the individual calls.
+
+For a read-only example, use the catalog's **BlockVectra Docs** endpoint, `https://docs.blockvectra.com/mcp/docs`. It searches and reads documentation without an account or API key; it does not execute chain RPC calls.
+
+1. Call `search_docs` with:
+
+   ```json
+   {"query":"Robinhood","lang":"en","limit":3}
+   ```
+
+2. Check that the tool result is not an error and its `results` array is nonempty. Select one returned `path` value. Stop on an error or empty results rather than inventing a path.
+3. Call `read_doc` with that exact value as `path` and the same `lang`, `en`. The path is relative to the documentation catalog; do not replace it with the page URL or add a language prefix.
+4. Check that the second result is not a tool error and contains readable document text. Keep both tool outcomes in the report: an HTTP 200 alone does not prove the workflow succeeded.
+
+This is an explicit two-tool integration check. Whether a model chooses the right tools for a user's request remains a separate agent eval.
 
 ### Authentication
 
