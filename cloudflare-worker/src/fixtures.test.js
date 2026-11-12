@@ -192,6 +192,38 @@ describe('fixture lifecycle', () => {
     expect((await initialize('echo', '1999-01-01')).body.result.protocolVersion).toBe(LEGACY_PROTOCOL_VERSION);
   });
 
+  const VALID_INIT_PARAMS = {
+    protocolVersion: LEGACY_PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: 'fixture-test', version: '1.0.0' },
+  };
+  it.each([
+    ['omitted params', undefined],
+    ['array params', []],
+    ['empty params', {}],
+    ['a missing protocolVersion', { ...VALID_INIT_PARAMS, protocolVersion: undefined }],
+    ['a numeric protocolVersion', { ...VALID_INIT_PARAMS, protocolVersion: 20251125 }],
+    ['missing capabilities', { ...VALID_INIT_PARAMS, capabilities: undefined }],
+    ['array capabilities', { ...VALID_INIT_PARAMS, capabilities: [] }],
+    ['missing clientInfo', { ...VALID_INIT_PARAMS, clientInfo: undefined }],
+    ['string clientInfo', { ...VALID_INIT_PARAMS, clientInfo: 'fixture-test' }],
+    ['a clientInfo without a name', { ...VALID_INIT_PARAMS, clientInfo: { version: '1.0.0' } }],
+    ['a numeric clientInfo.version', { ...VALID_INIT_PARAMS, clientInfo: { name: 'fixture-test', version: 1 } }],
+  ])('rejects initialize with %s as invalid params and issues no session', async (_label, params) => {
+    const response = await post('echo', { jsonrpc: '2.0', id: 7, method: 'initialize', ...(params === undefined ? {} : { params }) });
+    expect(response.status).toBe(400);
+    expect(response.headers.get('Mcp-Session-Id')).toBeNull();
+    const body = await response.json();
+    expect(body).toMatchObject({ jsonrpc: '2.0', id: 7, error: { code: -32602 } });
+    expect(body.error.message).toMatch(/^Invalid params for initialize: params/);
+    expect(body.result).toBeUndefined();
+  });
+
+  it('still negotiates an unsupported but well-typed protocolVersion on initialize', async () => {
+    const response = await post('echo', { jsonrpc: '2.0', id: 8, method: 'initialize', params: { ...VALID_INIT_PARAMS, protocolVersion: 'not-a-date' } });
+    expect(response.status).toBe(200);
+    expect((await response.json()).result.protocolVersion).toBe(LEGACY_PROTOCOL_VERSION);
+    expect(response.headers.get('Mcp-Session-Id')).toMatch(/^mcptest-fx-/);
+  });
+
   it('answers ping in both eras', async () => {
     const [stateless, stateful] = await bothEras('echo', 'ping');
     expect(stateless.result).toMatchObject({ resultType: 'complete' });

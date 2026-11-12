@@ -395,8 +395,31 @@ const errorResponseFor = (error, id) => {
   return { status: 200, body: rpcError(id, -32603, 'Internal error') };
 };
 
+/**
+ * Returns a description of what is wrong with initialize params, or undefined
+ * when they carry a string protocolVersion, object capabilities and a
+ * clientInfo with string name and version. An unsupported but well-typed
+ * version is not an error here: initialize negotiates it down instead.
+ */
+const initializeParamsProblem = (params) => {
+  if (!isObject(params)) return 'params must be an object';
+  if (typeof params.protocolVersion !== 'string') return 'params.protocolVersion must be a string';
+  if (!isObject(params.capabilities)) return 'params.capabilities must be an object';
+  const { clientInfo } = params;
+  if (!isObject(clientInfo)) return 'params.clientInfo must be an object';
+  if (typeof clientInfo.name !== 'string') return 'params.clientInfo.name must be a string';
+  if (typeof clientInfo.version !== 'string') return 'params.clientInfo.version must be a string';
+  return undefined;
+};
+
 const initialize = async (message, fixture) => {
-  const requested = message.params?.protocolVersion;
+  const problem = initializeParamsProblem(message.params);
+  if (problem) {
+    // Rejected before any session is issued, so a broken handshake never
+    // yields a usable Mcp-Session-Id.
+    return respond(400, rpcError(message.id, INVALID_PARAMS, `Invalid params for initialize: ${problem}`));
+  }
+  const requested = message.params.protocolVersion;
   const protocolVersion = LEGACY_PROTOCOL_VERSIONS.includes(requested) ? requested : LEGACY_PROTOCOL_VERSION;
   const sessionId = await createFixtureSessionId(fixture.name);
   return respond(200, {
