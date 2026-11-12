@@ -362,6 +362,8 @@
   }
 
   .main-content {
+    /* Keep full-bleed bands aligned with the fixed mobile page padding. */
+    --main-pad: 1rem;
     margin-left: 0 !important;
     width: 100% !important;
   }

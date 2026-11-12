@@ -139,11 +139,11 @@
 }
 
 .playground-tab-strip .playground-tabs .nav-link.active {
-  margin: 0 0 -1px;
+  margin: 0;
   color: var(--text-color) !important;
-  background-color: var(--card-bg) !important;
-  font-weight: var(--weight-bold);
-  box-shadow: none;
+  background-color: var(--active-wash) !important;
+  font-weight: var(--weight-semibold);
+  box-shadow: inset 0 -2px 0 var(--text-color), var(--glass-highlight);
 }
 
 .playground-tab-status {

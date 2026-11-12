@@ -2534,7 +2534,7 @@ pre.bg-light code {
 .playground-workbench {
   display: grid;
   grid-template-columns: minmax(230px, 0.72fr) minmax(300px, 0.92fr) minmax(390px, 1.36fr);
-  gap: var(--space-3);
+  gap: 0;
   width: 100%;
   min-height: 560px;
   height: calc(100vh - 11.5rem);
@@ -4446,17 +4446,17 @@ pre.bg-light code {
 /* --- The failure band: full width, rose-to-violet wash --- */
 .connection-console .connection-failure {
   margin: var(--space-5) calc(-1 * var(--main-pad)) calc(-1.75rem) !important;
-  padding: 1.5rem var(--main-pad) 1.75rem;
+  padding: 0;
   border: 0;
   border-top: 1px solid color-mix(in srgb, var(--danger-solid) 15%, transparent);
   border-radius: 0;
   background-color: transparent;
-  background-image: var(--danger-wash);
+  background-image: none;
   color: var(--text-color);
 }
 
-.connection-console .connection-failure.alert-warning,
-.connection-console .connection-failure.alert-info {
+.connection-console .connection-failure.alert-warning .connection-failure-summary,
+.connection-console .connection-failure.alert-info .connection-failure-summary {
   background-image: none;
   background-color: color-mix(in srgb, var(--warning-color) 6%, transparent);
 }
@@ -4513,14 +4513,15 @@ pre.bg-light code {
 
 .connection-failure .connection-attempts-table {
   --bs-table-bg: transparent;
+  background: transparent !important;
   margin: 0;
   font-size: var(--text-sm);
 }
 
 .connection-failure .connection-attempts-table th {
   padding: 0.75rem 1rem;
-  border-bottom: 1px solid var(--hairline);
-  background: var(--glass-bg);
+  border-bottom: 1px solid var(--hairline) !important;
+  background: var(--glass-bg) !important;
   color: var(--text-muted);
   font-family: var(--font-family-mono);
   font-size: var(--text-2xs);
@@ -4531,7 +4532,7 @@ pre.bg-light code {
 
 .connection-failure .connection-attempts-table td {
   padding: 0.75rem 1rem;
-  border-bottom: 1px solid var(--hairline);
+  border-bottom: 1px solid var(--hairline) !important;
   vertical-align: top;
 }
 
@@ -4590,8 +4591,64 @@ pre.bg-light code {
   content: '';
 }
 
-.connection-failure > div > div > .connection-failure-block {
-  margin-top: var(--space-6);
+.connection-failure-summary {
+  position: relative;
+  padding: var(--space-6) var(--main-pad);
+  background: var(--danger-wash);
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.connection-failure-summary > .btn-close {
+  position: absolute;
+  top: var(--space-6);
+  right: var(--main-pad);
+}
+
+.connection-failure-summary > .failure-guidance {
+  padding-right: var(--space-6);
+}
+
+.connection-failure-details {
+  padding: 0 var(--main-pad) var(--space-4);
+  background: var(--strip-bg);
+}
+
+.connection-failure-details > .connection-failure-block {
+  padding-top: var(--space-6);
+  margin-bottom: var(--space-6) !important;
+}
+
+.connection-failure-attempts {
+  margin-inline: calc(-1 * var(--main-pad));
+  padding: var(--space-6) var(--main-pad);
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.connection-attempts-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.connection-attempts-heading > span {
+  color: var(--text-muted);
+  font-family: var(--font-family-mono);
+  font-size: var(--text-2xs);
+}
+
+.connection-failure-actions {
+  margin-top: 0 !important;
+  padding: 0 var(--main-pad) var(--space-6);
+  background: var(--strip-bg);
+}
+
+.connection-failure .transport-diagnostics-heading {
+  color: var(--text-muted);
+  font-family: var(--font-family-mono);
+  font-size: var(--text-2xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .connection-failure .connection-probes {
@@ -4605,7 +4662,14 @@ pre.bg-light code {
 }
 
 .connection-failure .connection-probes > div + div {
-  border-left: 1px solid var(--hairline);
+  border-top: 1px solid var(--hairline);
+}
+
+@media (min-width: 992px) {
+  .connection-failure .connection-probes > div + div {
+    border-top: 0;
+    border-left: 1px solid var(--hairline);
+  }
 }
 
 .connection-failure .connection-probe-title {
@@ -4792,4 +4856,124 @@ pre.bg-light code {
   text-decoration: underline;
   text-decoration-color: color-mix(in srgb, var(--accent-text) 30%, transparent);
   text-underline-offset: 4px;
+}
+
+/* Keep the command bar and expanded settings in one flow. The summary sits
+   beside Connect on desktop; on phones it returns below the URL field. */
+@media (min-width: 992px) {
+  .connection-console:not(.connection-console--connected) .connection-advanced {
+    position: relative;
+    margin-top: 0 !important;
+  }
+
+  .connection-console:not(.connection-console--connected) .connection-advanced > summary {
+    position: absolute;
+    right: 8.5rem;
+    top: -3.5rem;
+    height: 3.5rem;
+    display: flex;
+    align-items: center;
+    padding: 0 var(--space-3);
+  }
+
+  .connection-console:not(.connection-console--connected) .input-group .form-control {
+    margin-right: 11rem;
+  }
+
+  .connection-console:not(.connection-console--connected) .input-group .btn {
+    width: 7rem;
+    padding-inline: var(--space-2);
+    white-space: normal;
+  }
+
+  .connection-console .connection-advanced[open] .connection-advanced-body {
+    padding-top: var(--space-4);
+  }
+}
+
+/* The inspector is a single divided glass surface, not three boxed cards. */
+.playground-workbench {
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg);
+  box-shadow: var(--glass-highlight);
+}
+
+.playground-workbench .workbench-pane > .card {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  backdrop-filter: none;
+  box-shadow: none;
+}
+
+.workbench-pane + .workbench-pane {
+  border-left: 1px solid var(--hairline);
+}
+
+@media (max-width: 1199.98px) {
+  .workbench-response {
+    border-left: 0;
+    border-top: 1px solid var(--hairline);
+  }
+}
+
+@media (max-width: 767.98px) {
+  .playground-workbench { gap: 0; }
+  .workbench-request {
+    border-left: 0;
+    border-top: 1px solid var(--hairline);
+  }
+}
+
+/* Supporting server lists use the mockup's open rows and quiet dividers. */
+.idle-onboarding-layout .recent-servers-panel,
+.idle-onboarding-layout .suggested-servers-panel {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.idle-onboarding-layout .card-header {
+  padding-inline: 0;
+  background: transparent;
+}
+
+.idle-onboarding-layout .suggested-servers-panel .card-body {
+  padding-inline: 0 !important;
+}
+
+.idle-onboarding-layout .suggested-server-grid {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+}
+
+.idle-onboarding-layout .suggested-server-row {
+  border: 0 !important;
+  border-bottom: 1px solid var(--hairline) !important;
+  background: transparent;
+}
+
+.idle-onboarding-layout .suggested-server-action {
+  padding: var(--space-4) 0;
+}
+
+.idle-onboarding-layout .recent-server-item {
+  background: transparent;
+  border-color: var(--hairline);
+  padding: var(--space-3) 0 !important;
+}
+
+.idle-onboarding-layout .recent-server-link {
+  font-family: var(--font-family-mono);
+  font-size: var(--text-xs);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--accent-text) 30%, transparent);
+  text-underline-offset: 4px;
+}
+
+/* Full-bleed bands must also cancel the mobile card width constraint. */
+.tab-content-panel > .connection-console {
+  width: calc(100% + 2 * var(--main-pad));
+  max-width: none;
 }

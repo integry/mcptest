@@ -241,3 +241,48 @@
   font-size: 0.75rem;
   font-style: italic;
 }
+
+/* Negotiated capabilities share the mockup's full-width rows and teal rail. */
+.workbench-capabilities .tree-view {
+  padding: 0;
+}
+
+.workbench-capabilities .tree-view ul {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.workbench-capabilities .tree-view summary {
+  padding: var(--space-3) var(--space-4);
+  border-block: 1px solid var(--hairline);
+  border-radius: 0;
+  background: var(--glass-bg);
+  color: var(--text-muted);
+  font-family: var(--font-family-mono);
+  font-size: var(--text-2xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.workbench-capabilities .tree-item {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--hairline);
+  border-radius: 0;
+}
+
+.workbench-capabilities .tree-item.selected {
+  background: var(--glass-strong);
+  box-shadow: inset var(--rail-width) 0 0 var(--rail-color);
+}
+
+.workbench-capabilities .item-name {
+  font-weight: var(--weight-semibold);
+}
+
+.workbench-capabilities .item-uri {
+  margin-top: var(--space-1);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}

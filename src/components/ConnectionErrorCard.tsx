@@ -351,8 +351,8 @@ const ConnectionErrorCard: React.FC<ConnectionErrorCardProps> = ({
       aria-describedby={headingId}
       data-guidance-id={guidance.id}
     >
-      <div className="d-flex justify-content-between align-items-start gap-3">
-        <div className="flex-grow-1 min-w-0">
+      <div className="connection-failure-summary">
+          {onDismiss && <button type="button" className="btn-close" aria-label="Close connection diagnostic" onClick={onDismiss} />}
           <div className="d-flex align-items-center flex-wrap gap-2 mb-2">
             <span className="badge bg-dark connection-failure-badge">{diagnosis.badge}</span>
             <small className="text-muted connection-failure-time">{errorDetails.timestamp.toLocaleTimeString()}</small>
@@ -375,9 +375,14 @@ const ConnectionErrorCard: React.FC<ConnectionErrorCardProps> = ({
             retryAt={retryAtMs !== undefined ? new Date(retryAtMs) : undefined}
           />
 
+      </div>
+      <div className="connection-failure-details">
           {attempts.length > 0 && (
-            <div className="mb-3 connection-failure-block">
-              <strong className="connection-failure-heading">Connection attempts</strong>
+            <div className="connection-failure-attempts connection-failure-block">
+              <div className="connection-attempts-heading">
+                <strong className="connection-failure-heading">Connection attempts</strong>
+                <span>{attempts.length} probes executed</span>
+              </div>
               <div className="table-responsive mt-1 connection-attempts">
                 <table className="table table-sm align-middle mb-0 connection-attempts-table">
                   <caption className="visually-hidden">Connection candidates and observed outcomes</caption>
@@ -398,7 +403,7 @@ const ConnectionErrorCard: React.FC<ConnectionErrorCardProps> = ({
                         <td><span className="connection-attempt-transport">{transportLabel(attempt.transportType)}</span></td>
                         <td className="connection-attempt-request">
                           <span className="connection-attempt-method">{attempt.method || 'Unknown'}</span>
-                          {attempt.mcpMethod && <><br /><code className="connection-attempt-rpc">{attempt.mcpMethod}</code></>}
+                          {attempt.mcpMethod && <> <code className="connection-attempt-rpc">{attempt.mcpMethod}</code></>}
                           {attempt.requestHeaders?.some((header) => header.toLowerCase() === 'mcp-protocol-version') && (
                             <><br /><small><code>MCP-Protocol-Version</code> header</small></>
                           )}
@@ -509,8 +514,6 @@ const ConnectionErrorCard: React.FC<ConnectionErrorCardProps> = ({
             </details>
           )}
           <FailureLearnLink guidance={guidance} />
-        </div>
-        {onDismiss && <button type="button" className="btn-close" aria-label="Close connection diagnostic" onClick={onDismiss} />}
       </div>
 
       {(onRetry || (browserBlocked && !useProxy && onRetryWithProxy)) && (
