@@ -24,6 +24,12 @@ import {
   type ServerCardValidation,
 } from './serverCardValidation';
 import { getServerUrl } from './urlUtils';
+import {
+  classifyHttpResponse,
+  describeResponseClassification,
+  RESPONSE_CLASS_CONTENT,
+  type ResponseClassification,
+} from './responseClassification';
 
 export const MCP_REGISTRY_ORIGIN = 'https://registry.modelcontextprotocol.io';
 export const MCP_REGISTRY_SERVERS_PATH = '/v0.1/servers';
@@ -39,6 +45,8 @@ export type DiscoveryFailureKind = 'cors' | 'network' | 'timeout' | 'too-large' 
 /** A response as the checker sees it: the body is already read, within a size cap. */
 export interface DiscoveryResponse {
   wwwAuthenticate?: string;
+  /** Headers that classify bot protection, rate limits and 402 (see responseClassification). */
+  headers?: Record<string, string>;
   /** The URL that answered, after redirects. */
   url: string;
   status: number;
@@ -74,6 +82,8 @@ export interface DiscoveryAttempt {
   contentType?: string;
   failure?: DiscoveryFailureKind;
   message?: string;
+  /** Set when the response was a bot-protection challenge, a rate limit or a 402. */
+  responseClass?: ResponseClassification;
 }
 
 export type DiscoveryRowStatus = 'found' | 'not-found' | 'invalid' | 'unreachable' | 'skipped';
@@ -207,12 +217,41 @@ const preview = (body: string): string => (
   body.length > MAX_PREVIEW_CHARS ? `${body.slice(0, MAX_PREVIEW_CHARS)}\n…` : body
 );
 
-const attemptFromResponse = (response: DiscoveryResponse): DiscoveryAttempt => ({
-  url: response.url,
-  route: response.route,
-  status: response.status,
-  contentType: response.contentType,
-});
+const attemptFromResponse = (response: DiscoveryResponse): DiscoveryAttempt => {
+  const responseClass = classifyHttpResponse({
+    status: response.status,
+    headers: response.headers,
+    contentType: response.contentType,
+    body: response.body,
+    hasWwwAuthenticate: Boolean(response.wwwAuthenticate),
+  });
+  return {
+    url: response.url,
+    route: response.route,
+    status: response.status,
+    contentType: response.contentType,
+    ...(responseClass ? { responseClass } : {}),
+  };
+};
+
+/**
+ * Names the bot protection, rate limit or payment wall that answered instead
+ * of a discovery document, with the evidence and what to change, in place of
+ * a generic "answered HTTP 403" or "unreachable".
+ */
+const applyResponseClass = (row: DiscoveryRow, attempts: readonly DiscoveryAttempt[]): boolean => {
+  const attempt = attempts.find((candidate) => candidate.responseClass);
+  if (!attempt?.responseClass) return false;
+  const content = RESPONSE_CLASS_CONTENT[attempt.responseClass.kind];
+  row.status = 'unreachable';
+  row.url = attempt.url;
+  row.summary = describeResponseClassification(attempt.responseClass, attempt.url);
+  row.errors = [content.explanation, `What to change: ${content.fix}`];
+  if (!row.links.some(({ href }) => href === content.learnMore.path)) {
+    row.links.push({ label: content.learnMore.title, href: content.learnMore.path });
+  }
+  return true;
+};
 
 const attemptFromError = (url: string, error: unknown): DiscoveryAttempt => (
   error instanceof DiscoveryFetchError
@@ -348,6 +387,7 @@ const rowForUnparsed = (seed: RowSeed, document: Exclude<ParsedDocument, { kind:
       row.warnings.push(...corsWarning(document.response));
       if (document.response.body) row.preview = preview(document.response.body);
     }
+    applyResponseClass(row, [document.attempt]);
   }
   return row;
 };
@@ -691,6 +731,7 @@ const checkOAuth = async (
 
   const metadata = discovery.resourceMetadata;
   if (!metadata) {
+    if (!answered && applyResponseClass(row, resourceAttempts)) return row;
     if (answered) {
       row.status = 'invalid';
       row.summary = 'Protected resource metadata is served, but it is not valid.';
@@ -721,6 +762,14 @@ const checkOAuth = async (
     row.status = 'invalid';
     row.summary = `Protected resource metadata names ${discovery.authorizationServers.join(', ')}, but no authorization server metadata was found there.`;
     row.errors.push(...discovery.authorizationErrors);
+    const blocked = attempts.find((attempt) => !isResourceMetadataUrl(attempt.url) && attempt.responseClass);
+    if (blocked?.responseClass) {
+      const content = RESPONSE_CLASS_CONTENT[blocked.responseClass.kind];
+      row.status = 'unreachable';
+      row.summary = `${row.summary} ${describeResponseClassification(blocked.responseClass, blocked.url)}`;
+      row.errors.push(`What to change: ${content.fix}`);
+      row.links.push({ label: content.learnMore.title, href: content.learnMore.path });
+    }
     return row;
   }
 

@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { isSubmittableEvidence } from './catalogSubmission';
 import { probeSubmissionEndpoint, type SubmissionProbeDependencies } from './submissionProbe';
-import { ProxiedAuthenticationError } from './transportDetection';
+import { ProxiedAuthenticationError, TransportConnectionError } from './transportDetection';
+import { classifyHttpResponse } from './responseClassification';
 
 const ENDPOINT = 'https://mcp.acme.dev/mcp';
 const PROXY = 'https://proxy.mcptest.dev/';
@@ -150,5 +151,50 @@ describe('probeSubmissionEndpoint', () => {
     expect(connect).toHaveBeenCalledTimes(2);
     expect(evidence.outcome).toBe('unreachable');
     expect(evidence.detail).toContain('CORS');
+  });
+});
+
+describe('probeSubmissionEndpoint response classes', () => {
+  const failedWith = (status: number, headers: Record<string, string>) => {
+    const responseClass = classifyHttpResponse({ status, headers });
+    return new TransportConnectionError([new Error(`HTTP ${status}`)], [{
+      candidateUrl: ENDPOINT,
+      transportType: 'streamable-http',
+      error: new Error(`HTTP ${status}`),
+      observedRequests: [{
+        method: 'POST',
+        url: ENDPOINT,
+        targetUrl: ENDPOINT,
+        status,
+        responseSource: 'target',
+        ...(responseClass ? { responseClass } : {}),
+      }],
+    }]);
+  };
+
+  it('explains a bot-protection block instead of a generic unreachable result', async () => {
+    const connect = vi.fn(async () => { throw failedWith(403, { 'cf-mitigated': 'challenge' }); });
+    const evidence = await probe({ connect: connect as unknown as SubmissionProbeDependencies['connect'] });
+
+    expect(evidence).toMatchObject({ outcome: 'unreachable', responseClass: 'bot-protection' });
+    expect(evidence.detail).toMatch(/^Bot protection is blocking MCP clients on \/mcp \(Cloudflare\)\. Observed HTTP 403, cf-mitigated: challenge\./);
+    expect(evidence.detail.length).toBeLessThanOrEqual(500);
+    expect(isSubmittableEvidence(evidence, ENDPOINT)).toBe(false);
+  });
+
+  it('names a 402 payment wall', async () => {
+    const connect = vi.fn(async () => { throw failedWith(402, {}); });
+    const evidence = await probe({ connect: connect as unknown as SubmissionProbeDependencies['connect'] });
+
+    expect(evidence).toMatchObject({ outcome: 'unreachable', responseClass: 'payment-required' });
+    expect(evidence.detail).toMatch(/^Payment required on \/mcp\./);
+  });
+
+  it('keeps a plain failure without a class unchanged', async () => {
+    const connect = vi.fn(async () => { throw failedWith(404, {}); });
+    const evidence = await probe({ connect: connect as unknown as SubmissionProbeDependencies['connect'] });
+
+    expect(evidence.responseClass).toBeUndefined();
+    expect(evidence.detail).toMatch(/^No MCP transport answered/);
   });
 });

@@ -10,6 +10,7 @@ const {
   getArticleCanonicalUrl,
   getTrack,
 } = require('../../src/content/contentModel.ts');
+const { KEYWORD_LANDING_PAGES } = require('../../src/content/keywordLandingPages.ts');
 
 const FEED_PATH = '/learn/feed.xml';
 const FEED_URL = `${SITE_URL}${FEED_PATH}`;
@@ -25,6 +26,7 @@ const SITE_SUMMARY =
 
 const TOOL_LINKS = [
   { title: 'Playground', url: `${SITE_URL}/`, note: 'Connect to a remote MCP server and inspect its tools, resources, and prompts live.' },
+  ...KEYWORD_LANDING_PAGES.map(page => ({ title: page.h1, url: `${SITE_URL}${page.path}`, note: page.llmsNote })),
   { title: 'Server catalog', url: `${SITE_URL}/catalog`, note: 'Validated public remote MCP servers with transport, authentication, and protocol badges.' },
   { title: 'Server report', url: `${SITE_URL}/report`, note: 'Evaluate an endpoint and share a redacted compatibility report.' },
   { title: 'Guides feed', url: FEED_URL, note: 'RSS 2.0 feed of every guide above, most recently reviewed first.' },

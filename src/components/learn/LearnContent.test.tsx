@@ -74,7 +74,7 @@ const renderStrict = (node: React.ReactNode) => {
 const PRE_EXISTING_PAGES = [
   { path: '/docs/what-is-mcp', title: 'What is the Model Context Protocol?', metaTitle: 'What Is the Model Context Protocol? | mcptest.io' },
   { path: '/docs/remote-vs-local', title: 'Remote vs. Local MCP Servers', metaTitle: 'Remote vs. Local MCP Servers | mcptest.io' },
-  { path: '/docs/testing-guide', title: 'How to Test a Remote MCP Server (Step by Step)', metaTitle: 'How to Test a Remote MCP Server (Step by Step) | mcptest.io' },
+  { path: '/docs/testing-guide', title: 'How to Test MCP Servers: A Complete Guide', metaTitle: 'How to Test MCP Servers: Complete Guide with curl, Inspector and CI | mcptest.io' },
   { path: '/docs/troubleshooting', title: 'MCP Server Errors: Causes and Fixes', metaTitle: 'MCP Server Errors: Causes and Fixes | mcptest.io' },
   { path: '/learn/mcp-clients-compared', title: 'MCP clients compared', metaTitle: 'MCP clients compared | mcptest.io' },
   { path: '/learn/connect-remote-mcp-server', title: 'How to connect to a remote MCP server', metaTitle: 'How to connect to a remote MCP server | mcptest.io' },
@@ -180,7 +180,7 @@ describe('content registry', () => {
       expect(PAGE_COMPONENTS[page.component]).toBeTypeOf('function');
       expect(getDocsMetadata(page.path)).toEqual({ title: page.metaTitle, description: page.metaDescription });
     }
-    expect(getDocsMetadata('/docs/testing-guide')?.title).toBe('How to Test a Remote MCP Server (Step by Step) | mcptest.io');
+    expect(getDocsMetadata('/docs/testing-guide')?.title).toBe('How to Test MCP Servers: Complete Guide with curl, Inspector and CI | mcptest.io');
     expect(getDocsMetadata('/docs/missing')).toBeUndefined();
   });
 
@@ -449,7 +449,52 @@ describe('Learn article page', () => {
 
     const guide = render(<LearnArticlePage article={getLearnArticle('testing-guide')!} />);
     expect(guide.querySelector('.reading-prose blockquote strong')?.textContent).toBe('Browser clients need CORS.');
-    expect(guide.querySelectorAll('.reading-code code.language-bash')).toHaveLength(4);
+    expect(guide.querySelectorAll('.reading-code code.language-bash')).toHaveLength(8);
+  });
+
+  it('scopes testing-guide checklist items to the capabilities a server actually offers', () => {
+    const guide = render(<LearnArticlePage article={getLearnArticle('testing-guide')!} />);
+    const heading = guide.querySelector('.reading-prose h2[id="pre-release-checklist"]');
+    let list = heading?.nextElementSibling;
+    while (list && list.tagName !== 'OL') list = list.nextElementSibling;
+    const items = Array.from(list?.querySelectorAll('li') ?? [], item => item.textContent ?? '');
+
+    expect(items).toHaveLength(11);
+    expect(items[2]).toMatch(/^For each capability the server advertises/);
+    expect(items[3]).toMatch(/^Every tool that declares an outputSchema/);
+    expect(items[4]).toMatch(/^On 2026, a missing or mismatched Mcp-Method/);
+    expect(items[4]).toContain('Mcp-Name on tools/call, resources/read and prompts/get');
+    expect(items[5]).toMatch(/^If the server requires credentials, requests without them, or with invalid, expired or revoked ones, get 401 or 403/);
+    // OAuth-only requirements are conditioned on OAuth, so API-key and bearer-token servers can pass.
+    expect(items[5]).toContain('If it uses OAuth, the 401 carries WWW-Authenticate with resource_metadata, sign-in completes with PKCE S256 and the token is audience-checked.');
+    expect(items[5].split('If it uses OAuth')[0]).not.toMatch(/PKCE|audience|WWW-Authenticate/);
+    expect(items[5]).toContain('If it allows anonymous access, it works without credentials');
+    expect(items[6]).toContain('a 2025 server that issues Mcp-Session-Id exposes it');
+  });
+
+  it('separates hosted-backend reachability of localhost from direct browser connections in the testing guide', () => {
+    const guide = render(<LearnArticlePage article={getLearnArticle('testing-guide')!} />);
+    const prose = guide.querySelector('.reading-prose')!;
+    const text = prose.textContent ?? '';
+    const paragraphAfter = (selector: string) => {
+      let node = prose.querySelector(selector)?.nextElementSibling;
+      while (node && node.tagName !== 'P') node = node.nextElementSibling;
+      return node?.textContent ?? '';
+    };
+
+    expect(text).not.toMatch(/(web tool|Browser-based tools) cannot reach your localhost|tests remote servers only/i);
+
+    const transports = paragraphAfter('h2[id="transports-what-you-can-test-where"]');
+    expect(transports).toContain('A hosted backend, such as a web tool\'s proxy or a cloud CI runner, cannot reach your localhost.');
+    expect(transports).toContain('can reach a local HTTP server if the server allows the page\'s origin in CORS and the browser permits the local-network request');
+
+    const local = paragraphAfter('h3[id="how-do-i-test-an-mcp-server-locally"]');
+    expect(local).toContain('only through a direct request from your browser, subject to CORS and the browser\'s local-network permissions');
+    expect(local).toContain('their hosted proxies cannot reach your machine');
+
+    const online = paragraphAfter('h3[id="how-do-i-test-an-mcp-server-online"]');
+    expect(online).toContain('It tests HTTP servers, not stdio');
+    expect(prose.querySelector('a[href="#transports-what-you-can-test-where"]')?.textContent).toBe('direct browser connection');
   });
 
   it('embeds a registered component at the marker through the component escape hatch', () => {

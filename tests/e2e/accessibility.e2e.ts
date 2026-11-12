@@ -29,6 +29,7 @@ const routes = [
   '/', '/catalog', '/catalog/databases', '/servers/context7/',
   '/learn/mcp-http-headers-reference', '/learn', '/clients', '/submit',
   '/tools/oauth-check', '/tools/discovery', '/tools/breaking-changes', '/no-such-page',
+  '/mcp-test-server', '/mcp-inspector-online', '/mcp-playground',
   '/docs/testing-guide', '/docs/troubleshooting',
   '/learn/mcp-session-not-found-after-deploy', '/learn/mcp-oauth-protected-resource-mismatch',
   '/learn/vscode-mcp-oauth-redirect-uris', '/learn/how-to-vet-an-mcp-server', '/learn/mcp-glossary',

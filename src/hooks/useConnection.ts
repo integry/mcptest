@@ -37,8 +37,8 @@ import {
   type ConnectionFailureEvidence,
 } from '../utils/connectionDiagnostics';
 import { getCatalogEndpointDiagnosticEvidence } from '../utils/catalogUtils';
+import { RECENT_SERVERS_KEY, loadRecentServers } from '../utils/recentServers';
 
-const RECENT_SERVERS_KEY = 'mcpRecentServers';
 const MAX_RECENT_SERVERS = 100;
 
 const getConnectedServerUrl = (
@@ -53,30 +53,6 @@ const getConnectedServerUrl = (
   } catch {
     return targetUrl;
   }
-};
-
-// Helper to load recent servers from localStorage
-const loadRecentServers = (): string[] => {
-  try {
-    const stored = localStorage.getItem(RECENT_SERVERS_KEY);
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      if (Array.isArray(parsed)) {
-        // Handle both old format (string[]) and new format ({ url: string, useProxy?: boolean }[])
-        return parsed.map(item => {
-          if (typeof item === 'string') {
-            return item;
-          } else if (item && typeof item.url === 'string') {
-            return item.url;
-          }
-          return null;
-        }).filter(Boolean) as string[];
-      }
-    }
-  } catch (e) {
-    console.error("Failed to load or parse recent servers from localStorage:", e);
-  }
-  return [];
 };
 
 // Helper to save recent servers to localStorage

@@ -57,6 +57,15 @@ const describeLanding = root => ({
     href: root.querySelector('.landing-catalog a').getAttribute('href'),
     text: text(root.querySelector('.landing-catalog a')),
   },
+  trust: Array.from(root.querySelectorAll('.landing-trust li'), text),
+  steps: Array.from(root.querySelectorAll('.landing-steps li'), text),
+  faq: Array.from(root.querySelectorAll('.landing-faq-item'), item => ({
+    question: text(item.querySelector('h3')),
+    answer: text(item.querySelector('p')),
+  })),
+  links: Array.from(root.querySelectorAll('.landing-steps a, .landing-faq a'), link => [
+    link.getAttribute('href'), link.getAttribute('target'), link.getAttribute('rel'),
+  ]),
 });
 
 describe('crawler-visible landing fallback', () => {
@@ -69,10 +78,13 @@ describe('crawler-visible landing fallback', () => {
   });
 
   it('renders every string in the shared landing copy module', () => {
-    const strings = Object.values(landingCopy).flatMap(value => (
+    // Link markup in steps and answers renders as its label.
+    const strings = Object.values(landingCopy).filter(value => typeof value !== 'function').flatMap(value => (
       typeof value === 'string'
         ? [value]
-        : value.flatMap(item => (typeof item === 'string' ? [item] : [item.title, item.description]))
+        : value.flatMap(item => (typeof item === 'string'
+          ? [item]
+          : [item.title, item.description, item.question, item.answer].filter(Boolean).map(landingCopy.landingPlainText)))
     ));
     const fallbackText = text(fallback);
     const componentText = text(component);

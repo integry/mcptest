@@ -178,6 +178,73 @@ describe('handleDiscoveryRequest', () => {
     expect(response.headers.get('X-MCP-Proxy-Response-Source')).toBe('target');
     expect(await response.text()).toBe('Not found');
   });
+
+  it('keeps the challenge, rate-limit and payment evidence of a target response readable', async () => {
+    const challenge = await handleDiscoveryRequest(
+      new Request(routeUrl('https://example.com/.well-known/oauth-protected-resource')),
+      dependencies((async () => new Response('<!DOCTYPE html><title>Just a moment...</title>', {
+        status: 403,
+        headers: { 'Content-Type': 'text/html; charset=UTF-8', 'cf-mitigated': 'challenge', 'Set-Cookie': '__cf_bm=secret' },
+      })) as unknown as typeof fetch)
+    );
+    expect(challenge.status).toBe(403);
+    expect(challenge.headers.get('cf-mitigated')).toBe('challenge');
+    expect(challenge.headers.get('Content-Type')).toBe('text/html; charset=UTF-8');
+    expect(challenge.headers.get('Set-Cookie')).toBeNull();
+    const exposed = challenge.headers.get('Access-Control-Expose-Headers')?.split(', ') ?? [];
+    expect(exposed).toEqual(expect.arrayContaining(['cf-mitigated', 'x-vercel-mitigated', 'PAYMENT-REQUIRED', 'Retry-After']));
+    expect(new Set(exposed).size).toBe(exposed.length);
+
+    const limited = await handleDiscoveryRequest(
+      new Request(routeUrl('https://example.com/.well-known/oauth-authorization-server')),
+      dependencies((async () => new Response('slow down', {
+        status: 429,
+        headers: { 'Retry-After': '30', 'x-vercel-mitigated': 'deny' },
+      })) as unknown as typeof fetch)
+    );
+    expect(limited.headers.get('Retry-After')).toBe('30');
+    expect(limited.headers.get('x-vercel-mitigated')).toBe('deny');
+    expect(limited.headers.get('X-MCP-Proxy-Response-Source')).toBe('target');
+
+    const paid = await handleDiscoveryRequest(
+      new Request(routeUrl('https://example.com/.well-known/mcp.json')),
+      dependencies((async () => new Response('{}', {
+        status: 402,
+        headers: { 'Content-Type': 'application/json', 'PAYMENT-REQUIRED': 'eyJ4NDAyVmVyc2lvbiI6Mn0=' },
+      })) as unknown as typeof fetch)
+    );
+    expect(paid.status).toBe(402);
+    expect(paid.headers.get('PAYMENT-REQUIRED')).toBe('eyJ4NDAyVmVyc2lvbiI6Mn0=');
+  });
+
+  it('keeps WWW-Authenticate on an HTML 403, so an authentication challenge is not read as bot protection', async () => {
+    const challenged = await handleDiscoveryRequest(
+      new Request(routeUrl('https://example.com/.well-known/oauth-protected-resource')),
+      dependencies((async () => new Response('<html><body>Sign in</body></html>', {
+        status: 403,
+        headers: { 'Content-Type': 'text/html', 'WWW-Authenticate': 'Bearer realm="example", error="insufficient_scope"' },
+      })) as unknown as typeof fetch)
+    );
+    expect(challenged.status).toBe(403);
+    expect(challenged.headers.get('Content-Type')).toBe('text/html');
+    expect(challenged.headers.get('WWW-Authenticate')).toBe('Bearer realm="example", error="insufficient_scope"');
+    expect(challenged.headers.get('Access-Control-Expose-Headers')?.split(', ')).toContain('WWW-Authenticate');
+
+    const oversized = await handleDiscoveryRequest(
+      new Request(routeUrl('https://example.com/.well-known/oauth-protected-resource')),
+      dependencies((async () => new Response('<html></html>', {
+        status: 403,
+        headers: { 'Content-Type': 'text/html', 'WWW-Authenticate': `Bearer realm="${'x'.repeat(2000)}"` },
+      })) as unknown as typeof fetch)
+    );
+    expect(oversized.headers.get('WWW-Authenticate')).toBe('Bearer');
+
+    const absent = await handleDiscoveryRequest(
+      new Request(routeUrl('https://example.com/.well-known/oauth-protected-resource')),
+      dependencies((async () => new Response('<html></html>', { status: 403, headers: { 'Content-Type': 'text/html' } })) as unknown as typeof fetch)
+    );
+    expect(absent.headers.get('WWW-Authenticate')).toBeNull();
+  });
 });
 
 describe('the worker dispatch', () => {

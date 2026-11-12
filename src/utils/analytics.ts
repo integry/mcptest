@@ -21,6 +21,8 @@ type NoParams = Record<string, never>;
 
 /** How a connection was started. The landing only offers the first three. */
 export type LandingConnectSource = 'manual' | 'quick_pick' | 'recent_chip';
+/** Keyword landing pages (src/content/keywordLandingPages.ts). */
+export type LandingPageKey = 'test-server' | 'inspector-online' | 'playground';
 export type ConnectSource = LandingConnectSource | 'catalog' | 'shared_link' | 'reconnect';
 export type ConnectOutcome = 'connected' | 'auth_required' | 'failed';
 /** Report grade, matching the grade shown next to the score, or `unscored`. */
@@ -41,8 +43,9 @@ export type GuideCtaDestination =
 
 export interface AnalyticsEventCatalog {
   // Product funnel, in order: landing → connect → report → share/badge.
-  landing_view: { variant: 'new' | 'returning' };
-  landing_connect: { source: LandingConnectSource; host: string };
+  /** `page`: the keyword landing page (/mcp-test-server and the like) the form is on; absent on the home page. */
+  landing_view: { variant: 'new' | 'returning'; page?: LandingPageKey };
+  landing_connect: { source: LandingConnectSource; host: string; page?: LandingPageKey };
   catalog_open_server: { server_id: string; surface: 'list' | 'profile' };
   connect_attempt: { source: ConnectSource; transport_hint: TransportType | 'auto'; proxy: boolean };
   connect_result: {

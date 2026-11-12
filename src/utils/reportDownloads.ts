@@ -4,7 +4,12 @@ import type { EvaluationReport } from './evaluation';
 import type { OAuthTraceV1 } from './oauthTrace';
 import type { ReleaseDecision } from './releaseReadiness';
 import {
+  serializeConnectorDirectoryPreflightMarkdown,
+  type ConnectorDirectoryPreflightV1,
+} from './connectorDirectoryPreflight';
+import {
   createPublicReport,
+  redactReportString,
   serializePublicReportJson,
   serializePublicReportMarkdown,
 } from './reportArtifact';
@@ -22,6 +27,8 @@ export interface ReleaseReadinessDownloadData {
   compatibilityMatrix: CompatibilityMatrixV1;
   toolSurfaceAnalysis?: ToolSurfaceAnalysisV1;
   oauthTrace?: OAuthTraceV1;
+  /** Appended to Markdown downloads only; the JSON artifact schema is unchanged. */
+  directoryPreflight?: ConnectorDirectoryPreflightV1;
 }
 
 const safeHost = (serverUrl: string): string => {
@@ -39,9 +46,10 @@ export const createReportDownload = (
   generatedAt?: string | Date,
   releaseReadiness?: ReleaseReadinessDownloadData
 ): ReportDownload => {
+  const { directoryPreflight, ...readiness } = releaseReadiness || {};
   const artifact = createPublicReport(report, {
     generatedAt,
-    ...releaseReadiness,
+    ...readiness,
   });
   const base = `mcptest-${safeHost(report.serverUrl)}-report`;
   return format === 'json'
@@ -51,7 +59,9 @@ export const createReportDownload = (
         mimeType: 'application/json',
       }
     : {
-        content: serializePublicReportMarkdown(artifact),
+        content: directoryPreflight
+          ? `${serializePublicReportMarkdown(artifact).trimEnd()}\n\n${serializeConnectorDirectoryPreflightMarkdown(directoryPreflight, redactReportString)}`
+          : serializePublicReportMarkdown(artifact),
         filename: `${base}.md`,
         mimeType: 'text/markdown',
       };

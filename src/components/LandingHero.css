@@ -245,6 +245,102 @@
   text-underline-offset: 3px;
 }
 
+/* Trust line under the connect form: one muted row, wrapping on phones. */
+.landing-trust {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0;
+  margin: 1rem 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.landing-trust li + li::before {
+  content: '\00b7';
+  margin: 0 0.5rem;
+}
+
+/* How-to steps and FAQ: plain text sections below the fold. */
+.landing-steps {
+  padding-bottom: 2rem;
+}
+
+.landing-section-title {
+  margin: 0 0 1rem;
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-color);
+}
+
+.landing-steps ol {
+  display: grid;
+  gap: 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: landing-step;
+}
+
+.landing-steps li {
+  position: relative;
+  padding-left: 2.5rem;
+  counter-increment: landing-step;
+}
+
+.landing-steps li::before {
+  content: counter(landing-step);
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--primary-color);
+  border: 1px solid var(--border-color);
+  border-radius: 50%;
+}
+
+.landing-step-title,
+.landing-faq-question {
+  margin: 0 0 0.25rem;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.75rem;
+  color: var(--text-color);
+}
+
+.landing-step-description,
+.landing-faq-answer {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+
+.landing-faq {
+  margin-top: 2.5rem;
+  padding-top: 2rem;
+  border-top: 1px solid var(--border-color);
+}
+
+.landing-faq-item + .landing-faq-item {
+  margin-top: 1.25rem;
+}
+
+.landing-step-description a,
+.landing-faq-answer a {
+  color: var(--primary-color);
+  /* Inline links need a non-color cue (axe link-in-text-block). */
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 @media (max-width: 575.98px) {
   .landing-connect {
     flex-direction: column;
@@ -433,4 +529,93 @@ html[data-returning-visitor] .seo-returning-workspace { display: contents; }
 .seo-returning-workspace .returning-status-skeleton {
   width: 5.65rem;
   color: transparent;
+}
+
+/* Keyword landing pages (/mcp-test-server and the like): the same form with
+   their own sections below it, in the type of the home page's steps and FAQ. */
+.keyword-landing-section {
+  padding-bottom: 2rem;
+}
+
+.keyword-landing-paragraph {
+  margin: 0 0 1rem;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+
+.keyword-landing-items {
+  display: grid;
+  gap: 1rem;
+  margin: 0 0 1rem;
+  padding: 0;
+  list-style: none;
+}
+
+.keyword-landing-item-title {
+  margin: 0 0 0.25rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-color);
+}
+
+.keyword-landing-item-description {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+
+.keyword-landing-paragraph a,
+.keyword-landing-item-description a,
+.keyword-landing .landing-lede a {
+  color: var(--primary-color);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.keyword-landing-table-wrapper {
+  margin: 0 0 1rem;
+  overflow-x: auto;
+}
+
+.keyword-landing-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.keyword-landing-table caption {
+  caption-side: top;
+  padding: 0 0 0.5rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.keyword-landing-table th,
+.keyword-landing-table td {
+  padding: 0.5rem 0.75rem 0.5rem 0;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.keyword-landing-table th {
+  font-weight: 600;
+  color: var(--text-color);
+}
+
+.keyword-landing .landing-faq {
+  margin-top: 0.5rem;
+}
+
+.keyword-landing-related {
+  margin-top: 2.5rem;
+  border-top: 0;
+}
+
+.keyword-landing-related ul {
+  border-top: 1px solid var(--border-color);
 }

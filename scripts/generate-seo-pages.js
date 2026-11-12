@@ -32,10 +32,18 @@ const {
   LANDING_CATALOG_LINK_PREFIX,
   LANDING_CATALOG_LINK_SUFFIX,
   LANDING_COVERAGE_TITLE,
+  LANDING_FAQ,
+  LANDING_FAQ_TITLE,
   LANDING_HEADLINE,
   LANDING_LEDE,
   LANDING_PATHS_LABEL,
   LANDING_REPORT_COVERAGE,
+  LANDING_STEPS,
+  LANDING_STEPS_TITLE,
+  LANDING_TRUST_LABEL,
+  LANDING_TRUST_POINTS,
+  getLandingFaqStructuredData,
+  parseLandingText,
 } = require('../src/content/landingCopy.ts');
 const { OG_IMAGE_HEIGHT, OG_IMAGE_WIDTH, getOgImagePath } = require('../src/utils/ogImage.ts');
 const {
@@ -60,6 +68,7 @@ const {
   NOT_FOUND_SUMMARY,
   NOT_FOUND_TITLE,
 } = require('../src/utils/appRoutes.ts');
+const { KEYWORD_LANDING_PAGES, getKeywordLandingFaqStructuredData } = require('../src/content/keywordLandingPages.ts');
 const { writeOgImages } = require('./og/ogImages.js');
 const { inlineCriticalCss, restoreStylesheetLinks } = require('./critical-css.js');
 const { downscalePng, readPngSize } = require('./raster-images.js');
@@ -923,6 +932,7 @@ function renderLearnIndexHtml(indexHtml, learnIndex, articles, options = {}) {
 
 const SHELL_FALLBACK_END = '<!-- /seo-shell-fallback -->';
 const SHELL_FALLBACK_PATTERN = /<div id="root">\s*<div class="[^"]*\bseo-shell-fallback\b[\s\S]*?<!-- \/seo-shell-fallback -->\s*<\/div>/;
+const STRUCTURED_DATA_PATTERN = /[ \t]*<script id="server-structured-data" type="application\/ld\+json">[\s\S]*?<\/script>\n?/g;
 const LANDING_FALLBACK_PATTERN = /<div id="root">\s*<section class="landing seo-landing-fallback"[\s\S]*?<\/section>\s*<\/div>/;
 
 function renderQuickPicks(quickPicks) {
@@ -939,6 +949,15 @@ function renderQuickPicks(quickPicks) {
     '      </ul>',
     '    </div>',
   ];
+}
+
+/** LandingHero's LandingText: `[label](href)` links as anchors, external ones opening in a new tab. */
+function renderLandingText(value) {
+  return parseLandingText(value).map(part => {
+    if (!part.href) return escapeHtml(part.text);
+    const external = part.href.startsWith('/') ? '' : ' target="_blank" rel="noopener noreferrer"';
+    return `<a href="${escapeHtml(part.href)}"${external}>${escapeHtml(part.text)}</a>`;
+  }).join('');
 }
 
 /**
@@ -967,7 +986,18 @@ function renderLandingFallback(catalogCount, quickPicks = [], { advancedToggle =
     ...(advancedToggle
       ? ['    <button type="button" class="landing-advanced-toggle" aria-expanded="false"><i class="bi bi-gear" aria-hidden="true"></i>Advanced options<span class="landing-advanced-hint">headers, auth, proxy</span></button>']
       : []),
+    `    <ul class="landing-trust" aria-label="${escapeHtml(LANDING_TRUST_LABEL)}">`,
+    ...LANDING_TRUST_POINTS.map(point => `      <li>${escapeHtml(point)}</li>`),
+    '    </ul>',
     '  </div>',
+    '  <section class="landing-steps" aria-labelledby="landing-steps-title">',
+    `    <h2 id="landing-steps-title" class="landing-section-title">${escapeHtml(LANDING_STEPS_TITLE)}</h2>`,
+    '    <ol>',
+    ...LANDING_STEPS.map(step => (
+      `      <li><h3 class="landing-step-title">${escapeHtml(step.title)}</h3><p class="landing-step-description">${renderLandingText(step.description)}</p></li>`
+    )),
+    '    </ol>',
+    '  </section>',
     `  <nav class="landing-paths" aria-label="${escapeHtml(LANDING_PATHS_LABEL)}">`,
     '    <ul>',
     ...LANDING_AUDIENCE_PATHS.map(item => [
@@ -989,6 +1019,12 @@ function renderLandingFallback(catalogCount, quickPicks = [], { advancedToggle =
     '  <p class="landing-catalog">',
     `    <a href="/catalog">${escapeHtml(LANDING_CATALOG_LINK_PREFIX)} ${catalogCount} ${escapeHtml(LANDING_CATALOG_LINK_SUFFIX)} <span aria-hidden="true">&rarr;</span></a>`,
     '  </p>',
+    '  <section class="landing-faq" aria-labelledby="landing-faq-title">',
+    `    <h2 id="landing-faq-title" class="landing-section-title">${escapeHtml(LANDING_FAQ_TITLE)}</h2>`,
+    ...LANDING_FAQ.map(item => (
+      `    <div class="landing-faq-item"><h3 class="landing-faq-question">${escapeHtml(item.question)}</h3><p class="landing-faq-answer">${renderLandingText(item.answer)}</p></div>`
+    )),
+    '  </section>',
     '</section>',
   ].join('\n');
 }
@@ -1276,7 +1312,9 @@ function stripLandingFallback(indexHtml) {
   const html = restoreStylesheetLinks(indexHtml)
     .replace(APP_PRELOAD_PATTERN, '')
     .replace(SHELL_FALLBACK_PATTERN, '<div id="root"></div>')
-    .replace(LANDING_FALLBACK_PATTERN, '<div id="root"></div>');
+    .replace(LANDING_FALLBACK_PATTERN, '<div id="root"></div>')
+    // The home page's FAQPage JSON-LD belongs to the home page only.
+    .replace(STRUCTURED_DATA_PATTERN, '');
   if (!html.includes('<div id="root"></div>')) {
     throw new Error('dist/index.html has no empty <div id="root"></div>; rebuild with Vite before generating SEO pages.');
   }
@@ -1285,6 +1323,7 @@ function stripLandingFallback(indexHtml) {
 
 function renderHomeHtml(indexHtml, homeMetadata, catalogCount, shellOptions = {}) {
   return renderStaticPageHtml(indexHtml, '/', homeMetadata, {
+    structuredData: getLandingFaqStructuredData(),
     fallbackHtml: renderShellFallback({ catalogCount, ...shellOptions }),
   });
 }
@@ -1536,6 +1575,39 @@ function writeDiscoveryPage(indexHtml, discoveryMetadata, options) {
   fs.writeFileSync(`${distPathFor(DISCOVERY_CHECKER_PATH)}.html`, renderDiscoveryHtml(indexHtml, discoveryMetadata, options), 'utf8');
 }
 
+/**
+ * A keyword landing page (src/content/keywordLandingPages.ts): its metadata,
+ * the FAQPage JSON-LD of its visible FAQ, and the app shell around
+ * KeywordLandingView as src/prerender/contentPages.tsx renders it. This is an
+ * app route, like the discovery checker: the app mounts over it at load.
+ */
+function renderKeywordLandingHtml(indexHtml, page, { shell = {}, pageHtml }) {
+  if (!pageHtml) throw new Error(`The app has no keyword landing page at ${page.path}.`);
+  return renderStaticPageHtml(indexHtml, page.path, { title: page.title, description: page.description }, {
+    structuredData: getKeywordLandingFaqStructuredData(page),
+    fallbackHtml: renderAppShell({
+      ...shell,
+      content: pageHtml,
+      view: 'keyword-landing',
+      pathname: page.path,
+      panelStyle: '',
+    }),
+  });
+}
+
+/** `<slug>/index.html` for each keyword landing page, as the issue's routes are directory pages like /docs/<slug>. */
+function writeKeywordLandingPages(indexHtml, { shell, prerender }) {
+  for (const page of KEYWORD_LANDING_PAGES) {
+    const outputDirectory = distPathFor(page.path);
+    fs.mkdirSync(outputDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(outputDirectory, 'index.html'),
+      renderKeywordLandingHtml(indexHtml, page, { shell, pageHtml: prerender.renderKeywordLandingPage(page.path) }),
+      'utf8'
+    );
+  }
+}
+
 /** Prerendered `/catalog/<slug>`: metadata, CollectionPage JSON-LD and the static category body. */
 function renderCategoryHtml(indexHtml, summary, { summaries, servers, articles, shell = {} }) {
   const seo = getCatalogCategorySeo(summary);
@@ -1562,6 +1634,12 @@ function buildOgCards({ servers, articles, pageMetadata }) {
   }));
   const cards = [
     { pagePath: '/', title: LANDING_HEADLINE, summary: LANDING_LEDE },
+    ...KEYWORD_LANDING_PAGES.map(page => ({
+      pagePath: page.path,
+      eyebrow: page.eyebrow,
+      title: page.h1,
+      summary: page.description,
+    })),
     {
       pagePath: '/catalog',
       eyebrow: 'Server catalog',
@@ -1787,6 +1865,7 @@ function getSitemapEntries(servers, articles, docsSlugs = []) {
   }));
   return [
     { pathname: '/', lastModified: latestDay([catalogValidated, guidesReviewed]) },
+    ...KEYWORD_LANDING_PAGES.map(page => ({ pathname: page.path })),
     { pathname: '/catalog', lastModified: catalogValidated },
     ...categoryEntries,
     { pathname: DISCOVERY_CHECKER_PATH },
@@ -2102,6 +2181,7 @@ async function main() {
     shell: contentShell,
     proxyConfigured: Boolean(readBuildEnv('VITE_PROXY_URL')),
   });
+  writeKeywordLandingPages(indexHtml, { shell: contentShell, prerender });
   writeArticlePages(indexHtml, learnIndex, articles, { shell: contentShell, prerender });
   // Last: overwrites the shell the pages above were rendered from.
   writeHomeAndCatalogPages(indexHtml, pageMetadata, servers, shellOptions);
@@ -2118,7 +2198,7 @@ async function main() {
   const cards = buildOgCards({ servers, articles, pageMetadata });
   const og = await writeOgImages(cards, { distRoot });
 
-  console.log(`Generated ${servers.length} server profile documents, ${categoryCount} catalog category pages, ${Object.keys(pageMetadata.docs).length} documentation documents, ${articles.length} Markdown articles (HTML + .md), the home, catalog and discovery checker pages, learn/feed.xml, learn/search-index.json, llms.txt, sitemap.xml, robots.txt, 404.html and routes.txt.`);
+  console.log(`Generated ${servers.length} server profile documents, ${categoryCount} catalog category pages, ${Object.keys(pageMetadata.docs).length} documentation documents, ${articles.length} Markdown articles (HTML + .md), the home, catalog, discovery checker and ${KEYWORD_LANDING_PAGES.length} keyword landing pages, learn/feed.xml, learn/search-index.json, llms.txt, sitemap.xml, robots.txt, 404.html and routes.txt.`);
   console.log(`Critical CSS inlined in ${finalizedPages} pages; ${resizedLogos} PNG logos served at ${SERVED_LOGO_PX}px.`);
   console.log(`Open Graph images: ${cards.length} (${og.rendered} rendered, ${og.cached} from cache) in ${((Date.now() - ogStartedAt) / 1000).toFixed(1)}s.`);
 }
@@ -2142,6 +2222,7 @@ module.exports = {
   renderCatalogHtml,
   renderCategoryHtml,
   renderDiscoveryHtml,
+  renderKeywordLandingHtml,
   renderHomeHtml,
   addFontPreloads,
   findFirstFrameFontAssets,

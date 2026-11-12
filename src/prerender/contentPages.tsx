@@ -10,6 +10,8 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import OAuthCheckerView from '../components/OAuthCheckerView';
 import BreakingChangesView from '../components/BreakingChangesView';
+import KeywordLandingView from '../components/KeywordLandingView';
+import { getKeywordLandingPage } from '../content/keywordLandingPages';
 import LearnIndex from '../components/learn/LearnIndex';
 import MarkdownLearnArticle from '../components/learn/MarkdownLearnArticle';
 import { loadHighlighter } from '../components/learn/highlighter';
@@ -53,3 +55,14 @@ export const renderLearnIndexPage = (): string => renderAt('/learn', <LearnIndex
 export const renderBreakingChangesPage = (): string => renderAt('/tools/breaking-changes', <BreakingChangesView />);
 
 export const renderOAuthCheckerPage = (): string => renderAt('/tools/oauth-check', <OAuthCheckerView />);
+
+/**
+ * A keyword landing page (/mcp-test-server and the like) as KeywordLandingView
+ * first renders it for a visitor with no recent connections, or null for any
+ * other path.
+ */
+export const renderKeywordLandingPage = (pathname: string): string | null => {
+  const page = getKeywordLandingPage(pathname);
+  if (!page) return null;
+  return renderAt(pathname, <KeywordLandingView page={page} onConnect={() => {}} onOpenAdvancedOptions={() => {}} />);
+};
