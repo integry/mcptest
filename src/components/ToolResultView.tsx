@@ -4,6 +4,7 @@ import { OUTPUT_CONTRACT_FINDING_ID, type OutputContractResult } from '../utils/
 import FindingReferenceLink from './FindingReferenceLink';
 import McpResponseDisplay from './McpResponseDisplay';
 import './ToolResultView.css';
+import './ConnectedGuide.css';
 
 type ResultView = 'structured' | 'content' | 'raw';
 
@@ -69,6 +70,41 @@ export const OutputContractVerdict: React.FC<{ contract: OutputContractResult; h
   return null;
 };
 
+const EXPLANATIONS: Record<'structured' | 'content' | 'raw' | 'error', string> = {
+  structured: 'Structured content is the typed JSON the tool returned in structuredContent, checked against its output schema when it declares one.',
+  content: 'Content is the list of text, image or resource blocks a model reads from this call.',
+  raw: 'This is the JSON-RPC result exactly as the server sent it.',
+  error: 'The tool ran but reported a failure (isError: true). The content explains why; the connection itself is fine.',
+};
+
+/**
+ * One line on what the current view shows, with a way to the wire format.
+ * `plain` results have no view tabs, so the link toggles the raw view itself.
+ */
+const ResultExplanation: React.FC<{
+  kind: keyof typeof EXPLANATIONS;
+  plain?: boolean;
+  rawShown: boolean;
+  onViewRaw: () => void;
+}> = ({ kind, plain = false, rawShown, onViewRaw }) => (
+  <p className="tool-result-explanation">
+    <span>
+      {plain && rawShown ? EXPLANATIONS.raw : EXPLANATIONS[kind]}
+      {plain && !rawShown && ' This tool returned no structured content.'}
+    </span>
+    {(plain || !rawShown) && (
+      <button
+        type="button"
+        className="btn btn-link btn-sm tool-result-raw-link"
+        onClick={onViewRaw}
+        {...(plain ? { 'aria-pressed': rawShown } : {})}
+      >
+        View raw JSON-RPC
+      </button>
+    )}
+  </p>
+);
+
 /**
  * Renders a tools/call result: structured output first when present, with
  * views for the unstructured content blocks and the raw JSON-RPC response,
@@ -101,7 +137,16 @@ const ToolResultView: React.FC<ToolResultViewProps> = ({ logEntry }) => {
 
   const hasSchema = toolCall.outputSchema !== undefined;
   const isError = toolCall.result.isError === true;
-  if (!hasStructuredContent && !hasSchema && !isError) return contentDisplay;
+  const rawResponse = { jsonrpc: '2.0', result: toolCall.result };
+  if (!hasStructuredContent && !hasSchema && !isError) {
+    // Plain content: the blocks as before, plus the explanation and the wire view.
+    return (
+      <div className="tool-result-view tool-result-view--plain">
+        <ResultExplanation kind="content" plain rawShown={view === 'raw'} onViewRaw={() => setView(view === 'raw' ? 'content' : 'raw')} />
+        {view === 'raw' ? <JsonBlock value={rawResponse} /> : contentDisplay}
+      </div>
+    );
+  }
 
   const views: Array<{ id: ResultView; label: string }> = [
     ...(hasStructuredContent ? [{ id: 'structured' as const, label: 'Structured' }] : []),
@@ -119,6 +164,11 @@ const ToolResultView: React.FC<ToolResultViewProps> = ({ logEntry }) => {
         </div>
       )}
       <OutputContractVerdict contract={toolCall.contract} hasSchema={hasSchema} />
+      <ResultExplanation
+        kind={isError ? 'error' : activeView === 'structured' ? 'structured' : activeView === 'raw' ? 'raw' : 'content'}
+        rawShown={activeView === 'raw'}
+        onViewRaw={() => setView('raw')}
+      />
       <div className="tool-result-view-switch" role="tablist" aria-label="Result view">
         {views.map(item => (
           <button
@@ -136,7 +186,7 @@ const ToolResultView: React.FC<ToolResultViewProps> = ({ logEntry }) => {
       <div className="tool-result-view-panel" role="tabpanel">
         {activeView === 'structured' && <JsonBlock value={toolCall.result.structuredContent} />}
         {activeView === 'content' && contentDisplay}
-        {activeView === 'raw' && <JsonBlock value={{ jsonrpc: '2.0', result: toolCall.result }} />}
+        {activeView === 'raw' && <JsonBlock value={rawResponse} />}
       </div>
     </div>
   );

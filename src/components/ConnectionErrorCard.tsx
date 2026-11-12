@@ -10,6 +10,8 @@ import {
 import type { TransportDiagnostic } from '../types/transportDiagnostics';
 import { detectedTransportDiagnostics, formatRetryWait } from '../utils/transportDiagnostics';
 import TransportDiagnosticsPanel from './TransportDiagnosticsPanel';
+import { getConnectionGuidance } from '../utils/connectionGuidance';
+import FailureGuidanceSummary, { FailureLearnLink } from './FailureGuidance';
 
 interface ConnectionErrorCardProps {
   errorDetails: ConnectionErrorDetails;
@@ -232,6 +234,8 @@ const ConnectionErrorCard: React.FC<ConnectionErrorCardProps> = ({
   const headingId = useId();
   const attempts = errorDetails.attempts || [];
   const diagnosis = useMemo(() => diagnose(errorDetails), [errorDetails]);
+  const guidance = useMemo(() => getConnectionGuidance(errorDetails), [errorDetails]);
+  const plainId = useId();
   const transportDiagnostics: readonly TransportDiagnostic[] = errorDetails.transportDiagnostics || [];
   const hasTransportFinding = detectedTransportDiagnostics(transportDiagnostics)
     .some(({ severity }) => severity === 'error');
@@ -299,15 +303,23 @@ const ConnectionErrorCard: React.FC<ConnectionErrorCardProps> = ({
   };
 
   return (
-    <section className={`alert ${diagnosis.alertClass} mb-3`} role="alert" aria-labelledby={headingId}>
+    <section
+      className={`alert ${diagnosis.alertClass} mb-3`}
+      role="alert"
+      aria-labelledby={plainId}
+      aria-describedby={headingId}
+      data-guidance-id={guidance.id}
+    >
       <div className="d-flex justify-content-between align-items-start gap-3">
         <div className="flex-grow-1 min-w-0">
           <div className="d-flex align-items-center flex-wrap gap-2 mb-2">
             <span className="badge bg-dark">{diagnosis.badge}</span>
             <small className="text-muted">{errorDetails.timestamp.toLocaleTimeString()}</small>
           </div>
+          <FailureGuidanceSummary guidance={guidance} titleId={plainId} />
+          <p className="failure-technical-label">Technical detail</p>
           <h6 id={headingId} className="alert-heading">{diagnosis.heading}</h6>
-          <p>{diagnosis.summary}</p>
+          <p className="connection-diagnosis-summary">{diagnosis.summary}</p>
           <div className="mb-3">
             <strong>Endpoint:</strong> <code className="text-break">{errorDetails.serverUrl}</code>
           </div>
@@ -449,6 +461,7 @@ const ConnectionErrorCard: React.FC<ConnectionErrorCardProps> = ({
               </code></pre>
             </details>
           )}
+          <FailureLearnLink guidance={guidance} />
         </div>
         {onDismiss && <button type="button" className="btn-close" aria-label="Close connection diagnostic" onClick={onDismiss} />}
       </div>

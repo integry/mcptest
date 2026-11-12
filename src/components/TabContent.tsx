@@ -25,6 +25,10 @@ import CallHistoryPanel from './CallHistoryPanel';
 import { createTestPlanFromHistory } from '../utils/historyTestPlan';
 import type { DeterministicTestPlanV1 } from '../types/deterministicTests';
 import InterfaceChangeStrip from './InterfaceChangeStrip';
+import ConnectedSummary, { type ConnectedAuthMode, type ConnectedNextAction } from './ConnectedSummary';
+import { connectionStages, listStageFromDiscovery } from '../utils/connectionStages';
+import { dismissHint } from '../utils/nextStepsProgress';
+import { useOnboardingProgress } from '../hooks/useOnboardingProgress';
 
 // Import Hooks
 import { useLogEntries } from '../hooks/useLogEntries';
@@ -166,6 +170,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     connectionStartTime,
     connectionError,
     clearConnectionError,
+    connectionProgress,
     client,
     shareLinkNotice,
     recentServers,
@@ -269,6 +274,66 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     originalHandleSelectTool(tool);
     setLastResult(null);
   };
+
+  // --- Guided first run: summary, stages and hints ---
+  const onboarding = useOnboardingProgress();
+  // Set by the first tool result without isError on this connection.
+  const [hasSuccessfulRun, setHasSuccessfulRun] = useState(false);
+  useEffect(() => {
+    if (connectionStatus !== 'Connected') setHasSuccessfulRun(false);
+  }, [connectionStatus]);
+  useEffect(() => {
+    if (lastResult?.type === 'tool_result' && lastResult.toolCall?.result.isError !== true) {
+      setHasSuccessfulRun(true);
+    }
+  }, [lastResult]);
+  const capabilityCounts = useMemo(() => {
+    const capabilities = connectionStatus === 'Connected' ? client?.getServerCapabilities?.() : undefined;
+    // Without the capability object, a non-empty list still proves the capability.
+    const offered = (key: 'tools' | 'resources' | 'prompts', count: number) => (
+      capabilities ? Boolean(capabilities[key]) || count > 0 : true
+    );
+    return {
+      tools: { count: tools.length, offered: offered('tools', tools.length) },
+      resources: {
+        count: resources.length + resourceTemplates.length,
+        offered: offered('resources', resources.length + resourceTemplates.length),
+      },
+      prompts: { count: prompts.length, offered: offered('prompts', prompts.length) },
+    };
+  }, [client, connectionStatus, tools.length, resources.length, resourceTemplates.length, prompts.length]);
+  const listStage = listStageFromDiscovery(discovery, {
+    tools: capabilityCounts.tools.count,
+    resources: capabilityCounts.resources.count,
+    prompts: capabilityCounts.prompts.count,
+  });
+  const stages = connectionStages(connectionProgress, listStage);
+  const serverIdentity = connectionStatus === 'Connected' ? client?.getServerVersion?.() : undefined;
+  const authMode: ConnectedAuthMode = isOAuthConnection
+    ? 'oauth'
+    : requestHeaders
+      ? (tab.catalogAuthType === 'api-key' ? 'api-key' : 'bearer-token')
+      : 'none';
+  const nextAction: ConnectedNextAction = hasSuccessfulRun
+    ? 'share-report'
+    : tools.length > 0 || listStage.status !== 'done'
+      ? 'call-tool'
+      : 'run-report';
+  const reportHref = `/report/${encodeURIComponent(tab.serverUrl || serverUrl)}`;
+  const guideToolPick = connectionStatus === 'Connected'
+    && listStage.status === 'done'
+    && tools.length > 0
+    && !selectedTool
+    && onboarding.isActive('pick-tool');
+  const showShareHint = connectionStatus === 'Connected' && hasSuccessfulRun && onboarding.isActive('share-report');
+  /** Moves focus to the first tool, so "Call a tool" lands where the choice is made. */
+  const focusFirstTool = useCallback(() => {
+    const pane = document.querySelector<HTMLElement>(`.tab-content-panel[data-tab-id="${tab.id}"] .workbench-capabilities`);
+    const firstTool = pane?.querySelector<HTMLElement>('[role="listbox"][aria-label="Tools"] [role="option"]')
+      || pane?.querySelector<HTMLElement>('input, button');
+    pane?.scrollIntoView?.({ block: 'nearest' });
+    firstTool?.focus();
+  }, [tab.id]);
   const handleSelectResourceTemplate = (template: any) => {
     originalHandleSelectResourceTemplate(template);
     setLastResult(null);
@@ -1031,6 +1096,25 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
       setCredentialValue={setCatalogCredential}
       credentialInputId={`${tab.id}-catalog-credential`}
       autoFocusUrl={isFirstConnection && hasStartedFirstConnection}
+      connectionStages={stages}
+      connectedSummary={isConnected ? (
+        <ConnectedSummary
+          serverName={serverIdentity?.title || serverIdentity?.name}
+          serverVersion={serverIdentity?.version}
+          serverUrl={serverUrl}
+          protocolVersion={protocolVersion}
+          transportType={transportType}
+          authMode={authMode}
+          isProxied={isProxied}
+          counts={capabilityCounts}
+          discovery={discovery}
+          listStage={listStage}
+          nextAction={nextAction}
+          reportHref={reportHref}
+          onCallTool={focusFirstTool}
+          connectionKey={`${serverUrl}|${protocolVersion}|${transportType}`}
+        />
+      ) : undefined}
     />
     {isConnected && transportType === 'streamable-http' && (
       <React.Suspense fallback={null}>
@@ -1047,6 +1131,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
   return (
     <div 
       className={`tab-content-panel ${isActive ? '' : 'd-none'}`}
+      data-tab-id={tab.id}
       style={{ 
         height: '100%',
         position: isActive ? 'static' : 'absolute',
@@ -1130,11 +1215,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
         />
       )}
 
-      {isConnected && <NextStepsStrip endpoint={tab.serverUrl} onCallTool={() => {
-        const pane = document.querySelector<HTMLElement>('.workbench-capabilities');
-        pane?.scrollIntoView({ block: 'nearest' });
-        pane?.querySelector<HTMLElement>('button')?.focus();
-      }} />}
+      {isConnected && <NextStepsStrip endpoint={tab.serverUrl} onCallTool={focusFirstTool} />}
       {!showLanding && isConnected && playgroundHistory.interfaceDiff && (
         <InterfaceChangeStrip
           diff={playgroundHistory.interfaceDiff}
@@ -1145,7 +1226,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
       <div className={`playground-layout flex-grow-1 ${isConnected ? 'playground-workbench' : 'playground-idle'}`}>
         {!isConnected && (
           <div className="w-100 idle-onboarding-layout">
-            <AwaitingConnectionPanel />
+            <AwaitingConnectionPanel showSteps={recentServers.length === 0 && !onboarding.completed.includes('tool')} />
             {isFirstConnection ? (
               <SuggestedServersPanel
                 onServerSelect={handleSuggestedServerSelect}
@@ -1200,6 +1281,9 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
                 setShowDeterministicTests(true);
               }}
               shortcutEnabled={isActive}
+              discovery={discovery}
+              guideToolPick={guideToolPick}
+              onDismissToolPickGuide={() => dismissHint('pick-tool')}
             />
             </section>
             <section className="workbench-pane workbench-request" aria-label="Request builder">
@@ -1272,6 +1356,8 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
                 resourceArgs={resourceArgs}
                 onRunAgain={handleRunAgain}
                 useProxy={isProxied}
+                shareReportHref={showShareHint ? reportHref : undefined}
+                onDismissShareHint={() => dismissHint('share-report')}
               />
             </section>
           </>

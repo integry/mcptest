@@ -354,7 +354,8 @@ it('surfaces the later OAuth failure and retry instead of the earlier successful
     }],
   }, { onRetry, useProxy: false, showProxyOption: true, onRetryWithProxy: vi.fn() });
   expect(container.querySelector('h6')?.textContent).toBe('OAuth authorization failed');
-  expect(container.querySelector('p')?.textContent).toContain('Protected resource does not match');
+  expect(container.querySelector('.connection-diagnosis-summary')?.textContent).toContain('Protected resource does not match');
+  expect(container.querySelector('.failure-guidance-what')?.textContent).toBe('Signing in to the server did not finish.');
   expect(container.textContent).toContain('Entered URL: https://mcp.sentry.dev/');
   expect(container.textContent).not.toContain('Automatically use proxy');
   expect(container.textContent).not.toContain('Enable proxy and retry');
@@ -362,4 +363,23 @@ it('surfaces the later OAuth failure and retry instead of the earlier successful
   expect(retry).toBeDefined();
   act(() => retry?.click());
   expect(onRetry).toHaveBeenCalledOnce();
+});
+
+it('leads with plain language, then the technical detail, then the matching Learn article', () => {
+  const container = renderError();
+  const card = container.querySelector('section[role="alert"]')!;
+  expect(card.getAttribute('data-guidance-id')).toBe('browser-blocked');
+  // The accessible name is the plain sentence; the technical heading describes it.
+  const label = card.querySelector(`[id="${card.getAttribute('aria-labelledby')}"]`);
+  expect(label?.textContent).toBe('Your browser blocked mcptest from reading the server response.');
+  const text = card.textContent!;
+  const plain = text.indexOf('Most likely cause:');
+  const technical = text.indexOf('Browser access blocked');
+  const learn = text.indexOf('Learn:');
+  expect(plain).toBeGreaterThan(-1);
+  expect(plain).toBeLessThan(technical);
+  expect(technical).toBeLessThan(learn);
+  const link = card.querySelector<HTMLAnchorElement>('.failure-guidance-learn a')!;
+  expect(link.getAttribute('href')).toBe('/learn/mcp-cors-headers-for-browser-clients');
+  expect(link.getAttribute('target')).toBe('_blank');
 });

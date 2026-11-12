@@ -1,17 +1,14 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { trackEvent } from '../utils/analytics';
-import { completeNextStep, NEXT_STEPS_PROGRESS_EVENT, readCompletedSteps } from '../utils/nextStepsProgress';
+import { completeNextStep } from '../utils/nextStepsProgress';
+import { useOnboardingProgress } from '../hooks/useOnboardingProgress';
 
 const dismissalKey = 'mcptest-next-steps-dismissed';
 const dismissed = () => { try { return localStorage.getItem(dismissalKey) === 'true'; } catch { return false; } };
 export default function NextStepsStrip({ endpoint, onCallTool }: { endpoint: string; onCallTool: () => void }) {
   const [hidden, setHidden] = useState(dismissed);
-  const [completed, setCompleted] = useState(readCompletedSteps);
-  useEffect(() => {
-    const update = () => setCompleted(readCompletedSteps());
-    window.addEventListener(NEXT_STEPS_PROGRESS_EVENT, update);
-    return () => window.removeEventListener(NEXT_STEPS_PROGRESS_EVENT, update);
-  }, []);
+  // Shares its store with the inline hints of the connected view.
+  const { completed } = useOnboardingProgress();
   if (hidden || window.location.pathname.startsWith('/call/')) return null;
   const report = `/report/${encodeURIComponent(endpoint)}`;
   const steps = [
@@ -21,6 +18,8 @@ export default function NextStepsStrip({ endpoint, onCallTool }: { endpoint: str
     ['watch', 'Watch weekly for breaking changes', `/tools/breaking-changes?endpoint=${encodeURIComponent(endpoint)}`],
     ['ci', 'Add the GitHub Action to CI', '/ci'],
   ];
+  // A visitor who has done everything is not shown a checklist.
+  if (steps.every(([step]) => completed.includes(step))) return null;
   const click = (step: string) => {
     trackEvent('next_steps_click', { step });
     if (step === 'watch' || step === 'ci') completeNextStep(step);
