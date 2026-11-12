@@ -13154,5 +13154,31 @@
     "logoSourceKind": "official-site",
     "logoRetrievedAt": "2026-11-12",
     "logoLicenseNote": "Official FairValid product icon supplied for identification in this catalog. Trademark rights remain with FairValid."
+  },
+  {
+    "id": "excessionlabs",
+    "name": "Excession Labs CVE intelligence",
+    "url": "https://excessionlabs.ai/mcp/cve",
+    "browserAccess": "proxy-required",
+    "description": "Six read-only CVE tools search source software/version evidence, show available KEV and dated EPSS, inspect collection health, and page hosted revisions and changes. No account or API key. Literal source versions are matched; installed versions are not evaluated against vulnerability ranges.",
+    "category": "Security",
+    "tags": [
+      "security",
+      "cve",
+      "community-submission",
+      "no-auth"
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://excessionlabs.ai/cve-intelligence/"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "logoUrl": "/server-logos/excessionlabs.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-12",
+    "logoLicenseNote": "Locally generated EL monogram for a community submission; it is not an official Excession Labs CVE intelligence mark.",
+    "homepageUrl": "https://excessionlabs.ai/cve-intelligence/"
   }
 ]
