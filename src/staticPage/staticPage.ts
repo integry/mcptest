@@ -210,11 +210,10 @@ export const enhanceStaticPage = (shell: HTMLElement): void => {
 
   const endpoint = shell.querySelector<HTMLInputElement>('.seo-landing-fallback #serverUrl');
   const connect = shell.querySelector<HTMLButtonElement>('#connectBtn');
-  endpoint?.addEventListener('input', () => {
-    if (connect) connect.disabled = !endpoint.value.trim();
-  });
+  // Enter submits like the button. The click is replayed on the app's Connect
+  // after the mount, which validates the URL (LandingHero).
   endpoint?.addEventListener('keydown', event => {
-    if (event.key === 'Enter' && endpoint.value.trim()) {
+    if (event.key === 'Enter') {
       event.preventDefault();
       connect?.click();
     }
