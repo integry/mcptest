@@ -117,6 +117,24 @@ Check the connection log before testing features. For a stateless server, confir
 - **2026 caches:** where list results provide `ttlMs` and `cacheScope`, verify they reflect the data's real freshness and privacy boundary.
 - **2026 multi-round trips:** exercise calls that return `input_required`, then verify the retried request carries the expected `inputResponses` and request state.
 
+### Test a two-tool workflow
+
+A tool can work on its own while the client still fails to finish a task that depends on another tool's output. Add one small workflow check alongside the individual calls.
+
+For a read-only example, use the catalog's **BlockVectra Docs** endpoint, `https://docs.blockvectra.com/mcp/docs`. It searches and reads documentation without an account or API key; it does not execute chain RPC calls.
+
+1. Call `search_docs` with:
+
+   ```json
+   {"query":"Robinhood","lang":"en","limit":3}
+   ```
+
+2. Check that the tool result is not an error and its `results` array is nonempty. Select one returned `path` value. Stop on an error or empty results rather than inventing a path.
+3. Call `read_doc` with that exact value as `path` and the same `lang`, `en`. The path is relative to the documentation catalog; do not replace it with the page URL or add a language prefix.
+4. Check that the second result is not a tool error and contains readable document text. Keep both tool outcomes in the report: an HTTP 200 alone does not prove the workflow succeeded.
+
+This is an explicit two-tool integration check. Whether a model chooses the right tools for a user's request remains a separate agent eval.
+
 ### Authentication
 
 For OAuth servers, connect without credentials first and let the playground follow the challenge; for bearer-token or API-key servers, select that mode and enter the credential. The [authentication section](#testing-authentication) below lists what to verify. The [OAuth checker](/tools/oauth-check) runs the discovery steps on their own, before any login.
