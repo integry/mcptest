@@ -4972,8 +4972,10 @@ pre.bg-light code {
   text-underline-offset: 4px;
 }
 
-/* Full-bleed bands must also cancel the mobile card width constraint. */
-.tab-content-panel > .connection-console {
+/* Full-bleed bands must also cancel the mobile card width constraint.
+   The prerendered workspace has a display: contents wrapper before mount. */
+.tab-content-panel > .connection-console,
+.seo-returning-workspace > .connection-console {
   width: calc(100% + 2 * var(--main-pad));
   max-width: none;
 }
