@@ -142,7 +142,6 @@ describe('landing hero', () => {
     ['javascript:alert(1)', 'Use an http:// or https:// URL'],
     ['ftp://files.example.com/mcp', 'Use an http:// or https:// URL'],
     ['https://exa mple.com/mcp', 'cannot contain spaces'],
-    ['https://intranet/mcp', 'needs a host name with a domain'],
     ['https://user:secret@example.com/mcp', 'Remove the user name and password'],
   ])('rejects the malformed URL %s with a specific message', (serverUrl, message) => {
     const { container, onConnect } = renderLanding({ serverUrl });
@@ -153,7 +152,11 @@ describe('landing hero', () => {
     expect(container.querySelector('[role="alert"]#serverUrl-error')?.textContent).toContain(message);
   });
 
-  it.each(['example.com/mcp', 'localhost:3000/mcp', 'http://127.0.0.1:4180/2026/mcp', 'https://mcp.example.com/mcp?region=eu'])(
+  it.each([
+    'example.com/mcp', 'localhost:3000/mcp', 'http://127.0.0.1:4180/2026/mcp', 'https://mcp.example.com/mcp?region=eu',
+    // Single-label hosts an internal network resolves are valid HTTP endpoints.
+    'https://intranet/mcp', 'http://mcp-server:8080/mcp', 'intranet/mcp', 'intranet:8080/mcp',
+  ])(
     'accepts %s',
     (serverUrl) => {
       const { container, onConnect } = renderLanding({ serverUrl });

@@ -90,10 +90,10 @@ test('the connect form explains itself, validates inline and submits on Enter', 
   await expect(field).toHaveAccessibleDescription(/^mcptest\.io connects to remote servers over HTTP/);
   await expect(page.locator('.landing-title')).toBeVisible();
 
-  await field.fill('https://intranet/mcp');
+  await field.fill('https://user:secret@example.com/mcp');
   await expect(error).toHaveCount(0);
   await connect.click();
-  await expect(page.getByRole('alert').filter({ hasText: 'needs a host name with a domain' })).toBeVisible();
+  await expect(page.getByRole('alert').filter({ hasText: 'Remove the user name and password' })).toBeVisible();
 
   await field.fill(mockUrl('2026'));
   await field.press('Enter');

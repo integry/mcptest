@@ -34,7 +34,9 @@ export const NEW_TAB_TOOLTIP = 'Open another connection tab to test a second ser
 /**
  * Inline validation for the endpoint field. Returns a specific message for a
  * malformed value, or null when the value can be connected to. A bare host
- * (`example.com/mcp`) is accepted: the playground adds https:// to it.
+ * (`example.com/mcp`) is accepted: the playground adds https:// to it. So is a
+ * single-label host (`https://intranet/mcp`): an internal network can resolve
+ * it, so only the connection attempt can tell whether it is reachable.
  */
 export const getEndpointInputError = (value: string): string | null => {
   const input = value.trim();
@@ -50,11 +52,6 @@ export const getEndpointInputError = (value: string): string | null => {
     url = new URL(hasHttpScheme ? input : `https://${input}`);
   } catch {
     return 'This is not a valid URL. Enter a full address such as https://example.com/mcp.';
-  }
-  const host = url.hostname;
-  const isLocal = host === 'localhost' || /^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.startsWith('[');
-  if (!host || (!isLocal && !host.includes('.'))) {
-    return 'The address needs a host name with a domain, such as example.com.';
   }
   if (url.username || url.password) {
     return 'Remove the user name and password from the URL. Add credentials under Advanced options instead.';
