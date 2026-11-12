@@ -20,6 +20,7 @@ import {
   type CatalogSubmissionEvidence,
 } from './catalogSubmission';
 import { validateCatalogSubmission } from './catalogSubmissionSchema';
+import { getCatalogServers } from './catalogUtils';
 
 const evidence: CatalogSubmissionEvidence = {
   checkedAt: '2026-10-20T10:00:00.000Z',
@@ -224,5 +225,21 @@ describe('reviewed community submission entries', () => {
       browserPublicClientSupported: true,
       evidenceUrl: 'https://futureinfra.ai/docs/mcp/',
     });
+  });
+});
+
+describe('reviewed Excession Labs CVE intelligence entry', () => {
+  const publisherSource = { kind: 'publisher', url: 'https://excessionlabs.ai/cve-intelligence/' };
+
+  it('records publisher provenance and a CVE tag in the seed', () => {
+    const seed = (serverCatalog as CatalogServerSeed[]).find((entry) => entry.id === 'excessionlabs');
+    expect(seed?.listingSource).toEqual(publisherSource);
+    expect(seed?.tags).toEqual(expect.arrayContaining(['security', 'cve']));
+  });
+
+  it('keeps publisher provenance in the loaded catalog record', () => {
+    const server = getCatalogServers().find((entry) => entry.id === 'excessionlabs');
+    expect(server?.listingSource).toEqual(publisherSource);
+    expect(server?.tags).toContain('cve');
   });
 });

@@ -13164,11 +13164,12 @@
     "category": "Security",
     "tags": [
       "security",
+      "cve",
       "community-submission",
       "no-auth"
     ],
     "listingSource": {
-      "kind": "community-submission",
+      "kind": "publisher",
       "url": "https://excessionlabs.ai/cve-intelligence/"
     },
     "transport": "streamable-http",
