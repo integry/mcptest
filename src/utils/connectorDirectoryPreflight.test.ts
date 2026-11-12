@@ -251,6 +251,20 @@ describe('connector directory preflight', () => {
       expect(statusOf(withMethod({ enum: ['GET', 'POST'], const: 'GET' }), 'claude.separate-read-write')).toBe('pass');
     });
 
+    it('leaves a method that object cardinality may exclude unknown instead of failing it', () => {
+      const input = observations({
+        tools: toolsFrom([fullyAnnotated('search', {
+          inputSchema: {
+            type: 'object',
+            required: ['query'],
+            maxProperties: 1,
+            properties: { query: { type: 'string' }, method: { enum: ['GET', 'POST'] } },
+          },
+        })]),
+      });
+      expect(statusOf(input, 'claude.separate-read-write')).toBe('unknown');
+    });
+
     it('leaves uninterpreted constraint combinations unknown', () => {
       expect(statusOf(withMethod({ enum: ['GET', 'POST'], pattern: '^G' }), 'claude.separate-read-write')).toBe('unknown');
     });

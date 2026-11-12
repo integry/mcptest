@@ -34,6 +34,17 @@ describe('server-controlled patternProperties', () => {
     })])).toEqual([]);
   });
 
+  it('leaves a repeated empty group unresolved without stalling the scan', () => {
+    const tools = [schemaTool('empty_repeat', {
+      properties: { method: { enum: ['GET', 'POST'] } },
+      patternProperties: { '(?:){1000000000}': { const: 'GET' } },
+    })];
+    const started = Date.now();
+    expect(findMixedHttpMethodSelectors(tools)).toEqual([]);
+    expect(findUnresolvedHttpMethodSelectors(tools)).toEqual([{ tool: 'empty_repeat', argument: 'method', values: [], categories: [] }]);
+    expect(Date.now() - started).toBeLessThan(2000);
+  });
+
   it('leaves patterns outside the bounded subset unresolved instead of running them', () => {
     const tools = [schemaTool('lookahead', {
       properties: { method: { enum: ['GET', 'POST'] } },
@@ -92,6 +103,55 @@ describe('array-wide constraints on selector arrays', () => {
   it('applies it to the multiplexing advisory', () => {
     expect(findMultiplexedOperationSelectors([schemaTool('run', {
       properties: { operations: { type: 'array', items: { enum: ['get_page', 'delete_page'] }, contains: { const: 'get_page' }, maxItems: 1 } },
+    })])).toEqual([]);
+  });
+});
+
+describe('object cardinality constraints around a method argument', () => {
+  const unresolved = (name: string) => [{ tool: name, argument: 'method', values: [], categories: [] }];
+
+  it('does not fail a method that required properties leave no room for', () => {
+    const tools = [schemaTool('search', {
+      required: ['query'],
+      maxProperties: 1,
+      properties: { query: { type: 'string' }, method: { enum: ['GET', 'POST'] } },
+    })];
+    expect(findMixedHttpMethodSelectors(tools)).toEqual([]);
+    expect(findUnresolvedHttpMethodSelectors(tools)).toEqual(unresolved('search'));
+  });
+
+  it.each([
+    ['maxProperties', { maxProperties: 5 }],
+    ['minProperties above 1', { minProperties: 2 }],
+    ['an invalid minProperties', { minProperties: 'one' }],
+    ['dependentRequired', { dependentRequired: { method: ['missing'] }, properties: { missing: false } }],
+  ])('leaves %s unresolved on the input schema, nested objects, items and composed branches', (_label, extra) => {
+    const method = { method: { enum: ['GET', 'POST'] } };
+    const object = (inner: Record<string, unknown>) => ({ type: 'object', ...extra, properties: { ...method, ...(extra as { properties?: object }).properties }, ...inner });
+    const tools = [
+      schemaTool('top', object({})),
+      schemaTool('nested', { properties: { request: object({}) } }),
+      schemaTool('items', { properties: { requests: { type: 'array', items: object({}) } } }),
+      schemaTool('composed', { allOf: [object({})] }),
+    ];
+    expect(findMixedHttpMethodSelectors(tools)).toEqual([]);
+    expect(findUnresolvedHttpMethodSelectors(tools).map((match) => match.tool)).toEqual(['top', 'nested', 'items', 'composed']);
+  });
+
+  it('keeps the method set under minProperties 0 or 1, which the method itself satisfies', () => {
+    for (const minProperties of [0, 1]) {
+      expect(findMixedHttpMethodSelectors([schemaTool('api_request', {
+        minProperties,
+        properties: { method: { enum: ['GET', 'POST'] } },
+      })])).toHaveLength(1);
+    }
+  });
+
+  it('applies the same rule to the multiplexing advisory', () => {
+    expect(findMultiplexedOperationSelectors([schemaTool('run', {
+      required: ['id'],
+      maxProperties: 1,
+      properties: { id: { type: 'string' }, action: { enum: ['get_page', 'delete_page'] } },
     })])).toEqual([]);
   });
 });

@@ -34,6 +34,23 @@ describe('matchesBoundedPattern', () => {
     expect(matchesBoundedPattern('^a', 'a'.repeat(2000))).toBeUndefined();
   });
 
+  it('bounds compilation of repeated empty groups, which allocate no states', () => {
+    const started = Date.now();
+    for (const pattern of [
+      '(?:){1000000000}', '(){1000000000}', '(?:){1000000000,}', '(?:){0,1000000000}',
+      '(?:(?:){100000}){100000}', '(?:|){1000000000}', '(?:a?){0}(?:){1000000000}',
+    ]) {
+      expect([pattern, matchesBoundedPattern(pattern, 'method')]).toEqual([pattern, undefined]);
+    }
+    expect(Date.now() - started).toBeLessThan(2000);
+  });
+
+  it('still compiles small repetitions of empty groups and large bounded ones', () => {
+    expect(matchesBoundedPattern('^(?:){3}method$', 'method')).toBe(true);
+    expect(matchesBoundedPattern('^a{1,900}$', 'a'.repeat(900))).toBe(true);
+    expect(matchesBoundedPattern('^a{1,900}$', 'a'.repeat(901))).toBe(false);
+  });
+
   it('evaluates catastrophic-backtracking patterns in linear time', () => {
     const started = Date.now();
     for (const pattern of ['^(a+)+$', '^(a|a)*$', '^(a*)*b$', '^(?:a|aa)+$', '^(\\w+\\s?)*$']) {

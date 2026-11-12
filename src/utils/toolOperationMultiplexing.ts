@@ -299,6 +299,22 @@ const arrayElementsUnconstrained = (schema: Record<string, unknown>): boolean =>
   if (min === undefined || max === undefined || max < 1 || min > max) return false;
   return !('uniqueItems' in schema && (schema.uniqueItems !== false && min > 1));
 };
+
+/**
+ * Whether the object-wide constraints of `schema` may make a property it
+ * declares unusable in every valid object. `maxProperties` can be used up by
+ * required properties (`required: ['query'], maxProperties: 1` leaves no room
+ * for `method`), `minProperties` above 1 depends on which other properties
+ * can be present, and `dependentRequired` can make a property require one
+ * that no valid object holds. None of these is modeled. `minProperties` of 0
+ * or 1 is satisfied by the property itself.
+ */
+const objectPresenceUnmodeled = (schema: Record<string, unknown>): boolean => {
+  if ('maxProperties' in schema || 'dependentRequired' in schema) return true;
+  if (!('minProperties' in schema)) return false;
+  const min = schema.minProperties;
+  return !(typeof min === 'number' && Number.isInteger(min) && min >= 0 && min <= 1);
+};
 const PATH_DEPTH_LIMIT = 8;
 const LITERAL_LIMIT = 200;
 
@@ -369,7 +385,8 @@ const stepSchemas = (node: Record<string, unknown>, step: PathStep): unknown[] |
  * and `oneOf` on the enclosing objects, their own `const` and `enum`,
  * `patternProperties`, and `additionalProperties` for names declared only in
  * a composed branch.
- * Enclosing constraints the walk does not interpret make it inconclusive.
+ * Enclosing constraints the walk does not interpret, including object
+ * cardinality bounds (see `objectPresenceUnmodeled`), make it inconclusive.
  */
 const constraintAt = (
   schema: unknown,
@@ -383,7 +400,7 @@ const constraintAt = (
   if (!isRecord(schema) || depth > PATH_DEPTH_LIMIT) return 'inconclusive';
   const [step, ...rest] = path;
   const uninterpreted = UNINTERPRETED_ENCLOSING_KEYWORDS.some((keyword) => keyword in schema)
-    || (step === 'items' && !arrayElementsUnconstrained(schema));
+    || (step === 'items' ? !arrayElementsUnconstrained(schema) : objectPresenceUnmodeled(schema));
   const initial: ValueConstraint = intersect(
     uninterpreted ? 'inconclusive' : 'any',
     enclosingLiteralConstraint(schema, path)

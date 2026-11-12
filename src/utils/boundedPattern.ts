@@ -21,6 +21,12 @@
 const PATTERN_LENGTH_LIMIT = 512;
 const INPUT_LENGTH_LIMIT = 1024;
 const STATE_LIMIT = 2000;
+/**
+ * Compilation steps (node visits and repetition iterations). Repeating an
+ * empty group (`(?:){1000000000}`) allocates no states, so `STATE_LIMIT`
+ * alone does not bound the work.
+ */
+const COMPILE_WORK_LIMIT = 20000;
 const CACHE_LIMIT = 256;
 
 type CodePointTest = (cp: number) => boolean;
@@ -234,12 +240,18 @@ type State =
 /** Thompson construction: `compile(node, next)` returns the entry state of `node` followed by `next`. */
 const compileNfa = (root: Node): { states: State[]; entry: number } => {
   const states: State[] = [{ kind: 'match' }];
+  let work = 0;
+  const step = () => {
+    work += 1;
+    if (work > COMPILE_WORK_LIMIT) unsupported();
+  };
   const add = (state: State): number => {
     if (states.length >= STATE_LIMIT) unsupported();
     states.push(state);
     return states.length - 1;
   };
   const compile = (node: Node, next: number): number => {
+    step();
     switch (node.kind) {
       case 'char': return add({ kind: 'char', test: node.test, out: next });
       case 'start': case 'end': return add({ kind: node.kind, out: next });
@@ -253,10 +265,14 @@ const compileNfa = (root: Node): { states: State[]; entry: number } => {
           entry = loop;
         } else {
           for (let count = node.min; count < node.max; count += 1) {
+            step();
             entry = add({ kind: 'split', out: [compile(node.node, entry), next] });
           }
         }
-        for (let count = 0; count < node.min; count += 1) entry = compile(node.node, entry);
+        for (let count = 0; count < node.min; count += 1) {
+          step();
+          entry = compile(node.node, entry);
+        }
         return entry;
       }
     }
@@ -322,7 +338,8 @@ const compilePattern = (pattern: string): Compiled => {
  * Whether `pattern` (ECMAScript, `u` flag, unanchored like JSON Schema's
  * `pattern` and `patternProperties`) matches `input`, in time linear in the
  * input. `undefined` when the pattern is invalid, uses syntax outside the
- * supported subset, or the pattern or input exceeds the size limits.
+ * supported subset, or the pattern, its compilation work, or the input
+ * exceeds the size limits.
  */
 export const matchesBoundedPattern = (pattern: string, input: string): boolean | undefined => {
   const compiled = compilePattern(pattern);
