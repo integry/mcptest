@@ -7,7 +7,7 @@ level: practitioner
 order: 20
 category: Testing
 readingTimeMinutes: 8
-lastReviewed: "2026-10-20"
+lastReviewed: "2026-11-11"
 metaTitle: Test MCP Server Before Deploy | mcptest.io
 metaDescription: How to test an MCP server before deploy. The connect sequence a client runs, what mcptest checks in which order, how to read the report, and how to gate releases in CI.
 relatedSlugs:
@@ -22,6 +22,8 @@ sourceLinks:
     url: "https://modelcontextprotocol.io/specification/2026-07-28/changelog"
   - title: "MCP 2026-07-28 authorization: authorization server discovery"
     url: "https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization/authorization-server-discovery"
+  - title: "MCP 2026-07-28 tools"
+    url: "https://modelcontextprotocol.io/specification/2026-07-28/server/tools"
   - title: "TypeScript SDK v2: protocol versions"
     url: "https://ts.sdk.modelcontextprotocol.io/v2/protocol-versions"
   - title: mcptest headless CLI and CI release gate
@@ -36,11 +38,11 @@ The order matters because a failure early in the sequence hides everything after
 
 1. **Resolve the endpoint.** The client uses the exact URL it was given, for example `https://mcp.example.com/mcp`. Clients that support the deprecated HTTP+SSE transport may also try a sibling `/sse` path.
 2. **Preflight (browsers only).** A browser sends `OPTIONS` before the first `POST`, because `Content-Type: application/json` and the `MCP-Protocol-Version`, `Mcp-Method`, and `Mcp-Name` headers are not on the CORS safelist. If the preflight fails, the browser never sends the request and the page sees only a generic network error.
-3. **Pick a protocol era.** A client that supports `2026-07-28` sends `server/discover` with `MCP-Protocol-Version: 2026-07-28` and `Mcp-Method: server/discover`. If the server answers with a recognized modern result or error, the client stays stateless. If it answers `400` without a modern JSON-RPC error body, the client falls back to the 2025 handshake: `initialize`, then `notifications/initialized`, carrying any `Mcp-Session-Id` the server issued on every later request.
+3. **Pick a protocol era.** A client that supports both `2026-07-28` and older revisions may probe with a modern request first, such as `server/discover` with `MCP-Protocol-Version: 2026-07-28` and `Mcp-Method: server/discover`. If the server answers with a recognized modern result or error, the client stays stateless. If it answers `400` without a modern JSON-RPC error body, the client falls back to the 2025 handshake: `initialize`, then `notifications/initialized`, then any `Mcp-Session-Id` the server issued on every later request. Not every client probes. The TypeScript SDK v2, for example, starts with `initialize` unless it is configured to negotiate automatically.
 4. **Authorize when challenged.** A `401` with `WWW-Authenticate: Bearer resource_metadata="..."` sends the client to the Protected Resource Metadata document, then to the authorization server's metadata, then through OAuth with PKCE. Without a `resource_metadata` parameter, the client probes `/.well-known/oauth-protected-resource/<path>` and then `/.well-known/oauth-protected-resource`.
 5. **Discover capabilities.** `tools/list`, `resources/list`, `resources/templates/list`, and `prompts/list`, each followed through `nextCursor` until the last page.
 6. **Open optional streams.** A 2025 client may `GET` the endpoint for a server-to-client event stream; `405` means none is offered. A 2026 client opens change notifications with a `subscriptions/listen` `POST` instead, because the 2026 revision removed the `GET` stream.
-7. **Call tools.** Each `tools/call` carries `Mcp-Name: <tool>` on 2026 requests. When the tool declares an `outputSchema`, clients validate `structuredContent` against it before using the result.
+7. **Call tools.** On 2026 requests, each `tools/call` carries `Mcp-Name: <tool>`. When a tool declares an `outputSchema`, the server must return conforming `structuredContent`, and clients should validate it before using the result.
 
 | Step | Typical failure | How it shows up |
 | --- | --- | --- |
@@ -50,7 +52,7 @@ The order matters because a failure early in the sequence hides everything after
 | 2025 handshake | `Mcp-Session-Id` issued but not in `Access-Control-Expose-Headers` | `initialize` succeeds, the next request is rejected |
 | Authorization | Metadata document only at one well-known path | Client stops at a `404` |
 | Optional stream | `GET` answered with HTML or `text/plain` | SSE content-type mismatch |
-| Tool calls | `structuredContent` drifts from `outputSchema` | Client rejects the result |
+| Tool calls | `structuredContent` drifts from `outputSchema` | A validating client rejects the result |
 
 ## What mcptest checks, and in what order
 

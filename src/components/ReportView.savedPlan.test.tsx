@@ -150,7 +150,7 @@ describe('ReportView saved-plan run across target authorization', () => {
     expect(savedPlanOptionOf(retry)).toMatchObject({ id: saved.id, endpoint, plan: saved.plan });
 
     // The plan ran, so an ordinary report afterwards does not run it again.
-    await click('Run Report');
+    await click('Run report');
     expect(evaluationMocks.evaluate).toHaveBeenCalledTimes(4);
     expect(savedPlanOptionOf(evaluationMocks.evaluate.mock.calls[3])).toBeUndefined();
   });
@@ -194,7 +194,7 @@ describe('ReportView saved-plan run across target authorization', () => {
       .mockResolvedValue(scoredReport());
     await render();
     await click('Run saved plan');
-    await click('Run Report');
+    await click('Run report');
     await click('Authorize and run report');
     expect(JSON.parse(sessionStorage.getItem('oauth_return_view')!).savedPlanRequest).toBeUndefined();
     oauthMocks.begin.mockResolvedValue('AUTHORIZED');

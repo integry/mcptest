@@ -7,7 +7,7 @@ level: "practitioner"
 order: 402
 category: "Deployment"
 readingTimeMinutes: 7
-lastReviewed: "2026-10-24"
+lastReviewed: "2026-11-11"
 metaTitle: "Deploy MCP on Cloud Run | mcptest.io"
 metaDescription: "Deploy a tested stateless MCP container to Cloud Run, account for scale-to-zero, request timeouts and best-effort session affinity, then check CORS and SSE in mcptest.io."
 relatedSlugs:
@@ -32,13 +32,29 @@ sourceLinks:
     url: "https://docs.cloud.google.com/run/docs/mapping-custom-domains"
 ---
 
-Cloud Run is a straightforward home for an MCP server you already run as a Node process. Package the process as a container, listen on the provided port, and let Cloud Run handle HTTPS and instance scaling. The tradeoff is that a process can disappear when traffic stops, so your server must tolerate that lifecycle.
+Cloud Run is a straightforward home for an MCP server that already runs as a Node.js process. You package the process as a container and listen on the port Cloud Run provides. Cloud Run terminates HTTPS and scales instances for you. In exchange, an instance can stop when traffic stops, so the server must not depend on process memory between requests.
 
-This guide uses a stateless sample and focuses on Cloud Run configuration, reviewed on 24 October 2026. For the wider hosting comparison, see [deploying a remote MCP server](/learn/deploy-remote-mcp-server).
+This guide deploys a small, tested echo server. For a comparison of hosting models, see [deploying a remote MCP server](/learn/deploy-remote-mcp-server).
 
-## Run the complete sample locally
+## What you will build
 
-The [complete deployment sample](https://github.com/integry/mcptest/tree/master/src/content/articles/samples/remote-deploy) includes `app.mjs`, `node.mjs`, pinned dependencies, all platform adapters, and a smoke runner. Download just that directory from the repository archive into a fresh folder:
+- A stateless MCP server in a container, served at `https://SERVICE-URL/mcp`.
+- One read-only `echo` tool. It takes a required `text` string and an optional `waitMs` delay from 0 to 1000, sends a progress notification when the caller asks for one, and returns the text.
+- One URL for both protocol eras. `createMcpHandler` answers 2026-07-28 requests directly and 2025 clients through `legacy: 'stateless'`. It issues no `Mcp-Session-Id`, and `GET /mcp` returns `405`. A response upgrades to SSE when the tool sends progress. There is no separate `/sse` endpoint.
+- `Host` and `Origin` validation, and CORS for browser clients at `https://mcptest.io`.
+
+The server has no authentication. Before you connect private data, add [bearer authorization and protected resource metadata](/learn/mcp-server-authentication-patterns).
+
+## Prerequisites
+
+- Node.js 22 and npm. The sample was tested with Node.js 22.23.4.
+- A Google Cloud project with billing enabled, and permission to enable APIs and deploy Cloud Run services.
+- The [Google Cloud CLI](https://cloud.google.com/sdk/docs/install), signed in with `gcloud auth login`.
+- `curl`, to check the deployment. Docker is optional.
+
+## Step 1: Download and test the sample locally
+
+The [deployment sample](https://github.com/integry/mcptest/tree/master/src/content/articles/samples/remote-deploy) holds the shared app, the entry points for Vercel, AWS Lambda, Cloud Run and Fly.io, pinned dependencies, and a smoke test. Download only that directory into a new folder:
 
 ```bash
 mkdir echo-mcp
@@ -47,18 +63,17 @@ curl -fL https://github.com/integry/mcptest/archive/refs/heads/master.tar.gz \
   | tar -xz --strip-components=6 mcptest-master/src/content/articles/samples/remote-deploy
 npm install
 npm run smoke
-npm start
 ```
 
-Use Node.js 22.23.4. `npm start` serves `http://localhost:3000/mcp`; stop it before rerunning smoke, which uses ports 3000–3003. Leave `PUBLIC_URL` unset locally. The sample pins `@modelcontextprotocol/server` 2.3.1, `@hono/node-server` 2.1.5 and `zod` 4.6.7. The smoke client is SDK 2.3.1.
+The smoke test starts every entry point on ports 3000 to 3003. For each one it connects with the 2026-07-28 protocol and with the 2025 handshake, lists and calls `echo`, receives SSE progress, and checks that no session ID is issued. It also checks the CORS preflight, the `405` on `GET`, and the `403` for a foreign `Host` or `Origin`. Each entry point prints one `passed` line.
 
-The app registers one read-only `echo` tool with a required `text` string and optional `waitMs` from 0 to 1000. It emits progress when the caller requests it, then returns the text. `createMcpHandler` serves **2026-07-28 stateless requests** and uses `legacy: 'stateless'` for 2025 clients. It issues no session ID; `GET /mcp` returns `405`. The same URL handles JSON responses and POST responses that upgrade to SSE when progress is emitted. There is no separate legacy `/sse` endpoint.
+To try the server by hand, run `npm start` and open `http://localhost:3000/mcp` in the [mcptest.io playground](/). Leave `PUBLIC_URL` unset locally. Stop the server before you run the smoke test again.
 
-This is an unauthenticated echo demonstration. Before attaching private data, add [real bearer authorization and protected resource metadata](/learn/mcp-server-authentication-patterns). The [Hono guide](/learn/remote-mcp-server-with-hono) provides a complete authenticated application if that is your next step.
+The sample pins `@modelcontextprotocol/server` 2.3.1, `@hono/node-server` 2.1.5 and `zod` 4.6.7, and the smoke client is `@modelcontextprotocol/client` 2.3.1.
 
-## Containerize the server
+## Step 2: Review the container
 
-The sample includes this complete `Dockerfile`:
+The sample includes this `Dockerfile`:
 
 ```dockerfile
 FROM node:22.23.4-bookworm-slim
@@ -72,7 +87,7 @@ USER node
 CMD ["node", "node.mjs"]
 ```
 
-`node.mjs` is the complete process entry:
+`node.mjs` is the process entry:
 
 ```javascript
 import { serve } from '@hono/node-server';
@@ -80,13 +95,18 @@ import app from './app.mjs';
 serve({ fetch: app.fetch, hostname: '0.0.0.0', port: Number(process.env.PORT ?? 3000) });
 ```
 
-[Cloud Run's container contract](https://docs.cloud.google.com/run/docs/container-contract) requires the ingress container to listen on `0.0.0.0` and the configured `PORT`, not only loopback. TLS terminates before the container, so this process serves HTTP. The public MCP URL still uses HTTPS.
+[Cloud Run's container contract](https://docs.cloud.google.com/run/docs/container-contract) requires the container to listen on `0.0.0.0` at the port in the `PORT` environment variable, not only on loopback. TLS ends before the container, so the process serves plain HTTP while clients use HTTPS.
 
-If Docker is installed, build with `docker build -t echo-mcp .` and run with `docker run --rm -p 8080:8080 -e PUBLIC_URL=http://localhost:8080/mcp echo-mcp`. These are complete optional container checks; Docker was unavailable during authoring, so the equivalent Node entry was what ran locally.
+If Docker is installed, you can check the image locally:
 
-## Deploy from the sample directory
+```bash
+docker build -t echo-mcp .
+docker run --rm -p 8080:8080 -e PUBLIC_URL=http://localhost:8080/mcp echo-mcp
+```
 
-With the Google Cloud CLI installed, choose your own project and region:
+## Step 3: Deploy from the sample directory
+
+Replace the project ID, and change the region if you need to:
 
 ```bash
 export GOOGLE_CLOUD_PROJECT='replace-with-your-project-id'
@@ -95,49 +115,104 @@ gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregi
 gcloud run deploy echo-mcp --source . --region us-central1 \
   --port 8080 --timeout 60 --min 0 --concurrency 40 \
   --no-session-affinity --allow-unauthenticated
+```
+
+[Source deployment](https://docs.cloud.google.com/run/docs/deploying-source-code) builds the included Dockerfile with Cloud Build and stores the image in Artifact Registry. The flags set the container port, a 60-second request timeout, no minimum instances, up to 40 concurrent requests per instance, and no session affinity. `--allow-unauthenticated` lets ordinary MCP clients reach this echo demo. Cloud Run IAM sign-in and MCP OAuth are different mechanisms: add application OAuth before you serve private tools.
+
+## Step 4: Set the public URL
+
+The first revision rejects requests, because the app accepts only the `PUBLIC_URL` hostname in `Host` and the default is `localhost`. Read the service URL and set `PUBLIC_URL`:
+
+```bash
 MCP_SERVICE_URL="$(gcloud run services describe echo-mcp --region us-central1 --format='value(status.url)')"
 gcloud run services update echo-mcp --region us-central1 \
   --set-env-vars "PUBLIC_URL=${MCP_SERVICE_URL}/mcp"
 ```
 
-Replace the project ID before running. [Source deployment](https://docs.cloud.google.com/run/docs/deploying-source-code) builds the included Dockerfile with Cloud Build and stores the image in Artifact Registry; your account needs permissions and billing for those services. The first revision will reject public Host headers until the update sets `PUBLIC_URL`. Wait for the updated revision to be ready.
+The update creates a new revision. Wait until it is ready before you test.
 
-`--allow-unauthenticated` makes this echo demo reachable by ordinary MCP clients. Cloud Run IAM sign-in and MCP OAuth are different mechanisms. Add application OAuth before serving private tools, or deliberately choose an IAM-aware client and a different access design.
+## Step 5: Verify the deployment
 
-## Scale to zero or keep one warm
+```bash
+# The endpoint offers no GET stream: expect 405.
+curl -s -o /dev/null -w '%{http_code}\n' "${MCP_SERVICE_URL}/mcp"
 
-With minimum instances at zero, an idle service can scale to zero. The next request waits for capacity and process startup. [Minimum instances](https://docs.cloud.google.com/run/docs/configuring/min-instances) can keep capacity available; for a latency-sensitive endpoint, update the service with `gcloud run services update echo-mcp --region us-central1 --min 1` and account for the cost. Warm instances can still restart or be replaced.
+# A 2026 discovery request: expect 200 and "supportedVersions":["2026-07-28"].
+curl -s "${MCP_SERVICE_URL}/mcp" \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -H 'MCP-Protocol-Version: 2026-07-28' \
+  -H 'Mcp-Method: server/discover' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"curl-check","version":"1.0.0"},"io.modelcontextprotocol/clientCapabilities":{}}}}'
 
-A connection timeout immediately after an idle period may be a startup problem, even if the same URL works on retry. Compare cold and warm requests, trim initialization work, and choose downstream connection pools that survive instance churn. Never store per-user credentials in a global variable that concurrent requests can share.
+# A browser preflight: expect 204 and access-control-allow-origin: https://mcptest.io.
+curl -s -i -X OPTIONS "${MCP_SERVICE_URL}/mcp" \
+  -H 'Origin: https://mcptest.io' \
+  -H 'Access-Control-Request-Method: POST' \
+  -H 'Access-Control-Request-Headers: content-type,mcp-method,mcp-protocol-version'
+```
+
+Then test it on mcptest.io:
+
+1. Open the endpoint in the playground: `https://mcptest.io/server/` followed by the endpoint without the scheme and a final `/mcp`, for example `mcptest.io/server/YOUR-SERVICE-HOSTNAME/mcp/mcp`.
+2. Confirm that discovery succeeds, that `tools/list` shows `echo`, and that no session ID is issued.
+3. Call `echo` with `{"text":"hello","waitMs":500}` and confirm the result is `hello`, with a progress notification first.
+4. Repeat once after the service has been idle and once after a new deployment, to catch cold-start and redeploy problems.
+
+When the URL is stable, add the [pre-deployment release gate](/learn/test-mcp-server-before-deploying) to your pipeline.
+
+The smoke test above passed locally with the pinned versions, through the same Node entry the container runs. It does not exercise Google's front end. No container build or Cloud Run deployment was run for this guide, so check IAM, DNS, TLS, timeouts and live streaming in your own project.
+
+## Scale to zero or keep one instance warm
+
+With minimum instances at zero, an idle service scales to zero. The next request waits for an instance to start. [Minimum instances](https://docs.cloud.google.com/run/docs/configuring/min-instances) keep capacity ready, at a cost. For a latency-sensitive endpoint, run:
+
+```bash
+gcloud run services update echo-mcp --region us-central1 --min 1
+```
+
+`--min` sets a service-level minimum that applies without a new revision. The older `--min-instances` flag sets it per revision.
+
+Warm instances can still restart or be replaced. A timeout right after an idle period, on a URL that works when retried, often points to startup time. Compare cold and warm requests, and keep startup work small. Never store per-user credentials in a global variable that concurrent requests share.
 
 ## Streaming and request deadlines
 
-[Cloud Run's timeout documentation](https://docs.cloud.google.com/run/docs/configuring/request-timeout) gives a five-minute default and a maximum of 60 minutes. This sample explicitly chooses 60 seconds. The deadline includes startup and response completion; emitting SSE does not reset it. A timeout can close the client response while container code continues running, so also enforce deadlines inside expensive tools.
+[Cloud Run's request timeout](https://docs.cloud.google.com/run/docs/configuring/request-timeout) defaults to 5 minutes and can be raised to 60 minutes. The sample sets 60 seconds. Per the [container runtime contract](https://docs.cloud.google.com/run/docs/container-contract), the response must finish within the timeout, counted from when the request arrives and including container startup. SSE progress does not reset the timeout. When the timeout ends a request, the code in the container may keep running, so enforce deadlines inside expensive tools too.
 
-The Node adapter passes the web response stream through to HTTP. Cloud Run supports streamed responses; preserve `text/event-stream` and avoid buffering proxies, compression middleware or CDN caching in front of `/mcp`. Verify a progress notification reaches the deployed client before the final result. The local smoke run validates SSE at the Node entry, not Google's load balancer.
+Cloud Run streams responses. The Node adapter passes the response stream straight to HTTP. Keep `text/event-stream` intact, and avoid buffering proxies, compression middleware or CDN caching in front of `/mcp`. Check that a progress notification reaches the deployed client before the final result.
 
 ## Session affinity is not durable storage
 
-[Cloud Run session affinity](https://docs.cloud.google.com/run/docs/configuring/session-affinity) is best effort and cookie based. A client may not send the cookie, instances can disappear, and concurrency limits can route requests elsewhere. It cannot make an in-memory MCP session reliable through scale-to-zero or deployment.
+[Cloud Run session affinity](https://docs.cloud.google.com/run/docs/configuring/session-affinity) is best effort and based on a cookie. A client may not send the cookie, instances can stop, and a busy instance can be skipped. Affinity cannot keep an in-memory MCP session alive through scale-to-zero or a new deployment.
 
-Leave affinity disabled for this sample. Each 2026 request and each stateless 2025 exchange can run on any instance. If you add stateful transport or subscription fan-out, design an external state/event layer and its failure behavior first. A database-backed business record is separate from an MCP session and should survive container replacement.
+Leave affinity off for this sample. Every 2026 request and every stateless 2025 exchange can run on any instance. If you add a stateful transport or cross-instance notifications, put that state in an external store first. If a 2025 client reports `Session not found` after a deploy, read [Session not found after deploy](/learn/mcp-session-not-found-after-deploy).
 
 ## Add a custom domain
 
-[Cloud Run's domain documentation](https://docs.cloud.google.com/run/docs/mapping-custom-domains) describes supported front doors, including a global external Application Load Balancer and domain mapping with its availability limitations. Choose the route supported in your region, configure DNS and TLS, then set `PUBLIC_URL` to the new HTTPS `/mcp` endpoint.
+[Cloud Run's domain documentation](https://docs.cloud.google.com/run/docs/mapping-custom-domains) lists three options: a global external Application Load Balancer (recommended), Firebase Hosting, and Cloud Run domain mapping, which is in Preview with limited availability. Choose an option your region supports, configure DNS and TLS, then set `PUBLIC_URL` to the new `https://YOUR-DOMAIN/mcp` endpoint.
 
-Check the backend Host behavior if you add a load balancer. Any hostname your application accepts should be explicitly allowlisted. Recheck its timeout and buffering policy too: raising Cloud Run's timeout does not raise a proxy's deadline.
+If you add a load balancer, check which `Host` reaches the container, and allowlist every hostname the app should accept. Check its timeout and buffering too: raising Cloud Run's timeout does not raise a load balancer's.
 
 ## CORS and the public URL
 
-Set `PUBLIC_URL` to your exact production endpoint, including `/mcp`. The app validates the incoming `Host` against that hostname and rejects other Origins. It allows browser requests from `https://mcptest.io`, answers `OPTIONS` before the MCP handler, allows the MCP request headers, and exposes `WWW-Authenticate`, `MCP-Protocol-Version`, `Mcp-Session-Id` and `Retry-After`.
+`PUBLIC_URL` must be the exact production endpoint, including `/mcp`. The app:
 
-To support another browser app, add its exact origin to the `origins` array in `app.mjs`. The SDK Origin check compares hostnames; the CORS response uses the exact origin allowlist. CORS is not user authentication. Non-browser clients can omit Origin, so protect private tools independently. The [CORS reference](/learn/mcp-cors-headers-for-browser-clients) covers the browser checks in detail.
+- rejects a `Host` other than the `PUBLIC_URL` hostname with `403`;
+- rejects an `Origin` that is not on its allowlist with `403`, and lets requests without an `Origin` through;
+- answers the `OPTIONS` preflight itself, before the MCP handler, for `https://mcptest.io`;
+- allows the MCP request headers, and exposes `WWW-Authenticate`, `MCP-Protocol-Version`, `Mcp-Session-Id` and `Retry-After`.
 
-A new custom domain means a new canonical resource URL if you later add OAuth. Update `PUBLIC_URL`, protected resource metadata and the provider's resource/audience configuration together. Test redirects too: an HTML landing page or a login page in front of `/mcp` is not a successful MCP response.
+To allow another browser app, add its exact origin to the `origins` array in `app.mjs`. The SDK's `Origin` check compares hostnames, and the CORS headers echo only exact origins on the list. CORS is not authentication: non-browser clients can omit `Origin`, so protect private tools separately. The [CORS reference](/learn/mcp-cors-headers-for-browser-clients) explains each header.
 
-## Test it on mcptest.io
+A new domain is also a new resource URL if you add OAuth later. Change `PUBLIC_URL`, the protected resource metadata, and the identity provider's resource or audience setting together.
 
-Open the **deployed HTTPS `/mcp` endpoint** in the [mcptest.io playground](/). Check discovery, list tools, and call `echo` with `{"text":"hello","waitMs":500}`. Confirm the result is `hello`, the browser preflight succeeds, the response headers are readable, and there is no session ID. Repeat once after the platform has been idle and once after a new deployment.
+## Common failures
 
-The fixture's `npm run smoke` was run locally: pinned 2026 discovery, legacy initialization, tool listing/calling, SSE progress, no-session behavior, allowed-origin preflight, rejected Host/Origin, and GET `405` all passed. Local success does not verify the cloud front door. Deployment CLIs and credentials were unavailable during authoring; cloud deployment, DNS/TLS, platform timeouts and live streaming must be checked in your account. Add the [pre-deployment release gate](/learn/test-mcp-server-before-deploying) once the public URL is stable.
+| Symptom | Likely cause | Fix |
+| --- | --- | --- |
+| `403` with `Invalid Host: …` | `PUBLIC_URL` is unset or names another hostname, such as before step 4 or after adding a domain | Set it to the exact public URL and wait for the new revision. See [Invalid Host header](/learn/mcp-error-invalid-host-header). |
+| `403` from Google with an HTML page | The service requires IAM authentication | Deploy with `--allow-unauthenticated`, or use an IAM-aware client. See [401 Unauthorized](/learn/remote-mcp-server-401-unauthorized) for MCP's own auth errors. |
+| The first request after idle times out; a retry works | Cold start | Keep startup small, or set `--min 1`. See [Request timed out](/learn/mcp-error-request-timed-out). |
+| A long call stops before its result, or the stream is cut | The request timeout was reached | Raise `--timeout` up to 60 minutes, or shorten the work. See [SSE stream disconnected](/learn/mcp-error-sse-stream-disconnected). |
+| The browser reports a network error; `curl` works | The browser's origin is not in `origins`, or a header is missing from the preflight | Add the origin and check the preflight. See the [CORS reference](/learn/mcp-cors-headers-for-browser-clients). |
+| `GET /mcp` returns `405` | Expected: the server offers no GET stream | Nothing to fix. See [406, 415 and 405](/learn/mcp-406-not-acceptable-415-and-405). |

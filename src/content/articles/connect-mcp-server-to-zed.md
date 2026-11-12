@@ -6,8 +6,8 @@ track: use
 level: practitioner
 order: 30
 category: Client setup
-readingTimeMinutes: 5
-lastReviewed: "2026-10-21"
+readingTimeMinutes: 6
+lastReviewed: "2026-11-11"
 metaTitle: Connect a Remote MCP Server to Zed | mcptest.io
 metaDescription: How to add a remote MCP server to Zed. The context_servers settings for URL, headers, and OAuth client IDs, the Authenticate flow, tool permissions with mcp:server:tool keys, and known issues.
 relatedSlugs:
@@ -29,17 +29,20 @@ sourceLinks:
     url: "https://github.com/zed-industries/zed/blob/main/crates/settings_content/src/project.rs"
 ---
 
-Zed calls MCP servers "context servers". Its built-in agent can use tools and prompts from a remote server over Streamable HTTP, and since version 0.230.0 it can sign in to servers that use OAuth. This guide reflects Zed's MCP documentation and release notes reviewed on 21 October 2026, when the stable release was v1.24.4.
+Zed calls MCP servers "context servers". Its built-in agent can use tools and prompts from a remote server over Streamable HTTP, and since version 0.230.0 it can sign in to servers that use OAuth. This guide reflects Zed's MCP documentation, settings source and release notes reviewed on 11 November 2026, when the stable release was v1.27.0 (4 November 2026).
 
 ## Before you start
 
-You need the exact MCP endpoint, for example `https://mcp.example.com/mcp`, and to know whether the server uses OAuth, a fixed token, or no authentication. [How to connect to a remote MCP server](/learn/connect-remote-mcp-server) explains how to find out. Zed supports MCP **tools** and **prompts**; resources are not listed as supported, so a server that only exposes resources will show nothing useful.
+- **The exact MCP endpoint**, including its path, for example `https://mcp.example.com/mcp`.
+- **The sign-in method**: OAuth, a fixed token, or no authentication. [How to connect to a remote MCP server](/learn/connect-remote-mcp-server) explains how to find out.
+- **A server that speaks Streamable HTTP.** Zed's remote client implements Streamable HTTP; its documentation does not describe the legacy SSE transport.
+- **Tools or prompts on the server.** Zed supports MCP tools and prompts. Resources are not supported, so a server that only exposes resources shows nothing useful.
 
 ## Add the server
 
-1. Open **Settings → AI → MCP Servers**. The `agent: open settings` action from the command palette also gets you there.
+1. Open **Settings → AI → MCP Servers**. You can also run `agent: open settings` from the command palette and select **MCP Servers**.
 2. Click **Add Server**, then **Add Remote Server**.
-3. Enter a name and the URL. Zed writes the entry into your settings file under `context_servers`.
+3. Enter a name and the URL. The form also has fields for headers, a timeout in seconds and an OAuth client ID. Zed writes the entry into your settings file under `context_servers`.
 
 You can also edit the settings file directly with `zed: open settings file`. A remote server with OAuth needs only a URL:
 
@@ -101,11 +104,22 @@ For servers that take an API key or personal access token, put it in `headers`:
 
 Setting `Authorization` turns off the OAuth prompt for that server. Zed's documentation does not describe variable expansion in `headers`, so treat the value as a literal and keep the token out of a project settings file you commit.
 
-## Check that it is running
+## Check that it worked
 
-In **Settings → AI → MCP Servers**, the dot next to the server turns green and its tooltip reads "Server is active" when the connection works. Other colors and tooltips describe the problem. For details, run `zed: open log` from the command palette; on macOS the log is `~/Library/Logs/Zed/Zed.log` and on Linux `~/.local/share/zed/logs/Zed.log`.
+In **Settings → AI → MCP Servers**, hover over the dot next to the server:
 
-Each server row also has a toggle to disable it and a configure button to edit the entry.
+| Dot | Tooltip | Meaning |
+| --- | --- | --- |
+| Green | "Server is active." | Connected |
+| Yellow | "Authentication Required." or "Client Secret Required." | Click **Authenticate**, or enter the client secret |
+| Grey | "Server is starting." or "Waiting for Authorization…" | Still connecting, or the browser sign-in is open |
+| Red | "Server has an error." | See the log |
+
+After a successful sign-in the dot turns green and the row shows a **Log Out** button. Then open the agent panel and ask for something only one of the server's tools can do.
+
+For details, run `zed: open log` from the command palette. The log is `~/Library/Logs/Zed/Zed.log` on macOS, `~/.local/share/zed/logs/Zed.log` on Linux, and `%LOCALAPPDATA%\Zed\logs\Zed.log` on Windows.
+
+Each server row also has a toggle to disable it, a **Configure** (gear) button to edit the entry and an **Uninstall** (trash) button. When a server sends `notifications/tools/list_changed`, Zed reloads its tool list without a restart.
 
 ## Control which tools the agent uses
 
@@ -142,7 +156,7 @@ Approval is a separate setting. Since v0.224.0, `agent.tool_permissions.default`
 }
 ```
 
-Only the `default` option applies to MCP tools; pattern rules match an empty string for them.
+Pattern rules match an empty string for MCP tools, so in practice only `default` works for them.
 
 MCP servers configured in Zed are also forwarded to external agents over the Agent Client Protocol, but terminal threads use the CLI's own configuration.
 
@@ -150,11 +164,11 @@ MCP servers configured in Zed are also forwarded to external agents over the Age
 
 ### No Authenticate button, and the server stays red
 
-The server did not return a usable `401` challenge, or it returned one without a `resource_metadata` parameter and has no metadata at the well-known locations. Check the first three steps of the [401 checklist](/learn/remote-mcp-server-401-unauthorized). If you have an `Authorization` header configured, Zed will not offer OAuth at all; remove the header.
+The server did not return a usable `401` challenge, or it returned one without a `resource_metadata` parameter and has no metadata at the well-known locations. Check the first three steps of the [401 checklist](/learn/remote-mcp-server-401-unauthorized) and [Failed to discover OAuth metadata](/learn/mcp-error-failed-to-discover-oauth-metadata). If you have an `Authorization` header configured, Zed will not offer OAuth at all; remove the header. If the error says the server "supports neither CIMD nor DCR", add a pre-registered `client_id` as shown above.
 
 ### The provider rejects the redirect
 
-Zed signs in through a loopback redirect on `127.0.0.1` with a port chosen at run time. Providers that require an exact, pre-registered redirect URI reject it; issue #56210 shows this with one hosted server. Use a provider that accepts loopback redirects on any port, as RFC 8252 recommends for native apps.
+Zed signs in through a loopback redirect on `127.0.0.1` with a port chosen at run time. Providers that require an exact, pre-registered redirect URI reject it; issue #56210 showed this with one hosted server and was closed as not planned in October 2026. Use a provider that accepts loopback redirects on any port, as RFC 8252 recommends for native apps. [invalid_redirect_uri](/learn/mcp-error-invalid-redirect-uri) explains the error.
 
 ### Asked to sign in again after a while
 
@@ -162,12 +176,12 @@ Issue #65216, open at the time of writing, reports re-authentication after the p
 
 ### A tool call hangs
 
-Issue #57180, also open, reports `tools/call` hanging after a server answers `404` to a stale `Mcp-Session-Id`. It affects servers that keep sessions in memory and lose them on restart or across replicas. Stateless servers, which never issue a session id, avoid it. Toggle the server off and on to recover.
+Issue #57180, also open, reports `tools/call` hanging after a server answers `404` to a stale `Mcp-Session-Id`. It affects servers that keep sessions in memory and lose them on restart or across replicas. Stateless servers, which never issue a session id, avoid it. Toggle the server off and on to recover. [MCP Session not found after deploy](/learn/mcp-session-not-found-after-deploy) explains the server side.
 
 ### Tools appear but the model never calls them
 
 Some models do not support every tool; Zed shows a warning icon near the model selector. Try another model or the profile above.
 
-## Test the endpoint first
+## Verify the endpoint before you add it
 
-Zed's indicator tells you that something failed, not which request. Open the [MCP Playground](/), paste the endpoint, and connect before you edit settings. **Logs & Events** shows each request and response, including the `401` challenge and the OAuth discovery steps Zed will follow.
+Zed's indicator tells you that something failed, not which request. Open the [MCP Playground](/), paste the endpoint and click **Connect** before you edit settings. **Logs & Events** shows each request and response, including the `401` challenge and the OAuth discovery steps Zed will follow. A link such as `https://mcptest.io/server/mcp.example.com/mcp` opens the playground with `https://mcp.example.com/mcp` already filled in.

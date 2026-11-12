@@ -10,6 +10,8 @@ export const HOME_METADATA: PageMetadata = pageMetadata.home;
 export const CATALOG_METADATA: PageMetadata = pageMetadata.catalog;
 export const BREAKING_CHANGES_METADATA: PageMetadata = pageMetadata.tools['breaking-changes'];
 export const DISCOVERY_METADATA: PageMetadata = pageMetadata.discovery;
+export const REPORT_METADATA: PageMetadata = pageMetadata.report;
+export const SUBMIT_METADATA: PageMetadata = pageMetadata.submit;
 
 /** Metadata for React-only documentation pages; article metadata lives in frontmatter. */
 export const DOCS_METADATA: Readonly<Record<string, PageMetadata>> = pageMetadata.docs;

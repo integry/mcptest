@@ -7,7 +7,7 @@ level: practitioner
 order: 32
 category: Frameworks
 readingTimeMinutes: 5
-lastReviewed: "2026-10-21"
+lastReviewed: "2026-11-11"
 metaTitle: Remote MCP Server with FastAPI (Python SDK) | mcptest.io
 metaDescription: Build a remote MCP server with FastAPI and the MCP Python SDK. Mount MCPServer, run its session manager in the lifespan, add CORS, verify OAuth tokens with TokenVerifier and AuthSettings.
 relatedSlugs:
@@ -29,25 +29,37 @@ sourceLinks:
     url: "https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization"
 ---
 
-The Python SDK's `MCPServer` produces a Starlette app, so the natural way to put it behind FastAPI is to mount it and let FastAPI own the process: lifespan, CORS, health checks, and any REST routes you already have. This guide builds that app with stateless Streamable HTTP and an OAuth token check for a hosted identity provider. Every sample was run under Uvicorn, and the result mcptest reported for it is at the end.
+The Python SDK's `MCPServer` produces a Starlette app. To put it behind FastAPI, mount it and let FastAPI own the process: the lifespan, CORS, health checks, and any REST routes you already have. The app below was run under Uvicorn, and the result mcptest reported for it is at the end.
 
-## What was tested
+## What you will build
+
+- A FastAPI app that serves MCP over stateless Streamable HTTP at `https://mcp.example.com/mcp`, for 2026-07-28 and 2025 clients.
+- One read-only `get-order` tool with a validated `id` argument.
+- `Host` and `Origin` validation, CORS for browser clients, and a `/healthz` route.
+- An OAuth bearer check for tokens from a hosted identity provider, with Protected Resource Metadata so clients can start sign-in.
+
+## Prerequisites
+
+- Python 3.10 or later. The app was run on CPython 3.11.
+- An identity provider that signs RS256 JWT access tokens, publishes a JWKS, and puts your server's URL in `aud`. The test used a local provider.
+
+These versions were tested:
 
 | Package | Version |
 | --- | --- |
 | `mcp` | 2.3.0 |
-| `fastapi` | 0.156.8 |
-| `starlette` | 1.9.0 |
+| `fastapi` | 0.162.4 |
+| `starlette` | 1.10.0 |
 | `uvicorn` | 0.54.0 |
 | `PyJWT` with the `crypto` extra | 2.15.1 |
 
-The interpreter was CPython 3.11. The identity provider was a local test server publishing a JWKS and signing RS256 tokens.
+## Step 1: Install the packages
 
 ```bash
 pip install "mcp>=2.3,<2.4" fastapi uvicorn "pyjwt[crypto]"
 ```
 
-## The complete app
+## Step 2: Write the app
 
 ```python
 # main.py
@@ -154,15 +166,24 @@ def healthz() -> dict[str, str]:
 app.mount("/", mcp_app)
 ```
 
-Run it with `uvicorn main:app --host 0.0.0.0 --port 8000`.
+## Step 3: Run it
+
+```bash
+PUBLIC_URL=https://mcp.example.com/mcp \
+OAUTH_ISSUER=https://auth.example.com \
+OAUTH_JWKS_URL=https://auth.example.com/.well-known/jwks.json \
+uvicorn main:app --host 0.0.0.0 --port 8000
+```
+
+Set the three variables to your public URL and your identity provider. The app accepts only the `PUBLIC_URL` hostname in `Host`, so a request to `localhost:8000` gets `421`. Test through the public hostname, or a local TLS proxy that sends it.
 
 ## How the pieces fit
 
-**The mount and the lifespan.** `streamable_http_app()` returns a Starlette app whose MCP route is `/mcp`, so mounting it at `/` serves `https://mcp.example.com/mcp`. A mounted app's own lifespan never runs, which is why FastAPI's lifespan enters `mcp.session_manager.run()`. Without it, the first request fails with "Task group is not initialized". Register FastAPI routes such as `/healthz` before the mount; the mount at `/` matches everything after it.
+**The mount and the lifespan.** `streamable_http_app()` returns a Starlette app whose MCP route is `/mcp`, so mounting it at `/` serves `https://mcp.example.com/mcp`. A mounted app's own lifespan never runs, which is why FastAPI's lifespan enters `mcp.session_manager.run()`. Without it, the first request fails with `RuntimeError: Task group is not initialized. Make sure to use run().` Register FastAPI routes such as `/healthz` before the mount; the mount at `/` matches everything after it.
 
 **Stateless mode.** `stateless_http=True` stops the server from issuing `Mcp-Session-Id` to 2025 clients, so any replica can answer any request and you do not need sticky sessions. 2026-07-28 clients are stateless either way. With sessions on, which is the default, `Mcp-Session-Id` must stay in `expose_headers` for browser clients.
 
-**Host and Origin.** `TransportSecuritySettings` takes full origins with a scheme, unlike the TypeScript adapters, and host entries with an optional `:*` port wildcard. A `POST` with `Origin: https://evil.example` returned `403`.
+**Host and Origin.** `TransportSecuritySettings` takes full origins with a scheme, unlike the TypeScript adapters, and host entries with an optional `:*` port wildcard. A `POST` with `Origin: https://evil.example` returned `403` with `Invalid Origin header`. A disallowed `Host` gets `421 Misdirected Request` with `Invalid Host header`.
 
 **The auth hook.** `MCPServer` takes a `token_verifier` and `AuthSettings`, and wraps the MCP route in its bearer middleware:
 
@@ -184,13 +205,20 @@ Set `validate_token_resource=True`. Left unset while `resource_server_url` is se
 
 **The tool.** `Field(pattern=..., description=...)` puts the constraint and a description into the generated `inputSchema`, and Pydantic rejects `{"id": "bad"}` before your function runs. `name="get-order"` sets the wire name; without it, the function name `get_order` is used.
 
-## Check it before you deploy
+## Step 4: Verify the server
 
-With a valid token, a 2026 `server/discover` returned `supportedVersions: ["2026-07-28"]` and capabilities for `tools`, `resources`, and `prompts`. A 2025 `initialize` returned `protocolVersion: "2025-11-25"` with no `Mcp-Session-Id`. The preflight returned `200` from Starlette's middleware with every requested header allowed. Unlike the TypeScript handler, a stateless Python server answers `GET /mcp` with `200` and an open `text/event-stream`, so a 2025 client's optional stream succeeds instead of getting `405`.
+Check the challenge and the metadata first, through the public hostname:
+
+```bash
+curl -i -X POST https://mcp.example.com/mcp -H 'Content-Type: application/json' -d '{}'
+curl -s https://mcp.example.com/.well-known/oauth-protected-resource/mcp
+```
+
+The first returns the `401` challenge from the table above, and the second the metadata document. With a valid token, a 2026 `server/discover` returned `supportedVersions: ["2026-07-28"]` and capabilities for `tools`, `resources`, and `prompts`. A 2025 `initialize` returned `protocolVersion: "2025-11-25"` with no `Mcp-Session-Id`. The preflight returned `200` with the body `OK` from Starlette's middleware, with every requested header allowed. Unlike the TypeScript handler, a stateless Python server answers `GET /mcp` with `200` and an open `text/event-stream`, so a 2025 client's optional stream succeeds instead of getting `405`. The stream also carries `X-Accel-Buffering: no`, which tells nginx not to buffer it.
 
 ## What mcptest reported for this server
 
-Through a local TLS proxy, with a token minted for that URL, the headless gate returned:
+When this guide was first tested, through a local TLS proxy and with a token minted for that URL, the headless gate returned:
 
 | Section | Score | Why |
 | --- | ---: | --- |
@@ -202,12 +230,15 @@ Through a local TLS proxy, with a token minted for that URL, the headless gate r
 
 That is 95 out of 95, but the decision was **review**. The tool-surface analysis kept one medium finding, `tool.schema.unconstrained-inputs`, because the Python SDK's generated schema does not set `additionalProperties: false` and the decorator has no option for it. If you need a fully closed schema, the [low-level server](https://py.sdk.modelcontextprotocol.io/advanced/low-level-server/) lets you declare `inputSchema` yourself. The other entries were unknown host-compatibility observations such as token refresh.
 
-## FastAPI mistakes that look like protocol bugs
+## Common failures
 
-- **Mounting at `/mcp`.** `app.mount("/mcp", mcp_app)` serves the endpoint at `/mcp/mcp`, while clients are given `/mcp`. Mount at `/` and keep the SDK's default path.
-- **`resource_server_url` set to an internal URL.** Behind a load balancer, `http://10.0.0.5:8000/mcp` in the metadata makes every client fail audience validation. Use the public URL.
-- **Several Uvicorn workers with sessions on.** Each worker keeps its own session table. With `stateless_http=False`, a request carrying a session id the worker does not know returned `404` with `"Session not found"`, which is what a 2025 client sees when its second request lands on another worker. Stateless mode avoids it.
+- **Mounting at `/mcp`.** `app.mount("/mcp", mcp_app)` serves the endpoint at `/mcp/mcp`, while clients are given `/mcp`, and `POST /mcp` gets a `307` redirect. Mount at `/` and keep the SDK's default path.
+- **`421 Invalid Host header` after deploying.** `allowed_hosts` does not list the hostname clients use, or no `transport_security` was passed and only localhost is allowed. See [Invalid Host header](/learn/mcp-error-invalid-host-header).
+- **`resource_server_url` set to an internal URL.** Behind a load balancer, `http://10.0.0.5:8000/mcp` in the metadata makes every client fail audience validation. Use the public URL. See [protected resource does not match](/learn/mcp-oauth-protected-resource-mismatch).
+- **Every token gets `401`.** Check `iss`, `aud` and the JWKS URL against your provider's tokens. The [401 checklist](/learn/remote-mcp-server-401-unauthorized) walks through each step.
+- **Several Uvicorn workers with sessions on.** Each worker keeps its own session table. With `stateless_http=False`, a request carrying a session id the worker does not know returned `404` with `"Session not found"`. A 2025 client sees this when its second request lands on another worker. Stateless mode avoids it; see [Session not found after deploy](/learn/mcp-session-not-found-after-deploy).
+- **Redirects to `http://` behind a TLS proxy.** Uvicorn trusts `X-Forwarded-Proto` only from `127.0.0.1` and `::1` by default. Pass `--forwarded-allow-ips` with the proxy's address. [Deploying a remote MCP server](/learn/deploy-remote-mcp-server) has the proxy settings.
 
-## Run the gate on your deployment
+## Test it on mcptest.io
 
 Open the deployed URL in the [MCP Playground](/) to complete sign-in in the browser and see the tool-surface findings with their evidence, then add `npm run mcptest -- --bearer-token-env MCPTEST_BEARER_TOKEN https://staging.example.com/mcp` to your pipeline as shown in [How to test an MCP server before you deploy it](/learn/test-mcp-server-before-deploying#run-the-same-checks-in-ci).

@@ -7,7 +7,7 @@ level: practitioner
 order: 21
 category: Protocol reference
 readingTimeMinutes: 8
-lastReviewed: "2026-10-20"
+lastReviewed: "2026-11-11"
 metaTitle: MCP HTTP headers reference (Mcp-Session-Id, MCP-Protocol-Version, Mcp-Method) | mcptest.io
 metaDescription: Reference for MCP Streamable HTTP headers including MCP-Protocol-Version, Mcp-Session-Id, Mcp-Method, Mcp-Name, Accept, Last-Event-ID, WWW-Authenticate and CORS.
 relatedSlugs:
@@ -54,6 +54,7 @@ Streamable HTTP is the remote transport in every revision since 2025-03-26. Head
 | `Content-Type` | Both | All | Request bodies and responses with a body |
 | `Last-Event-ID` | Client to server | 2025-03-26 to 2025-11-25 | Only when resuming |
 | `Retry-After` | Server to client | Not MCP-specific | With `429` or `503` |
+| `X-Accel-Buffering` | Server to client | 2026-07-28 | SHOULD be `no` on SSE responses |
 | `Authorization` | Client to server | Servers using OAuth or tokens | Every request once authorized |
 | `WWW-Authenticate` | Server to client | Authorization spec | With `401`, and `403` for scope |
 | `Origin` | Client to server (set by browsers) | All | Servers MUST validate it |
@@ -65,7 +66,7 @@ Streamable HTTP is the remote transport in every revision since 2025-03-26. Head
 - **Versions:** introduced in 2025-06-18. In 2025-06-18 and 2025-11-25 the client sends the negotiated version on every request after `initialize`. In 2026-07-28 every POST carries it, and it MUST equal `params._meta["io.modelcontextprotocol/protocolVersion"]`.
 - **Example:** `MCP-Protocol-Version: 2026-07-28`
 - **When missing:** a 2025 server with no other signal SHOULD assume `2025-03-26`. A 2026 server that supports clients older than 2025-06-18 MAY assume the same; otherwise it MUST reject the request.
-- **When wrong:** an invalid or unsupported value gets `400 Bad Request`. In 2026, a value that differs from `_meta` gets `400` with `-32020` HeaderMismatch, and an unsupported version gets `400` with `-32022` and a `supported` list.
+- **When wrong:** an invalid or unsupported value gets `400 Bad Request`. In 2026, a value that differs from `_meta` gets `400` with `-32020` HeaderMismatch, and a version the server does not implement gets `400` with `-32022` and a `supported` list.
 - **Browser note:** the server must allow this header in `Access-Control-Allow-Headers`, or the preflight fails before the request is sent.
 - **mcptest:** the SDK sets it from the negotiated version, or from the request's `_meta` on 2026 requests. When an `initialize` response does not expose it to the browser, the `transport.cors-expose-headers-missing` evidence says so.
 
@@ -75,7 +76,8 @@ Streamable HTTP is the remote transport in every revision since 2025-03-26. Head
 - **Versions:** 2025-03-26 to 2025-11-25 (written `MCP-Session-Id` in 2025-11-25). Removed in 2026-07-28; a 2026 server SHOULD ignore it.
 - **Example:** `Mcp-Session-Id: 1868a90c-6b4e-4b0e-9b2f-3c1d0e4c7a51`
 - **Rules:** visible ASCII only (0x21 to 0x7E), and SHOULD be globally unique and cryptographically secure. The client sends DELETE with the header to end the session; the server MAY answer `405`.
-- **When missing:** a server that requires a session SHOULD answer `400`. An expired or unknown ID MUST get `404`, and the client MUST start again with `initialize` and no session ID.
+- **When missing:** a server that requires a session SHOULD answer `400` to any request but `initialize` that lacks the header.
+- **When stale:** once the server has terminated a session, requests carrying its ID MUST get `404`. A client that receives `404` on a request with a session ID MUST start again with `initialize` and no session ID. A sessionful TypeScript transport answers `-32001` "Session not found", Python `-32600` "Session not found". TypeScript `createMcpHandler` keeps no sessions and ignores the header (measured on TypeScript 2.4.0 and Python 2.3.0; see [session not found after deploy](/learn/mcp-session-not-found-after-deploy)).
 - **mcptest:** the TypeScript SDK reads the header from a successful `initialize` response and attaches it afterwards. If a cross-origin browser cannot read it, the next request goes out without it. `transport.cors-expose-headers-missing` fires when that request is rejected with a session error.
 
 ```http
@@ -112,7 +114,14 @@ Access-Control-Expose-Headers: Mcp-Session-Id, MCP-Protocol-Version
 - **POST:** MUST list both `application/json` and `text/event-stream`, because the server may answer with either.
 - **GET (2025 only):** MUST list `text/event-stream`.
 - **Example:** `Accept: application/json, text/event-stream`
-- **When missing or partial:** servers built on the TypeScript SDK answer `406` with "Not Acceptable: Client must accept both application/json and text/event-stream".
+- **When missing or partial:** SDK behaviour depends on the era (measured on TypeScript `@modelcontextprotocol/server` 2.4.0 and Python `mcp` 2.3.0):
+
+| SDK | 2025 request | 2026 request |
+| --- | --- | --- |
+| TypeScript `createMcpHandler` | `406`, JSON-RPC `-32000`, "Not Acceptable: Client must accept both application/json and text/event-stream" | Not checked; the request is served |
+| Python `streamable_http_app()` | `406`, JSON-RPC `-32600`, same message | `406`, empty body |
+
+Python treats `*/*` as accepting both types; TypeScript rejects it on 2025 requests. With `json_response=True`, Python also accepts `Accept: application/json`. Details: [406, 415 and 405](/learn/mcp-406-not-acceptable-415-and-405#406-not-acceptable-the-accept-header-rule).
 - **mcptest:** the SDK always sends both types on POST. A `406` from the target therefore points at an over-strict server check and fires [`transport.accept-header-406`](/learn/mcp-transport-diagnostics-reference#transport-accept-header-406).
 
 ## Content-Type
@@ -120,8 +129,8 @@ Access-Control-Expose-Headers: Mcp-Session-Id, MCP-Protocol-Version
 - **Request:** JSON-RPC bodies are sent as `Content-Type: application/json`. The specification shows this in examples rather than as a normative rule.
 - **Response to a POST that carried a request:** `application/json` for a single JSON response, or `text/event-stream` for a stream. Clients MUST support both.
 - **Response to GET (2025):** `text/event-stream`, or `405`.
-- **Notifications and client responses:** `202 Accepted` with no body.
-- **When wrong:** a server that rejects `application/json`, for example over a charset parameter or letter case, answers `415`. A successful response with another type is refused by the client ("Unexpected content type").
+- **Accepted notification** (and, through 2025-11-25, a POSTed client response): `202 Accepted` with no body. 2026 clients MUST NOT POST responses.
+- **When wrong:** a server that rejects `application/json`, for example over a charset parameter or letter case, answers `415`. Python `mcp` 2.3.0 answers any other media type with `400` and the plain-text body `Invalid Content-Type header`. A successful response with another type is refused by the client ("Unexpected content type").
 - **mcptest:** `transport.unsupported-media-type-415` for a `415`, and `transport.sse-content-type-mismatch` for a `2xx` with the wrong type.
 
 ## Last-Event-ID
@@ -130,7 +139,7 @@ Access-Control-Expose-Headers: Mcp-Session-Id, MCP-Protocol-Version
 - **Versions:** 2025-03-26 to 2025-11-25. Removed in 2026-07-28; servers ignore it.
 - **Purpose:** resumes an SSE stream after a disconnect. The server MAY tag events with `id`. The client reconnects with the last ID it saw, and the server MUST NOT replay messages from a different stream. In 2025-11-25, resumption is always a GET.
 - **Example:** `Last-Event-ID: stream-3:42`
-- **Related:** in 2025-11-25 a server may close the stream after sending an SSE `retry` field, and the client MUST wait that many milliseconds before reconnecting.
+- **Related:** in 2025-11-25 a server MAY close the connection without ending the stream. It SHOULD send an SSE `retry` field first, and the client MUST wait that many milliseconds before reconnecting.
 - **Browser note:** list it in `Access-Control-Allow-Headers` if browsers resume streams.
 
 ## Retry-After
@@ -141,6 +150,13 @@ Access-Control-Expose-Headers: Mcp-Session-Id, MCP-Protocol-Version
 - **When missing:** clients guess. mcptest waits one second.
 - **Browser note:** `Retry-After` is not a CORS-safelisted response header. A cross-origin browser can read it only when the server lists it in `Access-Control-Expose-Headers`.
 - **mcptest:** a target `429` fires `transport.target-rate-limited-429`. mcptest retries at most once per candidate endpoint, and only when the wait is 2 seconds or less (`MAX_AUTOMATIC_RATE_LIMIT_WAIT_MS` in `src/utils/transportDetection.ts`). Longer waits are shown as a countdown.
+
+## X-Accel-Buffering
+
+- **Direction:** server to client.
+- **Versions:** 2026-07-28 Streamable HTTP. Not an MCP header; nginx and compatible proxies read it.
+- **Rule:** servers SHOULD send `X-Accel-Buffering: no` when they open an SSE stream, so reverse proxies deliver events immediately instead of buffering them.
+- **When missing:** progress notifications and the final response arrive late or all at once behind a buffering proxy.
 
 ## Authorization
 
@@ -153,7 +169,7 @@ Access-Control-Expose-Headers: Mcp-Session-Id, MCP-Protocol-Version
 ## WWW-Authenticate
 
 - **Direction:** server to client.
-- **On `401`:** carries `resource_metadata`, the URL of the RFC 9728 protected resource metadata, and SHOULD carry `scope`. If it is absent, clients fall back to `/.well-known/oauth-protected-resource`.
+- **On `401`:** carries `resource_metadata`, the URL of the RFC 9728 protected resource metadata, when the server uses header discovery (it MUST offer this or a well-known URI), and SHOULD carry `scope`. Without `resource_metadata`, clients try the path-inserted `/.well-known/oauth-protected-resource/<path>` and then the root `/.well-known/oauth-protected-resource`.
 - **On `403`:** `error="insufficient_scope"` with the needed `scope` asks the client to step up (RFC 6750 section 3.1).
 - **Example:**
 
@@ -174,7 +190,7 @@ WWW-Authenticate: Bearer resource_metadata="https://mcp.example.com/.well-known/
 
 ## Access-Control-Allow-Origin
 
-Sent on the preflight and the actual response. It must be the requesting origin (or `*` when no credentials are involved). Keep the list narrow; CORS is not a replacement for `Origin` validation or authorization.
+Sent on the preflight and the actual response. It must be the requesting origin, or `*` for requests sent without credentials (cookies or HTTP authentication). A script-set `Authorization` header is not a credential in this sense, so `*` still works with bearer tokens. Keep the list narrow; CORS is not a replacement for `Origin` validation or authorization.
 
 ## Access-Control-Allow-Methods
 
@@ -188,7 +204,7 @@ List every non-safelisted request header the client sends:
 Access-Control-Allow-Headers: Content-Type, Accept, Authorization, MCP-Protocol-Version, Mcp-Session-Id, Mcp-Method, Mcp-Name, Last-Event-ID
 ```
 
-`Content-Type: application/json` is not a safelisted value, so every MCP POST triggers a preflight. Add any `Mcp-Param-*` names your tools declare.
+`Content-Type: application/json` is not a safelisted value, so every MCP POST triggers a preflight. Add any `Mcp-Param-*` names your tools declare. A wildcard `*` here does not cover `Authorization`, which must be named.
 
 ## Access-Control-Expose-Headers
 

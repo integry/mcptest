@@ -123,7 +123,7 @@ describe('SubmitServerView', () => {
     });
     await check(unreachable.container);
     expect(button(unreachable.container, 'Submit for review').disabled).toBe(true);
-    expect(unreachable.container.textContent).toContain('Not submittable yet');
+    expect(unreachable.container.textContent).toContain('Not ready to submit');
   });
 
   it('refuses to check an endpoint with credentials or a private host', async () => {
