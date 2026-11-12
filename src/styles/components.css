@@ -4371,6 +4371,23 @@ pre.bg-light code {
   font-weight: var(--weight-medium);
 }
 
+/* Phones: the title, the status pill and the right-hand caption do not fit on
+   one row (and the absolute caption would sit over them). Stack them so the
+   band has the same height whatever the text widths, which also keeps the
+   prerendered returning-workspace skeleton the same height as the live panel. */
+@media (max-width: 768px) {
+  .connection-console:not(.connection-console--connected) .connection-title-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+  }
+
+  .connection-console:not(.connection-console--connected) > .card-body > .mb-3:first-child > .form-label {
+    position: static;
+    margin-bottom: var(--space-2);
+  }
+}
+
 .connection-console .input-group {
   min-height: 3.5rem;
   padding: 0 0.5rem;
