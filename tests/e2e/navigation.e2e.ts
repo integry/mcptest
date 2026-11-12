@@ -60,8 +60,38 @@ test.describe('sidebar navigation', () => {
     await expect(nav.getByRole('combobox', { name: 'Search guides' })).toBeFocused();
   });
 
+  test('`/` expands the collapsed sidebar on the static guide page before the app mounts', async ({ page }) => {
+    // Hold the app so the click and the key reach the static page's handlers.
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    await page.route('**/assets/bootstrapApp-*.js', async route => {
+      await gate;
+      await route.continue();
+    });
+    await page.goto('/learn/mcp-clients-compared');
+    const nav = page.locator(sidebar);
+    await nav.locator('.sidenav-collapse-toggle').click();
+    await expect(nav).toHaveClass(/app-sidenav--collapsed/);
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    await page.keyboard.press('/');
+
+    await expect(nav).not.toHaveClass(/app-sidenav--collapsed/);
+    await expect(nav.getByRole('button', { name: 'Learn' })).toHaveAttribute('aria-expanded', 'true');
+    await expect(nav.getByRole('combobox', { name: 'Search guides' })).toBeFocused();
+    expect(await page.evaluate(() => localStorage.getItem('mcpSidebarCollapsed'))).toBe('false');
+
+    // The app mounts over it with the same state.
+    release();
+    await expect(page.locator('.seo-shell-fallback')).toHaveCount(0);
+    await expect(nav).not.toHaveClass(/app-sidenav--collapsed/);
+    await expect(nav.getByRole('combobox', { name: 'Search guides' })).toBeFocused();
+  });
+
   test('remembers the collapsed sidebar across reloads', async ({ page }) => {
+    // The discovery checker mounts at load and its static shell is inert, so
+    // a click before the mount would be lost.
     await page.goto('/tools/discovery');
+    await expect(page.locator('.seo-shell-fallback')).toHaveCount(0);
     await page.locator(`${sidebar} .sidenav-collapse-toggle`).click();
     await expect(page.locator(sidebar)).toHaveClass(/app-sidenav--collapsed/);
     await page.reload();
