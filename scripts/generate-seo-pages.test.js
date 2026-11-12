@@ -721,7 +721,7 @@ describe('generated page metadata', () => {
 
   it('lists the keyword landing pages in the sitemap, llms.txt and the Open Graph cards', () => {
     const sitemapPaths = getSitemapEntries([], articles, []).map(entry => entry.pathname);
-    const cards = buildOgCards({ servers: [], articles: [], pageMetadata: { catalog: { title: 'C', description: 'C' }, learn: { title: 'L', description: 'L' }, tools: {}, docs: {} } });
+    const cards = buildOgCards({ servers: [], articles: [], pageMetadata: { catalog: { title: 'C', description: 'C' }, learn: { title: 'L', description: 'L' }, mcpTestServers: { title: 'S', description: 'S' }, mcpTestClient: { title: 'T', description: 'T' }, tools: {}, docs: {} } });
     const llms = machineReadable.renderLlmsTxt(articles);
     for (const page of KEYWORD_LANDING_PAGES) {
       expect(sitemapPaths.filter(pathname => pathname === page.path)).toHaveLength(1);

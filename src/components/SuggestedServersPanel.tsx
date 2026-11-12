@@ -6,6 +6,8 @@ import { getPreferredCatalogEndpoint } from '../utils/clientSetup';
 import type { PreferredCatalogEndpoint } from '../utils/clientSetup';
 import type { CatalogProtocolEra } from '../types/catalog';
 import { CatalogServerLogo } from './CatalogServerLogo';
+import { LANDING_FIXTURE } from '../data/publicFixtures';
+import { LANDING_FIXTURE_SELECTION } from '../utils/landingFixture';
 
 export interface SuggestedServerSelection {
   endpoint: PreferredCatalogEndpoint;
@@ -56,6 +58,29 @@ export const SuggestedServersPanel: React.FC<SuggestedServersPanelProps> = ({
       <div className="card-body p-3">
         <small className="text-muted d-block mb-3">Connect to a curated public endpoint and inspect the negotiated protocol.</small>
         <ul className="suggested-server-grid">
+        {/* mcptest's own public echo server first, then the curated catalog servers. */}
+        <li className="suggested-server-row" data-server-id={LANDING_FIXTURE.id}>
+          <button
+            type="button"
+            className="suggested-server-action"
+            onClick={() => handleServerClick(LANDING_FIXTURE_SELECTION)}
+            disabled={isConnected || isConnecting}
+          >
+            <CatalogServerLogo
+              name={LANDING_FIXTURE.name}
+              logoUrl={LANDING_FIXTURE.logoUrl}
+              className="suggested-server-logo"
+            />
+            <div className="suggested-server-copy">
+              <div className="suggested-server-title-row">
+                <strong>{LANDING_FIXTURE.name}</strong>
+                <span aria-hidden="true">↗</span>
+              </div>
+              <p>{LANDING_FIXTURE.description}</p>
+              <small title={LANDING_FIXTURE.url}>{LANDING_FIXTURE.url}</small>
+            </div>
+          </button>
+        </li>
         {suggestedCatalogServers.map((server) => {
           const endpoint = getPreferredCatalogEndpoint(server);
           return (
@@ -88,6 +113,10 @@ export const SuggestedServersPanel: React.FC<SuggestedServersPanelProps> = ({
       <div className="card-footer text-center p-2">
         <Link to="/catalog" className="btn btn-sm btn-link p-0" style={{ textDecoration: 'none' }}>
           Browse the full server catalog &rarr;
+        </Link>
+        <span className="text-muted mx-2" aria-hidden="true">·</span>
+        <Link to="/mcp-test-servers" className="btn btn-sm btn-link p-0" style={{ textDecoration: 'none' }}>
+          Public MCP test servers &rarr;
         </Link>
       </div>
     </div>

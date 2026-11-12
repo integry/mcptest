@@ -83,6 +83,10 @@ export const LANDING_PAGE_NAVIGATION: readonly FooterLink[] = [
 export const FOOTER_NAVIGATION: readonly FooterLink[] = [
   ...LANDING_PAGE_NAVIGATION,
   CI_NAVIGATION,
+  // The public fixture servers (src/components/McpTestServersView.tsx).
+  { label: 'MCP test servers', href: '/mcp-test-servers' },
+  // The client protocol checklist (src/components/McpTestClientView.tsx).
+  { label: 'Test your MCP client', href: '/mcp-test-client' },
   { label: 'Submit a server', href: '/submit' },
   {
     label: 'Badges',

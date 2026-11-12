@@ -13,7 +13,9 @@ routes = [
   { pattern = "mcptest.io/r", zone_name = "mcptest.io" },
   { pattern = "mcptest.io/r/*", zone_name = "mcptest.io" },
   # Catalog submissions from the /submit page are posted same-origin.
-  { pattern = "mcptest.io/api/catalog/submissions", zone_name = "mcptest.io" }
+  { pattern = "mcptest.io/api/catalog/submissions", zone_name = "mcptest.io" },
+  # Public deterministic MCP fixture servers (src/fixtures.js): /fixtures/<name>/mcp.
+  { pattern = "mcptest.io/fixtures/*", zone_name = "mcptest.io" }
 ]
 
 [vars]
