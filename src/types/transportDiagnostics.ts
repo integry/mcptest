@@ -1,4 +1,5 @@
 import { SESSION_RESILIENCE_IDS } from '../utils/sessionResilienceDefinitions';
+import type { ResponseClassification } from '../utils/responseClassification';
 /**
  * Transport-level diagnostics for remote MCP servers.
  *
@@ -13,6 +14,8 @@ export const TRANSPORT_DIAGNOSTIC_IDS = [
   'transport.target-rate-limited-429',
   'transport.cors-expose-headers-missing',
   'transport.sse-content-type-mismatch',
+  'transport.bot-protection-challenge',
+  'transport.payment-required-402',
 ] as const;
 
 export type TransportDiagnosticId = typeof TRANSPORT_DIAGNOSTIC_IDS[number];
@@ -56,6 +59,8 @@ export interface TransportDiagnosticEvidence {
   responseSource?: 'proxy' | 'target';
   /** Non-credential response headers as read by the browser. */
   headersSeen?: Record<string, string>;
+  /** Response class and the signature that matched, for bot-protection, rate-limit and 402 findings. */
+  responseClass?: ResponseClassification;
   /** Non-credential request headers that were sent. */
   headersSent?: Record<string, string>;
   /** Plain-language note about what this request shows. */

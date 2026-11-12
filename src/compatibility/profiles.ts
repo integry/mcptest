@@ -25,6 +25,11 @@ import {
   type SourcedCell,
   type SupportLevel,
 } from '../data/clientCompatibility.ts';
+import {
+  TOOL_ANNOTATIONS_SPEC_URL,
+  TOOL_HINT_CLIENT_BEHAVIORS,
+  type ToolHintClientBehavior,
+} from '../data/toolHintClientBehaviors.ts';
 
 const MCP_AUTH_SPEC = 'https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization';
 const MCP_AUTH_SPEC_REVIEWED_ON = '2026-08-11';
@@ -685,6 +690,70 @@ const models: Readonly<Record<HostId, ProfileModel>> = {
   },
 };
 
+const toolHintSourceId = (behavior: ToolHintClientBehavior): string => `${behavior.clientId}-tool-hints`;
+
+/**
+ * Rules for client behaviour that depends on tool annotation hints, verified
+ * in the client's own changelog (src/data/toolHintClientBehaviors.ts). The
+ * rules cite only that source. A missing hint is a caveat, never a failure,
+ * and an unobserved tool list does not change the assessment.
+ */
+const toolHintRules = (behavior: ToolHintClientBehavior): CompatibilityRuleV1[] => {
+  const base = {
+    schemaVersion: COMPATIBILITY_SCHEMA_VERSION,
+    scope: 'target-server' as const,
+    // No appliesWhen: the tools.* facts exist only when a complete, non-empty
+    // tool list was analyzed, so they already establish that the rule applies.
+    // Gating on capabilities.tools would leave applicability unresolved when
+    // tool discovery did not complete, and the evaluator then reports the
+    // possible caveat as an unknown finding instead of staying neutral.
+    unknownWhen: observed('capabilities.tools', 'absent'),
+    assumptionSourceIds: [toolHintSourceId(behavior)],
+  };
+  if (behavior.behavior === 'retry-after-dropped-connection') {
+    return [{
+      ...base,
+      id: 'tools.retry-hints',
+      passWhen: observed('tools.retryHintsDeclared', true),
+      onPass: result(
+        'pass',
+        'Tools state whether they are safe to retry',
+        `Every tool declares readOnlyHint: true, idempotentHint: true, or both readOnlyHint and idempotentHint, so ${behavior.clientName} can tell which calls to retry when an HTTP connection closes mid-call.`
+      ),
+      onFail: result(
+        'caveat',
+        `${behavior.clientName} will not retry some tools after a dropped connection`,
+        `Since ${behavior.sinceVersion}, ${behavior.clientName} retries an HTTP MCP tool call that was cut off mid-call only when the tool is read-only or idempotent. Tools that leave those hints unset fall back to the spec defaults (not read-only, not idempotent), so a dropped connection surfaces as an error instead of a retry.`,
+        remediation('server-change', 'Declare readOnlyHint: true on tools that only read, and idempotentHint on every other tool (true when repeating a call with the same arguments has no additional effect).', TOOL_ANNOTATIONS_SPEC_URL)
+      ),
+      onUnknown: result('pass', 'Tool retry hints were not observed', 'The server does not advertise tools, or its tool list was not fully analyzed, so retry hints do not affect this assessment.'),
+      evidenceFacts: ['tools.retryHintsDeclared'],
+    }];
+  }
+  return [{
+    ...base,
+    id: 'tools.parallel-read-only',
+    passWhen: observed('tools.readOnlyHintDeclared', true),
+    onPass: result(
+      'pass',
+      'Tools state whether they are read-only',
+      `Every tool declares readOnlyHint, so ${behavior.clientName} can run the read-only ones concurrently.`
+    ),
+    onFail: result(
+      'caveat',
+      `${behavior.clientName} runs some tools sequentially`,
+      `Since ${behavior.sinceVersion}, ${behavior.clientName} runs MCP tools concurrently only when they advertise readOnlyHint: true. Tools without readOnlyHint are treated as able to modify their environment and run one at a time, even if they only read.`,
+      remediation('server-change', 'Declare readOnlyHint on every tool: true on tools that only read.', TOOL_ANNOTATIONS_SPEC_URL)
+    ),
+    onUnknown: result('pass', 'Tool read-only hints were not observed', 'The server does not advertise tools, or its tool list was not fully analyzed, so read-only hints do not affect this assessment.'),
+    evidenceFacts: ['tools.readOnlyHintDeclared'],
+  }];
+};
+
+const toolHintBehaviorsFor = (clientId: string): ToolHintClientBehavior[] => (
+  TOOL_HINT_CLIENT_BEHAVIORS.filter((behavior) => behavior.clientId === clientId)
+);
+
 /** FNV-1a over the text, as eight hex digits. */
 const fnv1a = (text: string, seed: number): string => {
   let hash = seed;
@@ -721,13 +790,23 @@ export const buildHostProfile = (hostId: HostId, entry: ClientCompatibilityEntry
     ...client,
     assumptions: [...assumptions, mcpAuthAssumption(authNotes)],
   };
+  const hintBehaviors = toolHintBehaviorsFor(entry.id);
   const profile = {
     schemaVersion: COMPATIBILITY_SCHEMA_VERSION,
     id: hostId,
     name: constraints.name,
     description: constraints.description,
-    assumptions: constraints.assumptions,
-    rules: makeRules(constraints),
+    assumptions: [
+      ...constraints.assumptions,
+      ...hintBehaviors.map((behavior) => source(
+        toolHintSourceId(behavior),
+        behavior.sourceTitle,
+        behavior.sourceUrl,
+        `${behavior.clientName} ${behavior.sinceVersion}: "${behavior.quote}"`,
+        behavior.verifiedOn
+      )),
+    ],
+    rules: [...makeRules(constraints), ...hintBehaviors.flatMap(toolHintRules)],
   };
   // A stored assessment keeps this version, which changes whenever the rules
   // or the assumptions behind them change.

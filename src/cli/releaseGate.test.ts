@@ -12,6 +12,7 @@ import {
 } from '../utils/reportArtifact';
 import type { ReleaseDecision } from '../utils/releaseReadiness';
 import { createCapabilityInventory } from '../utils/capabilityInventory';
+import { analyzeToolSurface } from '../utils/toolSurfaceAnalysis';
 import { runCli } from './runCli';
 import {
   RELEASE_GATE_EXIT_CODES,
@@ -99,6 +100,91 @@ describe('headless release gate', () => {
     expect(result.targets[0].report?.capabilityInventory?.tools.items[0].name).toBe('search_records');
     expect(result.targets[0].json).toContain('"capabilityInventory"');
     expect(result.targets[0].markdown).toContain('## Capabilities provided');
+  });
+
+  it('adds the connector directory preflight to the result and the Markdown artifact', async () => {
+    const evaluation = evaluatedReport('https://mcp.acme-tools.dev/mcp');
+    evaluation.toolSurfaceAnalysis = analyzeToolSurface({
+      tools: [{ name: 'search_records', description: 'Search records', inputSchema: { type: 'object', properties: {} } }],
+      resources: [],
+      prompts: [],
+    });
+    const result = await runReleaseGate({
+      endpoints: [evaluation.serverUrl],
+      policy: { failOnResults: new Set(), failOnSeverity: 'none' },
+    }, { evaluate: async () => evaluation });
+
+    const preflight = result.targets[0].directoryPreflight;
+    const claude = preflight?.directories.find((entry) => entry.directory.id === 'claude');
+    expect(claude?.items.find((entry) => entry.id === 'claude.tool-title')).toMatchObject({
+      status: 'fail',
+      evidence: ['search_records'],
+    });
+    expect(claude?.items.find((entry) => entry.id === 'claude.remote-https')?.status).toBe('pass');
+    expect(result.targets[0].markdown).toContain('## Connector directory preflight');
+    expect(result.targets[0].markdown).toContain('- [Fail] Every tool has a title');
+    expect(result.targets[0].json).not.toContain('Connector directory preflight');
+  });
+
+  describe('connector directory preflight with credentials that collide with evidence', () => {
+    const annotated = (name: string, inputSchema: Record<string, unknown> = { type: 'object', properties: {} }) => ({
+      name,
+      title: `${name} title`,
+      description: `Runs ${name}.`,
+      inputSchema,
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    });
+    const run = (credential: string, tools: unknown[], adjust?: (evaluation: EvaluationReport) => void) => {
+      const evaluation = evaluatedReport('https://mcp.acme-tools.dev/mcp');
+      evaluation.toolSurfaceAnalysis = analyzeToolSurface({ tools, resources: [], prompts: [] });
+      adjust?.(evaluation);
+      return runReleaseGate({
+        endpoints: [evaluation.serverUrl],
+        headers: { 'X-API-Key': credential },
+        policy: { failOnResults: new Set(), failOnSeverity: 'none' },
+      }, { evaluate: async () => evaluation });
+    };
+    const itemOf = (result: Awaited<ReturnType<typeof run>>, id: string) => result.targets[0].directoryPreflight
+      ?.directories.flatMap((entry) => entry.items).find((entry) => entry.id === id);
+
+    it('keeps a partial tool record unknown when the credential is the word partial', async () => {
+      const result = await run('partial', [annotated('search_records')], (evaluation) => {
+        const summary = evaluation.toolSurfaceAnalysis?.toolAnnotations;
+        if (!summary) throw new Error('missing annotation summary');
+        summary.status = 'partial';
+      });
+      const title = itemOf(result, 'claude.tool-title');
+      expect(title?.status).toBe('unknown');
+      expect(title?.detail).not.toContain('partial');
+      expect(result.targets[0].markdown).toContain('- [Unknown] Every tool has a title');
+      expect(result.targets[0].markdown).not.toContain('- [Pass] Every tool has a title');
+    });
+
+    it('still fails a GET/POST method enum when the credential is GET, and redacts the evidence', async () => {
+      const result = await run('GET', [annotated('api_request', {
+        type: 'object',
+        properties: { method: { type: 'string', enum: ['GET', 'POST'] }, path: { type: 'string' } },
+      })]);
+      const separate = itemOf(result, 'claude.separate-read-write');
+      expect(separate?.status).toBe('fail');
+      expect(separate?.evidence).toEqual([`api_request (method: ${REDACTED_VALUE}, POST)`]);
+      expect(result.targets[0].directoryPreflight?.directories
+        .find((entry) => entry.directory.id === 'claude')?.counts.fail).toBeGreaterThan(0);
+    });
+
+    it('redacts credential-shaped tool names in preflight evidence and advisories', async () => {
+      const result = await run('cred-fixture-secret', [
+        { name: 'cred-fixture-secret_tool', description: 'Runs it.', inputSchema: { type: 'object', properties: {} } },
+        annotated('manage_cred-fixture-secret', {
+          type: 'object', properties: { action: { enum: ['get', 'create', 'delete'] } },
+        }),
+      ]);
+      const preflight = result.targets[0].directoryPreflight;
+      expect(itemOf(result, 'claude.tool-title')?.status).toBe('fail');
+      expect(JSON.stringify(preflight)).not.toContain('cred-fixture-secret');
+      expect(preflight?.advisories[0]?.matches[0]?.tool).toBe(`manage_${REDACTED_VALUE}`);
+      expect(result.targets[0].markdown).not.toContain('cred-fixture-secret');
+    });
   });
 
   it.each([

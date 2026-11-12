@@ -24,6 +24,7 @@ import {
   OAuthConfig,
   BreakingChangesView,
   DiscoveryCheckerView,
+  KeywordLandingView,
   OAuthCheckerView,
   ReportView,
   SubmitServerView,
@@ -59,6 +60,8 @@ import { getCatalogServerById } from './utils/catalogUtils';
 import { getCatalogServerIdFromPath } from './utils/catalogSeo';
 import { getPreferredCatalogEndpoint } from './utils/clientSetup';
 import { OAUTH_CHECKER_PATH, DISCOVERY_CHECKER_PATH, isKnownAppPath } from './utils/appRoutes';
+import { getKeywordLandingPage } from './content/keywordLandingPages';
+import type { LandingPageConnectRequest } from './components/KeywordLandingView';
 // The MCP SDK, OAuth flow and saved-card helpers load on demand; see utils/savedCardRuntime.
 import type {
   OAuthPrerequisite,
@@ -263,6 +266,10 @@ function App() {
       return { activeView: 'discovery' as const };
     }
 
+    if (getKeywordLandingPage(path)) {
+      return { activeView: 'keyword-landing' as const };
+    }
+
     // Check for report routes
     if (path.startsWith('/report')) {
       return { activeView: 'report' as const };
@@ -412,6 +419,12 @@ function App() {
 
     if (path === DISCOVERY_CHECKER_PATH) {
       logPageView(path, 'MCP discovery checker');
+      return;
+    }
+
+    const landingPage = getKeywordLandingPage(path);
+    if (landingPage) {
+      logPageView(path, landingPage.pageViewTitle);
       return;
     }
     
@@ -581,6 +594,61 @@ function App() {
     setActiveTabId(newTab.id);
     navigate('/');
   }, [navigate]);
+
+  /**
+   * Opens a keyword landing page's endpoint in the playground on `/`, where the
+   * connection runs exactly as from the home page's form: the same tab state,
+   * recent connections and share links. An empty active tab is replaced (the
+   * home page's landing would have used it); otherwise a new tab opens. The
+   * fresh tab id gives the endpoint its own TabContent, which connects on mount
+   * when `autoConnect` is set.
+   */
+  const openLandingEndpointInPlayground = (
+    serverUrl: string,
+    updates: Partial<ConnectionTab>,
+    navigationState?: Record<string, unknown>
+  ) => {
+    let title = serverUrl || 'New Connection';
+    try {
+      if (serverUrl) title = new URL(/^https?:\/\//i.test(serverUrl) ? serverUrl : `https://${serverUrl}`).hostname || serverUrl;
+    } catch {
+      // An unparsable entry keeps the text as typed; the connection reports the error.
+    }
+    const newTab: ConnectionTab = {
+      id: uuidv4(),
+      title,
+      serverUrl,
+      connectionStatus: 'Disconnected',
+      useProxy: true,
+      ...updates,
+    };
+    const activeTab = tabs.find(tab => tab.id === activeTabId);
+    const replaceActive = activeTab !== undefined
+      && !activeTab.serverUrl
+      && !activeTab.autoConnect
+      && !activeTab.resultShareData
+      && activeTab.connectionStatus === 'Disconnected';
+    setTabs(prevTabs => (replaceActive
+      ? prevTabs.map(tab => (tab.id === activeTab.id ? newTab : tab))
+      : [...prevTabs, newTab]));
+    setActiveTabId(newTab.id);
+    navigate('/', navigationState ? { state: navigationState } : undefined);
+  };
+
+  const handleLandingPageConnect = ({ serverUrl, selection }: LandingPageConnectRequest) => {
+    openLandingEndpointInPlayground(serverUrl, {
+      autoConnect: true,
+      ...(selection ? {
+        preferredTransportHint: selection.endpoint.transport,
+        catalogProtocolEra: selection.protocolEra,
+      } : {}),
+    });
+  };
+
+  // "Advanced options": the playground's full connection panel, open, with the entered URL.
+  const handleLandingPageAdvancedOptions = (serverUrl: string) => {
+    openLandingEndpointInPlayground(serverUrl, {}, { openAdvancedOptions: true });
+  };
 
   const handleSelectTab = (id: string) => {
     trackEvent('select_tab');
@@ -1712,6 +1780,7 @@ function App() {
   // that, so the playground keeps its connections across navigation while a
   // guide or catalog page never renders the inspector, dashboards or report.
   visitedViewsRef.current.add(activeView);
+  const keywordLandingPage = getKeywordLandingPage(location.pathname);
   const hasVisited = (view: typeof activeView) => visitedViewsRef.current.has(view);
   const selectedCatalogServerId = getCatalogServerIdFromPath(location.pathname);
   const selectedCatalogServer = selectedCatalogServerId
@@ -1917,6 +1986,19 @@ function App() {
             <div className="view-panel">
               <Suspense fallback={<ViewFallback label="Loading the discovery checker" />}>
                 <DiscoveryCheckerView />
+              </Suspense>
+            </div>
+          )}
+
+          {/* Keyword landing pages: the connect form with their own copy */}
+          {activeView === 'keyword-landing' && keywordLandingPage && (
+            <div className="view-panel">
+              <Suspense fallback={<ViewFallback label="Loading" />}>
+                <KeywordLandingView
+                  page={keywordLandingPage}
+                  onConnect={handleLandingPageConnect}
+                  onOpenAdvancedOptions={handleLandingPageAdvancedOptions}
+                />
               </Suspense>
             </div>
           )}

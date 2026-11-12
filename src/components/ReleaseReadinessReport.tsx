@@ -23,13 +23,19 @@ import {
   createReleaseDecision,
   type ReleaseReadinessStatus,
 } from '../utils/releaseReadiness';
-import { documentedEvidenceIdFor, hasReference } from '../utils/referenceLinks';
+import { documentedEvidenceIdFor, hasReference, toolSurfaceReferenceId } from '../utils/referenceLinks';
 import { trackEvent } from '../utils/analytics';
 import { createReportDownload, saveReportDownload } from '../utils/reportDownloads';
 import { getAuthorizationGuidanceForEndpoint } from '../utils/authorizationGuidanceLookup';
 import AuthorizationSetup from './AuthorizationSetup';
 import CapabilitiesProvided from './CapabilitiesProvided';
 import FindingReferenceLink from './FindingReferenceLink';
+import ConnectorDirectoryPreflight from './ConnectorDirectoryPreflight';
+import { createConnectorDirectoryPreflight } from '../utils/connectorDirectoryPreflight';
+import ToolListConsistencyPanel from './ToolListConsistencyPanel';
+import { toolListConsistencyFromSections } from '../utils/toolListConsistencyReport';
+import { isToolContextCost } from '../utils/toolTokenCost';
+import { ToolContextCostPanel } from './ToolContextCost';
 
 interface ReleaseReadinessReportProps {
   authorizationActions?: React.ReactNode;
@@ -174,6 +180,10 @@ const ReleaseReadinessReport: React.FC<ReleaseReadinessReportProps> = ({
     () => createReleaseDecision(report, matrix, report.toolSurfaceAnalysis, oauthTrace),
     [report, matrix, oauthTrace]
   );
+  const directoryPreflight = useMemo(
+    () => createConnectorDirectoryPreflight(report, oauthTrace),
+    [report, oauthTrace]
+  );
   const toolSurface = report.toolSurfaceAnalysis;
   const authorizationSchemes = facts.authorization.schemes.value;
   const oauthApplies = authorizationSchemes !== 'unknown' && authorizationSchemes.includes('oauth');
@@ -196,6 +206,7 @@ const ReleaseReadinessReport: React.FC<ReleaseReadinessReportProps> = ({
       compatibilityMatrix: matrix,
       toolSurfaceAnalysis: toolSurface,
       oauthTrace,
+      directoryPreflight,
     }));
     trackEvent('report_shared', { method: format });
   };
@@ -335,6 +346,10 @@ const ReleaseReadinessReport: React.FC<ReleaseReadinessReportProps> = ({
         </div>
       </section>
 
+      {!isProxyAuthenticationRequired(report) && (
+        <ConnectorDirectoryPreflight preflight={directoryPreflight} />
+      )}
+
       <section className="release-section" aria-labelledby="oauth-timeline-title">
         <div className="release-section-heading">
           <div>
@@ -386,6 +401,8 @@ const ReleaseReadinessReport: React.FC<ReleaseReadinessReportProps> = ({
         </section>
       )}
 
+      <ToolListConsistencyPanel result={toolListConsistencyFromSections(report.sections)} />
+
       <section className="release-section" aria-labelledby="tool-surface-title">
         <div className="release-section-heading">
           <div>
@@ -403,10 +420,23 @@ const ReleaseReadinessReport: React.FC<ReleaseReadinessReportProps> = ({
           <>
             <div className="tool-metrics">
               <div><strong>{toolSurface.metrics.toolCount}</strong><span>Tools</span></div>
-              <div><strong>{toolSurface.metrics.estimatedContextTokens.toLocaleString()}</strong><span>Estimated context tokens</span></div>
+              <div><strong>{toolSurface.metrics.estimatedContextTokens.toLocaleString()}</strong><span>{!isToolContextCost(toolSurface.contextCost)
+                ? 'Estimated context tokens (bytes / 4)'
+                : toolSurface.contextCost.listingIncomplete === true
+                  ? 'Estimated context tokens, tools received only'
+                  : 'Estimated context tokens'}</span></div>
               <div><strong>{toolSurface.metrics.descriptions.qualityScore}%</strong><span>Description quality</span></div>
               <div><strong>{toolSurface.metrics.riskSignals.destructiveCapabilityToolCount}</strong><span>Destructive signals</span></div>
             </div>
+            {isToolContextCost(toolSurface.contextCost) && (
+              <ToolContextCostPanel
+                cost={toolSurface.contextCost}
+                // The surface analysis already reports a large total with its tool-count context.
+                hideFindingIds={prioritizedToolFindings.some((finding) => finding.id === 'context.large-tool-surface')
+                  ? ['context-cost.total-above-threshold']
+                  : []}
+              />
+            )}
             {prioritizedToolFindings.length === 0 ? (
               <div className="release-empty release-empty-success">No tool-surface findings were identified.</div>
             ) : (
@@ -416,6 +446,9 @@ const ReleaseReadinessReport: React.FC<ReleaseReadinessReportProps> = ({
                     <div>
                       <span className={`finding-severity finding-${finding.severity}`}>{finding.severity}</span>
                       <h4>{finding.title}</h4>
+                      {hasReference(toolSurfaceReferenceId(finding.id)) && (
+                        <FindingReferenceLink id={toolSurfaceReferenceId(finding.id)} showId={false} />
+                      )}
                     </div>
                     <p>{finding.summary}</p>
                     <p className="release-remediation"><strong>Remediation:</strong> {finding.remediation}</p>

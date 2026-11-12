@@ -1,4 +1,8 @@
 import type { PublicReport } from './reportArtifact';
+import type { ToolContextCostDeltaV1 } from '../types/toolContextCost';
+import {
+  computeToolContextCost, contextCostAccessLimitation, diffToolContextCost, isToolContextCost,
+} from './toolTokenCost';
 
 export type ReportDiffClassification =
   | 'breaking'
@@ -33,6 +37,8 @@ export interface ReportDiff {
   changes: ReportDiffChange[];
   counts: Record<ReportDiffClassification, number>;
   hasBreakingChanges: boolean;
+  /** Before/after estimated context cost, when both reports let it be compared. */
+  contextCost?: ToolContextCostDeltaV1;
 }
 
 type JsonRecord = Record<string, unknown>;
@@ -1154,13 +1160,100 @@ const compareScores = (before: PublicReport, after: PublicReport): ReportDiffCha
   return changes;
 };
 
+const ACCESS_SENSITIVE_PATH = /^(?:tools|capabilities)\.[^.]+$/;
+// The credential scheme the evaluator sent is the access state itself, not server metadata.
+const ACCESS_STATE_EVIDENCE_PATH = 'oauth.metadata.authorizationSchemes';
+
+/**
+ * Tool and capability membership compared across a change in access state
+ * (authenticated vs unauthenticated) is not evidence of drift.
+ */
+const respectAccessState = (
+  before: PublicReport,
+  after: PublicReport,
+  changes: ReportDiffChange[]
+): ReportDiffChange[] => {
+  const left = before.capabilityInventory?.authentication;
+  const right = after.capabilityInventory?.authentication;
+  if (!left || !right || left === right) return changes;
+  return [
+    makeChange(
+      'unknown', 'authentication', 'capabilityInventory.authentication',
+      'Tool list access state changed',
+      `${accessChangeDetail(left, right)} Compare reports obtained the same way to detect drift.`
+    ),
+    ...changes.map((change) => (
+      ((change.category === 'tools' || change.category === 'capabilities')
+        && ACCESS_SENSITIVE_PATH.test(change.path)
+        && (change.classification === 'removal' || change.classification === 'addition' || change.classification === 'change'))
+        || change.path === ACCESS_STATE_EVIDENCE_PATH
+        ? {
+            ...change,
+            classification: 'unknown' as const,
+            breaking: false,
+            detail: `${change.detail} The access state changed between these reports.`,
+          }
+        : change
+    )),
+  ];
+};
+
+const DEFINITIONS_BASIS_LIMITATION = 'At least one report predates the per-tool breakdown, so both are estimated from the stored names, descriptions and input schemas; output schemas and annotations are not included.';
+const PARTIAL_DEFINITIONS_LIMITATION = 'Some stored definitions were redacted or omitted, so added and removed tools are not listed.';
+
+/**
+ * Context-cost delta between two reports. Uses the stored breakdowns when both
+ * have one with the same method; otherwise re-estimates both from the stored
+ * tool definitions, so the two numbers always share one method and basis.
+ */
+export const diffReportContextCost = (
+  before: PublicReport,
+  after: PublicReport
+): ToolContextCostDeltaV1 | undefined => {
+  // Reports obtained with different access list different tools by design.
+  const accessLimitation = contextCostAccessLimitation(
+    before.capabilityInventory?.authentication,
+    after.capabilityInventory?.authentication
+  );
+  const accessOptions = accessLimitation ? { beforeComplete: false, afterComplete: false } : {};
+  const withAccess = (limitation?: string): { limitation?: string } => {
+    const text = [limitation, accessLimitation].filter(Boolean).join(' ');
+    return text ? { limitation: text } : {};
+  };
+  const left = before.toolSurfaceAnalysis?.contextCost;
+  const right = after.toolSurfaceAnalysis?.contextCost;
+  const beforeDefinitions = before.toolSurfaceAnalysis?.toolDefinitions;
+  const afterDefinitions = after.toolSurfaceAnalysis?.toolDefinitions;
+  if (isToolContextCost(left) && isToolContextCost(right) && left.method.id === right.method.id) {
+    // The breakdown records an incomplete listing itself (`listingIncomplete`).
+    return diffToolContextCost(left, right, { ...withAccess(), ...accessOptions });
+  }
+  if (!beforeDefinitions || !afterDefinitions
+      || beforeDefinitions.status === 'unavailable' || afterDefinitions.status === 'unavailable') {
+    return undefined;
+  }
+  const partial = beforeDefinitions.status !== 'complete' || afterDefinitions.status !== 'complete';
+  return diffToolContextCost(
+    computeToolContextCost(beforeDefinitions.tools, { toolLimit: Number.POSITIVE_INFINITY }),
+    computeToolContextCost(afterDefinitions.tools, { toolLimit: Number.POSITIVE_INFINITY }),
+    {
+      ...withAccess(partial
+        ? `${DEFINITIONS_BASIS_LIMITATION} ${PARTIAL_DEFINITIONS_LIMITATION}`
+        : DEFINITIONS_BASIS_LIMITATION),
+      beforeComplete: beforeDefinitions.status === 'complete',
+      afterComplete: afterDefinitions.status === 'complete',
+      ...accessOptions,
+    }
+  );
+};
+
 export const diffPublicReports = (before: PublicReport, after: PublicReport): ReportDiff => {
-  const changes: ReportDiffChange[] = [
+  const changes: ReportDiffChange[] = respectAccessState(before, after, [
     ...compareOAuth(before, after),
     ...compareTools(before, after),
     ...compareCapabilities(before, after),
     ...compareFindings(before, after),
-  ];
+  ]);
 
   const beforeTransport = before.transport?.type;
   const afterTransport = after.transport?.type;
@@ -1288,12 +1381,14 @@ export const diffPublicReports = (before: PublicReport, after: PublicReport): Re
     breaking: 0, removal: 0, risk: 0, unknown: 0, addition: 0, change: 0,
   };
   changes.forEach((change) => { counts[change.classification] += 1; });
+  const contextCost = diffReportContextCost(before, after);
   return {
     beforeGeneratedAt: before.generatedAt,
     afterGeneratedAt: after.generatedAt,
     changes,
     counts,
     hasBreakingChanges: changes.some((change) => change.breaking),
+    ...(contextCost ? { contextCost } : {}),
   };
 };
 
@@ -1324,6 +1419,8 @@ export interface InterfaceSnapshot {
   resources?: string[];
   resourceTemplates?: string[];
   prompts?: string[];
+  /** How the lists were obtained, when recorded (report snapshots). */
+  authentication?: 'authenticated' | 'unauthenticated';
 }
 
 export type InterfaceChangeKind =
@@ -1491,6 +1588,14 @@ const compareNameSets = (
   ];
 };
 
+const MEMBERSHIP_KINDS = new Set<InterfaceChangeKind>([
+  'tool-added', 'tool-removed', 'resource-added', 'resource-removed', 'prompt-added', 'prompt-removed',
+]);
+
+const accessChangeDetail = (before: string, after: string): string => (
+  `The earlier list was obtained ${before} and the later one ${after}; servers often list different capabilities to signed-in callers, so this is not treated as drift.`
+);
+
 /** Compares two playground capability snapshots of the same server. */
 export const diffInterfaceSnapshots = (
   before: InterfaceSnapshot,
@@ -1520,6 +1625,18 @@ export const diffInterfaceSnapshots = (
       regressed ? 'breaking' : 'change', 'transport', 'transport.type', 'Transport changed',
       `Changed from ${before.transport} to ${after.transport}.`
     )));
+  }
+  if (before.authentication && after.authentication && before.authentication !== after.authentication) {
+    // A change in access state, not drift: membership differences are not proof of removal.
+    for (const [index, change] of changes.entries()) {
+      if (!MEMBERSHIP_KINDS.has(change.kind)) continue;
+      changes[index] = {
+        ...change,
+        classification: 'unknown',
+        breaking: false,
+        detail: `${change.detail} ${accessChangeDetail(before.authentication, after.authentication)}`,
+      };
+    }
   }
   changes.sort((left, right) => (
     INTERFACE_KIND_ORDER.indexOf(left.kind) - INTERFACE_KIND_ORDER.indexOf(right.kind)

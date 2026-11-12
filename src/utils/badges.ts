@@ -10,9 +10,11 @@ export const BADGE_SITE_URL = 'https://mcptest.io';
 /**
  * A badge names a release result from the evaluator, is the neutral brand
  * badge, or (live report badges only) reports a breaking interface change the
- * weekly watch found after the newest published run.
+ * weekly watch found after the newest published run. `payment-required` marks a
+ * server that answered HTTP 402: reachable and deliberate, so neither blocked
+ * nor unknown.
  */
-export type BadgeVariant = ReleaseReadinessStatus | 'neutral' | 'breaking-change';
+export type BadgeVariant = ReleaseReadinessStatus | 'neutral' | 'breaking-change' | 'payment-required';
 
 interface BadgeDefinition {
   label: string;
@@ -38,6 +40,7 @@ export const BADGE_DEFINITIONS: Record<BadgeVariant, BadgeDefinition> = {
   blocked: { label: 'mcptest.io', message: 'blocked', color: '#dc2626', file: 'blocked' },
   unknown: { label: 'mcptest.io', message: 'unknown', color: '#64748b', file: 'unknown' },
   'breaking-change': { label: 'mcptest.io', message: 'breaking change', color: '#dc2626', file: 'breaking-change' },
+  'payment-required': { label: 'mcptest.io', message: 'payment required', color: '#0789a8', file: 'payment-required' },
 };
 
 export const BADGE_VARIANTS = Object.keys(BADGE_DEFINITIONS) as BadgeVariant[];
@@ -57,18 +60,20 @@ export interface CatalogBadgeEvidence {
   requiresOAuth?: boolean;
   authType?: string;
   protocolVersion?: string;
+  responseClass?: string;
 }
 
 /**
  * Maps the latest catalog validation run onto the evaluator's result vocabulary.
  * Catalog validation is a connection probe, so it can only claim what it observed:
  * an offline endpoint is blocked, a negotiated MCP session without credentials is
- * ready, an authentication challenge is authorization-required, and anything else
- * is unknown.
+ * ready, an authentication challenge is authorization-required, an HTTP 402 is
+ * payment-required, and anything else (including bot protection) is unknown.
  */
 export const getCatalogBadgeVariant = (evidence: CatalogBadgeEvidence | undefined): BadgeVariant => {
   if (!evidence) return 'neutral';
   if (evidence.status === 'offline') return 'blocked';
+  if (evidence.responseClass === 'payment-required' && !evidence.protocolVersion) return 'payment-required';
   if (evidence.status !== 'online') return 'unknown';
   if (evidence.protocolVersion) return 'ready';
   if (evidence.requiresOAuth || (evidence.authType && evidence.authType !== 'none')) {

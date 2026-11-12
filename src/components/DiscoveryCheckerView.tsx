@@ -13,6 +13,7 @@ import {
   type DiscoveryRowStatus,
 } from '../utils/mcpDiscovery';
 import { createDiscoveryFetch } from '../utils/discoveryFetch';
+import { describeResponseEvidence, RESPONSE_CLASS_CONTENT } from '../utils/responseClassification';
 import { SERVER_CARD_SCHEMA_SOURCE } from '../utils/serverCardValidation';
 import { getPreferredCatalogEndpoint, resolveCatalogEndpointTransport } from '../utils/clientSetup';
 import { getCatalogServers } from '../utils/catalogUtils';
@@ -160,6 +161,16 @@ const DiscoveryRowItem: React.FC<{ row: DiscoveryRow }> = ({ row }) => (
                   ? `HTTP ${attempt.status}${attempt.contentType ? `, ${attempt.contentType}` : ''}`
                   : `failed (${attempt.failure ?? 'network'})`}
                 {attempt.route === 'proxy' ? ', through the mcptest proxy' : attempt.route === 'direct' ? ', from your browser' : ''}
+                {attempt.responseClass && (
+                  <>
+                    {' '}
+                    <strong>
+                      ({RESPONSE_CLASS_CONTENT[attempt.responseClass.kind].label}
+                      {attempt.responseClass.confidence === 'suspected' ? ', suspected' : ''}
+                      : {describeResponseEvidence(attempt.responseClass)})
+                    </strong>
+                  </>
+                )}
               </li>
             ))}
           </ul>

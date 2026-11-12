@@ -126,3 +126,5 @@ Test each class with injected timeouts before commit, after commit, during respo
 Before publishing, require schema validation tests, authorization and cross-tenant tests, idempotency tests, protocol-version and transport compatibility, context-size measurements, rate-limit behavior, dependency-failure injection, secret-redaction assertions, reconnect/restart checks, and a human review of every write tool. Run the server in the [MCP Playground](/) and the official Inspector, then test in every client you claim to support.
 
 Publish an endpoint, auth/scopes, tool inventory, data handling statement, hosting owner, support channel, change policy, tested client/version matrix, and last-reviewed date. Operations and evidence are part of the integration—not follow-up work.
+
+See also: [tool annotations and client retries](/learn/mcp-tool-annotations-and-client-retries), [long-running tools](/learn/mcp-long-running-tools), [tool errors agents can act on](/learn/mcp-tool-errors-agents-can-act-on) and [bot protection that blocks MCP clients](/learn/mcp-bot-protection-blocking-clients).

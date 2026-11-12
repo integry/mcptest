@@ -1,9 +1,9 @@
 // @vitest-environment node
-// Vite's esbuild service needs Node; the CORS example also uses native Request/Response instead of the jsdom default.
+// Vite's Oxc transformer needs Node; the CORS example also uses native Request/Response instead of the jsdom default.
 
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { transformWithEsbuild } from 'vite';
+import { transformWithOxc } from 'vite';
 import { describe, expect, it } from 'vitest';
 
 type CorsWrapper = (request: Request, response: Response) => Response;
@@ -19,7 +19,7 @@ async function loadWorkersCorsWrapper(): Promise<{ wrapper: CorsWrapper; allowed
   if (!allowlist || !wrapperSource || !fixedOrigin || !hostnames) {
     throw new Error('Cloudflare Agents example no longer contains the CORS wrapper');
   }
-  const { code: js } = await transformWithEsbuild(`${allowlist}\n${wrapperSource}`, 'cors-wrapper.ts', {
+  const { code: js } = await transformWithOxc(`${allowlist}\n${wrapperSource}`, 'cors-wrapper.ts', {
     target: 'es2022',
   });
   const wrapper = new Function(`${js}\nreturn withRequestOrigin;`)() as CorsWrapper;

@@ -16,9 +16,12 @@ import BadgeEmbed from './BadgeEmbed';
 /** Selects the badge for a report from the same release decision the report displays. */
 export const getReportBadgeVariant = (report: EvaluationReport, oauthTrace?: OAuthTraceV1): BadgeVariant => {
   const matrix = createCompatibilityMatrix(report, oauthTrace);
-  return getBadgeVariantForResult(
-    createReleaseDecision(report, matrix, report.toolSurfaceAnalysis, oauthTrace).status
-  );
+  const decision = createReleaseDecision(report, matrix, report.toolSurfaceAnalysis, oauthTrace);
+  // A 402 is not scored, but "payment required" says more than "unknown".
+  if (decision.status === 'unknown' && decision.priorities[0]?.id === 'transport.payment-required-402') {
+    return 'payment-required';
+  }
+  return getBadgeVariantForResult(decision.status);
 };
 
 interface ReportBadgeEmbedProps {

@@ -86,7 +86,21 @@ export interface ObservedServerFactsV1 {
     cors: ObservedValueV1<CorsBehavior>;
     proxyRoute: ObservedValueV1<ProxyRoute>;
   };
+  /**
+   * Tool annotation facts from the tool surface analysis. Optional: facts
+   * built without a tool list (catalog entries, older reports) leave it out,
+   * and its paths then evaluate as unknown.
+   */
+  tools?: {
+    /** Every listed tool declares readOnlyHint explicitly. */
+    readOnlyHintDeclared: ObservedValueV1<boolean>;
+    /** Every listed tool declares readOnlyHint: true, idempotentHint: true, or both readOnlyHint and idempotentHint. */
+    retryHintsDeclared: ObservedValueV1<boolean>;
+  };
 }
+
+/** Fact paths that may be absent from observed facts; they read as unknown. */
+export const OPTIONAL_FACT_SECTIONS: ReadonlySet<string> = new Set(['tools']);
 
 export type CompatibilityFactPath =
   | 'transport.kind'
@@ -112,7 +126,9 @@ export type CompatibilityFactPath =
   | 'capabilities.tasks'
   | 'environment.directAccess'
   | 'environment.cors'
-  | 'environment.proxyRoute';
+  | 'environment.proxyRoute'
+  | 'tools.readOnlyHintDeclared'
+  | 'tools.retryHintsDeclared';
 
 export type CompatibilityConditionV1 =
   | {

@@ -77,8 +77,8 @@ Suggested funnel steps for the dashboard:
 
 | Event | Fires when | Params |
 | --- | --- | --- |
-| `landing_view` | The empty-playground landing (`LandingHero`) mounts. Fires once per landing shown. | `variant`: `new` \| `returning` (`returning` = the user has recent endpoints and sees recent chips) |
-| `landing_connect` | Connect is pressed on the landing: the Connect button or Enter, a "Try with" quick pick, or a recent chip. | `source`: `manual` \| `quick_pick` \| `recent_chip`; `host` |
+| `landing_view` | The empty-playground landing (`LandingHero`) mounts. Fires once per landing shown. | `variant`: `new` \| `returning` (`returning` = the user has recent endpoints and sees recent chips); `page` when the form is on a keyword landing page (`/mcp-test-server`, `/mcp-inspector-online`, `/mcp-playground`): `test-server` \| `inspector-online` \| `playground`. Those pages connect in the playground on `/` through an auto-connecting tab, so their `connect_attempt` has `source: catalog` |
+| `landing_connect` | Connect is pressed on the landing: the Connect button or Enter, a "Try with" quick pick, or a recent chip. | `source`: `manual` \| `quick_pick` \| `recent_chip`; `host`; `page` on a keyword landing page: `test-server` \| `inspector-online` \| `playground` |
 | `catalog_open_server` | A catalog server is opened in the playground for testing, from a catalog card's Test button or from a server profile. | `server_id` (catalog id); `surface`: `list` \| `profile` |
 | `advanced_options_open` | The landing's "Advanced options" disclosure is opened. | none |
 | `connect_attempt` | The playground starts a connection (`TabContent`). Fires before every connect, including automatic ones. | `source`: `manual` \| `quick_pick` \| `recent_chip` \| `catalog` (catalog tab auto-connect) \| `shared_link` (result-share link) \| `reconnect` (after OAuth, a bearer prerequisite or OAuth client setup); `transport_hint`: `streamable-http` \| `legacy-sse` \| `auto`; `proxy`: boolean (proxy fallback allowed) |
