@@ -345,7 +345,7 @@ const ConnectionErrorCard: React.FC<ConnectionErrorCardProps> = ({
 
   return (
     <section
-      className={`alert ${diagnosis.alertClass} mb-3`}
+      className={`alert ${diagnosis.alertClass} connection-failure mb-3`}
       role="alert"
       aria-labelledby={plainId}
       aria-describedby={headingId}
@@ -354,14 +354,14 @@ const ConnectionErrorCard: React.FC<ConnectionErrorCardProps> = ({
       <div className="d-flex justify-content-between align-items-start gap-3">
         <div className="flex-grow-1 min-w-0">
           <div className="d-flex align-items-center flex-wrap gap-2 mb-2">
-            <span className="badge bg-dark">{diagnosis.badge}</span>
-            <small className="text-muted">{errorDetails.timestamp.toLocaleTimeString()}</small>
+            <span className="badge bg-dark connection-failure-badge">{diagnosis.badge}</span>
+            <small className="text-muted connection-failure-time">{errorDetails.timestamp.toLocaleTimeString()}</small>
           </div>
           <FailureGuidanceSummary guidance={guidance} titleId={plainId} />
           <p className="failure-technical-label">Technical detail</p>
           <h6 id={headingId} className="alert-heading">{diagnosis.heading}</h6>
           <p className="connection-diagnosis-summary">{diagnosis.summary}</p>
-          <div className="mb-3">
+          <div className="mb-3 connection-failure-endpoint">
             <strong>Endpoint:</strong> <code className="text-break">{errorDetails.serverUrl}</code>
           </div>
 
@@ -376,10 +376,10 @@ const ConnectionErrorCard: React.FC<ConnectionErrorCardProps> = ({
           />
 
           {attempts.length > 0 && (
-            <div className="mb-3">
-              <strong>Connection attempts</strong>
-              <div className="table-responsive mt-1">
-                <table className="table table-sm align-middle mb-0">
+            <div className="mb-3 connection-failure-block">
+              <strong className="connection-failure-heading">Connection attempts</strong>
+              <div className="table-responsive mt-1 connection-attempts">
+                <table className="table table-sm align-middle mb-0 connection-attempts-table">
                   <caption className="visually-hidden">Connection candidates and observed outcomes</caption>
                   <thead>
                     <tr>
@@ -394,16 +394,16 @@ const ConnectionErrorCard: React.FC<ConnectionErrorCardProps> = ({
                     {attempts.map((attempt, index) => (
                       <tr key={`${attempt.route}-${attempt.candidateUrl}-${attempt.transportType}-${index}`}>
                         <td>{attempt.route === 'proxy' ? 'mcptest proxy' : 'Direct browser'}</td>
-                        <td><code className="text-break">{attempt.candidateUrl}</code></td>
-                        <td>{transportLabel(attempt.transportType)}</td>
-                        <td>
-                          {attempt.method || 'Unknown'}
-                          {attempt.mcpMethod && <><br /><code>{attempt.mcpMethod}</code></>}
+                        <td><code className="text-break connection-attempt-candidate">{attempt.candidateUrl}</code></td>
+                        <td><span className="connection-attempt-transport">{transportLabel(attempt.transportType)}</span></td>
+                        <td className="connection-attempt-request">
+                          <span className="connection-attempt-method">{attempt.method || 'Unknown'}</span>
+                          {attempt.mcpMethod && <><br /><code className="connection-attempt-rpc">{attempt.mcpMethod}</code></>}
                           {attempt.requestHeaders?.some((header) => header.toLowerCase() === 'mcp-protocol-version') && (
                             <><br /><small><code>MCP-Protocol-Version</code> header</small></>
                           )}
                         </td>
-                        <td>{attemptResult(attempt)}</td>
+                        <td className="connection-attempt-result">{attemptResult(attempt)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -412,8 +412,8 @@ const ConnectionErrorCard: React.FC<ConnectionErrorCardProps> = ({
             </div>
           )}
 
-          <div className="mb-3">
-            <strong>What to do next</strong>
+          <div className="mb-3 connection-failure-block">
+            <strong className="connection-failure-heading">What to do next</strong>
             <ul className="mt-1 mb-0">
               {browserBlocked && !useProxy && showProxyOption && (
                 <li>Enable <q>Automatically use proxy for CORS errors</q>, then retry so mcptest can inspect the target response.</li>
@@ -448,8 +448,8 @@ const ConnectionErrorCard: React.FC<ConnectionErrorCardProps> = ({
             </ul>
           </div>
 
-          <div className="mb-3">
-            <strong>Terminal diagnostics</strong>
+          <div className="mb-3 connection-failure-block">
+            <strong className="connection-failure-heading">Terminal diagnostics</strong>
             {showHttpProbe && (
               <p className="small mt-1 mb-2">
                 This initialize probe includes <code>MCP-Protocol-Version</code> so the required header is explicit. It does not reproduce the complete post-initialize lifecycle.
@@ -460,11 +460,11 @@ const ConnectionErrorCard: React.FC<ConnectionErrorCardProps> = ({
                 Expected unauthenticated result: <strong>HTTP 401</strong> with a <code>WWW-Authenticate</code> Bearer challenge proves reachability and starts OAuth discovery. It is not an authenticated MCP session.
               </p>
             )}
-            <div className="row mt-2 g-3">
+            <div className="row mt-2 g-0 connection-probes">
               {showHttpProbe && (
                 <div className={showSseProbe ? 'col-12 col-lg-6' : 'col-12'}>
-                  <strong className="small">Streamable HTTP — exact endpoint (POST)</strong>
-                  <div className="p-2 bg-light border rounded mt-1">
+                  <strong className="small connection-probe-title">Streamable HTTP — exact endpoint (POST)</strong>
+                  <div className="p-2 bg-light border rounded mt-1 connection-probe">
                     <pre className="mb-2 small text-wrap"><code>{httpCurlCommand}</code></pre>
                     <button type="button" className="btn btn-outline-secondary btn-sm" onClick={() => copyToClipboard(httpCurlCommand, 'http')} disabled={httpCurlCopied}>
                       {httpCurlCopied ? 'Copied!' : 'Copy HTTP curl'}
@@ -483,10 +483,10 @@ const ConnectionErrorCard: React.FC<ConnectionErrorCardProps> = ({
               )}
               {showSseProbe && (
                 <div className={showHttpProbe ? 'col-12 col-lg-6' : 'col-12'}>
-                  <strong className="small">
+                  <strong className="small connection-probe-title">
                     {exploratory ? 'Exploratory legacy SSE — same exact endpoint (GET)' : 'Legacy SSE — exact endpoint (GET)'}
                   </strong>
-                  <div className="p-2 bg-light border rounded mt-1">
+                  <div className="p-2 bg-light border rounded mt-1 connection-probe">
                     <pre className="mb-2 small text-wrap"><code>{sseCurlCommand}</code></pre>
                     <button type="button" className="btn btn-outline-secondary btn-sm" onClick={() => copyToClipboard(sseCurlCommand, 'sse')} disabled={sseCurlCopied}>
                       {sseCurlCopied ? 'Copied!' : 'Copy SSE curl'}
@@ -501,7 +501,7 @@ const ConnectionErrorCard: React.FC<ConnectionErrorCardProps> = ({
           </div>
 
           {(errorDetails.error || errorDetails.details) && (
-            <details className="mb-2">
+            <details className="mb-2 connection-failure-raw">
               <summary>Raw technical details</summary>
               <pre className="small bg-light border rounded p-2 mt-2 text-wrap mb-0"><code>
                 {[errorDetails.error, errorDetails.details].filter(Boolean).join('\n\n')}
@@ -514,7 +514,7 @@ const ConnectionErrorCard: React.FC<ConnectionErrorCardProps> = ({
       </div>
 
       {(onRetry || (browserBlocked && !useProxy && onRetryWithProxy)) && (
-        <div className="d-flex flex-wrap gap-2 mt-3">
+        <div className="d-flex flex-wrap gap-2 mt-3 connection-failure-actions">
           {onRetry && (
             <button type="button" className="btn btn-outline-secondary btn-sm" onClick={onRetry} disabled={!oauthFailed && retryWaiting}>
               {oauthFailed

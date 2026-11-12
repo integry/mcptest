@@ -45,10 +45,12 @@ describe('radius tokens', () => {
   it('uses one chrome radius and one small-control radius', () => {
     const scale = ruleFor(':root')!.body;
 
-    expect(declaration(scale, '--border-radius')).toBe('0.25rem');
-    expect(declaration(scale, '--border-radius-sm')).toBe('0.1875rem');
-    expect(declaration(scale, '--button-radius')).toBe('0.25rem');
-    expect(declaration(scale, '--button-radius-sm')).toBe('0.1875rem');
+    // Near-square glass panels; only the header controls soften to -lg.
+    expect(declaration(scale, '--border-radius')).toBe('0.125rem');
+    expect(declaration(scale, '--border-radius-sm')).toBe('0.125rem');
+    expect(declaration(scale, '--button-radius')).toBe('0.125rem');
+    expect(declaration(scale, '--button-radius-sm')).toBe('0.125rem');
+    expect(declaration(scale, '--button-radius-lg')).toBe('0.5rem');
   });
 
   it('shapes the app chrome from the tokens instead of ad-hoc radii', () => {
@@ -72,7 +74,7 @@ describe('surfaces', () => {
     const offenders = rules
       .map((rule) => ({ selector: rule.selector, shadow: declaration(rule.body, 'box-shadow') }))
       .filter(({ shadow }) => shadow !== undefined)
-      .filter(({ shadow }) => !/^(none|var\(--shadow-float\)|var\(--focus-ring\))( !important)?$/.test(shadow!))
+      .filter(({ shadow }) => !/^(none|var\(--shadow-float\)|var\(--shadow-glass\)|var\(--glass-highlight\)|var\(--focus-ring\))( !important)?$/.test(shadow!))
       // Inset rings and 1px outlines are borders drawn with box-shadow, not elevation.
       .filter(({ shadow }) => !/^(inset |0 0 0 1px )/.test(shadow!));
 
@@ -90,7 +92,8 @@ describe('surfaces', () => {
     const tokenGradients = rules
       .filter((rule) => /^:root/.test(rule.selector))
       .flatMap((rule) => [...rule.body.matchAll(/(--[a-z0-9-]+)\s*:[^;]*gradient\(/g)].map((found) => found[1]));
-    expect(new Set(tokenGradients)).toEqual(new Set(['--page-wash']));
+    // The page wash, and the failure band's rose-to-violet wash.
+    expect(new Set(tokenGradients)).toEqual(new Set(['--page-wash', '--danger-wash']));
     expect(declaration(ruleFor('body')!.body, 'background-image')).toBe('var(--page-wash)');
   });
 });
@@ -157,7 +160,7 @@ describe('dead selectors', () => {
 
 describe('button shape', () => {
   it('defines a single button radius token', () => {
-    expect(declaration(ruleFor(':root')!.body, '--button-radius')).toBe('0.25rem');
+    expect(declaration(ruleFor(':root')!.body, '--button-radius')).toBe('0.125rem');
   });
 
   it('shapes every button from that token instead of hand-rolled radii', () => {

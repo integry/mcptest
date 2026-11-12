@@ -39,11 +39,13 @@
      Buttons share the chrome radius so they echo the panels they sit in.
      Corners are tight, like an instrument panel. Only status pills are
      fully round. */
-  --border-radius: 0.25rem;
-  --border-radius-sm: 0.1875rem;
-  --button-radius: 0.25rem;
-  --button-radius-sm: 0.1875rem;
+  --border-radius: 0.125rem;
+  --border-radius-sm: 0.125rem;
+  --button-radius: 0.125rem;
+  --button-radius-sm: 0.125rem;
   --radius-pill: 999px;
+  /* Header controls (theme, sign in) are the one softened corner. */
+  --button-radius-lg: 0.5rem;
 
   /* 4px spacing scale. */
   --space-1: 0.25rem;
@@ -55,7 +57,7 @@
   --space-8: 2rem;
 
   /* Workspace padding; the session strip bleeds back across it. */
-  --main-pad: clamp(1rem, 2vw, 1.5rem);
+  --main-pad: clamp(1rem, 2.6vw, 2.5rem);
 
   /* The signal rail: the 3px left edge that marks the active nav item, a
      verdict, a JSON-RPC message on the wire and a callout. */
@@ -80,36 +82,36 @@
 :root,
 :root[data-theme='light'] {
   /* Surfaces */
-  --body-bg: #f3f4f9;
+  --body-bg: #eaf0f8;
   --card-bg: #ffffff;
-  --card-bg-secondary: #f1f2f6;
-  --card-header-bg: #f8f9fb;
+  --card-bg-secondary: #f1f5f9;
+  --card-header-bg: #f8fafc;
   /* The page wash behind the shell: a cool blue corner fading to lavender.
      Decorative only; every surface on it is opaque. */
-  --page-wash: radial-gradient(1100px 700px at 0% 0%, #e7f0fb 0%, rgba(231, 240, 251, 0) 70%), radial-gradient(1200px 900px at 100% 100%, #efe7fb 0%, rgba(239, 231, 251, 0) 65%);
-  --sidebar-bg: rgba(255, 255, 255, 0.42);
-  --strip-bg: rgba(255, 255, 255, 0.55);
+  --page-wash: radial-gradient(1100px 580px at 8% -5%, rgba(56, 189, 248, 0.2), transparent 65%), radial-gradient(1000px 620px at 94% 8%, rgba(168, 85, 247, 0.16), transparent 65%), radial-gradient(950px 540px at 52% 42%, rgba(244, 63, 94, 0.09), transparent 70%), radial-gradient(1100px 600px at 18% 92%, rgba(20, 184, 166, 0.14), transparent 68%), linear-gradient(135deg, #eff5fc 0%, #e7eef8 48%, #efebf9 100%);
+  --sidebar-bg: rgba(255, 255, 255, 0.3);
+  --strip-bg: rgba(255, 255, 255, 0.25);
   /* Text */
-  --text-color: #12151c;
-  --text-muted: #5a6070;
-  --text-accent: #2e3340;
-  --catalog-secondary-text: #474d5b;
+  --text-color: #0f172a;
+  --text-muted: #475569;
+  --text-accent: #334155;
+  --catalog-secondary-text: #475569;
   /* Accent: a deep instrument green, dark enough for white text */
-  --primary-color: #1d6b53;
-  --primary-hover: #155440;
-  --primary-light: #23805f;
+  --primary-color: #0d6e5b;
+  --primary-hover: #0a5848;
+  --primary-light: #0d9488;
   --primary-ink: #ffffff;
-  --accent-text: #155440;
-  --accent-wash: #e4f1ec;
+  --accent-text: #0b5c4c;
+  --accent-wash: #e0f2ee;
   /* The primary action at reduced emphasis: Connect before a URL is typed.
      Still green, still labelled, clearly short of the solid fill. */
-  --primary-soft: #d3e9e0;
-  --primary-soft-border: #9ccbb9;
-  --primary-soft-ink: #1a5e48;
+  --primary-soft: #d2ebe4;
+  --primary-soft-border: #94cdbf;
+  --primary-soft-ink: #0b5446;
   /* The ink button: account actions (sign in) that sit beside the accent
      without competing with it. */
-  --ink-button-bg: #141824;
-  --ink-button-hover: #2a3040;
+  --ink-button-bg: #0b1120;
+  --ink-button-hover: #1e293b;
   --ink-button-text: #ffffff;
   /* Neutral actions */
   --secondary-color: #6b746f;
@@ -122,44 +124,60 @@
   --danger-color: #c42b2b;
   --warning-color: #975300;
   /* Lines */
-  --border-color: #e2e4eb;
-  --border-strong: #cdd1db;
+  --border-color: #dde4ee;
+  --border-strong: #cbd5e1;
   /* Inputs: the border alone identifies the field, so it holds 3:1 */
   --input-bg: #ffffff;
-  --input-border: #858b9b;
+  --input-border: #7c8799;
   --input-focus-border: var(--primary-color);
   /* Disabled is neutral, never a faded accent */
-  --disabled-bg: #eceef3;
-  --disabled-text: #626877;
-  --disabled-border: #d8dbe3;
+  --disabled-bg: #e9eef5;
+  --disabled-text: #5b6577;
+  --disabled-border: #d6dde8;
   /* The wire: outbound requests and inbound responses */
-  --wire-request: #5a6070;
-  --wire-response: #1d6b53;
-  --link-color: #155440;
-  --link-hover: #0b3326;
-  --focus-ring: 0 0 0 3px rgba(29, 107, 83, 0.26);
+  --wire-request: #475569;
+  --wire-response: #0d6e5b;
+  --link-color: #0b5c4c;
+  --link-hover: #020617;
+  --focus-ring: 0 0 0 3px rgba(13, 148, 136, 0.28);
   /* The only shadow in the system: floating surfaces (menus, popovers,
      dialogs). Panels and cards use a hairline border instead. */
-  --shadow-float: 0 8px 24px -6px rgba(18, 21, 40, 0.16), 0 0 0 1px rgba(18, 21, 40, 0.05);
-  --hover-wash: rgba(18, 21, 40, 0.045);
-  --active-wash: rgba(18, 21, 40, 0.08);
+  --shadow-float: 0 12px 32px -8px rgba(15, 23, 42, 0.18), 0 0 0 1px rgba(15, 23, 42, 0.06);
+  --hover-wash: rgba(255, 255, 255, 0.45);
+  --active-wash: rgba(255, 255, 255, 0.7);
   /* Chrome: the header, the session strip and the endpoint command bars.
      Light and quiet in the light theme, a step below the page in dark. */
   --chrome-bg: #ffffff;
-  --chrome-raised: #f6f7fa;
-  --chrome-text: #12151c;
-  --chrome-muted: #5a6070;
-  --chrome-border: #e2e4eb;
-  --chrome-control-border: #858b9b;
-  --chrome-accent: #1d6b53;
-  --chrome-accent-hover: #155440;
+  --chrome-raised: #f4f7fb;
+  --chrome-text: #0f172a;
+  --chrome-muted: #475569;
+  --chrome-border: #dde4ee;
+  --chrome-control-border: #7c8799;
+  --chrome-accent: #0d6e5b;
+  --chrome-accent-hover: #0a5848;
   --chrome-accent-ink: #ffffff;
-  --chrome-accent-soft: #d3e9e0;
-  --chrome-accent-soft-border: #9ccbb9;
-  --chrome-accent-soft-ink: #1a5e48;
+  --chrome-accent-soft: #d2ebe4;
+  --chrome-accent-soft-border: #94cdbf;
+  --chrome-accent-soft-ink: #0b5446;
   /* Page heads that identify a thing. */
   --hero-bg: #ffffff;
-  --hero-border: #e2e4eb;
+  --hero-border: #dde4ee;
+  /* Glass: the translucent panels, bands and bars that sit on the wash.
+     Text on them is measured against --card-bg-secondary, the lightest
+     the wash can show through. */
+  --glass-bg: rgba(255, 255, 255, 0.5);
+  --glass-strong: rgba(255, 255, 255, 0.72);
+  --glass-border: rgba(255, 255, 255, 0.85);
+  --glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  --glass-filter: blur(24px) saturate(1.5);
+  --hairline: rgba(15, 23, 42, 0.07);
+  /* The active-row rail and the selected tool. */
+  --rail-color: #0d9488;
+  /* The failure band: a rose-to-violet wash under a readable diagnosis. */
+  --danger-wash: linear-gradient(90deg, rgba(244, 63, 94, 0.08), rgba(244, 63, 94, 0.04) 50%, rgba(168, 85, 247, 0.05));
+  --danger-solid: #e11d48;
+  /* Glass elevation: a soft drop under bars that float on the wash. */
+  --shadow-glass: 0 8px 28px -6px rgba(15, 23, 42, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
 /* --- Dark palette ---
@@ -172,9 +190,9 @@
   --card-bg: #151923;
   --card-bg-secondary: #1c212d;
   --card-header-bg: #181c27;
-  --page-wash: radial-gradient(1100px 700px at 0% 0%, #111a2b 0%, rgba(17, 26, 43, 0) 70%), radial-gradient(1200px 900px at 100% 100%, #181429 0%, rgba(24, 20, 41, 0) 65%);
-  --sidebar-bg: rgba(255, 255, 255, 0.02);
-  --strip-bg: rgba(255, 255, 255, 0.025);
+  --page-wash: radial-gradient(1100px 580px at 8% -5%, rgba(56, 189, 248, 0.1), transparent 65%), radial-gradient(1000px 620px at 94% 8%, rgba(168, 85, 247, 0.1), transparent 65%), radial-gradient(950px 540px at 52% 42%, rgba(244, 63, 94, 0.05), transparent 70%), radial-gradient(1100px 600px at 18% 92%, rgba(20, 184, 166, 0.08), transparent 68%), linear-gradient(135deg, #0b1120 0%, #0c111c 48%, #110f1d 100%);
+  --sidebar-bg: rgba(255, 255, 255, 0.025);
+  --strip-bg: rgba(255, 255, 255, 0.02);
   /* Text */
   --text-color: #e8ebf2;
   --text-muted: #9aa1b2;
@@ -221,8 +239,8 @@
   --link-hover: #ffffff;
   --focus-ring: 0 0 0 3px rgba(63, 199, 148, 0.35);
   --shadow-float: 0 10px 28px -6px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.07);
-  --hover-wash: rgba(232, 235, 242, 0.06);
-  --active-wash: rgba(232, 235, 242, 0.1);
+  --hover-wash: rgba(255, 255, 255, 0.05);
+  --active-wash: rgba(255, 255, 255, 0.09);
   /* Chrome: a step below the page, so the header frames the workspace. */
   --chrome-bg: #0a0d13;
   --chrome-raised: #151923;
@@ -238,6 +256,16 @@
   --chrome-accent-soft-ink: #8fdcbd;
   --hero-bg: #121620;
   --hero-border: #272c39;
+  --glass-bg: rgba(255, 255, 255, 0.035);
+  --glass-strong: rgba(255, 255, 255, 0.06);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  --glass-filter: blur(24px) saturate(1.3);
+  --hairline: rgba(255, 255, 255, 0.07);
+  --rail-color: #3fc794;
+  --danger-wash: linear-gradient(90deg, rgba(244, 63, 94, 0.12), rgba(244, 63, 94, 0.06) 50%, rgba(168, 85, 247, 0.08));
+  --danger-solid: #be123c;
+  --shadow-glass: 0 8px 28px -6px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -12,19 +12,29 @@ restyles it. Components consume tokens; they never hard-code a hex value.
 
 ## Direction
 
-- **One accent.** A deep instrument green (`#1d6b53`) is the only brand
-  colour, used for the action a view exists for (Connect, Run tool). In the
-  dark theme it brightens to `#3fc794` with a deep green ink (`#04140e`).
-- **Cool neutrals on a wash.** Ink-navy text, white surfaces and hairline
-  borders on a page that fades from a cool blue corner to lavender
-  (`--page-wash`). The header, sidebar and session strip are translucent over
-  the wash; every panel is an opaque surface.
+- **One accent.** A deep teal-green (`#0d6e5b`) is the only brand colour,
+  used for the action a view exists for (Connect, Run tool, Execute). Active
+  rows (the current nav item, the selected tool) carry a teal rail
+  (`--rail-color`). In the dark theme the accent brightens to `#3fc794` with
+  a deep green ink (`#04140e`).
+- **Glass on a wash.** Slate text on a page lit by soft sky, violet, rose
+  and teal glows (`--page-wash`). The header, sidebar, session strip, cards
+  and the connect and failure bands are translucent white glass
+  (`--glass-bg`, `--glass-strong`) with white edges (`--glass-border`), a
+  top highlight (`--glass-highlight`) and backdrop blur (`--glass-filter`).
+  Dividers inside glass are slate hairlines (`--hairline`).
+- **Bands, not boxed cards.** In the playground the connect form, the
+  connected summary and a failed connection are full-width bands across the
+  workspace. A failure band carries a rose-to-violet wash (`--danger-wash`)
+  and a solid rose status pill (`--danger-solid`).
 - **Mono for protocol facts and structure.** JetBrains Mono (bundled) sets
   URLs, method and tool names, protocol versions, status chips, counts, the
-  session tabs and the small capital section labels. Body copy, headings
-  and buttons stay in Inter.
-- **Tight corners, no elevation.** Cards, panels and buttons share a 4px
-  radius; the only shadow is for floating surfaces.
+  session tabs, table headings and the small capital section labels. Body
+  copy, headings and buttons stay in Inter.
+- **Square corners, soft lift.** Panels, bars and buttons use a 2px radius;
+  header controls soften to `--button-radius-lg`; status chips are pills.
+  Bars that float on the wash (the endpoint bar, diagnostics, the attempts
+  table) use `--shadow-glass`; menus and dialogs use `--shadow-float`.
 
 ## Tokens
 
@@ -36,8 +46,9 @@ restyles it. Components consume tokens; they never hard-code a hex value.
 | `--font-family-mono` | JetBrains Mono Variable | URLs, methods, tool names, versions, counts, status chips, session tabs, section labels |
 | `--text-2xs` … `--text-2xl` | 11, 12, 13, 14, 16, 18, 22, 28px | Type scale. Body is `--text-base` (14px); nothing is smaller than `--text-2xs` |
 | `--weight-regular/medium/semibold/bold` | 400 / 500 / 600 / 650 | Headings 650, labels and buttons 600, body 400 |
-| `--border-radius`, `--button-radius` | 0.25rem | Cards, panels, inputs, menus, buttons, status chips' containers |
-| `--border-radius-sm`, `--button-radius-sm` | 0.1875rem | Small controls, status chips, inline code |
+| `--border-radius`, `--button-radius` | 0.125rem | Cards, panels, inputs, menus, buttons, status chips' containers |
+| `--button-radius-lg` | 0.5rem | Header controls (theme toggle, sign in, logo tile) |
+| `--border-radius-sm`, `--button-radius-sm` | 0.125rem | Small controls, status chips, inline code |
 | `--radius-pill` | 999px | Status dots and progress tracks only |
 | `--space-1` … `--space-8` | 4px steps | All padding, margins and gaps |
 | `--main-pad` | clamp(1rem, 2vw, 1.5rem) | Workspace padding; the session strip bleeds back across it |
@@ -58,7 +69,7 @@ restyles it. Components consume tokens; they never hard-code a hex value.
 | `--text-color` | `#12151c` | `#e8ebf2` | Primary text; also the active tab underline |
 | `--text-accent` | `#2e3340` | `#c5cad6` | Secondary emphasis, sidebar links |
 | `--text-muted` | `#5a6070` | `#9aa1b2` | Supporting text, section labels, timestamps |
-| `--primary-color` | `#1d6b53` | `#3fc794` | The accent: primary buttons, focus, active rails |
+| `--primary-color` | `#0d6e5b` | `#3fc794` | The accent: primary buttons, focus, active rails |
 | `--primary-hover` | `#155440` | `#6fd9b0` | Hover/pressed primary |
 | `--primary-ink` | `#ffffff` | `#04140e` | Text and spinners on the accent |
 | `--accent-text` | `#155440` | `#6fd9b0` | Accent-coloured text on washes |
@@ -75,7 +86,7 @@ restyles it. Components consume tokens; they never hard-code a hex value.
 | `--chrome-border` / `--chrome-control-border` | `#e2e4eb` / `#858b9b` | `#222734` / `#6a7184` | Chrome hairlines; field borders inside the chrome (3:1) |
 | `--chrome-accent` / `-hover` / `-ink`, `--chrome-accent-soft*` | the theme accent | the theme accent | The accent inside the chrome |
 | `--hero-bg` / `--hero-border` | `#ffffff` / `#e2e4eb` | `#121620` / `#272c39` | Page heads of the server profile, tool pages and articles |
-| `--wire-request` / `--wire-response` | `#5a6070` / `#1d6b53` | `#9aa1b2` / `#3fc794` | Rails on outbound and inbound JSON-RPC messages |
+| `--wire-request` / `--wire-response` | `#475569` / `#0d6e5b` | `#9aa1b2` / `#3fc794` | Rails on outbound and inbound JSON-RPC messages |
 | `--link-color` / `--link-hover` | `#155440` / `#0b3326` | `#6fd9b0` / `#ffffff` | Inline links |
 | `--focus-ring` | 3px accent at 26% | 3px accent at 35% | Focus on buttons, inputs and nav items |
 | `--hover-wash` / `--active-wash` | 4.5% / 8% ink | 6% / 10% white | Hover and pressed backgrounds of ghost controls and nav items |

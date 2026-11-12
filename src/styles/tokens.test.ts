@@ -63,7 +63,7 @@ describe('theme token parity', () => {
 
 describe('design language tokens (docs/design-language.md)', () => {
   it('builds the accent on a deep instrument green in both themes', () => {
-    expect(light['--primary-color']).toBe('#1d6b53');
+    expect(light['--primary-color']).toBe('#0d6e5b');
     expect(light['--primary-ink']).toBe('#ffffff');
     expect(dark['--primary-color']).toBe('#3fc794');
     expect(dark['--primary-ink']).toBe('#04140e');
@@ -144,7 +144,7 @@ describe('design language tokens (docs/design-language.md)', () => {
       expect(contrast(palette['--primary-color'], palette['--primary-soft'])).toBeGreaterThan(3);
       expect(palette['--primary-soft']).not.toBe(palette['--disabled-bg']);
     });
-    expect(light['--primary-soft']).toBe('#d3e9e0');
+    expect(light['--primary-soft']).toBe('#d2ebe4');
     expect(dark['--primary-soft']).toBe('#183a2e');
 
     const base = readStylesheet('base');

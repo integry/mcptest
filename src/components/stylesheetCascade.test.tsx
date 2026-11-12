@@ -212,8 +212,7 @@ describe('primary action states', () => {
       expect(winning(element, '--primary-color', 1280), selector).toBe('var(--chrome-accent)');
       expect(winning(element, '--primary-soft', 1280), selector).toBe('var(--chrome-accent-soft)');
     });
-    // Frosted: the chrome surface with the page wash showing faintly through.
-    expect(winning(document.querySelector('.app-header')!, 'background-color', 1280))
-      .toBe('color-mix(in srgb, var(--chrome-bg) 78%, transparent)');
+    // Glass: the header is translucent white over the page wash.
+    expect(winning(document.querySelector('.app-header')!, 'background-color', 1280)).toBe('var(--glass-bg)');
   });
 });

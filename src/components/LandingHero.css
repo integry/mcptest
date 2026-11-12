@@ -116,15 +116,20 @@
   align-items: center;
   gap: 0.5rem;
   min-width: 0;
-  padding: 0.375rem;
-  background-color: var(--chrome-bg);
-  border: 1px solid var(--input-border);
-  border-radius: var(--border-radius);
+  min-height: 3.5rem;
+  padding: 0 0.5rem;
+  background-color: var(--glass-strong);
+  -webkit-backdrop-filter: var(--glass-filter);
+  backdrop-filter: var(--glass-filter);
+  border: 1px solid var(--glass-border);
+  border-radius: 0;
+  box-shadow: var(--shadow-glass);
   transition: border-color var(--motion-fast) ease, box-shadow var(--motion-fast) ease;
 }
 
 .landing-connect:focus-within {
-  border-color: var(--input-focus-border);
+  border-color: color-mix(in srgb, var(--rail-color) 60%, transparent);
+  background-color: var(--card-bg);
   box-shadow: var(--focus-ring);
 }
 
@@ -134,11 +139,11 @@
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
-  height: 2rem;
-  padding: 0 0.625rem;
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius-sm);
-  background: var(--chrome-raised);
+  height: 2.5rem;
+  padding: 0 0.75rem;
+  border: 1px solid var(--hairline);
+  border-radius: 0;
+  background: color-mix(in srgb, var(--text-color) 4%, transparent);
   color: var(--text-muted);
   font-family: var(--font-family-mono);
   font-size: var(--text-2xs);
@@ -168,10 +173,10 @@
 
 .landing-connect-button.btn {
   flex: 0 0 auto;
-  height: 2.75rem;
-  padding: 0 1.75rem;
-  font-weight: var(--weight-semibold);
-  border-radius: var(--button-radius);
+  height: 2.5rem;
+  padding: 0 1.5rem;
+  font-weight: var(--weight-medium);
+  border-radius: 0;
 }
 
 .landing-quick-picks {
@@ -215,11 +220,12 @@
   gap: 0.4rem;
   min-height: 2.75rem;
   padding: 0 1.1rem 0 0.9rem;
-  font-weight: var(--weight-bold);
+  font-weight: var(--weight-semibold);
   color: var(--accent-text);
-  background: var(--accent-wash);
-  border: 1px solid var(--primary-color);
+  background: var(--glass-strong);
+  border: 1px solid var(--glass-border);
   border-radius: var(--button-radius);
+  box-shadow: 0 0 0 1px var(--hairline);
 }
 
 .landing-sample-button.btn:hover:not(:disabled),
@@ -276,9 +282,10 @@
   font: inherit;
   font-weight: var(--weight-medium);
   color: var(--text-color);
-  background: var(--card-bg);
-  border: 1px solid var(--border-strong);
+  background: var(--glass-strong);
+  border: 1px solid var(--glass-border);
   border-radius: var(--button-radius);
+  box-shadow: 0 0 0 1px var(--hairline);
   cursor: pointer;
   transition: border-color var(--motion-fast) ease, color var(--motion-fast) ease, background-color var(--motion-fast) ease;
 }
@@ -795,9 +802,12 @@ html[data-returning-visitor] .seo-returning-workspace { display: contents; }
   margin: 0;
   overflow: hidden;
   color: var(--text-color);
-  background: var(--card-bg);
-  border: 1px dashed var(--border-strong);
-  border-radius: calc(var(--border-radius) + 0.25rem);
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: var(--glass-filter);
+  backdrop-filter: var(--glass-filter);
+  border: 1px solid var(--glass-border);
+  border-radius: 0;
+  box-shadow: var(--shadow-glass);
 }
 
 .landing-preview-caption {
@@ -806,8 +816,8 @@ html[data-returning-visitor] .seo-returning-workspace { display: contents; }
   align-items: center;
   gap: 0.35rem 0.6rem;
   padding: 0.7rem 1rem;
-  background: var(--card-header-bg);
-  border-bottom: 1px solid var(--border-color);
+  background: var(--glass-bg);
+  border-bottom: 1px solid var(--hairline);
 }
 
 .landing-preview-tag {
@@ -832,7 +842,7 @@ html[data-returning-visitor] .seo-returning-workspace { display: contents; }
 }
 
 .landing-preview-section {
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid var(--hairline);
 }
 
 .landing-preview-endpoint {
@@ -1037,4 +1047,9 @@ html[data-returning-visitor] .seo-returning-workspace { display: contents; }
 
 .keyword-landing-related ul {
   border-top: 1px solid var(--border-color);
+}
+
+/* The endpoint field is transparent inside the glass bar. */
+.landing .landing-connect .landing-connect-input.form-control {
+  background: transparent !important;
 }
