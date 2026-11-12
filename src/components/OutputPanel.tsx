@@ -41,12 +41,23 @@ export const describeResult = (entry: LogEntry): string => {
   return 'A result arrived.';
 };
 
+/**
+ * The live-region text for the nth completed call. The sequence number keeps
+ * the text distinct when the same tool returns the same kind of outcome
+ * twice in a row, so a repeated run (often started with Enter, which leaves
+ * focus in the form) is still announced.
+ */
+export const describeCompletedCall = (entry: LogEntry, sequence: number): string =>
+  `Call ${sequence}: ${describeResult(entry)}`;
+
 const OutputPanel: React.FC<OutputPanelProps> = (props) => {
   const [activeTab, setActiveTab] = useState<'result' | 'logs'>('result');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const { share, shareStatus, shareMessage } = useShare();
   const resultRef = useRef<HTMLDivElement>(null);
   const [announcement, setAnnouncement] = useState('');
+  const announcedResultRef = useRef<LogEntry | null>(null);
+  const completedCallsRef = useRef(0);
 
   // A finished call is announced, and when the Run button (or nothing) has
   // focus, focus moves to the result. A run started from a form field with
@@ -54,7 +65,12 @@ const OutputPanel: React.FC<OutputPanelProps> = (props) => {
   useEffect(() => {
     const entry = props.lastResult;
     if (!entry) return;
-    setAnnouncement(describeResult(entry));
+    // Count each completed call once, even if the effect reruns for it.
+    if (announcedResultRef.current !== entry) {
+      announcedResultRef.current = entry;
+      completedCallsRef.current += 1;
+    }
+    setAnnouncement(describeCompletedCall(entry, completedCallsRef.current));
     const active = document.activeElement as HTMLElement | null;
     const fromRunButton = !active || active === document.body || active.id === 'executeBtn';
     if (!fromRunButton) return;

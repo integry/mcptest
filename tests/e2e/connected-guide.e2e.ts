@@ -84,7 +84,7 @@ for (const width of [1280, 390]) {
     // The result explains itself, focus moves to it and the call is announced.
     await expect(resultView(page).locator('.tool-result-explanation')).toContainText('Structured content is the typed JSON');
     await expect(page.getByRole('region', { name: 'Last result' })).toBeFocused();
-    await expect(page.locator('.output-panel > [role="status"]')).toHaveText('get_forecast returned a result.');
+    await expect(page.locator('.output-panel > [role="status"]')).toHaveText('Call 1: get_forecast returned a result.');
     await resultView(page).getByRole('button', { name: 'View raw JSON-RPC' }).click();
     await expect(resultView(page).getByRole('tab', { name: 'JSON-RPC' })).toHaveAttribute('aria-selected', 'true');
 
@@ -123,6 +123,43 @@ test('a returning visitor who has completed the steps sees no hints', async ({ p
   await expect(page.locator('.onboarding-hint')).toHaveCount(0);
   // The primary action still moves on; it is not a hint.
   await expect(summary(page).getByRole('link', { name: 'Share report' })).toBeVisible();
+});
+
+test('repeated runs started with Enter in a form field are each announced', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('mcptest-next-steps-completed', JSON.stringify(['tool', 'report']));
+  });
+  await connect(page, '2026');
+  await page.getByRole('option', { name: /get_forecast/ }).click();
+  const city = page.getByLabel(/^city/);
+  const status = page.locator('.output-panel > [role="status"]');
+
+  // Consecutive successes: same tool, same outcome, focus stays in the form.
+  await city.fill('Oslo');
+  await city.press('Enter');
+  await expect(resultView(page)).toContainText('"city": "Oslo"');
+  await expect(status).toHaveText('Call 1: get_forecast returned a result.');
+  await city.fill('Bergen');
+  await city.press('Enter');
+  await expect(resultView(page)).toContainText('"city": "Bergen"');
+  await expect(status).toHaveText('Call 2: get_forecast returned a result.');
+  await expect(city).toBeFocused();
+
+  // Consecutive failures: every failed call uses the same sentence.
+  await page.route(mockUrl('2026'), async route => {
+    if (route.request().method() === 'POST' && (route.request().postData() || '').includes('"tools/call"')) {
+      await route.fulfill({ status: 500, contentType: 'text/plain', body: 'tool exploded' });
+      return;
+    }
+    await route.fallback();
+  });
+  await city.fill('Tromsø');
+  await city.press('Enter');
+  await expect(status).toHaveText('Call 3: The call failed. The result panel explains what happened.');
+  await city.fill('Bodø');
+  await city.press('Enter');
+  await expect(status).toHaveText('Call 4: The call failed. The result panel explains what happened.');
+  await expect(city).toBeFocused();
 });
 
 test('a failed connection shows the failed stage and plain guidance before the technical detail', async ({ page }, testInfo) => {
