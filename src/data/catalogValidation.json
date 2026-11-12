@@ -4214,5 +4214,20 @@
     "authorizationServers": [
       "https://fairvalid.com"
     ]
+  },
+  {
+    "serverId": "excessionlabs",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateful",
+    "checkedAt": "2026-11-12T14:25:55.053Z",
+    "message": "Negotiated stateful MCP 2025-11-25 at https://excessionlabs.ai/mcp/cve; detected transport streamable-http; authentication none; WARNING: OAuth authorization servers advertised; an anonymous MCP handshake does not establish anonymous tool access",
+    "validatedUrl": "https://excessionlabs.ai/mcp/cve",
+    "protocolVersion": "2025-11-25",
+    "authorizationServers": [
+      "https://excessionlabs.ai"
+    ]
   }
 ]
