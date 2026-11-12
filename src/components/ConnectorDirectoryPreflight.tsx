@@ -52,7 +52,7 @@ const ConnectorDirectoryPreflight: React.FC<ConnectorDirectoryPreflightProps> = 
         <h3 id="directory-preflight-title">Connector directory preflight</h3>
         <p>
           Claude and ChatGPT directory requirements from official documentation, reviewed {preflight.requirementsReviewedOn}.
-          {' '}Automatic items reuse this report&rsquo;s evidence; manual items cannot be checked from the endpoint.
+          {' '}Automatic items reuse this report&rsquo;s evidence; items marked manual review cannot be decided from the endpoint.
           {' '}<a href="/learn/mcp-connector-directory-requirements">Read the requirements guide</a>.
         </p>
       </div>
@@ -66,7 +66,7 @@ const ConnectorDirectoryPreflight: React.FC<ConnectorDirectoryPreflightProps> = 
             <div className="directory-preflight__heading">
               <h4 id={`directory-preflight-${directory.id}`}>{directory.name}</h4>
               <span className="text-muted small">
-                {counts.pass} pass · {counts.fail} fail · {counts.unknown} unknown · {counts.manual} manual
+                {counts.pass} pass · {counts.fail} fail · {counts.unknown} unknown · {counts.manual} manual review
               </span>
             </div>
             <h5 className="directory-preflight__group">Checked from this report</h5>

@@ -219,156 +219,69 @@ describe('connector directory preflight', () => {
       expect(result.evidence).toEqual(['api_request (method: GET, POST)']);
     });
 
-    it('leaves a free-text method argument that names rejected methods unknown, not failed', () => {
+    it('passes a plain method argument limited to safe methods', () => {
       const input = observations({
         tools: toolsFrom([fullyAnnotated('fetch_url', {
-          inputSchema: {
-            type: 'object',
-            properties: { method: { type: 'string', description: 'Only GET is supported; POST and DELETE are rejected.' } },
-          },
-        })]),
-      });
-      const result = item(evaluateConnectorDirectoryPreflight(input), 'claude.separate-read-write');
-      expect(result.status).toBe('unknown');
-      expect(result.evidence).toEqual(['fetch_url (method: GET, POST, DELETE)']);
-    });
-  });
-
-  describe('method schemas that do not establish the accepted methods', () => {
-    const withMethod = (method: unknown) => observations({
-      tools: toolsFrom([fullyAnnotated('api_request', {
-        inputSchema: { type: 'object', properties: { method, path: { type: 'string' } } },
-      })]),
-    });
-
-    it('leaves an unconstrained method argument unknown instead of passing it', () => {
-      const result = item(evaluateConnectorDirectoryPreflight(withMethod({ type: 'string' })), 'claude.separate-read-write');
-      expect(result.status).toBe('unknown');
-      expect(result.evidence).toEqual(['api_request (method)']);
-    });
-
-    it('passes an enum narrowed by const to safe methods instead of failing it', () => {
-      expect(statusOf(withMethod({ enum: ['GET', 'POST'], const: 'GET' }), 'claude.separate-read-write')).toBe('pass');
-    });
-
-    it('leaves a method that object cardinality may exclude unknown instead of failing it', () => {
-      const input = observations({
-        tools: toolsFrom([fullyAnnotated('search', {
-          inputSchema: {
-            type: 'object',
-            required: ['query'],
-            maxProperties: 1,
-            properties: { query: { type: 'string' }, method: { enum: ['GET', 'POST'] } },
-          },
-        })]),
-      });
-      expect(statusOf(input, 'claude.separate-read-write')).toBe('unknown');
-    });
-
-    it('leaves uninterpreted constraint combinations unknown', () => {
-      expect(statusOf(withMethod({ enum: ['GET', 'POST'], pattern: '^G' }), 'claude.separate-read-write')).toBe('unknown');
-    });
-
-    it('leaves a selector array that contains limits to GET unknown instead of failing it', () => {
-      const method = { type: 'array', items: { enum: ['GET', 'POST'] }, contains: { const: 'GET' }, minItems: 1, maxItems: 1 };
-      expect(statusOf(withMethod(method), 'claude.separate-read-write')).toBe('unknown');
-    });
-
-    it('evaluates a nested-quantifier patternProperties key without stalling', () => {
-      const input = observations({
-        tools: toolsFrom([fullyAnnotated('api_request', {
-          inputSchema: {
-            type: 'object',
-            properties: { [`${'a'.repeat(40)}!`]: { type: 'string' }, method: { enum: ['GET', 'HEAD'] } },
-            patternProperties: { '^(a+)+$': { type: 'string' } },
-          },
+          inputSchema: { type: 'object', properties: { method: { type: 'string', enum: ['GET', 'HEAD'] } } },
         })]),
       });
       expect(statusOf(input, 'claude.separate-read-write')).toBe('pass');
     });
-
-    it('passes a method argument limited to safe methods', () => {
-      expect(statusOf(withMethod({ type: 'string', enum: ['GET', 'HEAD'] }), 'claude.separate-read-write')).toBe('pass');
-    });
   });
 
-  describe('enclosing schema constraints on method arguments', () => {
+  describe('method schemas the check does not decide', () => {
     const withSchema = (inputSchema: Record<string, unknown>) => observations({
       tools: toolsFrom([fullyAnnotated('api_request', { inputSchema: { type: 'object', ...inputSchema } })]),
     });
+    const review = (input: DirectoryPreflightObservations) => {
+      const result = item(evaluateConnectorDirectoryPreflight(input), 'claude.separate-read-write');
+      expect(result.status).toBe('manual');
+      expect(result.check).toBe('automatic');
+      expect(result.detail).toMatch(/^Manual review needed: /);
+      return result;
+    };
 
-    it('passes a method enum narrowed to GET by a root allOf instead of failing it', () => {
-      expect(statusOf(withSchema({
+    it('leaves a free-text method argument for manual review, not failed or passed', () => {
+      const result = review(withSchema({
+        properties: { method: { type: 'string', description: 'Only GET is supported; POST and DELETE are rejected.' } },
+      }));
+      expect(result.evidence).toEqual(['api_request (/properties/method)']);
+    });
+
+    it('F12: leaves a patternProperties schema for manual review without compiling the pattern', () => {
+      const started = Date.now();
+      review(withSchema({
+        properties: { method: { enum: ['GET', 'POST'] } },
+        patternProperties: { '(?:){1000000000}': { const: 'GET' } },
+      }));
+      expect(Date.now() - started).toBeLessThan(1000);
+    });
+
+    it('F13: leaves a method enum under maxProperties for manual review, not failed', () => {
+      review(withSchema({
+        required: ['query'],
+        maxProperties: 1,
+        properties: { query: { type: 'string' }, method: { enum: ['GET', 'POST'] } },
+      }));
+    });
+
+    it('leaves composition for manual review', () => {
+      review(withSchema({
         properties: { method: { enum: ['GET', 'POST'] } },
         allOf: [{ properties: { method: { const: 'GET' } } }],
-      }), 'claude.separate-read-write')).toBe('pass');
+      }));
+      const result = review(withSchema({ oneOf: [{ properties: { method: { enum: ['GET', 'POST'] } } }] }));
+      expect(result.evidence).toEqual(['api_request (/oneOf/0/properties/method)']);
     });
 
-    it('fails a method declared only inside a root allOf instead of passing it', () => {
-      const result = item(evaluateConnectorDirectoryPreflight(withSchema({
-        allOf: [{ properties: { method: { enum: ['GET', 'POST'] } } }],
-      })), 'claude.separate-read-write');
-      expect(result.status).toBe('fail');
-      expect(result.evidence).toEqual(['api_request (method: GET, POST)']);
-    });
-
-    it('leaves a schema whose declarations cannot be followed unknown instead of passing it', () => {
-      const result = item(evaluateConnectorDirectoryPreflight(withSchema({
-        $ref: '#/$defs/args',
-        $defs: { args: { properties: { method: { enum: ['GET', 'POST'] } } } },
-      })), 'claude.separate-read-write');
-      expect(result.status).toBe('unknown');
-      expect(result.evidence).toEqual(['api_request (input schema)']);
-    });
-
-    it('leaves method branches a root discriminator may exclude unknown instead of failing them', () => {
-      const branch = (mode: string, method: string) => ({
-        properties: { mode: { const: mode }, method: { const: method } },
-        required: ['mode', 'method'],
+    it('still fails a tool when another tool needs manual review', () => {
+      const input = observations({
+        tools: toolsFrom([
+          fullyAnnotated('api_request', { inputSchema: { type: 'object', properties: { method: { enum: ['GET', 'POST'] } } } }),
+          fullyAnnotated('other', { inputSchema: { type: 'object', properties: { method: { type: 'string' } } } }),
+        ]),
       });
-      const result = item(evaluateConnectorDirectoryPreflight(withSchema({
-        properties: { mode: { const: 'read' } },
-        oneOf: [branch('read', 'GET'), branch('write', 'POST')],
-      })), 'claude.separate-read-write');
-      expect(result.status).toBe('unknown');
-      expect(result.evidence).toEqual(['api_request (method)']);
-    });
-
-    it('leaves a request map whose values declare a method unknown instead of passing it', () => {
-      const request = { type: 'object', properties: { method: { enum: ['GET', 'POST'] } } };
-      for (const requests of [{ additionalProperties: request }, { patternProperties: { '^r': request } }]) {
-        const result = item(evaluateConnectorDirectoryPreflight(withSchema({
-          properties: { requests: { type: 'object', ...requests } },
-        })), 'claude.separate-read-write');
-        expect(result.status).toBe('unknown');
-        expect(result.evidence).toEqual(['api_request (requests)']);
-      }
-    });
-
-    it('leaves a schema with more properties than the scan covers unknown instead of passing it', () => {
-      const filler = Object.fromEntries(Array.from({ length: 200 }, (_, index) => [`field_${index}`, { type: 'string' }]));
-      const result = item(evaluateConnectorDirectoryPreflight(withSchema({
-        properties: { ...filler, method: { enum: ['GET', 'POST'] } },
-      })), 'claude.separate-read-write');
-      expect(result.status).toBe('unknown');
-      expect(result.evidence).toEqual(['api_request (input schema)']);
-    });
-
-    it('fails a mixed method argument inside a nested object instead of passing it', () => {
-      const result = item(evaluateConnectorDirectoryPreflight(withSchema({
-        properties: { request: { type: 'object', properties: { method: { enum: ['GET', 'POST'] } } } },
-      })), 'claude.separate-read-write');
-      expect(result.status).toBe('fail');
-      expect(result.evidence).toEqual(['api_request (request.method: GET, POST)']);
-    });
-
-    it('passes a method enum narrowed to GET by an enclosing const or enum instead of failing it', () => {
-      for (const narrowing of [{ const: { method: 'GET' } }, { enum: [{ method: 'GET' }] }]) {
-        expect(statusOf(withSchema({
-          properties: { method: { enum: ['GET', 'POST'] } },
-          ...narrowing,
-        }), 'claude.separate-read-write'), JSON.stringify(narrowing)).toBe('pass');
-      }
+      expect(statusOf(input, 'claude.separate-read-write')).toBe('fail');
     });
   });
 
@@ -551,9 +464,24 @@ describe('connector directory preflight', () => {
           inputSchema: { type: 'object', properties: { action: { enum: ['get', 'update'] } } },
         })]),
       })));
-      expect(lines[0]).toMatch(/^Claude Connectors Directory: \d+ pass, 1 fail, 0 unknown, \d+ manual$/);
+      expect(lines[0]).toMatch(/^Claude Connectors Directory: \d+ pass, 1 fail, 0 unknown, \d+ manual review$/);
       expect(lines[1]).toMatch(/^ChatGPT Directory: /);
       expect(lines[2]).toBe('advisory: Tool may multiplex several operations behind one argument (manage)');
+    });
+
+    it('writes the method check outcome with its detail in Markdown and counts it in the CLI summary', () => {
+      const preflight = evaluateConnectorDirectoryPreflight(observations({
+        tools: toolsFrom([fullyAnnotated('api_request', {
+          inputSchema: { type: 'object', maxProperties: 1, properties: { method: { enum: ['GET', 'POST'] } } },
+        })]),
+      }));
+      const markdown = serializeConnectorDirectoryPreflightMarkdown(preflight);
+      expect(markdown).toContain('- [Manual review] No catch-all tool mixing safe and unsafe HTTP methods');
+      expect(markdown).toContain('  - Manual review needed: 1 tool could not be checked automatically');
+      expect(markdown).toContain('  - api\\_request (/properties/method)');
+      const claude = preflight.directories.find((entry) => entry.directory.id === 'claude')!;
+      expect(summarizeConnectorDirectoryPreflight(preflight)[0])
+        .toBe(`Claude Connectors Directory: ${claude.counts.pass} pass, 0 fail, ${claude.counts.unknown} unknown, ${claude.counts.manual} manual review`);
     });
 
     it('writes a Markdown section with source links and redacted observations', () => {
@@ -564,7 +492,7 @@ describe('connector directory preflight', () => {
       expect(markdown).toContain('## Connector directory preflight');
       expect(markdown).toContain('### Claude Connectors Directory');
       expect(markdown).toContain('([source](https://claude.com/docs/connectors/building/review-criteria#provide-tool-annotations))');
-      expect(markdown).toContain('- [Manual] Published privacy policy');
+      expect(markdown).toContain('- [Manual review] Published privacy policy');
       expect(markdown).not.toContain('secret_tool');
     });
   });

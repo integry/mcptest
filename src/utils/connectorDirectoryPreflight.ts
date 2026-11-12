@@ -27,11 +27,9 @@ import { resolveEvaluationOutcome, type EvaluationReport } from './evaluation';
 import type { OAuthTraceV1 } from './oauthTrace';
 import { createObservedServerFacts } from './releaseReadiness';
 import {
-  findAmbiguousHttpMethodSelectors,
-  findMixedHttpMethodSelectors,
+  assessHttpMethodSelectors,
   findMultiplexedOperationSelectors,
-  findUninterpretedSelectorScopes,
-  findUnresolvedHttpMethodSelectors,
+  type MethodSelectorReview,
   type OperationSelectorMatch,
 } from './toolOperationMultiplexing';
 
@@ -158,45 +156,33 @@ const perTool = (
   return { status: 'pass', detail: passDetail(summary.tools.length) };
 };
 
+const METHOD_REVIEW_REASONS: Record<MethodSelectorReview['reason'], string> = {
+  'not-plain': 'a method argument whose schema, or the input schema around it, uses keywords other than a plain enum or const',
+  nested: 'a method argument that is not declared directly in the input schema',
+  'method-values': 'an enum or const listing both safe and unsafe HTTP methods outside a plain method argument',
+  'too-large': 'an input schema larger than the check examines',
+};
+
 const methodSelectorScan: Evaluator = ({ tools }) => {
   const definitions = tools?.definitions;
   if (!definitions || definitions.status === 'unavailable') {
     return { status: 'unknown', detail: 'Tool input schemas were not recorded, so tool arguments could not be checked.' };
   }
-  const describeMatch = (match: OperationSelectorMatch) => `${match.tool} (${match.argument}: ${match.values.join(', ')})`;
-  const matches = findMixedHttpMethodSelectors(definitions.tools);
-  if (matches.length > 0) {
+  const { failures, reviews } = assessHttpMethodSelectors(definitions.tools);
+  if (failures.length > 0) {
     return {
       status: 'fail',
-      detail: `${plural(matches.length, 'tool argument')} accept both safe and unsafe HTTP methods. Split each into a read-only tool and write tools.`,
-      evidence: capped(matches.map(describeMatch)),
+      detail: `${plural(failures.length, 'tool argument')} accept both safe and unsafe HTTP methods. Split each into a read-only tool and write tools.`,
+      evidence: capped(failures.map((match) => `${match.tool} (${match.argument}: ${match.values.join(', ')})`)),
     };
   }
-  // A description that names GET and POST may be saying POST is rejected, so it cannot fail the check.
-  const ambiguous = findAmbiguousHttpMethodSelectors(definitions.tools);
-  if (ambiguous.length > 0) {
+  // The check only decides plain schemas; anything else is neither passed nor failed.
+  if (reviews.length > 0) {
+    const reasons = [...new Set(reviews.map((review) => METHOD_REVIEW_REASONS[review.reason]))];
     return {
-      status: 'unknown',
-      detail: `${plural(ambiguous.length, 'tool argument')} take a free-form HTTP method whose description mentions both safe and unsafe methods. Without an enum the accepted methods could not be established; if both are accepted, split each into a read-only tool and write tools.`,
-      evidence: capped(ambiguous.map(describeMatch)),
-    };
-  }
-  // `{ type: 'string' }` excludes neither safe nor unsafe methods, so it cannot pass the check.
-  const unresolved = findUnresolvedHttpMethodSelectors(definitions.tools);
-  if (unresolved.length > 0) {
-    return {
-      status: 'unknown',
-      detail: `${plural(unresolved.length, 'tool argument')} take an HTTP method whose schema does not establish which methods are accepted. Declare an enum of the accepted methods; if both safe and unsafe methods are accepted, split each into a read-only tool and write tools.`,
-      evidence: capped(unresolved.map((match) => `${match.tool} (${match.argument})`)),
-    };
-  }
-  // `$ref`, `if`/`then`/`else`, and scopes past the scan's size or nesting limits can hide a method argument.
-  const uninterpreted = findUninterpretedSelectorScopes(definitions.tools);
-  if (uninterpreted.length > 0) {
-    return {
-      status: 'unknown',
-      detail: `${plural(uninterpreted.length, 'tool schema')} could not be fully scanned (constructs such as $ref, if/then/else or dependentSchemas, map values declared through additionalProperties or patternProperties, or more properties or nesting than the check examines), so a method argument that accepts both safe and unsafe HTTP methods could not be ruled out.`,
-      evidence: capped(uninterpreted.map((match) => `${match.tool} (${match.argument})`)),
+      status: 'manual',
+      detail: `Manual review needed: ${plural(reviews.length, 'tool')} could not be checked automatically (${reasons.join('; ')}). Confirm that no tool accepts both safe and unsafe HTTP methods.`,
+      evidence: capped(reviews.map((review) => `${review.tool} (${review.location || 'input schema'})`)),
     };
   }
   if (definitions.status === 'partial') {
@@ -484,7 +470,7 @@ const STATUS_LABELS: Record<DirectoryPreflightStatus, string> = {
   fail: 'Fail',
   unknown: 'Unknown',
   'not-applicable': 'Not applicable',
-  manual: 'Manual',
+  manual: 'Manual review',
 };
 
 export const directoryPreflightStatusLabel = (status: DirectoryPreflightStatus): string => STATUS_LABELS[status];
@@ -492,7 +478,7 @@ export const directoryPreflightStatusLabel = (status: DirectoryPreflightStatus):
 /** One line per directory, for CLI output. */
 export const summarizeConnectorDirectoryPreflight = (preflight: ConnectorDirectoryPreflightV1): string[] => [
   ...preflight.directories.map(({ directory, counts }) => (
-    `${directory.name}: ${counts.pass} pass, ${counts.fail} fail, ${counts.unknown} unknown, ${counts.manual} manual`
+    `${directory.name}: ${counts.pass} pass, ${counts.fail} fail, ${counts.unknown} unknown, ${counts.manual} manual review`
   )),
   ...preflight.advisories.map((advisory) => `advisory: ${advisory.title} (${advisory.matches.map((match) => match.tool).join(', ')})`),
 ];
@@ -512,7 +498,7 @@ export const serializeConnectorDirectoryPreflightMarkdown = (
   const lines = [
     '## Connector directory preflight',
     '',
-    `Requirements reviewed ${preflight.requirementsReviewedOn} against official vendor documentation. Manual items cannot be checked from the endpoint and are never marked passed or failed.`,
+    `Requirements reviewed ${preflight.requirementsReviewedOn} against official vendor documentation. Manual review items cannot be decided from the endpoint and are never marked passed or failed.`,
     '',
   ];
   for (const { directory, items } of preflight.directories) {
