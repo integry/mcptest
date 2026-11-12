@@ -4,6 +4,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import reportSchema from '../../public/schemas/report/v2.schema.json';
 import { createPublicReport, serializePublicReportJson } from '../../src/utils/reportArtifact.ts';
 import { analyzeToolSurface } from '../../src/utils/toolSurfaceAnalysis.ts';
+import { createCapabilityInventory } from '../../src/utils/capabilityInventory.ts';
+import { assessToolListConsistency } from '../../src/utils/toolListConsistency.ts';
+import { toolListConsistencyReportDetail } from '../../src/utils/toolListConsistencyReport.ts';
 import { createCompatibilityMatrix, createReleaseDecision } from '../../src/utils/releaseReadiness.ts';
 import {
   PUBLISHED_REPORT_MAX_BYTES,
@@ -188,6 +191,47 @@ describe('publishing a report', () => {
     const stored = await read.json();
     expect(stored).toEqual(artifact);
     expect(validateStored(stored), JSON.stringify(validateStored.errors)).toBe(true);
+  });
+
+  it('publishes tool list consistency evidence and capability inventories that record outputSchema', async () => {
+    const toolListConsistency = await assessToolListConsistency([
+      { connection: 'evaluation', tools: [{ name: 'search', inputSchema: { type: 'object' } }, { name: 'fetch' }],
+        instanceHeaders: { 'cf-ray': '8f2a6b1c3d4e5f60-AMS', server: 'cloudflare', 'x-vercel-id': 'fra1::iad1::k7m2p-1731300000000-4b2c9d1e0f3a' } },
+      { connection: 'fresh', tools: [{ name: 'search', inputSchema: { type: 'object' } }],
+        instanceHeaders: { 'fly-request-id': '01JCEXAMPLE0REQUEST0ID-ams', via: '1.1 varnish' } },
+    ], { authentication: 'unauthenticated', route: 'direct', transportType: 'streamable-http', requestedSamples: 3 });
+    const capabilityInventory = createCapabilityInventory({
+      testedEndpoint: ENDPOINT, route: 'direct', authentication: 'unauthenticated',
+      discovered: { tools: [{ name: 'search', inputSchema: { type: 'object' } }], resources: [], resourceTemplates: [], prompts: [] },
+      statuses: { tools: 'complete', resources: 'complete', resourceTemplates: 'complete', prompts: 'complete' },
+      paginationComplete: { tools: true, resources: true, resourceTemplates: true, prompts: true },
+    });
+    const base = evaluation();
+    const artifact = artifactFor({
+      ...base,
+      capabilityInventory,
+      sections: {
+        ...base.sections,
+        toolListConsistency: {
+          name: 'Tool list consistency', description: 'Repeats tools/list', score: 0, maxScore: 0,
+          details: [toolListConsistencyReportDetail(toolListConsistency)],
+        },
+      },
+    });
+    expect(artifact.capabilityInventory.tools.items[0].outputSchema).toBe(false);
+    expect(artifact.releaseDecision.priorities.map(({ id }) => id)).toContain('tools.list-nondeterministic');
+    expect(validateStored(artifact), JSON.stringify(validateStored.errors)).toBe(true);
+
+    const response = await publish(artifact);
+    expect(response.status).toBe(201);
+    const { id } = await response.json();
+    const stored = await (await request(`/r/${id}`)).json();
+    expect(validateStored(stored), JSON.stringify(validateStored.errors)).toBe(true);
+    const evidence = stored.sections.find((section) => section.id === 'toolListConsistency').evidence[0].metadata.toolListConsistency;
+    expect(evidence).toMatchObject({ status: 'inconsistent', authentication: 'unauthenticated' });
+    expect(evidence.samples.map((sample) => sample.hash)).toEqual(toolListConsistency.samples.map((sample) => sample.hash));
+    expect(evidence.samples[0].instanceHeaders).toMatchObject({ 'cf-ray': '8f2a6b1c3d4e5f60-AMS', server: 'cloudflare' });
+    expect(evidence.differences).toEqual(toolListConsistency.differences);
   });
 
   it('deduplicates identical runs by content hash without issuing a second removal token', async () => {

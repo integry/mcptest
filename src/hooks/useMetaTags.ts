@@ -25,6 +25,8 @@ import {
   getLearnArticleMetadata,
   isLearnIndexPath,
 } from '../content/learnRegistry';
+import { getLandingFaqStructuredData } from '../content/landingCopy';
+import { getKeywordLandingFaqStructuredData, getKeywordLandingPage } from '../content/keywordLandingPages';
 
 const DEFAULT_IMAGE = `${SITE_URL}/logo.png`;
 
@@ -134,6 +136,7 @@ export const useMetaTags = () => {
     const categorySlug = getCatalogCategorySlugFromPath(location.pathname);
     const catalogServers = categorySlug !== null ? getCatalogServers() : [];
     const category = findCatalogCategoryBySlug(getCatalogCategoryNames(catalogServers), categorySlug);
+    const keywordLandingPage = getKeywordLandingPage(location.pathname);
 
     if (catalogServer) {
       const imageUrl = ogImage(getCatalogServerPath(catalogServer.id));
@@ -221,6 +224,14 @@ export const useMetaTags = () => {
       applyMetadata({ ...MCP_TEST_SERVERS_METADATA, canonicalUrl: `${SITE_URL}${MCP_TEST_SERVERS_PATH}`, imageUrl: ogImage(MCP_TEST_SERVERS_PATH) });
     } else if (location.pathname === MCP_TEST_CLIENT_PATH) {
       applyMetadata({ ...MCP_TEST_CLIENT_METADATA, canonicalUrl: `${SITE_URL}${MCP_TEST_CLIENT_PATH}`, imageUrl: ogImage(MCP_TEST_CLIENT_PATH) });
+    } else if (keywordLandingPage) {
+      applyMetadata({
+        title: keywordLandingPage.title,
+        description: keywordLandingPage.description,
+        canonicalUrl: `${SITE_URL}${keywordLandingPage.path}`,
+        imageUrl: ogImage(keywordLandingPage.path),
+        structuredData: getKeywordLandingFaqStructuredData(keywordLandingPage),
+      });
     } else if (location.pathname === DISCOVERY_CHECKER_PATH) {
       applyMetadata({
         ...DISCOVERY_METADATA,
@@ -242,6 +253,7 @@ export const useMetaTags = () => {
         description: isCatalog ? CATALOG_METADATA.description : HOME_METADATA.description,
         canonicalUrl: `${SITE_URL}${location.pathname === '/' ? '' : location.pathname}`,
         imageUrl: isCatalog || isHome ? ogImage(location.pathname) : undefined,
+        structuredData: isHome ? getLandingFaqStructuredData() : undefined,
       });
     }
 

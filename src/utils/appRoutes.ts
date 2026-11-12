@@ -21,6 +21,21 @@ export const MCP_TEST_SERVERS_PATH = '/mcp-test-servers';
 /** The MCP client protocol checklist page (src/components/McpTestClientView.tsx). */
 export const MCP_TEST_CLIENT_PATH = '/mcp-test-client';
 
+/**
+ * The keyword landing pages: the connect form with their own copy
+ * (src/content/keywordLandingPages.ts, src/components/KeywordLandingView.tsx).
+ */
+export const MCP_TEST_SERVER_PATH = '/mcp-test-server';
+export const MCP_INSPECTOR_ONLINE_PATH = '/mcp-inspector-online';
+export const MCP_PLAYGROUND_PATH = '/mcp-playground';
+export const KEYWORD_LANDING_PATHS: readonly string[] = [
+  MCP_TEST_SERVER_PATH,
+  MCP_INSPECTOR_ONLINE_PATH,
+  MCP_PLAYGROUND_PATH,
+];
+
+export const isKeywordLandingPath = (pathname: string): boolean => KEYWORD_LANDING_PATHS.includes(pathname);
+
 export const EXACT_APP_ROUTES: readonly string[] = [
   '/',
   '/catalog',
@@ -32,6 +47,7 @@ export const EXACT_APP_ROUTES: readonly string[] = [
   OAUTH_CHECKER_PATH,
   MCP_TEST_SERVERS_PATH,
   MCP_TEST_CLIENT_PATH,
+  ...KEYWORD_LANDING_PATHS,
   '/oauth/callback',
   '/install-integration',
 ];

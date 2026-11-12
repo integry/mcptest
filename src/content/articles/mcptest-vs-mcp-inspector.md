@@ -16,6 +16,7 @@ relatedSlugs:
   - troubleshooting
   - oauth-for-mcp-explained
   - connect-remote-mcp-server
+  - mcp-inspector-alternatives
 sourceLinks:
   - title: "MCP Inspector overview"
     url: "https://modelcontextprotocol.io/docs/tools/inspector"
@@ -114,7 +115,7 @@ mcptest.io is a browser-based inspector, playground and evaluator for remote MCP
 - **A quick look at a public endpoint:** Glama or mcptest.io.
 - **CI:** MCP Inspector CLI, MCPJam CLI or the mcptest.io headless gate, depending on whether you need raw protocol checks, model evals or a release decision.
 
-Many teams use two of these. The [testing guide](/docs/testing-guide) describes a full test pass that combines a browser client with a second client for stdio.
+Many teams use two of these. The [testing guide](/docs/testing-guide) describes a full test pass that combines a browser client with a second client for stdio. For more options, including Insomnia, MCP Playground Online and Cloudflare's AI Playground, see [MCP Inspector alternatives](/learn/mcp-inspector-alternatives); to check the raw wire format, see [testing with curl and Postman](/learn/test-mcp-server-with-curl-and-postman).
 
 ## Try it on a real server
 

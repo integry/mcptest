@@ -1,7 +1,7 @@
 {
   "home": {
-    "title": "MCP Inspector Online & Playground: Test Remote MCP Servers | mcptest.io",
-    "description": "Test remote MCP servers in an online inspector and playground. Check connections, OAuth, CORS and tools in your browser, then share a report."
+    "title": "MCP Test: MCP Inspector Online & Playground | mcptest.io",
+    "description": "Test remote MCP servers online for free, with no install or sign-up. Check connections, OAuth, CORS and tools in your browser, then share a report."
   },
   "catalog": {
     "title": "Remote MCP Server Catalog | mcptest.io",

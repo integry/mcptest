@@ -148,7 +148,7 @@ The evidence in `src/data/catalogValidation.json` and `src/data/catalogCapabilit
 
 **What it does.** On Node 22 it runs `npm ci`, then:
 
-1. `npm run validate-catalog` probes every live endpoint. Each request times out after 12 seconds, and each server gets at most 120 seconds for all its probes. A server that runs out of time is recorded as `offline` with `errorCode: "timeout"`.
+1. `npm run validate-catalog` probes every live endpoint. Each request times out after 12 seconds, and each server gets at most 120 seconds for all its probes. A server that runs out of time is recorded as `offline` with `errorCode: "timeout"`. Responses that are not the MCP server failing are named with `responseClass` (the same classifier as the playground, `src/utils/responseClassification.ts`): a CDN or WAF challenge is `unknown` with `responseClass: "bot-protection"` and `errorCode: "bot_protection"`, a `429` is `unknown` with `"rate-limited"` and `errorCode: "rate_limited"`, and a `402` (including x402) stays `online` with `responseClass: "payment-required"` and gets the "payment required" badge instead of a broken one. A `403` from bot protection does not count as an authentication challenge; a `403` with `WWW-Authenticate` does.
 2. `npm run import-catalog-capabilities -- --all` checks every stored capability snapshot against the canonical schema, including authenticated inventories that were imported from public reports, and drops snapshots for servers that are no longer in the catalog.
 3. `npm run validate-catalog-assets` checks the logos and provenance fields.
 4. `npm run summarize-catalog-diff` compares the files before and after the run and writes the pull request body.

@@ -6,7 +6,10 @@ import {
   toolSurfaceFromInterfaceSnapshot,
   type BreakingChangeReport,
 } from '../utils/breakingChanges';
+import type { ToolContextCostDeltaV1 } from '../types/toolContextCost';
+import { diffSurfaceContextCost } from '../utils/toolTokenCost';
 import BreakingChangeFindings from './BreakingChangeFindings';
+import { ToolContextCostDelta } from './ToolContextCost';
 import './BreakingChanges.css';
 
 type Mode = 'paste' | 'live';
@@ -21,6 +24,8 @@ interface Result {
   report: BreakingChangeReport;
   /** What the earlier listing was, in words. */
   baseline: string;
+  /** Estimated context cost before and after. */
+  contextCost?: ToolContextCostDeltaV1;
 }
 
 const EXAMPLE_BEFORE = JSON.stringify({
@@ -111,7 +116,11 @@ const BreakingChangesView: React.FC<BreakingChangesViewProps> = ({ initialEndpoi
       setResult(null);
       return;
     }
-    showResult({ report: classifyBreakingChanges(left.snapshot, right.snapshot), baseline: 'the first pasted listing' });
+    showResult({
+      report: classifyBreakingChanges(left.snapshot, right.snapshot),
+      baseline: 'the first pasted listing',
+      contextCost: diffSurfaceContextCost(left.snapshot, right.snapshot),
+    });
   };
 
   const loadExample = () => {
@@ -158,7 +167,11 @@ const BreakingChangesView: React.FC<BreakingChangesViewProps> = ({ initialEndpoi
       if (!left) throw new Error('The saved baseline does not record a complete tool list, so it cannot be compared.');
       if (!right) throw new Error('The endpoint did not return a complete tool list.');
       if (liveRequest.current !== request) return;
-      showResult({ report: classifyBreakingChanges(left, right), baseline: description });
+      showResult({
+        report: classifyBreakingChanges(left, right),
+        baseline: description,
+        contextCost: diffSurfaceContextCost(left, right),
+      });
     } catch (error) {
       if (liveRequest.current !== request) return;
       setLiveError(errorText(error));
@@ -306,6 +319,7 @@ const BreakingChangesView: React.FC<BreakingChangesViewProps> = ({ initialEndpoi
           <h2 id={fieldId('results')}>Results</h2>
           <p className="breaking-changes-baseline">Compared with {result.baseline}.</p>
           <BreakingChangeFindings report={result.report} idPrefix={fieldId('finding')} />
+          {result.contextCost && <ToolContextCostDelta delta={result.contextCost} />}
         </section>
       )}
     </div>

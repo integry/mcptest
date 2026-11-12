@@ -1,5 +1,6 @@
 import React from 'react';
 import type { ReportDiff, ReportDiffChange } from '../utils/reportDiff';
+import { ToolContextCostDelta, contextCostDeltaChanged } from './ToolContextCost';
 
 const classificationLabel = (change: ReportDiffChange): string => {
   if (change.breaking && change.classification === 'removal') return 'Breaking removal';
@@ -74,6 +75,7 @@ const ReportDiffChanges: React.FC<ReportDiffChangesProps> = ({
           </li>
         ))}
       </ul>
+      {contextCostDeltaChanged(diff.contextCost) && <ToolContextCostDelta delta={diff.contextCost} />}
     </>
   );
 

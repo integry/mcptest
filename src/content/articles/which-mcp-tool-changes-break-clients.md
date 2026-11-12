@@ -109,6 +109,8 @@ Annotations are hints, but clients use them to decide what to auto-approve and w
 - **Risky:** `readOnlyHint` going from `true` to `false` (or being dropped, since the default is `false`), `destructiveHint: true` being added, `idempotentHint` going from `true` to `false`, `openWorldHint` becoming `true`. A client that auto-approved a read-only tool may now let it write.
 - **Safe:** the reverse changes, and a `title` change.
 
+See also [how clients use tool annotations](/learn/mcp-tool-annotations-and-client-retries) and [tool errors agents can act on](/learn/mcp-tool-errors-agents-can-act-on).
+
 ## Prompts and resources {#prompts-and-resources}
 
 The same logic applies when a server lists prompts and resources. Removing a prompt or a resource, or making a prompt argument required, is breaking. Removing a prompt argument is risky. Adding prompts, resources or optional arguments is safe. The check compares them only when both listings include them.

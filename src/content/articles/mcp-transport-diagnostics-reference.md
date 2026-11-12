@@ -1,13 +1,13 @@
 ---
 title: MCP transport diagnostics reference
 navTitle: Transport diagnostics
-summary: Each mcptest diagnostic id, from transport.accept-header-406 to tool.output-contract-violation, with what was observed, severity, release impact, cause, fixes for three stacks, and the reports behind it.
+summary: Each mcptest diagnostic id, from transport.accept-header-406 to tool.output-contract-violation and the tool annotation findings, with what was observed, severity, release impact, cause, fixes for three stacks, and the reports behind it.
 track: reference
 level: practitioner
 order: 24
 category: Troubleshooting
 readingTimeMinutes: 10
-lastReviewed: "2026-10-20"
+lastReviewed: "2026-11-11"
 metaTitle: MCP transport diagnostics reference (406, 405, 415, 429, CORS, Content-Type) | mcptest.io
 metaDescription: What each mcptest transport diagnostic means and how to fix it in the TypeScript SDK, Python SDK and Cloudflare Workers, including output-contract violations.
 relatedSlugs:
@@ -48,9 +48,23 @@ sourceLinks:
     url: "https://github.com/modelcontextprotocol/python-sdk/blob/main/docs/migration.md"
   - title: "RFC 6585: 429 Too Many Requests"
     url: "https://www.rfc-editor.org/rfc/rfc6585"
+  - title: "Cloudflare: Detect a Challenge Page response"
+    url: "https://developers.cloudflare.com/cloudflare-challenges/challenge-types/challenge-pages/detect-response/"
+  - title: "Cloudflare: Error 1020 Access denied"
+    url: "https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-1xxx-errors/error-1020/"
+  - title: "Vercel: Firewall concepts (deny and challenge actions)"
+    url: "https://vercel.com/docs/vercel-firewall/firewall-concepts"
+  - title: "x402 v2: HTTP transport"
+    url: "https://github.com/coinbase/x402/blob/main/specs/transports-v2/http.md"
+  - title: "MCP 2025-11-25 schema: ToolAnnotations"
+    url: "https://modelcontextprotocol.io/specification/2025-11-25/schema#toolannotations"
+  - title: "Claude Code changelog (2.1.307: only read-only or idempotent tools are retried)"
+    url: "https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md"
+  - title: "Codex CLI rust-v0.134.0 release notes (read-only MCP tools run concurrently)"
+    url: "https://github.com/openai/codex/releases/tag/rust-v0.134.0"
 ---
 
-mcptest records the HTTP exchange of each connection attempt, both direct and through its optional CORS proxy. Six transport diagnostics are defined in `src/types/transportDiagnostics.ts`, plus one tool-level finding in `src/utils/outputContract.ts`. The ids are a stable contract: connection error cards, report JSON and Markdown, and this page all use them. For general triage, start with [troubleshooting](/docs/troubleshooting).
+mcptest records the HTTP exchange of each connection attempt, both direct and through its optional CORS proxy. Eight transport diagnostics are defined in `src/types/transportDiagnostics.ts`, plus one tool-level finding in `src/utils/outputContract.ts` and five tool annotation findings in `src/utils/toolAnnotationAnalysis.ts`. The ids are a stable contract: connection error cards, report JSON and Markdown, and this page all use them. For general triage, start with [troubleshooting](/docs/troubleshooting).
 
 The fixes below repeat the code hints shown in the app (`src/utils/transportDiagnostics.ts`). The Python hints use the 1.x `FastMCP` names. In Python SDK 2.x the class is `MCPServer` from `mcp.server.mcpserver`, and `json_response` moves from the constructor to `run()` and `streamable_http_app()` ([migration guide](https://github.com/modelcontextprotocol/python-sdk/blob/main/docs/migration.md)).
 
@@ -69,7 +83,16 @@ The fixes below repeat the code hints shown in the app (`src/utils/transportDiag
 | `transport.target-rate-limited-429` | error (warning if a retry recovered, or on GET) | Yes when error |
 | `transport.cors-expose-headers-missing` | error when confirmed, warning when suspected | Only when confirmed |
 | `transport.sse-content-type-mismatch` | error (warning on the optional GET stream) | Yes when error |
+| `transport.bot-protection-challenge` | error (warning if a retry recovered, or on GET); suspected without a vendor signature | Yes when error |
+| `transport.payment-required-402` | error (warning on GET) | No: the report is not scored |
 | `tool.output-contract-violation` | high-priority finding | Yes |
+| `tool.annotations.coverage` | info | No |
+| `tool.annotations.missing-safety-hints` | low | No |
+| `tool.annotations.missing-title` | low | No |
+| `tool.annotations.hint-name-mismatch` | medium, review signal | No, asks for review |
+| `tool.annotations.client-treatment` | info | No |
+
+Tool-surface findings use the severity of the tool surface analysis. Only `critical` and `high` block release; `medium` becomes a release priority that asks for review, which the default `mcptest` release gate (`--fail-on-severity high`) does not fail on; `low` and `info` are listed in the report but never change the decision.
 
 ## transport.accept-header-406 {#transport-accept-header-406}
 
@@ -273,6 +296,44 @@ return new Response(readable, {
 
 **Reports:** [postman-app-support#13885](https://github.com/postmanlabs/postman-app-support/issues/13885). After a Postman update, connecting to an HTTP MCP server failed with `SSE error: Invalid content type, expected "text/event-stream"`.
 
+## transport.bot-protection-challenge {#transport-bot-protection-challenge}
+
+**Observed:** a CDN, WAF or bot-management rule answered instead of the MCP server. mcptest only reports it as detected when the response carries a documented vendor signature, and the evidence lists the status and headers that matched:
+
+- Cloudflare: the `cf-mitigated: challenge` header, which Cloudflare sets on every challenge page; a page that loads `/cdn-cgi/challenge-platform/`; or the "Error 1020: Access denied" block page.
+- Vercel Firewall: the "Vercel Security Checkpoint" challenge page, or `x-vercel-mitigated: challenge` or `deny` on a `403` or `429`.
+
+A `403` HTML page without `WWW-Authenticate`, where JSON or an event stream was expected, matches no vendor signature and is reported as `suspected`. A `403` with `WWW-Authenticate` is an authentication challenge and never counts here. `Server: cloudflare` and `cf-ray` are not evidence: Cloudflare adds them to every response it serves, including the mcptest proxy's own.
+
+**Severity:** error; warning on the optional Streamable HTTP GET stream, and warning when a challenge `429` was retried automatically and the retry succeeded. mcptest does not start OAuth discovery on such a `403`, because discovery would hit the same rule.
+
+**Why:** MCP clients are programs, so they cannot solve a challenge meant for browsers. The same rules often cover `/.well-known/oauth-protected-resource`, `/.well-known/oauth-authorization-server` and the token endpoint, which breaks OAuth discovery in every client, not only in mcptest.
+
+**Fix:** exempt the MCP endpoint, the OAuth discovery documents and the token endpoint from challenge and block rules, and rate-limit them instead. On Cloudflare a WAF custom rule with the Skip action covers managed challenges and Super Bot Fight Mode; the free Bot Fight Mode cannot be skipped per path, so turn it off for the zone. On Vercel add a Firewall bypass rule for the paths and turn off Attack Challenge Mode. See [deploying a remote MCP server](/learn/deploy-remote-mcp-server) for the platform pitfalls.
+
+```text
+# Cloudflare dashboard > Security > WAF > Custom rules > Skip
+(http.request.uri.path eq "/mcp")
+  or starts_with(http.request.uri.path, "/.well-known/oauth-")
+  or (http.request.uri.path eq "/token")
+```
+
+## transport.payment-required-402 {#transport-payment-required-402}
+
+**Observed:** the server answered `402 Payment Required`. When it follows x402, the evidence includes the `PAYMENT-REQUIRED` header (x402 v2) or notes the `x402Version` body (v1).
+
+**Severity:** error, because no MCP session was established; warning on the optional GET stream. It does not mark the server as broken: the release-readiness answer is "Not scored — the server requires payment", catalog validation records the server as online with `responseClass: "payment-required"`, and its catalog badge reads "payment required".
+
+**Why:** the server charges for access. mcptest never pays, so it cannot inspect the server past the `402`.
+
+**Fix:** nothing, if charging is intended. If the endpoint should be free to inspect, stop answering `initialize` and discovery requests with `402`. Browser clients can read the x402 header only when it is listed in `Access-Control-Expose-Headers`.
+
+```typescript
+res.set('PAYMENT-REQUIRED', Buffer.from(JSON.stringify(paymentRequired)).toString('base64'));
+res.set('Access-Control-Expose-Headers', 'PAYMENT-REQUIRED, PAYMENT-RESPONSE');
+res.status(402).json({ error: 'Payment required' });
+```
+
 ## tool.output-contract-violation {#tool-output-contract-violation}
 
 **Observed:** a tool that declares an `outputSchema` returned a `tools/call` result that broke it. Either `structuredContent` failed validation, or it was missing. The report lists the violating tools with up to five violations each, as a path and a plain-language message, such as `structuredContent.items[0].name: Expected string but got number.`
@@ -311,6 +372,93 @@ def get_weather(city: str) -> Weather:
 On Cloudflare Workers, `McpAgent` exposes the same SDK server as `this.server`. Register the tool in `init()` with the same `outputSchema` and `structuredContent`, using the schema form of the SDK version that your `agents` package depends on.
 
 **Reports:** a [Postman community thread](https://community.postman.com/t/does-mcp-client-support-output-schema/88808) where a tool's output was reported invalid against a schema the client never displayed.
+
+## tool.annotations.coverage {#tool-annotations-coverage}
+
+**Observed:** how many of the server's tools declare each annotation: `readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`, `annotations.title`, and the top-level `title`. The counts are also in the report JSON under `toolSurfaceAnalysis.metrics.annotations`.
+
+**Severity:** info. It is a measurement and never changes the release decision.
+
+**Why:** clients use the hints to decide on confirmation prompts, retries and parallel calls, and connector directories review titles and safety hints on every tool. An absent hint is not neutral: the client applies the specification's default.
+
+## tool.annotations.missing-safety-hints {#tool-annotations-missing-safety-hints}
+
+**Observed:** a tool leaves one or more safety hints unset. The evidence names each missing hint, its default, and why that default may be wrong for the tool, for example a tool named `search_docs` without `readOnlyHint`.
+
+**Severity:** low. Listed in the report; does not change the release decision.
+
+**Why:** the [ToolAnnotations schema](https://modelcontextprotocol.io/specification/2025-11-25/schema#toolannotations) defines these defaults:
+
+| Hint | Default when absent | Meaning |
+| --- | --- | --- |
+| `readOnlyHint` | `false` | `true`: the tool does not modify its environment. |
+| `destructiveHint` | `true` | The tool may perform destructive updates. Only meaningful when `readOnlyHint` is `false`. |
+| `idempotentHint` | `false` | `true`: repeating the call with the same arguments has no additional effect. Only meaningful when `readOnlyHint` is `false`. |
+| `openWorldHint` | `true` | The tool may interact with external entities. |
+
+The defaults are the cautious reading, so a lookup without `readOnlyHint: true` is treated as a tool that may write. On a tool with `readOnlyHint: true`, a missing `destructiveHint` or `idempotentHint` is not reported.
+
+**Fix:** declare every hint explicitly.
+
+```typescript
+server.registerTool('search_docs', {
+  title: 'Search documentation',
+  description: 'Full-text search over the product documentation',
+  inputSchema: z.object({ query: z.string() }),
+  annotations: { title: 'Search documentation', readOnlyHint: true, openWorldHint: false },
+}, handler);
+```
+
+```python
+from mcp.types import ToolAnnotations
+
+@mcp.tool(title="Search documentation", annotations=ToolAnnotations(
+    title="Search documentation", readOnlyHint=True, openWorldHint=False))
+def search_docs(query: str) -> str: ...
+```
+
+## tool.annotations.missing-title {#tool-annotations-missing-title}
+
+**Observed:** a tool has no `annotations.title`. The evidence also says whether the top-level `title` (defined since the 2025-06-18 revision) is set.
+
+**Severity:** low. Listed in the report; does not change the release decision.
+
+**Why:** clients display `title`, then `annotations.title`, then `name`. Without either title, users see the raw tool name, and directory listings that read `annotations.title` fall back to the name even when the top-level `title` is set.
+
+**Fix:** set a short, human-readable `title` and the same text in `annotations.title`.
+
+## tool.annotations.hint-name-mismatch {#tool-annotations-hint-name-mismatch}
+
+**Observed:** a declared hint contradicts the tool's own name or description:
+
+- `readOnlyHint: true` on a tool whose name or description reads like a write (delete, remove, send, create, update, write, post, drop and the rest of the list).
+- `destructiveHint: false` on a tool that is not marked read-only and has a destructive verb (delete, remove, drop, purge, reset, revoke, truncate, wipe and similar).
+- `idempotentHint: true` on a tool whose name suggests a repeated effect (send, create, append, post, submit, insert, reply, enqueue) when its input has no idempotency key such as `idempotencyKey` or `requestId`.
+
+`destructiveHint` and `idempotentHint` are ignored on a tool with `readOnlyHint: true`, so their values on such a tool are never reported.
+
+The evidence shows the hint and the word that contradicts it.
+
+**Severity:** medium, kind `review-signal`. It is a release priority that asks for review; it does not block release and the default release gate does not fail on it.
+
+**Why:** clients act on the hint, not the name. A tool marked read-only may skip confirmation or be retried; a sending tool marked idempotent may be retried and send twice.
+
+**How matching works:** names are split into whole words (`get_deleted_items` has the word `deleted`, not `delete`, so it is not flagged). A write verb after a read verb is read as its object (`list_delete_jobs`) unless it follows `and` or `or` (`get_or_create_user`). Words that are often nouns (post, set, update, drop, archive and similar) count only near the start of a name that has no read verb. A description counts only by its first verb ("Deletes a file…"), and only when the name has no read verb. `run` and `execute` are not on the list, because read-only query tools use them.
+
+**Fix:** check what the tool does. Correct the hint if it is wrong. If it is right, rename the tool or reword the description.
+
+## tool.annotations.client-treatment {#tool-annotations-client-treatment}
+
+**Observed:** one line per group of tools describing how a client is expected to treat them, given their hints: may be retried after a dropped connection, may run in parallel with other read-only calls, or neither.
+
+**Severity:** info. It never changes the release decision.
+
+**Why:** only behaviour stated in a client's own release notes is described:
+
+- [Claude Code 2.1.307](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md): "Fixed HTTP MCP tool calls being sent twice when the connection closed mid-call; only read-only or idempotent tools are now retried".
+- [Codex CLI 0.134.0](https://github.com/openai/codex/releases/tag/rust-v0.134.0): "Let read-only MCP tools run concurrently when they advertise `readOnlyHint`."
+
+For everything else the line states what the specification says the hints mean. The same two behaviours are host compatibility rules (`tools.retry-hints` for Claude Code and `tools.parallel-read-only` for Codex CLI) in client compatibility assessments. Hints are advisory: the specification tells clients not to rely on them from untrusted servers.
 
 ## Try it
 

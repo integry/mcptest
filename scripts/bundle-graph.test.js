@@ -81,6 +81,7 @@ const LAZY_VIEWS = [
   'src/components/OAuthCheckerView.tsx',
   'src/components/McpTestServersView.tsx',
   'src/components/McpTestClientView.tsx',
+  'src/components/KeywordLandingView.tsx',
   'src/components/learn/LearnArticlePage.tsx',
   'src/components/learn/MarkdownLearnArticle.tsx',
   'src/components/OAuthCallback.tsx',

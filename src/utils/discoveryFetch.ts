@@ -10,6 +10,7 @@ import {
   type DiscoveryResponse,
   type DiscoveryRoute,
 } from './mcpDiscovery';
+import { pickClassificationHeaders } from './responseClassification';
 
 export const DISCOVERY_PROXY_PATH = '/discovery';
 /** Mirrors the proxy route's cap; a discovery document is a few kilobytes. */
@@ -105,6 +106,7 @@ export const createDiscoveryFetch = ({
         url: (route === 'proxy' ? response.headers.get(PROXY_FINAL_URL_HEADER) : response.url) || url,
         status: response.status,
         wwwAuthenticate: response.headers.get('WWW-Authenticate') ?? undefined,
+        ...(response.status >= 400 ? { headers: pickClassificationHeaders(response.headers) } : {}),
         contentType: response.headers.get('Content-Type') ?? undefined,
         body,
         route,

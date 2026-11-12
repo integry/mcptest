@@ -5,6 +5,7 @@ import {
   type ProtocolEra,
 } from '@modelcontextprotocol/client';
 import { TransportType } from '../types';
+import { INSTANCE_IDENTIFYING_HEADERS } from '../types/toolListConsistency';
 import { CorsAwareStreamableHTTPTransport } from './corsAwareTransport';
 import { CorsAwareSSETransport } from './corsAwareSseTransport';
 import {
@@ -20,6 +21,12 @@ import {
   type ProxyCallerLimit,
 } from './proxyLimit';
 import { parseRetryAfter } from './transportDiagnostics';
+import {
+  classifyHttpResponse,
+  readClassificationBody,
+  RESPONSE_CLASSIFICATION_STATUSES,
+  type ResponseClassification,
+} from './responseClassification';
 
 export interface TransportCandidate {
   url: string;
@@ -96,6 +103,8 @@ export interface ObservedTransportRequest {
   retryAfter?: string;
   /** Diagnostic header names the browser could read on this response. */
   readableResponseHeaders?: readonly string[];
+  /** Bounded values of instance-identifying headers (cf-ray, server, ...) the caller could read. */
+  instanceHeaders?: Record<string, string>;
   /** True when the browser enforced CORS on this response (direct, other origin). */
   crossOrigin?: boolean;
   /** Set on a target HTTP 429: whether mcptest retried once, and after how long. */
@@ -106,6 +115,8 @@ export interface ObservedTransportRequest {
   };
   /** Set on the single automatic retry that follows a target HTTP 429. */
   automaticRetry?: { reason: 'target-rate-limit'; waitMs: number };
+  /** Bot protection, rate limit or payment required, when the target response matched a signature. */
+  responseClass?: ResponseClassification;
   outcome?: 'started' | 'succeeded' | 'failed';
 }
 
@@ -828,6 +839,11 @@ const observeAuthenticationResponses = (
       if (readableResponseHeaders.length > 0) {
         attemptedRequest.readableResponseHeaders = readableResponseHeaders;
       }
+      const instanceHeaders = Object.fromEntries(INSTANCE_IDENTIFYING_HEADERS.flatMap((header) => {
+        const value = boundHeaderValue(response.headers.get(header));
+        return value ? [[header, value]] : [];
+      }));
+      if (Object.keys(instanceHeaders).length > 0) attemptedRequest.instanceHeaders = instanceHeaders;
       if (response.status === 429) {
         const retryAfter = boundHeaderValue(response.headers.get('retry-after'));
         if (retryAfter) attemptedRequest.retryAfter = retryAfter;
@@ -840,6 +856,13 @@ const observeAuthenticationResponses = (
         const targetError = await inspectSafeTargetError(response, knownCredentials)
           .catch(() => undefined);
         if (targetError) attemptedRequest.targetError = targetError;
+        if (!attemptedRequest.proxyLimit) {
+          const body = RESPONSE_CLASSIFICATION_STATUSES.has(response.status)
+            ? await readClassificationBody(response).catch(() => undefined)
+            : undefined;
+          const responseClass = classifyHttpResponse({ status: response.status, headers: response.headers, body });
+          if (responseClass) attemptedRequest.responseClass = responseClass;
+        }
       }
     } catch (error) {
       attemptedRequest.durationMs = Math.max(0, Date.now() - startedAtMs);
@@ -877,7 +900,12 @@ const observeAuthenticationResponses = (
       }
     }
 
-    if (response.status === 401 || response.status === 403) {
+    // A challenge or block page from bot protection is not an authentication
+    // challenge: starting OAuth discovery would only fail on the same rule.
+    if (
+      (response.status === 401 || response.status === 403)
+      && attemptedRequest.responseClass?.kind !== 'bot-protection'
+    ) {
       const responseSource = !usesProxy
         ? 'target'
         : response.headers.get(PROXY_RESPONSE_SOURCE_HEADER) === 'target'
