@@ -10,6 +10,10 @@ import {
   type RankedItem,
 } from '../utils/fuzzyMatch';
 import { MENU_OPEN_CLASS } from '../hooks/useMobileDrawer';
+import type { DiscoveryStatus } from '../hooks/useToolsAndResources';
+import { learnLink } from '../utils/connectionGuidance';
+import { listOutcome, type CapabilitySection } from '../utils/connectionStages';
+import './ConnectedGuide.css';
 import './UnifiedPanel.css';
 
 interface UnifiedPanelProps {
@@ -30,7 +34,58 @@ interface UnifiedPanelProps {
   onOpenTestPlan?: () => void;
   /** Enables the `/` shortcut; only the visible playground tab should listen. */
   shortcutEnabled?: boolean;
+  /** Where each list request stands; empty states wait for a finished list. */
+  discovery?: DiscoveryStatus;
+  /** False for a capability the server did not advertise; absent means unknown. */
+  offered?: Partial<Record<CapabilitySection, boolean>>;
+  /** First run: highlight the tool list and say what to do. */
+  guideToolPick?: boolean;
+  onDismissToolPickGuide?: () => void;
+  /**
+   * Bumped by "Call a tool": expands Tools (and clears a search that hides
+   * every tool), then focuses the first tool once it has rendered.
+   */
+  revealToolsRequest?: number;
 }
+
+/** What each capability is for, and what to do when the server offers none. */
+const EMPTY_STATES: Record<CapabilitySection, { title: string; body: string }> = {
+  tools: {
+    title: 'No tools',
+    body: 'Tools are the functions a model can call. This server lists none, so there is nothing to run here; its resources or prompts may still be useful.',
+  },
+  resources: {
+    title: 'No resources',
+    body: 'Resources are read-only data a server shares by URI, such as files or records. This server lists none.',
+  },
+  prompts: {
+    title: 'No prompts',
+    body: 'Prompts are reusable message templates a client can offer to users. This server lists none.',
+  },
+};
+
+const SECTION_NOUNS: Record<CapabilitySection, [string, string]> = {
+  tools: ['Tools', 'tools'],
+  resources: ['Resources', 'resources'],
+  prompts: ['Prompts', 'prompts'],
+};
+
+/** A list request that did not establish membership: it failed, or the server reported more pages. */
+const unsettledListState = (section: CapabilitySection, outcome: 'failed' | 'partial', count: number) => {
+  const [title, noun] = SECTION_NOUNS[section];
+  if (outcome === 'failed') {
+    return {
+      title: `${title} list failed`,
+      body: `The ${noun} list request failed, so this does not show whether the server offers any. Refresh the lists to try again; Logs & Events has the error.`,
+    };
+  }
+  return {
+    title: `${title} list incomplete`,
+    body: count === 0
+      ? `The server returned an empty first page and reported more ${noun} on later pages, which this view does not load.`
+      : `The server reported more ${noun} on later pages, which this view does not load; only the first page is shown.`,
+  };
+};
 
 type CategoryKey = 'tools' | 'resources' | 'resourceTemplates' | 'prompts';
 
@@ -90,6 +145,11 @@ export const UnifiedPanel: React.FC<UnifiedPanelProps> = ({
   isConnecting, // Destructure isConnecting
   onOpenTestPlan,
   shortcutEnabled = false,
+  discovery,
+  offered,
+  guideToolPick = false,
+  onDismissToolPickGuide,
+  revealToolsRequest = 0,
 }) => {
   const [filterText, setFilterText] = useState('');
   const [expandedCategories, setExpandedCategories] = useState({
@@ -224,6 +284,32 @@ export const UnifiedPanel: React.FC<UnifiedPanelProps> = ({
     return () => document.removeEventListener('keydown', handleShortcut);
   }, [shortcutEnabled, isConnected]);
 
+  // "Call a tool" must land on a tool: open the category and clear a search
+  // that hides every tool, then focus the first option after it renders.
+  const pendingToolFocus = useRef(false);
+  // The panel remounts on reconnect; a request made before then is spent.
+  const handledRevealRequest = useRef(revealToolsRequest);
+  useEffect(() => {
+    if (revealToolsRequest === handledRevealRequest.current) return;
+    handledRevealRequest.current = revealToolsRequest;
+    if (tools.length === 0) {
+      searchRef.current?.focus();
+      return;
+    }
+    pendingToolFocus.current = true;
+    setExpandedCategories((prev) => (prev.tools ? prev : { ...prev, tools: true }));
+    if (ranked.tools.length === 0) setFilterText('');
+    // Only a new request acts; list or filter changes alone must not move focus.
+  }, [revealToolsRequest]);
+  useEffect(() => {
+    if (!pendingToolFocus.current) return;
+    const firstTool = listRefs.current.tools?.[0];
+    if (!firstTool) return;
+    pendingToolFocus.current = false;
+    setFocusedIndex((current) => ({ ...current, tools: 0 }));
+    firstTool.focus();
+  });
+
   const toggleCategory = (category: keyof typeof expandedCategories) => {
     setExpandedCategories((prev) => ({ ...prev, [category]: !prev[category] }));
   };
@@ -232,6 +318,31 @@ export const UnifiedPanel: React.FC<UnifiedPanelProps> = ({
     .map(({ key, items }) => `${items.length} ${CATEGORY_NOUNS[key][items.length === 1 ? 0 : 1]}`)
     .join(' · ');
   const treeId = `${idPrefix}-capability-tree`;
+  const hintId = `${idPrefix}-tool-hint`;
+  const sectionCount: Record<CapabilitySection, number> = {
+    tools: tools.length,
+    resources: resources.length + resourceTemplates.length,
+    prompts: prompts.length,
+  };
+  const sections = ['tools', 'resources', 'prompts'] as const;
+  const outcomeOf = (section: CapabilitySection) => listOutcome(discovery, section, offered?.[section]);
+  // "Lists none" needs a complete list (or an unadvertised capability); a failed
+  // or partial list is reported as such, never as absence.
+  const emptySections = sections.filter((section) => {
+    if (!isConnected || isSearching) return false;
+    const outcome = outcomeOf(section);
+    return (outcome === 'complete' || outcome === 'not-offered') && sectionCount[section] === 0;
+  });
+  const unsettledSections = sections.flatMap((section) => {
+    if (!isConnected || isSearching) return [];
+    const outcome = outcomeOf(section);
+    return outcome === 'failed' || outcome === 'partial'
+      ? [{ section, ...unsettledListState(section, outcome, sectionCount[section]) }]
+      : [];
+  });
+  const listsLoading = isConnected && Boolean(discovery)
+    && (Object.values(discovery!) as string[]).some((state) => state === 'idle' || state === 'loading');
+  const noToolsArticle = learnLink('noTools');
 
   return (
     <div className={`card unified-panel ${!isConnected ? 'unified-panel-deactivated' : ''}`}>
@@ -291,6 +402,19 @@ export const UnifiedPanel: React.FC<UnifiedPanelProps> = ({
           {isSearching ? `${matchSummary} match` : matchSummary}
         </p>
       )}
+      {guideToolPick && (
+        <div className="onboarding-hint onboarding-hint--tools" id={hintId}>
+          <div className="onboarding-hint-text">
+            <p className="onboarding-hint-title"><i className="bi bi-hand-index onboarding-hint-icon" aria-hidden="true"></i> Pick a tool to call</p>
+            <p>Its description and a form built from its input schema open in the request panel.</p>
+          </div>
+          {onDismissToolPickGuide && (
+            <button type="button" className="btn btn-sm btn-ghost" onClick={onDismissToolPickGuide} aria-label="Dismiss the pick a tool hint">
+              Dismiss
+            </button>
+          )}
+        </div>
+      )}
       <nav className="tree-view" aria-label="Playground tool lists" id={treeId}>
         {/* Supported Capabilities - Only show sections with items */}
         {supportedCapabilities.map((capability) => {
@@ -300,13 +424,22 @@ export const UnifiedPanel: React.FC<UnifiedPanelProps> = ({
           const plainItems = items.map((result) => result.item);
 
           return (
-            <details key={key} open={isExpanded} onToggle={(e) => setExpandedCategories(prev => ({...prev, [key]: (e.target as HTMLDetailsElement).open}))}>
+            <details
+              key={key}
+              className={guideToolPick && key === 'tools' ? 'capability-group--guided' : undefined}
+              open={isExpanded}
+              onToggle={(e) => setExpandedCategories(prev => ({...prev, [key]: (e.target as HTMLDetailsElement).open}))}>
               <summary onClick={(e) => { e.preventDefault(); toggleCategory(key as keyof typeof expandedCategories); }}>
                 <span className={`category-toggle ${isExpanded ? 'expanded' : ''}`}>▶</span>
                 {label} ({isSearching ? `${items.length} of ${originalItems.length}` : items.length})
               </summary>
               {isExpanded && (
-                <ul onKeyDown={(e) => handleKeyDown(e, key, plainItems)} role="listbox" aria-label={label}>
+                <ul
+                  onKeyDown={(e) => handleKeyDown(e, key, plainItems)}
+                  role="listbox"
+                  aria-label={label}
+                  aria-describedby={guideToolPick && key === 'tools' ? hintId : undefined}
+                >
                   {items.length === 0 && isSearching && (
                     <li className="tree-item-empty" role="presentation">No matching {CATEGORY_NOUNS[key][1]}</li>
                   )}
@@ -351,11 +484,41 @@ export const UnifiedPanel: React.FC<UnifiedPanelProps> = ({
           );
         })}
 
-        {/* Show message if no supported capabilities when connected */}
-        {isConnected && supportedCapabilities.length === 0 && (
-          <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--text-muted)', fontStyle: 'italic' }}>
-            This server did not advertise any capabilities.
-          </div>
+        {listsLoading && supportedCapabilities.length === 0 && (
+          <p className="capability-empty-loading">Listing tools, resources and prompts…</p>
+        )}
+
+        {unsettledSections.length > 0 && (
+          <ul className="capability-empty-states" aria-label="Capability lists that did not finish">
+            {unsettledSections.map(({ section, title, body }) => (
+              <li key={section} className="capability-empty-state" data-list-outcome={outcomeOf(section)}>
+                <p className="capability-empty-title">{title}</p>
+                <p>{body}</p>
+                {outcomeOf(section) === 'failed' && (
+                  <button type="button" className="btn btn-sm btn-outline-secondary" onClick={onRefreshLists}>
+                    Retry listing
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {emptySections.length > 0 && (
+          <ul className="capability-empty-states" aria-label="Capabilities this server does not offer">
+            {emptySections.map((section) => (
+              <li key={section} className="capability-empty-state">
+                <p className="capability-empty-title">{EMPTY_STATES[section].title}</p>
+                <p>{EMPTY_STATES[section].body}</p>
+                {section === 'tools' && noToolsArticle && (
+                  <a href={noToolsArticle.path} target="_blank" rel="noopener">
+                    Expected tools? {noToolsArticle.title}
+                    <span className="visually-hidden"> (opens in a new tab)</span>
+                  </a>
+                )}
+              </li>
+            ))}
+          </ul>
         )}
 
         {/* Show message when not connected */}

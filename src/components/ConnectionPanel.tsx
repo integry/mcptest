@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import type { ProtocolEra } from '@modelcontextprotocol/client';
 import ConnectionErrorCard from './ConnectionErrorCard';
+import ConnectionProgress from './ConnectionProgress';
+import type { ConnectionStage } from '../utils/connectionStages';
 import { TransportType } from '../types';
 import type { CatalogAuthType } from '../types/catalog';
 import { getServerUrl } from '../utils/urlUtils';
@@ -49,6 +51,10 @@ interface ConnectionPanelProps {
   setCredentialValue?: (value: string) => void;
   credentialInputId?: string;
   autoFocusUrl?: boolean;
+  /** Stages of the current or last attempt, shown while connecting and after a failure. */
+  connectionStages?: readonly ConnectionStage[];
+  /** Rendered as the body of the connected card. */
+  connectedSummary?: React.ReactNode;
 }
 
 const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
@@ -82,6 +88,8 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
   setCredentialValue,
   credentialInputId = 'catalog-credential',
   autoFocusUrl = false,
+  connectionStages,
+  connectedSummary,
 }) => {
   const [connectionTimer, setConnectionTimer] = useState(0);
   const [placeholder] = useState(() => {
@@ -237,6 +245,7 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
           </div>
         )}
       </div>
+      {isConnected && connectedSummary && <div className="card-body connected-summary-body">{connectedSummary}</div>}
       {!isConnected && (
       <div className="card-body">
         <div className="mb-3">
@@ -381,6 +390,10 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
           </div>
         )}
         
+        {connectionStages && connectionStages.some(({ status }) => status !== 'pending') && (
+          <ConnectionProgress stages={connectionStages} />
+        )}
+
         {connectionError && (
           <ConnectionErrorCard
             errorDetails={{

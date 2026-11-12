@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
 import { LogEntry, Space, SpaceCard, SelectedTool, ResourceTemplate } from '../types';
 import ToolResultView from './ToolResultView';
@@ -23,12 +23,61 @@ interface OutputPanelProps {
   resourceArgs: Record<string, any>;
   onRunAgain?: (callContext: LogEntry['callContext']) => void;
   useProxy?: boolean;
+  /** Set after the first successful run while the share hint is active. */
+  shareReportHref?: string;
+  onDismissShareHint?: () => void;
 }
+
+/** What assistive technology hears when a call finishes. */
+export const describeResult = (entry: LogEntry): string => {
+  const name = entry.callContext?.name;
+  if (entry.type === 'error') return 'The call failed. The result panel explains what happened.';
+  if (entry.type === 'tool_result') {
+    return entry.toolCall?.result.isError === true
+      ? `${name || 'The tool'} reported an error result.`
+      : `${name || 'The tool'} returned a result.`;
+  }
+  if (entry.type === 'resource_result') return `${name || 'The resource'} was read.`;
+  return 'A result arrived.';
+};
+
+/**
+ * The live-region text for the nth completed call. The sequence number keeps
+ * the text distinct when the same tool returns the same kind of outcome
+ * twice in a row, so a repeated run (often started with Enter, which leaves
+ * focus in the form) is still announced.
+ */
+export const describeCompletedCall = (entry: LogEntry, sequence: number): string =>
+  `Call ${sequence}: ${describeResult(entry)}`;
 
 const OutputPanel: React.FC<OutputPanelProps> = (props) => {
   const [activeTab, setActiveTab] = useState<'result' | 'logs'>('result');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const { share, shareStatus, shareMessage } = useShare();
+  const resultRef = useRef<HTMLDivElement>(null);
+  const [announcement, setAnnouncement] = useState('');
+  const announcedResultRef = useRef<LogEntry | null>(null);
+  const completedCallsRef = useRef(0);
+
+  // A finished call is announced, and when the Run button (or nothing) has
+  // focus, focus moves to the result. A run started from a form field with
+  // Enter keeps focus in the form so the next edit is one keystroke away.
+  useEffect(() => {
+    const entry = props.lastResult;
+    if (!entry) return;
+    // Count each completed call once, even if the effect reruns for it.
+    if (announcedResultRef.current !== entry) {
+      announcedResultRef.current = entry;
+      completedCallsRef.current += 1;
+    }
+    setAnnouncement(describeCompletedCall(entry, completedCallsRef.current));
+    const active = document.activeElement as HTMLElement | null;
+    const fromRunButton = !active || active === document.body || active.id === 'executeBtn';
+    if (!fromRunButton) return;
+    setActiveTab('result');
+    // After the tab switch renders.
+    requestAnimationFrame(() => resultRef.current?.focus({ preventScroll: false }));
+  }, [props.lastResult]);
   
   // Handle share button click
   const handleShareResult = () => {
@@ -147,7 +196,6 @@ const OutputPanel: React.FC<OutputPanelProps> = (props) => {
                   style={{ fontSize: '0.8rem', padding: '0.2rem 0.4rem' }}
                   title={`Add to dashboard: ${props.spaces[0].name}`}
                   onClick={() => handleAddToSpace(props.spaces[0].id)}
-                  aria-label="Add result to dashboard"
                 >
                   <i className="bi bi-plus-square me-1" aria-hidden="true"></i>Add to dashboard
                 </button>
@@ -161,7 +209,6 @@ const OutputPanel: React.FC<OutputPanelProps> = (props) => {
                     data-bs-toggle="dropdown"
                     aria-expanded="false"
                     title="Add to Dashboard..."
-                    aria-label="Add result to dashboard"
                   >
                     <i className="bi bi-plus-square me-1" aria-hidden="true"></i>Add to dashboard
                   </button>
@@ -195,7 +242,7 @@ const OutputPanel: React.FC<OutputPanelProps> = (props) => {
       <div className="card-body output-panel-body p-0 d-flex flex-column">
         <div className="tab-content flex-grow-1 overflow-hidden" id="outputTabsContent">
           <div className={`tab-pane fade ${activeTab === 'result' ? 'show active' : ''} h-100`} id="result-panel" role="tabpanel" aria-labelledby="result-tab">
-            <ResultPanel {...props} />
+            <ResultPanel {...props} resultRef={resultRef} />
           </div>
           <div className={`tab-pane fade ${activeTab === 'logs' ? 'show active' : ''} h-100`} id="logs-panel" role="tabpanel" aria-labelledby="logs-tab">
             <ResponsePanel {...props} />
@@ -203,6 +250,8 @@ const OutputPanel: React.FC<OutputPanelProps> = (props) => {
         </div>
       </div>
       
+      <p className="visually-hidden" role="status" aria-live="polite">{announcement}</p>
+
       {/* Fullscreen modal */}
       {isFullscreen && props.lastResult && ReactDOM.createPortal(
         <div 
