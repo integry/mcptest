@@ -28,6 +28,8 @@
  * the schema cannot exclude a branch.
  */
 
+import { matchesBoundedPattern } from './boundedPattern';
+
 export type OperationCategory = 'read' | 'write' | 'destructive';
 
 export interface OperationSelectorMatch {
@@ -269,6 +271,34 @@ const UNINTERPRETED_ENCLOSING_KEYWORDS = [
   ...OPAQUE_SCHEMA_KEYWORDS, 'not', 'propertyNames', 'unevaluatedProperties', 'unevaluatedItems',
   'additionalItems',
 ] as const;
+/**
+ * Array keywords that constrain elements jointly. `items` gives what each
+ * element may be, but `contains` (with `maxItems: 1`, it alone decides the
+ * sole element) and the `contains` counts can exclude elements `items`
+ * allows, so a value set read from `items` is not established under them.
+ */
+const ARRAY_ELEMENT_NARROWING_KEYWORDS = ['contains', 'minContains', 'maxContains'] as const;
+
+/**
+ * Whether the array-wide constraints of `schema` leave every value its
+ * `items` allows usable in some valid array: no `contains`-family keyword,
+ * and cardinality bounds that admit a non-empty array. Invalid or
+ * unsatisfiable bounds (`maxItems: 0`, `minItems` above `maxItems`), and
+ * `uniqueItems` with `minItems` above 1 (which depends on how many distinct
+ * elements exist), are not modeled.
+ */
+const arrayElementsUnconstrained = (schema: Record<string, unknown>): boolean => {
+  if (ARRAY_ELEMENT_NARROWING_KEYWORDS.some((keyword) => keyword in schema)) return false;
+  const bound = (keyword: string, fallback: number): number | undefined => {
+    if (!(keyword in schema)) return fallback;
+    const value = schema[keyword];
+    return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : undefined;
+  };
+  const min = bound('minItems', 0);
+  const max = bound('maxItems', Infinity);
+  if (min === undefined || max === undefined || max < 1 || min > max) return false;
+  return !('uniqueItems' in schema && (schema.uniqueItems !== false && min > 1));
+};
 const PATH_DEPTH_LIMIT = 8;
 const LITERAL_LIMIT = 200;
 
@@ -318,12 +348,10 @@ const stepSchemas = (node: Record<string, unknown>, step: PathStep): unknown[] |
   if ('patternProperties' in node) {
     if (!isRecord(node.patternProperties)) return 'inconclusive';
     for (const [pattern, schema] of Object.entries(node.patternProperties)) {
-      let matches: boolean;
-      try {
-        matches = new RegExp(pattern, 'u').test(step.property);
-      } catch {
-        return 'inconclusive';
-      }
+      // Server-supplied: never run on the backtracking native engine, which a pattern
+      // such as `^(a+)+$` can stall. Patterns outside the bounded subset are inconclusive.
+      const matches = matchesBoundedPattern(pattern, step.property);
+      if (matches === undefined) return 'inconclusive';
       if (matches) {
         matchedPattern = true;
         schemas.push(schema);
@@ -354,8 +382,10 @@ const constraintAt = (
   if (schema === false) return new Set();
   if (!isRecord(schema) || depth > PATH_DEPTH_LIMIT) return 'inconclusive';
   const [step, ...rest] = path;
+  const uninterpreted = UNINTERPRETED_ENCLOSING_KEYWORDS.some((keyword) => keyword in schema)
+    || (step === 'items' && !arrayElementsUnconstrained(schema));
   const initial: ValueConstraint = intersect(
-    UNINTERPRETED_ENCLOSING_KEYWORDS.some((keyword) => keyword in schema) ? 'inconclusive' : 'any',
+    uninterpreted ? 'inconclusive' : 'any',
     enclosingLiteralConstraint(schema, path)
   );
   const applicable = stepSchemas(schema, step);

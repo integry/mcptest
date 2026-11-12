@@ -255,6 +255,24 @@ describe('connector directory preflight', () => {
       expect(statusOf(withMethod({ enum: ['GET', 'POST'], pattern: '^G' }), 'claude.separate-read-write')).toBe('unknown');
     });
 
+    it('leaves a selector array that contains limits to GET unknown instead of failing it', () => {
+      const method = { type: 'array', items: { enum: ['GET', 'POST'] }, contains: { const: 'GET' }, minItems: 1, maxItems: 1 };
+      expect(statusOf(withMethod(method), 'claude.separate-read-write')).toBe('unknown');
+    });
+
+    it('evaluates a nested-quantifier patternProperties key without stalling', () => {
+      const input = observations({
+        tools: toolsFrom([fullyAnnotated('api_request', {
+          inputSchema: {
+            type: 'object',
+            properties: { [`${'a'.repeat(40)}!`]: { type: 'string' }, method: { enum: ['GET', 'HEAD'] } },
+            patternProperties: { '^(a+)+$': { type: 'string' } },
+          },
+        })]),
+      });
+      expect(statusOf(input, 'claude.separate-read-write')).toBe('pass');
+    });
+
     it('passes a method argument limited to safe methods', () => {
       expect(statusOf(withMethod({ type: 'string', enum: ['GET', 'HEAD'] }), 'claude.separate-read-write')).toBe('pass');
     });
