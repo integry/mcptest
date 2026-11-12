@@ -72,3 +72,105 @@
   padding: 0.5rem 1rem;
   color: var(--text-muted);
 }
+
+/* --- The session strip ---
+   A full-width bar under the header: a mono "Sessions" count, then one
+   mono tab per connection divided by hairlines. The active session is a
+   white surface that opens onto the page below. */
+.playground-tab-strip {
+  align-items: stretch;
+  min-height: 2.75rem;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--strip-bg);
+}
+
+.playground-tab-count {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0 var(--space-5) 0 var(--space-4);
+  border-right: 1px solid var(--border-color);
+  color: var(--text-muted);
+  font-family: var(--font-family-mono);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.playground-tab-count-value {
+  color: var(--text-color);
+}
+
+.playground-tab-strip .playground-tabs.nav-tabs {
+  align-items: stretch;
+  gap: 0;
+  width: auto;
+  margin: 0 !important;
+  padding: 0;
+  border: 0 !important;
+  background: transparent;
+}
+
+.playground-tab-strip .playground-tabs .nav-item {
+  display: flex;
+  border-right: 1px solid var(--border-color);
+}
+
+.playground-tab-strip .playground-tabs .nav-link {
+  min-height: 2.75rem;
+  margin: 0;
+  padding: 0 var(--space-4);
+  color: var(--text-muted);
+  font-family: var(--font-family-mono);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+}
+
+.playground-tab-strip .playground-tabs .nav-link.pe-5 {
+  padding-right: 2.25rem !important;
+}
+
+.playground-tab-strip .playground-tabs .nav-link:not(.active):hover {
+  color: var(--text-color);
+  background-color: var(--hover-wash) !important;
+}
+
+.playground-tab-strip .playground-tabs .nav-link.active {
+  margin: 0 0 -1px;
+  color: var(--text-color) !important;
+  background-color: var(--card-bg) !important;
+  font-weight: var(--weight-bold);
+  box-shadow: none;
+}
+
+.playground-tab-status {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.playground-tab-strip .playground-tab-new {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-4);
+  border: 0;
+  background: transparent;
+  color: var(--text-accent);
+  font-size: var(--text-sm);
+}
+
+.playground-tab-strip .playground-tab-new:hover {
+  color: var(--text-color);
+  background: var(--hover-wash);
+}
+
+@media (max-width: 767.98px) {
+  .playground-tab-count {
+    padding: 0 var(--space-3);
+  }
+}

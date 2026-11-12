@@ -62,11 +62,19 @@ describe('theme token parity', () => {
 });
 
 describe('design language tokens (docs/design-language.md)', () => {
-  it('builds the accent on the logo green in both themes', () => {
-    expect(light['--primary-color']).toBe('#167a2c');
+  it('builds the accent on a deep instrument green in both themes', () => {
+    expect(light['--primary-color']).toBe('#1d6b53');
     expect(light['--primary-ink']).toBe('#ffffff');
-    expect(dark['--primary-color']).toBe('#46d35a');
-    expect(dark['--primary-ink']).toBe('#04140a');
+    expect(dark['--primary-color']).toBe('#3fc794');
+    expect(dark['--primary-ink']).toBe('#04140e');
+  });
+
+  it('lays the shell on a page wash and keeps account actions on the ink button', () => {
+    [light, dark].forEach((palette) => {
+      expect(palette['--page-wash']).toMatch(/^radial-gradient\(/);
+      expect(contrast(palette['--ink-button-text'], palette['--ink-button-bg'])).toBeGreaterThanOrEqual(4.5);
+      expect(contrast(palette['--ink-button-text'], palette['--ink-button-hover'])).toBeGreaterThanOrEqual(4.5);
+    });
   });
 
   it('pins the type scale, the pill radius and the signal rail', () => {
@@ -136,8 +144,8 @@ describe('design language tokens (docs/design-language.md)', () => {
       expect(contrast(palette['--primary-color'], palette['--primary-soft'])).toBeGreaterThan(3);
       expect(palette['--primary-soft']).not.toBe(palette['--disabled-bg']);
     });
-    expect(light['--primary-soft']).toBe('#d3eada');
-    expect(dark['--primary-soft']).toBe('#1b3a22');
+    expect(light['--primary-soft']).toBe('#d3e9e0');
+    expect(dark['--primary-soft']).toBe('#183a2e');
 
     const base = readStylesheet('base');
     const softRule = base.match(/\.btn-primary:disabled, \.btn-primary\.disabled \{([^}]*)\}/);
@@ -146,17 +154,18 @@ describe('design language tokens (docs/design-language.md)', () => {
     expect(softRule?.[1]).toMatch(/opacity:\s*1;/);
   });
 
-  it('frames the app in a graphite chrome bezel in both themes', () => {
+  it('keeps the chrome (header, command bars) legible in both themes', () => {
     [light, dark].forEach((palette) => {
       expect(contrast(palette['--chrome-text'], palette['--chrome-bg'])).toBeGreaterThanOrEqual(4.5);
       expect(contrast(palette['--chrome-muted'], palette['--chrome-bg'])).toBeGreaterThanOrEqual(4.5);
       expect(contrast(palette['--chrome-muted'], palette['--chrome-raised'])).toBeGreaterThanOrEqual(4.5);
       expect(contrast(palette['--chrome-control-border'], palette['--chrome-bg'])).toBeGreaterThanOrEqual(3);
-      expect(contrast(dark['--primary-color'], palette['--chrome-bg'])).toBeGreaterThanOrEqual(4.5);
+      expect(contrast(palette['--chrome-accent-ink'], palette['--chrome-accent'])).toBeGreaterThanOrEqual(4.5);
+      expect(contrast(palette['--chrome-accent-soft-ink'], palette['--chrome-accent-soft'])).toBeGreaterThanOrEqual(4.5);
     });
-    expect(light['--chrome-bg']).toBe('#121614');
-    expect(dark['--chrome-bg']).toBe('#070908');
-    // The dark bezel sits below the dark page, not on top of it.
+    // Light: a white header on the wash. Dark: the header sits below the page.
+    expect(light['--chrome-bg']).toBe('#ffffff');
+    expect(dark['--chrome-bg']).toBe('#0a0d13');
     expect(contrast(dark['--body-bg'], dark['--chrome-bg'])).toBeGreaterThan(1);
   });
 

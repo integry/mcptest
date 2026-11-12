@@ -45,10 +45,10 @@ describe('radius tokens', () => {
   it('uses one chrome radius and one small-control radius', () => {
     const scale = ruleFor(':root')!.body;
 
-    expect(declaration(scale, '--border-radius')).toBe('0.5rem');
-    expect(declaration(scale, '--border-radius-sm')).toBe('0.375rem');
-    expect(declaration(scale, '--button-radius')).toBe('0.5rem');
-    expect(declaration(scale, '--button-radius-sm')).toBe('0.375rem');
+    expect(declaration(scale, '--border-radius')).toBe('0.25rem');
+    expect(declaration(scale, '--border-radius-sm')).toBe('0.1875rem');
+    expect(declaration(scale, '--button-radius')).toBe('0.25rem');
+    expect(declaration(scale, '--button-radius-sm')).toBe('0.1875rem');
   });
 
   it('shapes the app chrome from the tokens instead of ad-hoc radii', () => {
@@ -79,18 +79,33 @@ describe('surfaces', () => {
     expect(offenders).toEqual([]);
   });
 
-  it('declares no gradients in the app chrome', () => {
-    const gradients = rules.filter((rule) => /gradient\(/.test(rule.body)).map((rule) => rule.selector);
+  it('keeps gradients to the page wash behind the shell', () => {
+    const gradients = rules
+      .filter((rule) => /gradient\(/.test(rule.body))
+      // The --page-wash token itself, defined once per theme.
+      .filter((rule) => !/^:root/.test(rule.selector))
+      .map((rule) => rule.selector);
 
     expect(gradients).toEqual([]);
+    const tokenGradients = rules
+      .filter((rule) => /^:root/.test(rule.selector))
+      .flatMap((rule) => [...rule.body.matchAll(/(--[a-z0-9-]+)\s*:[^;]*gradient\(/g)].map((found) => found[1]));
+    expect(new Set(tokenGradients)).toEqual(new Set(['--page-wash']));
+    expect(declaration(ruleFor('body')!.body, 'background-image')).toBe('var(--page-wash)');
   });
 });
 
 describe('label typography', () => {
-  it('never sets small text in uppercase or with tracking', () => {
-    const uppercase = rules
-      .filter((rule) => /text-transform:\s*uppercase/.test(rule.body))
-      .map((rule) => rule.selector);
+  it('sets uppercase only as mono structural labels, tracked the same way', () => {
+    const uppercase = rules.filter((rule) => /text-transform:\s*uppercase/.test(rule.body));
+
+    expect(uppercase.length).toBeGreaterThan(0);
+    uppercase.forEach((rule) => {
+      expect(declaration(rule.body, 'font-family'), rule.selector).toBe('var(--font-family-mono)');
+      expect(declaration(rule.body, 'font-size'), rule.selector).toBe('var(--text-2xs)');
+      expect(declaration(rule.body, 'letter-spacing'), rule.selector).toBe('0.08em');
+    });
+    // Running text is never tracked: only those capitals are.
     const tracked = rules
       .filter((rule) => {
         const spacing = declaration(rule.body, 'letter-spacing');
@@ -98,8 +113,6 @@ describe('label typography', () => {
         return spacing !== undefined && /^0?\.\d+(em|rem|px)$/.test(spacing) && size !== undefined && size < 0.875;
       })
       .map((rule) => rule.selector);
-
-    expect(uppercase).toEqual([]);
     expect(tracked).toEqual([]);
   });
 
@@ -144,7 +157,7 @@ describe('dead selectors', () => {
 
 describe('button shape', () => {
   it('defines a single button radius token', () => {
-    expect(declaration(ruleFor(':root')!.body, '--button-radius')).toBe('0.5rem');
+    expect(declaration(ruleFor(':root')!.body, '--button-radius')).toBe('0.25rem');
   });
 
   it('shapes every button from that token instead of hand-rolled radii', () => {
@@ -290,7 +303,7 @@ describe('badges', () => {
     expect(badge.length).toBeGreaterThan(0);
     badge.forEach((rule) => {
       const size = declaration(rule.body, 'font-size');
-      if (size) expect(size).toBe('0.72rem');
+      if (size) expect(size).toBe('0.6875rem');
     });
   });
 

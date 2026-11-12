@@ -1,7 +1,8 @@
 /* Design tokens. Imported first from src/index.css.
 
-   The mcptest.io design language ("signal"): a calm graphite instrument with
-   one strong accent, the green of the logo. docs/design-language.md lists
+   The mcptest.io design language ("inspector"): a bright, airy instrument on
+   a cool lavender wash, white surfaces with hairlines, mono for protocol
+   facts and one deep green accent. docs/design-language.md lists
    every token and the rules for using them; read it before adding a colour.
 
    Three blocks, on purpose:
@@ -36,11 +37,12 @@
   /* Radius. App chrome (cards, panels, inputs, menus) uses --border-radius;
      small controls (badges, segmented items, inline icons) use the -sm value.
      Buttons share the chrome radius so they echo the panels they sit in.
-     Only status pills are fully round. */
-  --border-radius: 0.5rem;
-  --border-radius-sm: 0.375rem;
-  --button-radius: 0.5rem;
-  --button-radius-sm: 0.375rem;
+     Corners are tight, like an instrument panel. Only status pills are
+     fully round. */
+  --border-radius: 0.25rem;
+  --border-radius-sm: 0.1875rem;
+  --button-radius: 0.25rem;
+  --button-radius-sm: 0.1875rem;
   --radius-pill: 999px;
 
   /* 4px spacing scale. */
@@ -51,6 +53,9 @@
   --space-5: 1.25rem;
   --space-6: 1.5rem;
   --space-8: 2rem;
+
+  /* Workspace padding; the session strip bleeds back across it. */
+  --main-pad: clamp(1rem, 2vw, 1.5rem);
 
   /* The signal rail: the 3px left edge that marks the active nav item, a
      verdict, a JSON-RPC message on the wire and a callout. */
@@ -65,158 +70,174 @@
      layout (src/components/learn/ReadingLayout.css uses the same values). */
   --code-font-size: 0.8rem;
   --code-line-height: 1.55;
-  --code-radius: 0.5rem;
+  --code-radius: 0.25rem;
 }
 
 /* --- Light palette (default) ---
-   Graphite neutrals with a faint green cast. Three distinct surface steps:
-   page < raised < surface, so panels lift off the page without shadows. */
+   A bright inspector on a cool lavender wash: white surfaces with hairlines,
+   ink-navy text, and one deep green accent. Three distinct surface steps:
+   page < raised < surface. */
 :root,
 :root[data-theme='light'] {
   /* Surfaces */
-  --body-bg: #eef0ee;
+  --body-bg: #f3f4f9;
   --card-bg: #ffffff;
-  --card-bg-secondary: #f5f7f5;
-  --card-header-bg: #f9faf9;
+  --card-bg-secondary: #f1f2f6;
+  --card-header-bg: #f8f9fb;
+  /* The page wash behind the shell: a cool blue corner fading to lavender.
+     Decorative only; every surface on it is opaque. */
+  --page-wash: radial-gradient(1100px 700px at 0% 0%, #e7f0fb 0%, rgba(231, 240, 251, 0) 70%), radial-gradient(1200px 900px at 100% 100%, #efe7fb 0%, rgba(239, 231, 251, 0) 65%);
+  --sidebar-bg: rgba(255, 255, 255, 0.42);
+  --strip-bg: rgba(255, 255, 255, 0.55);
   /* Text */
-  --text-color: #121513;
-  --text-muted: #5a625d;
-  --text-accent: #343b37;
-  --catalog-secondary-text: #49514c;
-  /* Accent: the logo green, darkened until white text passes AA on it */
-  --primary-color: #167a2c;
-  --primary-hover: #106323;
-  --primary-light: #1f8f36;
+  --text-color: #12151c;
+  --text-muted: #5a6070;
+  --text-accent: #2e3340;
+  --catalog-secondary-text: #474d5b;
+  /* Accent: a deep instrument green, dark enough for white text */
+  --primary-color: #1d6b53;
+  --primary-hover: #155440;
+  --primary-light: #23805f;
   --primary-ink: #ffffff;
-  --accent-text: #106323;
-  --accent-wash: #e6f1e8;
+  --accent-text: #155440;
+  --accent-wash: #e4f1ec;
   /* The primary action at reduced emphasis: Connect before a URL is typed.
      Still green, still labelled, clearly short of the solid fill. */
-  --primary-soft: #d3eada;
-  --primary-soft-border: #9fcfaa;
-  --primary-soft-ink: #1d6a31;
+  --primary-soft: #d3e9e0;
+  --primary-soft-border: #9ccbb9;
+  --primary-soft-ink: #1a5e48;
+  /* The ink button: account actions (sign in) that sit beside the accent
+     without competing with it. */
+  --ink-button-bg: #141824;
+  --ink-button-hover: #2a3040;
+  --ink-button-text: #ffffff;
   /* Neutral actions */
   --secondary-color: #6b746f;
-  --secondary-surface: #59615c;
-  --secondary-hover: #434a46;
-  /* Status */
+  --secondary-surface: #575d6b;
+  --secondary-hover: #434957;
+  /* Status: shared with the published SVG badges (src/utils/badges.ts) */
   --success-color: #167a2c;
   --info-color: #0b6f8a;
   --accent-violet: #6550d8;
   --danger-color: #c42b2b;
   --warning-color: #975300;
   /* Lines */
-  --border-color: #dce1dd;
-  --border-strong: #c3cac5;
+  --border-color: #e2e4eb;
+  --border-strong: #cdd1db;
   /* Inputs: the border alone identifies the field, so it holds 3:1 */
   --input-bg: #ffffff;
-  --input-border: #7d8781;
+  --input-border: #858b9b;
   --input-focus-border: var(--primary-color);
   /* Disabled is neutral, never a faded accent */
-  --disabled-bg: #e4e8e5;
-  --disabled-text: #6b736e;
-  --disabled-border: #d3d9d5;
+  --disabled-bg: #eceef3;
+  --disabled-text: #626877;
+  --disabled-border: #d8dbe3;
   /* The wire: outbound requests and inbound responses */
-  --wire-request: #5a625d;
-  --wire-response: #167a2c;
-  --link-color: #106323;
-  --link-hover: #0a3f16;
-  --focus-ring: 0 0 0 3px rgba(22, 122, 44, 0.28);
+  --wire-request: #5a6070;
+  --wire-response: #1d6b53;
+  --link-color: #155440;
+  --link-hover: #0b3326;
+  --focus-ring: 0 0 0 3px rgba(29, 107, 83, 0.26);
   /* The only shadow in the system: floating surfaces (menus, popovers,
      dialogs). Panels and cards use a hairline border instead. */
-  --shadow-float: 0 6px 16px -4px rgba(18, 21, 19, 0.16), 0 0 0 1px rgba(18, 21, 19, 0.05);
-  --hover-wash: rgba(18, 21, 19, 0.05);
-  --active-wash: rgba(18, 21, 19, 0.085);
-  /* Chrome: the header is a graphite instrument bezel in both themes, with
-     the accent signal line on top. Components inside it read these through
-     the scoped re-declarations in layout.css. */
-  --chrome-bg: #121614;
-  --chrome-raised: #1b211e;
-  --chrome-text: #eef1ee;
-  --chrome-muted: #a3ada7;
-  --chrome-border: #2a312d;
-  --chrome-control-border: #66716a;
-  --chrome-accent: #46d35a;
-  --chrome-accent-hover: #74e383;
-  --chrome-accent-ink: #04140a;
-  --chrome-accent-soft: #1b3a22;
-  --chrome-accent-soft-border: #2f6a3b;
-  --chrome-accent-soft-ink: #90dd9c;
-  /* Hero backdrop: the instrument face behind the landing headline. */
+  --shadow-float: 0 8px 24px -6px rgba(18, 21, 40, 0.16), 0 0 0 1px rgba(18, 21, 40, 0.05);
+  --hover-wash: rgba(18, 21, 40, 0.045);
+  --active-wash: rgba(18, 21, 40, 0.08);
+  /* Chrome: the header, the session strip and the endpoint command bars.
+     Light and quiet in the light theme, a step below the page in dark. */
+  --chrome-bg: #ffffff;
+  --chrome-raised: #f6f7fa;
+  --chrome-text: #12151c;
+  --chrome-muted: #5a6070;
+  --chrome-border: #e2e4eb;
+  --chrome-control-border: #858b9b;
+  --chrome-accent: #1d6b53;
+  --chrome-accent-hover: #155440;
+  --chrome-accent-ink: #ffffff;
+  --chrome-accent-soft: #d3e9e0;
+  --chrome-accent-soft-border: #9ccbb9;
+  --chrome-accent-soft-ink: #1a5e48;
+  /* Page heads that identify a thing. */
   --hero-bg: #ffffff;
-  --hero-border: #d3d9d5;
+  --hero-border: #e2e4eb;
 }
 
 /* --- Dark palette ---
-   Near-black graphite, not inverted slate: the page is darker than any
-   surface, the accent is the logo green at full brightness, and text on it
-   is a deep green ink rather than white. */
+   Deep ink-navy, not inverted: the page is darker than any surface, the
+   accent is a brighter instrument green, and text on it is a deep green
+   ink rather than white. */
 :root[data-theme='dark'] {
   /* Surfaces */
-  --body-bg: #0b0d0c;
-  --card-bg: #141816;
-  --card-bg-secondary: #1c211e;
-  --card-header-bg: #171b19;
+  --body-bg: #0c0f16;
+  --card-bg: #151923;
+  --card-bg-secondary: #1c212d;
+  --card-header-bg: #181c27;
+  --page-wash: radial-gradient(1100px 700px at 0% 0%, #111a2b 0%, rgba(17, 26, 43, 0) 70%), radial-gradient(1200px 900px at 100% 100%, #181429 0%, rgba(24, 20, 41, 0) 65%);
+  --sidebar-bg: rgba(255, 255, 255, 0.02);
+  --strip-bg: rgba(255, 255, 255, 0.025);
   /* Text */
-  --text-color: #e9ece9;
-  --text-muted: #9aa49e;
-  --text-accent: #c6cdc8;
-  --catalog-secondary-text: #b5bdb8;
+  --text-color: #e8ebf2;
+  --text-muted: #9aa1b2;
+  --text-accent: #c5cad6;
+  --catalog-secondary-text: #b3b9c7;
   /* Accent */
-  --primary-color: #46d35a;
-  --primary-hover: #74e383;
-  --primary-light: #a6efb0;
-  --primary-ink: #04140a;
-  --accent-text: #74e383;
-  --accent-wash: #15291a;
-  --primary-soft: #1b3a22;
-  --primary-soft-border: #2f6a3b;
-  --primary-soft-ink: #90dd9c;
+  --primary-color: #3fc794;
+  --primary-hover: #6fd9b0;
+  --primary-light: #a3ecd0;
+  --primary-ink: #04140e;
+  --accent-text: #6fd9b0;
+  --accent-wash: #13291f;
+  --primary-soft: #183a2e;
+  --primary-soft-border: #2c6a53;
+  --primary-soft-ink: #8fdcbd;
+  --ink-button-bg: #e8ebf2;
+  --ink-button-hover: #ffffff;
+  --ink-button-text: #0c0f16;
   /* Neutral actions */
-  --secondary-color: #9aa49e;
-  --secondary-surface: #4a534d;
-  --secondary-hover: #5d6761;
+  --secondary-color: #9aa1b2;
+  --secondary-surface: #4a5060;
+  --secondary-hover: #5d6475;
   /* Status */
-  --success-color: #46d35a;
+  --success-color: #46d38a;
   --info-color: #5ccfe8;
   --accent-violet: #a497ff;
-  --danger-color: #ff7a72;
+  --danger-color: #ff7a80;
   --warning-color: #f2b33d;
   /* Lines */
-  --border-color: #2a312d;
-  --border-strong: #3a423d;
+  --border-color: #272c39;
+  --border-strong: #383e4d;
   /* Inputs */
-  --input-bg: #0f1211;
-  --input-border: #66716a;
+  --input-bg: #10131b;
+  --input-border: #6a7184;
   --input-focus-border: var(--primary-color);
   /* Disabled */
-  --disabled-bg: #232925;
-  --disabled-text: #8a938d;
-  --disabled-border: #2f3632;
+  --disabled-bg: #222734;
+  --disabled-text: #8b92a3;
+  --disabled-border: #2e3342;
   /* The wire */
-  --wire-request: #9aa49e;
-  --wire-response: #46d35a;
-  --link-color: #74e383;
+  --wire-request: #9aa1b2;
+  --wire-response: #3fc794;
+  --link-color: #6fd9b0;
   --link-hover: #ffffff;
-  --focus-ring: 0 0 0 3px rgba(70, 211, 90, 0.35);
+  --focus-ring: 0 0 0 3px rgba(63, 199, 148, 0.35);
   --shadow-float: 0 10px 28px -6px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.07);
-  --hover-wash: rgba(233, 236, 233, 0.06);
-  --active-wash: rgba(233, 236, 233, 0.1);
-  /* Chrome: a step below the page, so the bezel frames the dark workspace. */
-  --chrome-bg: #070908;
-  --chrome-raised: #141816;
-  --chrome-text: #e9ece9;
-  --chrome-muted: #9aa49e;
-  --chrome-border: #232925;
-  --chrome-control-border: #66716a;
-  --chrome-accent: #46d35a;
-  --chrome-accent-hover: #74e383;
-  --chrome-accent-ink: #04140a;
-  --chrome-accent-soft: #1b3a22;
-  --chrome-accent-soft-border: #2f6a3b;
-  --chrome-accent-soft-ink: #90dd9c;
-  --hero-bg: #111513;
-  --hero-border: #2a312d;
+  --hover-wash: rgba(232, 235, 242, 0.06);
+  --active-wash: rgba(232, 235, 242, 0.1);
+  /* Chrome: a step below the page, so the header frames the workspace. */
+  --chrome-bg: #0a0d13;
+  --chrome-raised: #151923;
+  --chrome-text: #e8ebf2;
+  --chrome-muted: #9aa1b2;
+  --chrome-border: #222734;
+  --chrome-control-border: #6a7184;
+  --chrome-accent: #3fc794;
+  --chrome-accent-hover: #6fd9b0;
+  --chrome-accent-ink: #04140e;
+  --chrome-accent-soft: #183a2e;
+  --chrome-accent-soft-border: #2c6a53;
+  --chrome-accent-soft-ink: #8fdcbd;
+  --hero-bg: #121620;
+  --hero-border: #272c39;
 }
 
 @media (prefers-reduced-motion: reduce) {

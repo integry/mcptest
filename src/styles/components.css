@@ -1324,40 +1324,59 @@ span.health-indicator.health-indicator-gray {
   letter-spacing: 0;
 }
 
-/* The command bar: the same graphite instrument as the landing connect
-   form (chrome scope in layout.css), so connecting looks the same from the
-   first visit to the workbench. */
+/* The command bar: the same white field as the landing connect form (chrome
+   scope in layout.css), so connecting looks the same from the first visit to
+   the workbench. */
 .connection-console .input-group {
   flex-wrap: nowrap;
-  gap: 0.375rem;
+  align-items: center;
+  gap: 0.5rem;
   padding: 0.375rem;
-  border: 1px solid var(--chrome-border);
-  border-radius: calc(var(--button-radius) + 0.125rem);
+  border: 1px solid var(--input-border);
+  border-radius: var(--border-radius);
   background: var(--chrome-bg);
   box-shadow: none;
 }
 
 .connection-console .input-group:focus-within {
-  border-color: var(--chrome-control-border);
-  box-shadow: none;
+  border-color: var(--input-focus-border);
+  box-shadow: var(--focus-ring);
+}
+
+.connection-console .input-group::before {
+  content: 'MCP // HTTPS';
+  content: 'MCP // HTTPS' / '';
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  height: 1.875rem;
+  padding: 0 0.625rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  background: var(--chrome-raised);
+  color: var(--text-muted);
+  font-family: var(--font-family-mono);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
 }
 
 .connection-console .input-group .form-control {
   min-height: 2.5rem;
   padding: 0.5rem 0.75rem;
-  border: 1px solid var(--input-border) !important;
+  border: 0 !important;
   border-radius: var(--button-radius) !important;
-  background: var(--input-bg) !important;
+  background: transparent !important;
   box-shadow: none;
   color: var(--text-color) !important;
   font-family: var(--font-family-mono);
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
 }
 
 .connection-console .input-group .form-control:focus {
   z-index: 3;
-  border-color: var(--input-focus-border) !important;
-  box-shadow: var(--focus-ring) !important;
+  box-shadow: none !important;
 }
 
 .connection-console .input-group .btn {
@@ -1830,15 +1849,16 @@ span.health-indicator.health-indicator-gray {
   border-right: 1px solid var(--border-color);
 }
 
-/* A section label, like the sidebar's: mono, quiet, natural case. */
+/* A section label, like the sidebar's: small mono capitals, tracked. */
 .catalog-category-heading {
   margin: 0 0 var(--space-1);
   padding: 0 var(--space-2);
   color: var(--text-muted);
   font-family: var(--font-family-mono);
-  font-size: 0.8125rem;
-  font-weight: var(--weight-medium);
-  letter-spacing: 0;
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .catalog-category-option {
@@ -2205,8 +2225,8 @@ button.badge.catalog-metadata-badge--category:focus-visible {
    border colours above, exactly as it did before the stylesheet was split. */
 .badge {
   border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
-  font-family: var(--font-family-sans-serif);
-  font-size: 0.72rem;
+  font-family: var(--font-family-mono);
+  font-size: 0.6875rem;
   font-weight: 600;
   letter-spacing: 0;
 }
@@ -2332,6 +2352,10 @@ pre.bg-light code {
     gap: 0.5rem;
     width: 100%;
     min-width: 0;
+  }
+
+  .connection-console .input-group::before {
+    display: none;
   }
 
   .connection-console .input-group .form-control,

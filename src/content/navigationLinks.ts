@@ -106,7 +106,7 @@ export const DASHBOARDS_NAVIGATION: NavigationLink = {
 };
 
 export const NAVIGATION_GROUPS: readonly NavigationGroup[] = [
-  { id: 'start', label: 'Workspace', labelHidden: true, items: [PLAYGROUND_NAVIGATION, CATALOG_NAVIGATION] },
+  { id: 'start', label: 'Workspace', items: [PLAYGROUND_NAVIGATION, CATALOG_NAVIGATION] },
   { id: 'checks', label: 'Checks', items: CHECKS_NAVIGATION },
   { id: 'saved', label: 'Saved work', items: [REPORTS_NAVIGATION, DASHBOARDS_NAVIGATION] },
 ];
@@ -207,7 +207,7 @@ export const LEGAL_NAVIGATION: readonly FooterLink[] = [
  * (cors-proxy-worker). Connecting and testing need no account.
  */
 export const HEADER_COPY = {
-  descriptor: 'Test, check and browse remote MCP servers',
+  descriptor: 'Remote MCP Inspector',
   signIn: 'Login with Google',
   signInHint: 'Optional: sync and higher proxy limits',
   signInDescription:

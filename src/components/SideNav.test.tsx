@@ -87,47 +87,26 @@ describe('SideNav dashboard rows', () => {
     style.remove();
   });
 
-  it('presents section labels in natural case without micro-label typography', () => {
+  it('sets section labels as small mono capitals, the Learn toggle included', () => {
     const sidebarCss = readStylesheet();
     const container = renderStatic('playground', '/', []);
 
     expect(
       Array.from(container.querySelectorAll('.sidenav-section-label'), (label) => label.textContent)
-    ).toEqual(['Checks', 'Saved work']);
-    // The Learn heading is a toggle set in the same type as the section labels.
-    const learnToggleRule = sidebarCss.slice(
-      sidebarCss.indexOf('.app-sidenav .sidenav-section-toggle.nav-link {'),
-      sidebarCss.indexOf('}', sidebarCss.indexOf('.app-sidenav .sidenav-section-toggle.nav-link {'))
-    );
-    expect(learnToggleRule).toMatch(/font-size:\s*0\.8125rem/);
-    expect(learnToggleRule).toMatch(/letter-spacing:\s*0/);
-    expect(sidebarCss).not.toMatch(/text-transform:\s*uppercase/i);
+    ).toEqual(['Workspace', 'Checks', 'Saved work']);
 
-    const sectionRuleStart = sidebarCss.indexOf('.sidenav-section-label {');
-    const sectionRuleEnd = sidebarCss.indexOf('}', sectionRuleStart);
-    const sectionRule = sidebarCss.slice(sectionRuleStart, sectionRuleEnd);
-    // Body-sized, not a micro-label: at least 13px and no tracking.
-    expect(parseFloat(sectionRule.match(/font-size:\s*([\d.]+)rem/)?.[1] ?? '0')).toBeGreaterThanOrEqual(0.8125);
-    expect(sectionRule).toMatch(/letter-spacing:\s*0/);
-
-    const labelSelectors = [
-      '.sidenav-section-label',
-      '.catalog-category-heading',
-      '.server-signal-label',
-      '.server-endpoint-box span',
-      '.catalog-filters .form-label',
-      '.authorization-setup-kicker',
-    ];
-
-    labelSelectors.forEach((selector) => {
-      const ruleStart = sidebarCss.indexOf(`${selector} {`);
-      const ruleEnd = sidebarCss.indexOf('}', ruleStart);
-      const rule = sidebarCss.slice(ruleStart, ruleEnd);
-
-      expect(ruleStart, `${selector} should have a style rule`).toBeGreaterThan(-1);
-      expect(parseFloat(rule.match(/font-size:\s*([\d.]+)rem/)?.[1] ?? '0')).toBeGreaterThanOrEqual(0.8);
-      expect(rule).not.toMatch(/text-transform/);
-      expect(rule).toMatch(/letter-spacing:\s*0/);
+    const ruleBody = (selector: string) => {
+      const start = sidebarCss.indexOf(`${selector} {`);
+      expect(start, `${selector} should have a style rule`).toBeGreaterThan(-1);
+      return sidebarCss.slice(start, sidebarCss.indexOf('}', start));
+    };
+    // The structural labels share one type: mono, 11px, tracked capitals.
+    ['.sidenav-section-label', '.app-sidenav .sidenav-section-toggle.nav-link', '.catalog-category-heading'].forEach((selector) => {
+      const rule = ruleBody(selector);
+      expect(rule, selector).toMatch(/font-family:\s*var\(--font-family-mono\)/);
+      expect(rule, selector).toMatch(/font-size:\s*var\(--text-2xs\)/);
+      expect(rule, selector).toMatch(/letter-spacing:\s*0\.08em/);
+      expect(rule, selector).toMatch(/text-transform:\s*uppercase/);
     });
   });
 });
@@ -144,8 +123,10 @@ describe('SideNav information architecture', () => {
     const sections = Array.from(container.querySelectorAll('.app-sidenav > section.sidenav-group'));
     expect(sections.map(section => section.querySelector('h2')?.textContent?.trim()))
       .toEqual(['Workspace', 'Checks', 'Saved work', 'Learn']);
-    // The first group's heading is for screen readers; the rest are visible labels.
-    expect(sections[0].querySelector('h2')?.classList).toContain('visually-hidden');
+    // Every group, the first included, shows its heading as a section label.
+    sections.slice(0, 3).forEach(section => {
+      expect(section.querySelector('h2')?.classList).toContain('sidenav-section-label');
+    });
     // Each group is a region named by its own heading.
     sections.forEach(section => {
       expect(section.querySelector(`[id="${section.getAttribute('aria-labelledby')}"]`)?.textContent?.trim()).toBeTruthy();

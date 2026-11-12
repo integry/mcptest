@@ -11,7 +11,7 @@ test.describe('sidebar navigation', () => {
     const nav = page.locator(sidebar);
     await expect(nav.getByRole('link', { name: 'Discovery checker' })).toHaveAttribute('aria-current', 'page');
 
-    await expect(nav.locator('.sidenav-section-label')).toHaveText(['Checks', 'Saved work']);
+    await expect(nav.locator('.sidenav-section-label')).toHaveText(['Workspace', 'Checks', 'Saved work']);
     await expect(nav.getByRole('region', { name: 'Checks' }).getByRole('link'))
       .toHaveText(['Breaking changes', 'OAuth checker', 'Discovery checker']);
     await expect(nav.getByRole('region', { name: 'Saved work' }).getByRole('link')).toHaveText(['Reports', 'Dashboards']);

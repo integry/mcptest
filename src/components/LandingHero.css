@@ -107,66 +107,70 @@
   border-color: var(--danger-color);
 }
 
-/* The command bar: the connect form is a graphite instrument in both themes
-   (it shares the header's chrome scope in layout.css). A mono request arrow,
-   the wire's outbound marker, sits in front of the endpoint field. */
+/* The command bar: one white field (it shares the header's chrome scope in
+   layout.css) led by a mono protocol chip, the endpoint in mono, and the
+   solid Connect key at the end. The bar's border identifies the field. */
 .landing-connect {
   position: relative;
   display: flex;
+  align-items: center;
   gap: 0.5rem;
   min-width: 0;
-  padding: 0.5rem;
+  padding: 0.375rem;
   background-color: var(--chrome-bg);
-  border: 1px solid var(--chrome-border);
-  border-radius: calc(var(--border-radius) + 0.25rem);
-  transition: border-color var(--motion-fast) ease;
+  border: 1px solid var(--input-border);
+  border-radius: var(--border-radius);
+  transition: border-color var(--motion-fast) ease, box-shadow var(--motion-fast) ease;
 }
 
 .landing-connect:focus-within {
-  border-color: var(--chrome-control-border);
+  border-color: var(--input-focus-border);
+  box-shadow: var(--focus-ring);
 }
 
 .landing-connect::before {
-  content: '\2192';
-  content: '\2192' / '';
-  position: absolute;
-  top: 0.5rem;
-  left: 0.5rem;
-  z-index: 1;
-  display: flex;
+  content: 'MCP // HTTPS';
+  content: 'MCP // HTTPS' / '';
+  display: inline-flex;
+  flex: 0 0 auto;
   align-items: center;
-  justify-content: center;
-  width: 2.5rem;
-  height: 3rem;
-  color: var(--primary-color);
+  height: 2rem;
+  padding: 0 0.625rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  background: var(--chrome-raised);
+  color: var(--text-muted);
   font-family: var(--font-family-mono);
-  font-weight: var(--weight-bold);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
   pointer-events: none;
 }
 
 .landing-connect-input.form-control {
   flex: 1 1 auto;
   min-width: 0;
-  height: 3rem;
-  padding: 0 1rem 0 2.5rem;
+  height: 2.75rem;
+  padding: 0 0.75rem;
   font-family: var(--font-family-mono);
   font-size: 0.95rem;
   color: var(--text-color);
-  background: var(--input-bg);
-  border: 1px solid var(--input-border);
+  background: transparent;
+  border: 0;
   border-radius: var(--button-radius);
 }
 
 .landing-connect-input.form-control:focus {
-  border-color: var(--input-focus-border);
-  box-shadow: var(--focus-ring);
+  background: transparent;
+  box-shadow: none;
 }
 
 .landing-connect-button.btn {
   flex: 0 0 auto;
-  height: 3rem;
-  padding: 0 1.4rem;
-  font-weight: var(--weight-bold);
+  height: 2.75rem;
+  padding: 0 1.75rem;
+  font-weight: var(--weight-semibold);
   border-radius: var(--button-radius);
 }
 
@@ -578,6 +582,11 @@
 @media (max-width: 575.98px) {
   .landing-connect {
     flex-direction: column;
+    align-items: stretch;
+  }
+
+  .landing-connect::before {
+    display: none;
   }
 
   .landing-connect-button.btn {

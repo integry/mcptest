@@ -1112,7 +1112,7 @@ function renderHeaderFallback({ authEnabled }) {
       + '<i class="theme-toggle-icon bi bi-moon-stars-fill" aria-hidden="true"></i><i class="theme-toggle-icon bi bi-sun-fill" aria-hidden="true"></i></button>',
     // Header.tsx holds the sign-in control's space while auth resolves.
     ...(authEnabled
-      ? [`    <div class="app-auth app-auth-placeholder" style="visibility: hidden;" aria-hidden="true"><span class="app-auth-hint">${escapeHtml(HEADER_COPY.signInHint)}</span><button type="button" class="btn btn-sm btn-primary" tabindex="-1" disabled>${escapeHtml(HEADER_COPY.signIn)}</button></div>`]
+      ? [`    <div class="app-auth app-auth-placeholder" style="visibility: hidden;" aria-hidden="true"><span class="app-auth-hint">${escapeHtml(HEADER_COPY.signInHint)}</span><button type="button" class="btn btn-sm app-signin-btn" tabindex="-1" disabled><i class="bi bi-google" aria-hidden="true"></i>${escapeHtml(HEADER_COPY.signIn)}</button></div>`]
       : []),
     '  </div>',
     '</header>',

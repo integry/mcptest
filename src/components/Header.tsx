@@ -66,7 +66,8 @@ const Header: React.FC<HeaderProps> = ({ theme, onToggleTheme }) => {
               // shell in dist/index.html renders the same placeholder.
               <div className="app-auth app-auth-placeholder" style={{ visibility: 'hidden' }} aria-hidden="true">
                 <span className="app-auth-hint">{HEADER_COPY.signInHint}</span>
-                <button type="button" className="btn btn-sm btn-primary" tabIndex={-1} disabled>
+                <button type="button" className="btn btn-sm app-signin-btn" tabIndex={-1} disabled>
+                  <i className="bi bi-google" aria-hidden="true"></i>
                   {HEADER_COPY.signIn}
                 </button>
               </div>
@@ -84,11 +85,12 @@ const Header: React.FC<HeaderProps> = ({ theme, onToggleTheme }) => {
                 </span>
                 <button
                   type="button"
-                  className="btn btn-sm btn-primary"
+                  className="btn btn-sm app-signin-btn"
                   onClick={loginWithGoogle}
                   aria-describedby={SIGN_IN_HINT_ID}
                   title={HEADER_COPY.signInDescription}
                 >
+                  <i className="bi bi-google" aria-hidden="true"></i>
                   {HEADER_COPY.signIn}
                 </button>
               </div>
