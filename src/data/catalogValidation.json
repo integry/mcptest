@@ -4243,5 +4243,17 @@
     "authorizationServers": [
       "https://api.omniakey.com"
     ]
+  },
+  {
+    "serverId": "eorscope",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateful",
+    "checkedAt": "2026-11-13T09:28:22.071Z",
+    "message": "Negotiated stateful MCP 2025-11-25 at https://mcp.eorscope.com/mcp; detected transport streamable-http; authentication none",
+    "validatedUrl": "https://mcp.eorscope.com/mcp",
+    "protocolVersion": "2025-11-25"
   }
 ]

@@ -3924,6 +3924,600 @@
       "items": []
     }
   },
+  "eorscope": {
+    "version": 1,
+    "observedAt": "2026-11-13T09:28:21.939Z",
+    "provenance": {
+      "testedEndpoint": "https://mcp.eorscope.com/mcp",
+      "route": "direct"
+    },
+    "authentication": "unauthenticated",
+    "tools": {
+      "status": "partial",
+      "observedCount": 14,
+      "retainedCount": 14,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "compare_countries",
+          "description": "Use this when the user wants the statutory employer cost of the same gross salary in 2 to 10 countries (e.g. \"employer cost of 70k in Poland, Portugal and Spain\", \"combien coûte un salaire de 60 000 en Irlande et aux Pays-Bas\"). Before any Employer of Record fee; rows come back in the order requested, not ranked. Do not use when each country has its own salary (use compare_offers). Data snapshot 2026-11-06. Cost comparison, not legal or tax advice.",
+          "input": [
+            {
+              "name": "countries",
+              "type": "array",
+              "required": true
+            },
+            {
+              "name": "payments_per_year",
+              "type": "number",
+              "description": "With salary_period \"month\" only: the total number of monthly salaries the contract pays in a year, statutory ones included (e.g. 14). Omit to use the statutory number of the country.",
+              "required": false
+            },
+            {
+              "name": "salary_period",
+              "type": "string",
+              "description": "Whether the salary is a year (default) or a month. Pass a monthly salary as the user gives it, with \"month\": the statutory number of monthly payments of the country (13th, 14th month) is applied, see salary_basis in the answer.",
+              "required": false
+            },
+            {
+              "name": "salary_usd",
+              "type": "number",
+              "description": "Gross salary in USD, a year unless salary_period is \"month\", applied to every country",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "compare_offers",
+          "description": "Use this when the user has job offers or candidates in 2 to 6 countries, each with its own gross salary (in USD or the local currency), and wants the total employer cost of each (e.g. \"candidate A in Poland at 240,000 PLN, candidate B in Portugal at 45k: what does each cost the company?\"). A monthly offer is passed with salary_period \"month\", which applies each country's statutory 13th or 14th month (e.g. \"un candidat à 3 000 par mois à Madrid et un autre à 60 000 par an à Dublin\"). Returns salary plus statutory employer charges, before any Employer of Record fee, the difference and ratio of e",
+          "input": [
+            {
+              "name": "offers",
+              "type": "array",
+              "description": "One offer per country, 2 to 6 countries, each with its own salary",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "compare_structures",
+          "description": "Use this when the user is deciding between hiring through an Employer of Record, setting up their own entity, or engaging contractors in a country and wants the cost of each over 1 to 5 years (e.g. \"from how many employees should we open an entity in Poland instead of using an EOR?\"). Uses the fees and entity costs the user enters plus the statutory employer charges, and gives the headcount at which entity costs and EOR fees cross. Costs only: it does not say whether a contractor arrangement is lawful. Data snapshot 2026-11-06. Cost comparison, not legal or tax advice.",
+          "input": [
+            {
+              "name": "assumptions",
+              "type": "object",
+              "description": "Override an adjustable assumption the country declares, e.g. {\"basic_share_of_gross\": 0.6}. See `assumptions` in an employer_cost answer.",
+              "required": false
+            },
+            {
+              "name": "contractor_fee_usd_month",
+              "type": "number",
+              "description": "A contractor platform fee, if the user has one, in USD per employee per month, as the user gives it",
+              "required": false
+            },
+            {
+              "name": "country",
+              "type": "string",
+              "description": "ISO 3166-1 alpha-2 code (\"DE\") or country name (\"Germany\")",
+              "required": true
+            },
+            {
+              "name": "entity_annual_usd",
+              "type": "number",
+              "description": "Yearly entity running cost in USD (payroll, accounting, filings), from the user",
+              "required": false
+            },
+            {
+              "name": "entity_setup_usd",
+              "type": "number",
+              "description": "One-off entity set-up cost in USD, from the user",
+              "required": false
+            },
+            {
+              "name": "eor_fee_usd_month",
+              "type": "number",
+              "description": "The EOR fee the user has been quoted, in USD per employee per month, as the user gives it",
+              "required": true
+            },
+            {
+              "name": "headcount",
+              "type": "integer",
+              "description": "Number of employees",
+              "required": false
+            },
+            {
+              "name": "payments_per_year",
+              "type": "number",
+              "description": "With salary_period \"month\" only: the total number of monthly salaries the contract pays in a year, statutory ones included (e.g. 14). Omit to use the statutory number of the country.",
+              "required": false
+            },
+            {
+              "name": "salary",
+              "type": "number",
+              "description": "Gross salary, a year unless salary_period is \"month\". Omit to use the country's example salary.",
+              "required": false
+            },
+            {
+              "name": "salary_currency",
+              "type": "string",
+              "description": "Currency of `salary`: USD, or the local currency of the country",
+              "required": false
+            },
+            {
+              "name": "salary_period",
+              "type": "string",
+              "description": "Whether the salary is a year (default) or a month. Pass a monthly salary as the user gives it, with \"month\": the statutory number of monthly payments of the country (13th, 14th month) is applied, see salary_basis in the answer.",
+              "required": false
+            },
+            {
+              "name": "years",
+              "type": "integer",
+              "description": "Horizon in years",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "contractor_rate_equivalent",
+          "description": "Use this when the user asks what day or hour rate a contractor would need to cost the same as an employee in a country, or wants to set a contractor rate against the full cost of employment (e.g. \"what daily rate equals an 80k employee in Germany?\"). The employee's annual cost (gross salary plus statutory employer charges, plus an Employer of Record fee if the user gives one) is divided by working days, by default 260 weekdays minus the country's statutory paid leave and public holidays, both adjustable. Costs only: it does not say whether a contractor arrangement is lawful or how to classify",
+          "input": [
+            {
+              "name": "assumptions",
+              "type": "object",
+              "description": "Override an adjustable assumption the country declares, e.g. {\"basic_share_of_gross\": 0.6}. See `assumptions` in an employer_cost answer.",
+              "required": false
+            },
+            {
+              "name": "country",
+              "type": "string",
+              "description": "ISO 3166-1 alpha-2 code (\"DE\") or country name (\"Germany\")",
+              "required": true
+            },
+            {
+              "name": "eor_fee_usd_month",
+              "type": "number",
+              "description": "An EOR fee to add to the employee cost, in USD per employee per month, as the user gives it",
+              "required": false
+            },
+            {
+              "name": "hours_per_day",
+              "type": "number",
+              "description": "Hours per working day",
+              "required": false
+            },
+            {
+              "name": "paid_leave_days",
+              "type": "number",
+              "description": "Paid leave days a year. Omit to use the country's statutory minimum.",
+              "required": false
+            },
+            {
+              "name": "payments_per_year",
+              "type": "number",
+              "description": "With salary_period \"month\" only: the total number of monthly salaries the contract pays in a year, statutory ones included (e.g. 14). Omit to use the statutory number of the country.",
+              "required": false
+            },
+            {
+              "name": "public_holidays",
+              "type": "number",
+              "description": "Public holidays falling on weekdays. Omit to use the number recorded for the country.",
+              "required": false
+            },
+            {
+              "name": "salary",
+              "type": "number",
+              "description": "Gross salary, a year unless salary_period is \"month\". Omit to use the country's example salary.",
+              "required": false
+            },
+            {
+              "name": "salary_currency",
+              "type": "string",
+              "description": "Currency of `salary`: USD, or the local currency of the country",
+              "required": false
+            },
+            {
+              "name": "salary_period",
+              "type": "string",
+              "description": "Whether the salary is a year (default) or a month. Pass a monthly salary as the user gives it, with \"month\": the statutory number of monthly payments of the country (13th, 14th month) is applied, see salary_basis in the answer.",
+              "required": false
+            },
+            {
+              "name": "working_days",
+              "type": "number",
+              "description": "Working days a year, replacing the default calculation",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "cost_next_year",
+          "description": "Use this when the user budgets an employee for next year or a future date and asks how the statutory employer cost will move (e.g. \"what will this hire in Brazil cost the employer in January 2027?\"). Returns the cost today and at that date (by default 1 January of next year), at the same gross salary and exchange rate, applying only the enacted dated changes recorded for the country; changes announced in a budget come in a separate, flagged variant, and dates deduced from a source are flagged. A country whose changes are not tracked yet gets today's cost and \"not yet tracked\", never a projecti",
+          "input": [
+            {
+              "name": "assumptions",
+              "type": "object",
+              "description": "Override an adjustable assumption the country declares, e.g. {\"basic_share_of_gross\": 0.6}. See `assumptions` in an employer_cost answer.",
+              "required": false
+            },
+            {
+              "name": "country",
+              "type": "string",
+              "description": "ISO 3166-1 alpha-2 code (\"DE\") or country name (\"Germany\")",
+              "required": true
+            },
+            {
+              "name": "on_date",
+              "type": "string",
+              "description": "Date of the projection, YYYY-MM-DD. Omit for 1 January of the year after the data snapshot.",
+              "required": false
+            },
+            {
+              "name": "payments_per_year",
+              "type": "number",
+              "description": "With salary_period \"month\" only: the total number of monthly salaries the contract pays in a year, statutory ones included (e.g. 14). Omit to use the statutory number of the country.",
+              "required": false
+            },
+            {
+              "name": "salary",
+              "type": "number",
+              "description": "Gross salary, a year unless salary_period is \"month\". Omit to use the country's example salary.",
+              "required": false
+            },
+            {
+              "name": "salary_currency",
+              "type": "string",
+              "description": "Currency of `salary`: USD, or the local currency of the country",
+              "required": false
+            },
+            {
+              "name": "salary_period",
+              "type": "string",
+              "description": "Whether the salary is a year (default) or a month. Pass a monthly salary as the user gives it, with \"month\": the statutory number of monthly payments of the country (13th, 14th month) is applied, see salary_basis in the answer.",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "employer_cost",
+          "description": "Use this when the user asks what an employee costs the employer in a country beyond the gross salary: employer social security contributions, payroll taxes, pension, health or accident insurance, mandatory levies, or the total cost of employment (e.g. \"how much does it cost to employ a developer in Germany at 80k\", \"employer charges in Spain\", \"coût employeur d'un salarié en Pologne\"). Returns each statutory employer contribution with its rate, base, ceiling, source (official wherever one exists) and check date, then the monthly and annual total and its percent of gross, before any Employer of",
+          "input": [
+            {
+              "name": "assumptions",
+              "type": "object",
+              "description": "Override an adjustable assumption the country declares, e.g. {\"basic_share_of_gross\": 0.6}. See `assumptions` in an employer_cost answer.",
+              "required": false
+            },
+            {
+              "name": "country",
+              "type": "string",
+              "description": "ISO 3166-1 alpha-2 code (\"DE\") or country name (\"Germany\")",
+              "required": true
+            },
+            {
+              "name": "include_notes",
+              "type": "boolean",
+              "description": "Include the long legal note behind each line",
+              "required": false
+            },
+            {
+              "name": "payments_per_year",
+              "type": "number",
+              "description": "With salary_period \"month\" only: the total number of monthly salaries the contract pays in a year, statutory ones included (e.g. 14). Omit to use the statutory number of the country.",
+              "required": false
+            },
+            {
+              "name": "salary",
+              "type": "number",
+              "description": "Gross salary, a year unless salary_period is \"month\". Omit to use the country's example salary.",
+              "required": false
+            },
+            {
+              "name": "salary_currency",
+              "type": "string",
+              "description": "Currency of `salary`: USD, or the local currency of the country",
+              "required": false
+            },
+            {
+              "name": "salary_period",
+              "type": "string",
+              "description": "Whether the salary is a year (default) or a month. Pass a monthly salary as the user gives it, with \"month\": the statutory number of monthly payments of the country (13th, 14th month) is applied, see salary_basis in the answer.",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "employment_terms",
+          "description": "Use this when the user, hiring in a country, asks about statutory minimums: paid leave days, public holidays, maximum probation, notice period, 13th-month payment or other mandatory payments (e.g. \"how many days of leave in Brazil\", \"is there a 13th month in Mexico\"). Each term comes with its source and check date. Do not use for legal advice on a specific dismissal, contract dispute or visa. Data snapshot 2026-11-06. Cost comparison, not legal or tax advice.",
+          "input": [
+            {
+              "name": "country",
+              "type": "string",
+              "description": "ISO 3166-1 alpha-2 code (\"DE\") or country name (\"Germany\")",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "fx_stress",
+          "description": "Use this when the user pays, or plans to pay, an employee in local currency and asks about exchange-rate risk or a USD budget (e.g. \"what if the real moves 10%\", \"risque de change sur un salaire en pesos\"). Returns the USD cost (gross salary plus statutory employer charges, before any Employer of Record fee) at the official exchange rate of the data snapshot, with its date and source, and if the local currency moves by 5, 10 or 20 percent either way; with a USD budget, the headroom in each case and the move at which the budget is reached. Do not use for currency conversion alone. Data snapshot",
+          "input": [
+            {
+              "name": "assumptions",
+              "type": "object",
+              "description": "Override an adjustable assumption the country declares, e.g. {\"basic_share_of_gross\": 0.6}. See `assumptions` in an employer_cost answer.",
+              "required": false
+            },
+            {
+              "name": "budget_usd",
+              "type": "number",
+              "description": "Annual budget in USD for salary plus employer charges, if the user has one",
+              "required": false
+            },
+            {
+              "name": "country",
+              "type": "string",
+              "description": "ISO 3166-1 alpha-2 code (\"DE\") or country name (\"Germany\")",
+              "required": true
+            },
+            {
+              "name": "payments_per_year",
+              "type": "number",
+              "description": "With salary_period \"month\" only: the total number of monthly salaries the contract pays in a year, statutory ones included (e.g. 14). Omit to use the statutory number of the country.",
+              "required": false
+            },
+            {
+              "name": "salary_local",
+              "type": "number",
+              "description": "Gross salary in the local currency of the country, a year unless salary_period is \"month\"",
+              "required": true
+            },
+            {
+              "name": "salary_period",
+              "type": "string",
+              "description": "Whether the salary is a year (default) or a month. Pass a monthly salary as the user gives it, with \"month\": the statutory number of monthly payments of the country (13th, 14th month) is applied, see salary_basis in the answer.",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "list_countries",
+          "description": "Use this when the user asks which countries EOR Scope covers, or wants the countries of a region (Europe, Asia, Latin America...) with ISO code, currency, an example salary and the statutory employer cost at that salary. Do not use for the detailed cost of one country (use employer_cost). Data snapshot 2026-11-06. Cost comparison, not legal or tax advice.",
+          "input": [
+            {
+              "name": "region",
+              "type": "string",
+              "description": "Filter by region, e.g. \"Europe\", \"Asia\", \"Latin America\"",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "max_salary_for_budget",
+          "description": "Use this when the user has an all-in budget for a hire in a country and asks what gross salary it allows (e.g. \"I have 100k a year for a hire in Germany, what salary can I offer?\", \"quel salaire brut pour un budget de 8 000 par mois en Espagne\"). Returns the largest gross salary whose statutory employer cost (salary plus employer charges, plus an Employer of Record fee if the user gives one) stays within the budget, solved on the same ledger as employer_cost, so ceilings, floors, bands and fixed amounts are taken into account, and the monthly salary it stands for, paid the country's statutory",
+          "input": [
+            {
+              "name": "assumptions",
+              "type": "object",
+              "description": "Override an adjustable assumption the country declares, e.g. {\"basic_share_of_gross\": 0.6}. See `assumptions` in an employer_cost answer.",
+              "required": false
+            },
+            {
+              "name": "budget",
+              "type": "number",
+              "description": "Total employer budget for one employee",
+              "required": true
+            },
+            {
+              "name": "budget_currency",
+              "type": "string",
+              "description": "Currency of `budget`: USD, or the local currency of the country",
+              "required": false
+            },
+            {
+              "name": "budget_period",
+              "type": "string",
+              "description": "Whether `budget` is per year or per month",
+              "required": false
+            },
+            {
+              "name": "country",
+              "type": "string",
+              "description": "ISO 3166-1 alpha-2 code (\"DE\") or country name (\"Germany\")",
+              "required": true
+            },
+            {
+              "name": "eor_fee_usd_month",
+              "type": "number",
+              "description": "An EOR fee to take out of the budget first, in USD per employee per month, as the user gives it",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "reconcile_quote",
+          "description": "Use this when the user shares a quote, offer, invoice or cost breakdown from an Employer of Record, PEO or payroll provider and asks whether it is fair, correct, overpriced or what it includes (e.g. \"here is my EOR quote for Germany: salary 5,900, employer contributions 1,350, fee 560 a month, is it honest?\", \"voici le devis de mon EOR, est-il correct ?\"). Checks the quote lines against the statutory ledger of the country at the same salary: expected and quoted amount per statutory line, statutory lines missing from a detailed quote, charges with no statutory counterpart, and the gap split int",
+          "input": [
+            {
+              "name": "amounts_currency",
+              "type": "string",
+              "description": "Currency of the quote line amounts",
+              "required": false
+            },
+            {
+              "name": "assumptions",
+              "type": "object",
+              "description": "Override an adjustable assumption the country declares, e.g. {\"basic_share_of_gross\": 0.6}. See `assumptions` in an employer_cost answer.",
+              "required": false
+            },
+            {
+              "name": "country",
+              "type": "string",
+              "description": "ISO 3166-1 alpha-2 code (\"DE\") or country name (\"Germany\")",
+              "required": true
+            },
+            {
+              "name": "lines",
+              "type": "array",
+              "required": true
+            },
+            {
+              "name": "payments_per_year",
+              "type": "number",
+              "description": "With salary_period \"month\" only: the total number of monthly salaries the contract pays in a year, statutory ones included (e.g. 14). Omit to use the statutory number of the country.",
+              "required": false
+            },
+            {
+              "name": "period",
+              "type": "string",
+              "description": "Whether the quote line amounts are per month or per year (one employee)",
+              "required": false
+            },
+            {
+              "name": "salary",
+              "type": "number",
+              "description": "Gross salary the quote is for, a year unless salary_period is \"month\"",
+              "required": true
+            },
+            {
+              "name": "salary_currency",
+              "type": "string",
+              "description": "Currency of `salary`: USD, or the local currency of the country",
+              "required": false
+            },
+            {
+              "name": "salary_period",
+              "type": "string",
+              "description": "Whether the salary is a year (default) or a month. Pass a monthly salary as the user gives it, with \"month\": the statutory number of monthly payments of the country (13th, 14th month) is applied, see salary_basis in the answer.",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "scheduled_changes",
+          "description": "Use this when the user asks what is changing in a country's statutory employer contributions: new rates, ceilings, floors or thresholds, their effective dates, or measures announced in a budget (e.g. \"employer contribution changes in Ireland in 2027\", \"hausse des cotisations patronales en Allemagne l'an prochain\"). Each change comes with its status (enacted, or announced in a budget and not yet enacted), whether the date is stated in the source or deduced from it, and the source with a word-for-word quote and its reading date. A country whose changes are not tracked yet is answered \"not yet tr",
+          "input": [
+            {
+              "name": "country",
+              "type": "string",
+              "description": "ISO 3166-1 alpha-2 code (\"DE\") or country name (\"Germany\")",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "show_compare",
+          "description": "Use this when the user wants the employer cost of job offers or salaries in 2 to 6 countries shown or displayed as a table they can read at a glance: for each country, the gross salary, statutory employer charges, total employer cost, difference and ratio to the smallest total, and contribution ceilings reached. It computes the figures itself: call it directly, with no data tool first, or after compare_offers or compare_countries with the arguments they return in `widget`. Inline up to 3 countries, full screen above. Takes the same offers as compare_offers. Data snapshot 2026-11-06. Cost compa",
+          "input": [
+            {
+              "name": "offers",
+              "type": "array",
+              "description": "One offer per country, 2 to 6 countries, each with its own salary",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "show_ledger",
+          "description": "Use this when the user wants to see, display, keep, copy or export the line-by-line employer cost of one employee in a country as a table or card (e.g. \"show me the breakdown\", \"display it as a table\", \"affiche le détail des cotisations patronales\"). It computes the figures itself: call it directly, with no data tool first, or after employer_cost with the arguments employer_cost returns in `widget`. Displays the salary basis (a monthly salary times the statutory number of payments), one row per statutory line with its rate, base, floor or ceiling, source and check date, a monthly or annual vie",
+          "input": [
+            {
+              "name": "assumptions",
+              "type": "object",
+              "description": "Override an adjustable assumption the country declares, e.g. {\"basic_share_of_gross\": 0.6}. See `assumptions` in an employer_cost answer.",
+              "required": false
+            },
+            {
+              "name": "country",
+              "type": "string",
+              "description": "ISO 3166-1 alpha-2 code (\"DE\") or country name (\"Germany\")",
+              "required": true
+            },
+            {
+              "name": "payments_per_year",
+              "type": "number",
+              "description": "With salary_period \"month\" only: the total number of monthly salaries the contract pays in a year, statutory ones included (e.g. 14). Omit to use the statutory number of the country.",
+              "required": false
+            },
+            {
+              "name": "salary",
+              "type": "number",
+              "description": "Gross salary, a year unless salary_period is \"month\". Omit to use the country's example salary.",
+              "required": false
+            },
+            {
+              "name": "salary_currency",
+              "type": "string",
+              "description": "Currency of `salary`: USD, or the local currency of the country",
+              "required": false
+            },
+            {
+              "name": "salary_period",
+              "type": "string",
+              "description": "Whether the salary is a year (default) or a month. Pass a monthly salary as the user gives it, with \"month\": the statutory number of monthly payments of the country (13th, 14th month) is applied, see salary_basis in the answer.",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        }
+      ]
+    },
+    "resources": {
+      "status": "partial",
+      "observedCount": 2,
+      "retainedCount": 2,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "compare",
+          "description": "A table of the total employer cost of job offers in several countries."
+        },
+        {
+          "name": "ledger",
+          "description": "The statutory employer cost ledger of one employee, line by line, with sources and check dates."
+        }
+      ]
+    },
+    "resourceTemplates": {
+      "status": "partial",
+      "observedCount": 2,
+      "retainedCount": 2,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "compare-earlier",
+          "description": "A table of the total employer cost of job offers in several countries."
+        },
+        {
+          "name": "ledger-earlier",
+          "description": "The statutory employer cost ledger of one employee, line by line, with sources and check dates."
+        }
+      ]
+    },
+    "prompts": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    }
+  },
   "exa": {
     "version": 1,
     "observedAt": "2026-11-02T15:59:21.762Z",

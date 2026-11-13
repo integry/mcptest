@@ -13224,5 +13224,30 @@
     "logoRetrievedAt": "2026-11-13",
     "logoLicenseNote": "Locally generated OA monogram for a community submission; it is not an official OmniaKey mark.",
     "homepageUrl": "https://omniakey.com/mcp"
+  },
+  {
+    "id": "eorscope",
+    "name": "EOR Scope",
+    "url": "https://mcp.eorscope.com/mcp",
+    "browserAccess": "proxy-required",
+    "description": "Statutory employer cost of an employee in 76 countries: employer social contributions, caps and mandatory payments, each with its official source and check date, before any EOR fee. 14 read-only tools, no authentication.",
+    "category": "Finance",
+    "tags": [
+      "finance",
+      "community-submission",
+      "no-auth"
+    ],
+    "listingSource": {
+      "kind": "community-submission",
+      "url": "https://eorscope.com/"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "logoUrl": "/server-logos/eorscope.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-13",
+    "logoLicenseNote": "Locally generated ES monogram for a community submission; it is not an official EOR Scope mark.",
+    "homepageUrl": "https://eorscope.com/"
   }
 ]
