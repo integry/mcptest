@@ -4237,7 +4237,7 @@
     "authType": "oauth",
     "requiresOAuth": true,
     "protocolEra": "unknown",
-    "checkedAt": "2026-11-13T02:25:00.400Z",
+    "checkedAt": "2026-11-13T03:07:45.158Z",
     "message": "Authentication challenge at https://api.omniakey.com/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
     "validatedUrl": "https://api.omniakey.com/mcp",
     "authorizationServers": [
