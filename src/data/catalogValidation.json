@@ -4229,5 +4229,19 @@
     "authorizationServers": [
       "https://excessionlabs.ai"
     ]
+  },
+  {
+    "serverId": "omniakey",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-13T02:25:00.400Z",
+    "message": "Authentication challenge at https://api.omniakey.com/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://api.omniakey.com/mcp",
+    "authorizationServers": [
+      "https://api.omniakey.com"
+    ]
   }
 ]

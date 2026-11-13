@@ -13180,5 +13180,31 @@
     "logoRetrievedAt": "2026-11-12",
     "logoLicenseNote": "Locally generated EL monogram for a community submission; it is not an official Excession Labs CVE intelligence mark.",
     "homepageUrl": "https://excessionlabs.ai/cve-intelligence/"
+  },
+  {
+    "id": "omniakey",
+    "name": "OmniaKey API中转站 MCP",
+    "url": "https://api.omniakey.com/mcp",
+    "browserUrl": "https://api.omniakey.com/mcp/",
+    "browserAccess": "direct",
+    "description": "OmniaKey API中转站的远程 MCP 服务，通过 OAuth 授权接入文本、图像、视频及音乐生成 API；生成操作需相应权限并按量付费。接入说明：https://omniakey.com/mcp",
+    "category": "AI Infrastructure",
+    "tags": [
+      "ai-infrastructure",
+      "community-submission",
+      "oauth"
+    ],
+    "listingSource": {
+      "kind": "community-submission",
+      "url": "https://omniakey.com/zh"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "logoUrl": "/server-logos/omniakey.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-13",
+    "logoLicenseNote": "Locally generated OA monogram for a community submission; it is not an official OmniaKey API中转站 MCP mark.",
+    "homepageUrl": "https://omniakey.com/zh"
   }
 ]
