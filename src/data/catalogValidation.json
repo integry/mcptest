@@ -4255,5 +4255,17 @@
     "message": "Negotiated stateful MCP 2025-11-25 at https://mcp.eorscope.com/mcp; detected transport streamable-http; authentication none",
     "validatedUrl": "https://mcp.eorscope.com/mcp",
     "protocolVersion": "2025-11-25"
+  },
+  {
+    "serverId": "govisit",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateless",
+    "checkedAt": "2026-11-14T07:08:22.602Z",
+    "message": "Negotiated stateless MCP 2026-07-28 at https://govisit.ai/mcp; detected transport streamable-http; authentication none",
+    "validatedUrl": "https://govisit.ai/mcp",
+    "protocolVersion": "2026-07-28"
   }
 ]
