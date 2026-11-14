@@ -5,6 +5,7 @@ import {
   completeOAuthFlow,
   getHostedOAuthTokenProxyUrl,
 } from '../utils/oauthFlow';
+import { completeHostedOAuthFlow } from '../utils/hostedOAuth';
 import { trackOAuthFlow } from '../utils/analytics';
 import { getSpaceUrl } from '../utils/urlUtils';
 import { storeOAuthReconnectRequest } from '../utils/oauthReconnect';
@@ -74,28 +75,40 @@ const OAuthCallback: React.FC = () => {
           `${location.pathname}${location.search}`,
           window.location.origin
         );
+        const hostedResult = callbackUrl.searchParams.get('hosted_result');
         const proxyUrl = import.meta.env.VITE_PROXY_URL as string | undefined;
-        const tokenProxyUrl = getHostedOAuthTokenProxyUrl(proxyUrl);
-        // The hosted token relay works without a login; a login only lifts
-        // its anonymous limits. A login that cannot produce a token is stale.
-        let proxyToken: string | undefined;
-        if (tokenProxyUrl && currentUser) {
-          try {
-            proxyToken = await currentUser.getIdToken();
-          } catch {
-            throw new OAuthProxyAuthenticationRequiredError();
+        let serverUrl: string;
+        if (hostedResult) {
+          // Hosted grants are bound to the Firebase user, so completion needs a login.
+          if (!proxyUrl || !currentUser) throw new Error('Sign in again to complete hosted OAuth.');
+          ({ serverUrl } = await completeHostedOAuthFlow({
+            result: hostedResult,
+            proxyUrl,
+            firebaseToken: await currentUser.getIdToken(),
+          }));
+        } else {
+          const tokenProxyUrl = getHostedOAuthTokenProxyUrl(proxyUrl);
+          // The hosted token relay works without a login; a login only lifts
+          // its anonymous limits. A login that cannot produce a token is stale.
+          let proxyToken: string | undefined;
+          if (tokenProxyUrl && currentUser) {
+            try {
+              proxyToken = await currentUser.getIdToken();
+            } catch {
+              throw new OAuthProxyAuthenticationRequiredError();
+            }
           }
+          ({ serverUrl } = await completeOAuthFlow(callbackUrl, {
+            ...(tokenProxyUrl
+              ? {
+                  tokenProxy: {
+                    url: tokenProxyUrl,
+                    authorizationToken: proxyToken,
+                  },
+                }
+              : {}),
+          }));
         }
-        const { serverUrl } = await completeOAuthFlow(callbackUrl, {
-          ...(tokenProxyUrl
-            ? {
-                tokenProxy: {
-                  url: tokenProxyUrl,
-                  authorizationToken: proxyToken,
-                },
-              }
-            : {}),
-        });
         addOAuthLog('info', 'OAuth authorization completed successfully.');
         trackOAuthFlow('success', serverUrl);
 
