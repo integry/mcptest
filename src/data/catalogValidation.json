@@ -4255,5 +4255,17 @@
     "message": "Negotiated stateful MCP 2025-11-25 at https://mcp.eorscope.com/mcp; detected transport streamable-http; authentication none",
     "validatedUrl": "https://mcp.eorscope.com/mcp",
     "protocolVersion": "2025-11-25"
+  },
+  {
+    "serverId": "datacircle",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateful",
+    "checkedAt": "2026-11-14T10:14:20.227Z",
+    "message": "Negotiated stateful MCP 2025-11-25 at https://api.datacircle.dev/mcp; detected transport streamable-http; authentication none",
+    "validatedUrl": "https://api.datacircle.dev/mcp",
+    "protocolVersion": "2025-11-25"
   }
 ]

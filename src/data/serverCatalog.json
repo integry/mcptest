@@ -13249,5 +13249,30 @@
     "logoRetrievedAt": "2026-11-13",
     "logoLicenseNote": "Locally generated ES monogram for a community submission; it is not an official EOR Scope mark.",
     "homepageUrl": "https://eorscope.com/"
+  },
+  {
+    "id": "datacircle",
+    "name": "Datacircle",
+    "url": "https://api.datacircle.dev/mcp",
+    "browserAccess": "direct",
+    "description": "Find the best GTM APIs. Our MCP server is open to anyone, with no key: add api.datacircle.dev/mcp to Claude, ChatGPT or Cursor.",
+    "category": "Search",
+    "tags": [
+      "search",
+      "community-submission",
+      "no-auth"
+    ],
+    "listingSource": {
+      "kind": "community-submission",
+      "url": "https://datacircle.dev"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "logoUrl": "/server-logos/datacircle.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-14",
+    "logoLicenseNote": "Locally generated DA monogram for a community submission; it is not an official Datacircle mark.",
+    "homepageUrl": "https://datacircle.dev"
   }
 ]
