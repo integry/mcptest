@@ -3838,6 +3838,90 @@
       "items": []
     }
   },
+  "datacircle": {
+    "version": 1,
+    "observedAt": "2026-11-14T10:14:20.007Z",
+    "provenance": {
+      "testedEndpoint": "https://api.datacircle.dev/mcp",
+      "route": "direct"
+    },
+    "authentication": "unauthenticated",
+    "tools": {
+      "status": "partial",
+      "observedCount": 2,
+      "retainedCount": 2,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "list_apis",
+          "description": "Lists the APIs on Datacircle's sheet and the number of plans and providers for each. Pass an API's name to search_plans. list_apis takes no arguments. The answer holds every API on the sheet, in the sheet's order, with no paging. Each API comes with a link to the API's sheet. Some APIs also link a best page. A best page ranks the API's providers on our benchmark. Call list_apis first when you don't know an API's name. The tool is free and read-only, and needs no key.",
+          "outputSchema": true
+        },
+        {
+          "name": "search_plans",
+          "description": "Searches Datacircle's sheet of API plans and gives the ones that match, best first. Call list_apis first to get the APIs' names. Pass an API's name as api. Leave api out to search every API. Use query to find a provider or a plan by name. Sort by price to get the cheapest first. Each plan shows the price, score, rate limits, speed and returned fields, and links the plan's page on datacircle.dev. Pass api to get links to the API's sheet and to a ranking of the API's providers on our benchmark. Use offset to get the next page of plans. If nothing matches, you get total 0 and an empty list. A wro",
+          "input": [
+            {
+              "name": "api",
+              "type": "string",
+              "description": "The API, its name as list_apis gives it. Every API when left out.",
+              "required": false
+            },
+            {
+              "name": "limit",
+              "type": "integer",
+              "description": "How many plans to give, 1 to 50. 10 when left out.",
+              "required": false
+            },
+            {
+              "name": "offset",
+              "type": "integer",
+              "description": "How many found plans to skip first. 0 when left out.",
+              "required": false
+            },
+            {
+              "name": "query",
+              "type": "string",
+              "description": "Words that must all appear in the provider's name and the plan's name read together, ignoring case and accents: \"scrappa free\" finds Scrappa's Free plans.",
+              "required": false
+            },
+            {
+              "name": "sort",
+              "type": "string",
+              "description": "score, the default: best first, as on the sheet at datacircle.dev, each API's plans together, unscored plans last. provider: A to Z. price: $ per 1,000, lowest first.",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        }
+      ]
+    },
+    "resources": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "resourceTemplates": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "prompts": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    }
+  },
   "deepwiki": {
     "version": 1,
     "observedAt": "2026-11-02T15:59:14.557Z",
