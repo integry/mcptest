@@ -13249,5 +13249,30 @@
     "logoRetrievedAt": "2026-11-13",
     "logoLicenseNote": "Locally generated ES monogram for a community submission; it is not an official EOR Scope mark.",
     "homepageUrl": "https://eorscope.com/"
+  },
+  {
+    "id": "govisit",
+    "name": "GoVisit Tools",
+    "url": "https://govisit.ai/mcp",
+    "browserAccess": "proxy-required",
+    "description": "Search GoVisit destinations and places, then retrieve published place, destination, collection, category, and documentation content through 22 read-only tools. No authentication is required.",
+    "category": "Search",
+    "tags": [
+      "search",
+      "community-submission",
+      "no-auth"
+    ],
+    "listingSource": {
+      "kind": "community-submission",
+      "url": "https://govisit.ai/en/docs/developers/mcp/overview"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "logoUrl": "/server-logos/govisit.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-14",
+    "logoLicenseNote": "Locally generated GT monogram for a community submission; it is not an official GoVisit Tools mark.",
+    "homepageUrl": "https://govisit.ai/en/docs/developers/mcp/overview"
   }
 ]
