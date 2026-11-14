@@ -844,10 +844,8 @@ const observeAuthenticationResponses = (
         return value ? [[header, value]] : [];
       }));
       if (Object.keys(instanceHeaders).length > 0) attemptedRequest.instanceHeaders = instanceHeaders;
-      if (response.status === 429) {
-        const retryAfter = boundHeaderValue(response.headers.get('retry-after'));
-        if (retryAfter) attemptedRequest.retryAfter = retryAfter;
-      }
+      const retryAfter = boundHeaderValue(response.headers.get('retry-after'));
+      if (retryAfter) attemptedRequest.retryAfter = retryAfter;
       attemptedRequest.durationMs = Math.max(0, Date.now() - startedAtMs);
       attemptedRequest.outcome = response.ok ? 'succeeded' : 'failed';
       if (attemptedRequest.responseSource === 'target' && !response.ok) {
