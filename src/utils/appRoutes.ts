@@ -39,6 +39,7 @@ export const isKeywordLandingPath = (pathname: string): boolean => KEYWORD_LANDI
 export const EXACT_APP_ROUTES: readonly string[] = [
   '/',
   '/catalog',
+  '/evals',
   '/learn',
   '/report',
   '/submit',

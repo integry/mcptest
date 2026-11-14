@@ -137,6 +137,7 @@ describe('SideNav information architecture', () => {
       ['Playground', '/'],
       ['Catalog', '/catalog'],
       ['Reports', '/report'],
+      ['Tool-selection evals', '/evals'],
       ['Breaking changes', '/tools/breaking-changes'],
       ['OAuth checker', '/tools/oauth-check'],
       ['Discovery checker', '/tools/discovery'],
