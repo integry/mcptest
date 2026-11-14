@@ -5,6 +5,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { prepareGuideSearch } from '../../content/guideSearch';
 import type { SearchIndex } from '../../content/searchIndex';
 import { MENU_OPEN_CLASS } from '../../hooks/useMobileDrawer';
+import { SIDEBAR_COLLAPSED_KEY } from '../../hooks/useSidebarCollapsed';
 import SideNav from '../SideNav';
 import GuideSearch from './GuideSearch';
 import LearnIndex from './LearnIndex';
@@ -28,6 +29,7 @@ afterEach(() => {
   container = null;
   document.body.classList.remove(MENU_OPEN_CLASS);
   localStorage.clear();
+  vi.restoreAllMocks();
 });
 
 const INDEX: SearchIndex = {
@@ -296,7 +298,10 @@ describe('guide search placement', () => {
     mountSideNavs('playground', '/');
     for (const scope of ['.mobile-sidebar', '.desktop-sidebar']) {
       const group = container!.querySelector(`${scope} .content-track-nav`)!;
-      expect(group.querySelector('h2')?.nextElementSibling?.classList).toContain('guide-search');
+      // The Learn heading folds the group; the search field opens its body.
+      const body = group.querySelector('h2')?.nextElementSibling;
+      expect(body?.classList).toContain('sidenav-learn-body');
+      expect(body?.firstElementChild?.classList).toContain('guide-search');
     }
     const ids = Array.from(container!.querySelectorAll('[id]'), element => element.id);
     expect(new Set(ids).size).toBe(ids.length);
@@ -311,6 +316,25 @@ describe('guide search placement', () => {
     mountSideNavs('learn', '/learn/what-is-mcp');
     press(document.body, '/');
     expect(document.activeElement).toBe(field(container!.querySelector('.desktop-sidebar')!));
+  });
+
+  it('expands the collapsed desktop sidebar from `/` on a guide page and focuses the field', () => {
+    // Browsers refuse focus inside a `hidden` subtree; jsdom does not.
+    const focus = HTMLElement.prototype.focus;
+    vi.spyOn(HTMLElement.prototype, 'focus').mockImplementation(function (this: HTMLElement, options?: FocusOptions) {
+      if (!this.closest('[hidden]')) focus.call(this, options);
+    });
+    // Collapsed, the Learn body (and the search rail button inside it) is hidden.
+    localStorage.setItem(SIDEBAR_COLLAPSED_KEY, 'true');
+    mountSideNavs('learn', '/learn/what-is-mcp');
+    const desktop = container!.querySelector('.desktop-sidebar')!;
+    expect(desktop.querySelector('.sidenav-learn-body')?.hasAttribute('hidden')).toBe(true);
+
+    expect(press(document.body, '/').defaultPrevented).toBe(true);
+
+    expect(desktop.querySelector('.app-sidenav')?.classList).not.toContain('app-sidenav--collapsed');
+    expect(desktop.querySelector('.sidenav-learn-body')?.hasAttribute('hidden')).toBe(false);
+    expect(document.activeElement).toBe(field(desktop));
   });
 
   it('puts a page-sized field at the top of the /learn index', () => {

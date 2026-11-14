@@ -104,10 +104,13 @@ describe('KeywordLandingView', () => {
     const { page, onConnect } = render('/mcp-test-server');
     const input = container.querySelector<HTMLInputElement>(`#${page.key}-server-url`)!;
     const button = container.querySelector<HTMLButtonElement>('.landing-connect-button')!;
-    expect(button.disabled).toBe(true);
+    // Connect stays enabled; an empty URL is explained inline instead of connecting.
+    expect(button.disabled).toBe(false);
+    act(() => button.click());
+    expect(onConnect).not.toHaveBeenCalled();
+    expect(container.querySelector(`[role="alert"]#${page.key}-server-url-error`)).not.toBeNull();
 
     typeUrl(input, '  https://example.com/mcp ');
-    expect(button.disabled).toBe(false);
     act(() => button.click());
     expect(onConnect).toHaveBeenLastCalledWith({ serverUrl: 'https://example.com/mcp', source: 'manual' });
     expect(trackEvent).toHaveBeenCalledWith('landing_connect', { source: 'manual', host: 'example.com', page: 'test-server' });

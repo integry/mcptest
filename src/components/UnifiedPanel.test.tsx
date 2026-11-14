@@ -202,3 +202,70 @@ describe('UnifiedPanel search', () => {
     expect(elapsed).toBeLessThan(1000);
   });
 });
+
+describe('UnifiedPanel "Call a tool" reveal', () => {
+  const rerender = (overrides: Partial<React.ComponentProps<typeof UnifiedPanel>>) => {
+    act(() => {
+      root!.render(
+        <UnifiedPanel
+          tools={tools as never}
+          resources={resources as never}
+          resourceTemplates={[]}
+          prompts={prompts as never}
+          selectedTool={null}
+          selectedResourceTemplate={null}
+          selectedPrompt={null}
+          connectionStatus="Connected"
+          onRefreshLists={vi.fn()}
+          isConnecting={false}
+          handleSelectTool={vi.fn()}
+          handleSelectResource={vi.fn()}
+          handleSelectResourceTemplate={vi.fn()}
+          handleSelectPrompt={vi.fn()}
+          {...overrides}
+        />
+      );
+    });
+  };
+  const toolsSummary = () => [...container!.querySelectorAll('summary')].find((node) => node.textContent?.includes('Tools'))!;
+  const toolsList = () => container!.querySelector('[role="listbox"][aria-label="Tools"]');
+
+  it('expands a collapsed Tools category and focuses its first tool', () => {
+    renderPanel({ revealToolsRequest: 0 });
+    act(() => toolsSummary().click());
+    expect(toolsList()).toBeNull();
+    rerender({ revealToolsRequest: 1 });
+    expect(toolsList()).not.toBeNull();
+    const first = toolsList()!.querySelector('[role="option"]')!;
+    expect(document.activeElement).toBe(first);
+    expect(first.getAttribute('tabindex')).toBe('0');
+  });
+
+  it('clears a search that hides every tool before focusing one', () => {
+    renderPanel({ revealToolsRequest: 0 });
+    type('readme');
+    expect(toolsList()?.querySelector('[role="option"]') ?? null).toBeNull();
+    rerender({ revealToolsRequest: 1 });
+    expect(search().value).toBe('');
+    expect(document.activeElement).toBe(toolsList()!.querySelector('[role="option"]'));
+  });
+
+  it('keeps a search that still matches tools', () => {
+    renderPanel({ revealToolsRequest: 0 });
+    type('issue');
+    rerender({ revealToolsRequest: 1 });
+    expect(search().value).toBe('issue');
+    expect(document.activeElement?.getAttribute('role')).toBe('option');
+  });
+
+  it('does not move focus for a request made before the panel mounted', () => {
+    const other = document.createElement('button');
+    document.body.appendChild(other);
+    other.focus();
+    renderPanel({ revealToolsRequest: 3 });
+    expect(document.activeElement).toBe(other);
+    rerender({ revealToolsRequest: 3, tools: [...tools] as never });
+    expect(document.activeElement).toBe(other);
+    other.remove();
+  });
+});

@@ -60,6 +60,22 @@ describe('playground tab labels', () => {
     expect(css).toMatch(/\.playground-tab-strip--fade-end/);
     expect(css).toMatch(/\.playground-tab-label\s*\{[^}]*text-overflow:\s*ellipsis;/);
   });
+
+  it('names the new-tab control and explains it opens another server side by side', () => {
+    const onNewTab = vi.fn();
+    const container = document.createElement('div');
+    const view = createRoot(container);
+    act(() => view.render(
+      <Tabs tabs={[tab({ id: 'a', connectionStatus: 'Connected' })]} activeTabId="a" onSelectTab={vi.fn()} onCloseTab={vi.fn()} onNewTab={onNewTab} />
+    ));
+    const button = container.querySelector<HTMLButtonElement>('.playground-tab-new')!;
+    expect(button.getAttribute('aria-label')).toBe('New connection tab');
+    expect(button.title).toBe('Open another connection tab to test a second server side by side');
+    expect(button.textContent).toBe('+ New');
+    act(() => button.click());
+    expect(onNewTab).toHaveBeenCalledOnce();
+    act(() => view.unmount());
+  });
 });
 
 describe('playground tab strip overflow', () => {

@@ -5,7 +5,7 @@
 }
 
 .guide-search--sidebar {
-  margin: 0 0 var(--space-1);
+  margin: 0 var(--space-4) var(--space-1);
 }
 
 .guide-search--page {
@@ -183,4 +183,9 @@
 
 .guide-search--collapsed .sidenav-link {
   justify-content: center;
+}
+
+/* On the collapsed icon rail the search is one centred icon; no inset. */
+.app-sidenav--collapsed .guide-search--sidebar {
+  margin-inline: 0;
 }

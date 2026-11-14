@@ -15,6 +15,9 @@ export const DISCOVERY_CHECKER_PATH = '/tools/discovery';
 /** Paths the app serves exactly (a trailing slash is not a variant). */
 export const OAUTH_CHECKER_PATH = '/tools/oauth-check';
 
+/** The dashboards page: what dashboards are, the create action and the list (src/components/DashboardsHome.tsx). */
+export const DASHBOARDS_PATH = '/space';
+
 /** The public MCP test servers page (src/components/McpTestServersView.tsx). */
 export const MCP_TEST_SERVERS_PATH = '/mcp-test-servers';
 
@@ -45,6 +48,7 @@ export const EXACT_APP_ROUTES: readonly string[] = [
   '/tools/breaking-changes',
   DISCOVERY_CHECKER_PATH,
   OAUTH_CHECKER_PATH,
+  DASHBOARDS_PATH,
   MCP_TEST_SERVERS_PATH,
   MCP_TEST_CLIENT_PATH,
   ...KEYWORD_LANDING_PATHS,

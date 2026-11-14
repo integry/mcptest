@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { getAnalyticsHost, trackEvent } from '../utils/analytics';
@@ -23,11 +23,25 @@ import {
   LANDING_TRUST_LABEL,
   LANDING_TRUST_POINTS,
 } from '../content/landingCopy';
+import {
+  LANDING_ADVANCED_HINT,
+  LANDING_ADVANCED_LABEL,
+  LANDING_ALTERNATIVES_LABEL,
+  LANDING_CONNECT_LABEL,
+  LANDING_FIELD_HELP,
+  LANDING_FIELD_LABEL,
+  LANDING_FIELD_PLACEHOLDER,
+  LANDING_SAMPLE_LABEL,
+  LANDING_SAMPLE_NOTE_PREFIX,
+  LANDING_SAMPLE_NOTE_SUFFIX,
+  getEndpointInputError,
+} from '../content/landingFirstRun';
 import type { KeywordLandingPage } from '../content/keywordLandingPages';
 import { selectLandingQuickPicks } from '../utils/landingQuickPicks';
 import { LANDING_FIXTURE_SELECTION } from '../utils/landingFixture';
 import { LANDING_FIXTURE } from '../data/publicFixtures';
 import { CatalogServerLogo } from './CatalogServerLogo';
+import { LandingPreview } from './LandingPreview';
 import type { SuggestedServerSelection } from './SuggestedServersPanel';
 import { LandingText } from './LandingText';
 import { KeywordLandingContent } from './KeywordLandingContent';
@@ -164,13 +178,19 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
   page,
 }) => {
   const [showAdvanced, setShowAdvanced] = useState(defaultShowAdvanced);
-  const canConnect = Boolean(serverUrl.trim()) && !isConnecting;
+  const [inputError, setInputError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const recent = recentServers.slice(0, RECENT_SERVER_LIMIT);
   const showRecent = recent.length > 0 && Boolean(onConnectRecent);
   const advancedOpen = showAdvanced && Boolean(advancedOptions);
   // Ids stay unique when the playground's landing is mounted (hidden) beside a landing page.
   const idPrefix = page ? `${page.key}-landing` : 'landing';
   const inputId = page ? `${page.key}-server-url` : 'serverUrl';
+  const pageProps = page ? { page: page.key } : {};
+  // The first preset is the one-click sample: it connects through the same
+  // path as clicking that preset.
+  const sample = quickPicks[0];
+  const sampleEndpoint = sample ? getPreferredCatalogEndpoint(sample) : undefined;
 
   // Once per landing shown; a returning user is one with recent endpoints.
   useEffect(() => trackEvent('landing_view', {
@@ -179,9 +199,22 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
   }), []);
 
   const handleManualConnect = () => {
-    if (!canConnect) return;
-    trackEvent('landing_connect', { source: 'manual', host: getAnalyticsHost(serverUrl), ...(page ? { page: page.key } : {}) });
+    if (isConnecting) return;
+    const error = getEndpointInputError(serverUrl);
+    setInputError(error);
+    if (error) {
+      inputRef.current?.focus();
+      return;
+    }
+    trackEvent('landing_connect', { source: 'manual', host: getAnalyticsHost(serverUrl), ...pageProps });
     onConnect();
+  };
+
+  const connectPreset = (server: CatalogServer, source: 'quick_pick' | 'sample_test') => {
+    const endpoint = getPreferredCatalogEndpoint(server);
+    setInputError(null);
+    trackEvent('landing_connect', { source, host: getAnalyticsHost(endpoint.url), ...pageProps });
+    onConnect({ endpoint, protocolEra: server.protocolEra });
   };
 
   return (
@@ -190,126 +223,158 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
       aria-labelledby={`${idPrefix}-title`}
     >
       <div className="landing-hero">
-        <h1 id={`${idPrefix}-title`} className="landing-title">
-          {page ? page.h1 : LANDING_HEADLINE}
-        </h1>
-        <p className="landing-lede">
-          {page ? <LandingText value={page.intro} /> : LANDING_LEDE}
-        </p>
+        <div className="landing-intro">
+          <h1 id={`${idPrefix}-title`} className="landing-title">
+            {page ? page.h1 : LANDING_HEADLINE}
+          </h1>
+          <p className="landing-lede">
+            {page ? <LandingText value={page.intro} /> : LANDING_LEDE}
+          </p>
 
-        {advancedOpen ? (
-          <div className="landing-advanced" id="landing-advanced-panel">
-            {advancedOptions}
-          </div>
-        ) : (
-          <>
-            <div className="landing-connect">
-              <label htmlFor={inputId} className="visually-hidden">MCP endpoint URL</label>
-              <input
-                id={inputId}
-                type="text"
-                inputMode="url"
-                autoComplete="off"
-                autoCapitalize="off"
-                spellCheck={false}
-                className="form-control landing-connect-input"
-                placeholder="https://example.com/mcp"
-                value={serverUrl}
-                onChange={(event) => onServerUrlChange(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
-                    event.preventDefault();
-                    handleManualConnect();
-                  }
-                }}
-                disabled={isConnecting}
-              />
-              <button
-                id={page ? undefined : 'connectBtn'}
-                type="button"
-                className="btn btn-primary landing-connect-button"
-                onClick={handleManualConnect}
-                disabled={!canConnect}
-              >
-                Connect
-              </button>
+          {advancedOpen ? (
+            <div className="landing-advanced" id={`${idPrefix}-advanced-panel`}>
+              {advancedOptions}
             </div>
+          ) : (
+            <>
+              <div className="landing-form">
+                <label htmlFor={inputId} className="landing-field-label">{LANDING_FIELD_LABEL}</label>
+                <div className="landing-connect">
+                  <input
+                    ref={inputRef}
+                    id={inputId}
+                    type="text"
+                    inputMode="url"
+                    autoComplete="off"
+                    autoCapitalize="off"
+                    spellCheck={false}
+                    className="form-control landing-connect-input"
+                    placeholder={LANDING_FIELD_PLACEHOLDER}
+                    aria-describedby={inputError ? `${inputId}-error ${inputId}-help` : `${inputId}-help`}
+                    aria-invalid={inputError ? true : undefined}
+                    value={serverUrl}
+                    onChange={(event) => {
+                      setInputError(null);
+                      onServerUrlChange(event.target.value);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        handleManualConnect();
+                      }
+                    }}
+                    disabled={isConnecting}
+                  />
+                  <button
+                    id={page ? undefined : 'connectBtn'}
+                    type="button"
+                    className="btn btn-primary landing-connect-button"
+                    onClick={handleManualConnect}
+                    disabled={isConnecting}
+                  >
+                    {LANDING_CONNECT_LABEL}
+                  </button>
+                </div>
+                {inputError && (
+                  <p id={`${inputId}-error`} className="landing-field-error" role="alert">
+                    <i className="bi bi-exclamation-circle" aria-hidden="true"></i>
+                    {inputError}
+                  </p>
+                )}
+                <p id={`${inputId}-help`} className="landing-field-help">{LANDING_FIELD_HELP}</p>
+              </div>
 
-            {showRecent ? (
-              <div className="landing-quick-picks landing-recent">
-                <span className="landing-quick-picks-label" id={`${idPrefix}-recent-label`}>Recent</span>
-                <ul aria-labelledby={`${idPrefix}-recent-label`}>
-                  {recent.map((url) => (
-                    <li key={url} className="landing-recent-item">
-                      <button
-                        type="button"
-                        className="landing-quick-pick landing-recent-connect"
-                        data-recent-url={url}
-                        title={url}
-                        disabled={isConnecting}
-                        onClick={() => {
-                          trackEvent('landing_connect', { source: 'recent_chip', host: getAnalyticsHost(url), ...(page ? { page: page.key } : {}) });
-                          onConnectRecent?.(url);
-                        }}
-                      >
-                        <i className="bi bi-clock-history landing-recent-icon" aria-hidden="true"></i>
-                        <span className="landing-recent-host">{getRecentServerLabel(url)}</span>
-                      </button>
-                      {onRemoveRecentServer && (
+              {showRecent ? (
+                <div className="landing-quick-picks landing-recent">
+                  <span className="landing-quick-picks-label" id={`${idPrefix}-recent-label`}>Recent</span>
+                  <ul aria-labelledby={`${idPrefix}-recent-label`}>
+                    {recent.map((url) => (
+                      <li key={url} className="landing-recent-item">
                         <button
                           type="button"
-                          className="landing-recent-remove"
-                          onClick={() => onRemoveRecentServer(url)}
+                          className="landing-quick-pick landing-recent-connect"
+                          data-recent-url={url}
+                          title={url}
                           disabled={isConnecting}
-                          title={`Remove ${url} from recent connections`}
-                          aria-label={`Remove ${url} from recent connections`}
+                          onClick={() => {
+                            trackEvent('landing_connect', { source: 'recent_chip', host: getAnalyticsHost(url), ...pageProps });
+                            onConnectRecent?.(url);
+                          }}
                         >
-                          <i className="bi bi-x-lg" aria-hidden="true"></i>
+                          <i className="bi bi-clock-history landing-recent-icon" aria-hidden="true"></i>
+                          <span className="landing-recent-host">{getRecentServerLabel(url)}</span>
                         </button>
-                      )}
+                        {onRemoveRecentServer && (
+                          <button
+                            type="button"
+                            className="landing-recent-remove"
+                            onClick={() => onRemoveRecentServer(url)}
+                            disabled={isConnecting}
+                            title={`Remove ${url} from recent connections`}
+                            aria-label={`Remove ${url} from recent connections`}
+                          >
+                            <i className="bi bi-x-lg" aria-hidden="true"></i>
+                          </button>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : (
+                <div className="landing-quick-picks">
+                  <span className="landing-quick-picks-label" id={`${idPrefix}-quick-picks-label`}>{LANDING_ALTERNATIVES_LABEL}</span>
+                  {sample && sampleEndpoint && (
+                    <div className="landing-sample">
+                      <button
+                        id={page ? undefined : 'landingSampleBtn'}
+                        type="button"
+                        className="btn landing-sample-button"
+                        data-server-id={sample.id}
+                        title={sampleEndpoint.url}
+                        aria-describedby={`${idPrefix}-sample-note`}
+                        disabled={isConnecting}
+                        onClick={() => connectPreset(sample, 'sample_test')}
+                      >
+                        <i className="bi bi-play-fill" aria-hidden="true"></i>
+                        {LANDING_SAMPLE_LABEL}
+                      </button>
+                      <span id={`${idPrefix}-sample-note`} className="landing-sample-note">
+                        {LANDING_SAMPLE_NOTE_PREFIX} {sample.name}{LANDING_SAMPLE_NOTE_SUFFIX}
+                      </span>
+                    </div>
+                  )}
+                  <ul aria-labelledby={`${idPrefix}-quick-picks-label`}>
+                    {/* mcptest's own public echo server first: no sign-in, always answers. */}
+                    <li>
+                      <button
+                        type="button"
+                        className="landing-quick-pick"
+                        data-server-id={LANDING_FIXTURE.id}
+                        title={LANDING_FIXTURE.url}
+                        disabled={isConnecting}
+                        onClick={() => {
+                          setInputError(null);
+                          trackEvent('landing_connect', { source: 'quick_pick', host: getAnalyticsHost(LANDING_FIXTURE.url), ...pageProps });
+                          onConnect(LANDING_FIXTURE_SELECTION);
+                        }}
+                      >
+                        <CatalogServerLogo
+                          name={LANDING_FIXTURE.name}
+                          logoUrl={LANDING_FIXTURE.logoUrl}
+                          className="landing-quick-pick-logo"
+                        />
+                        {LANDING_FIXTURE.name}
+                      </button>
                     </li>
-                  ))}
-                </ul>
-              </div>
-            ) : (
-              <div className="landing-quick-picks">
-                <span className="landing-quick-picks-label" id={`${idPrefix}-quick-picks-label`}>Try with</span>
-                <ul aria-labelledby={`${idPrefix}-quick-picks-label`}>
-                  {/* mcptest's own public echo server first: no sign-in, always answers. */}
-                  <li>
-                    <button
-                      type="button"
-                      className="landing-quick-pick"
-                      data-server-id={LANDING_FIXTURE.id}
-                      title={LANDING_FIXTURE.url}
-                      disabled={isConnecting}
-                      onClick={() => {
-                        trackEvent('landing_connect', { source: 'quick_pick', host: getAnalyticsHost(LANDING_FIXTURE.url), ...(page ? { page: page.key } : {}) });
-                        onConnect(LANDING_FIXTURE_SELECTION);
-                      }}
-                    >
-                      <CatalogServerLogo
-                        name={LANDING_FIXTURE.name}
-                        logoUrl={LANDING_FIXTURE.logoUrl}
-                        className="landing-quick-pick-logo"
-                      />
-                      {LANDING_FIXTURE.name}
-                    </button>
-                  </li>
-                  {quickPicks.map((server) => {
-                    const endpoint = getPreferredCatalogEndpoint(server);
-                    return (
+                    {quickPicks.map((server) => (
                       <li key={server.id}>
                         <button
                           type="button"
                           className="landing-quick-pick"
                           data-server-id={server.id}
-                          title={endpoint.url}
+                          title={getPreferredCatalogEndpoint(server).url}
                           disabled={isConnecting}
-                          onClick={() => {
-                            trackEvent('landing_connect', { source: 'quick_pick', host: getAnalyticsHost(endpoint.url), ...(page ? { page: page.key } : {}) });
-                            onConnect({ endpoint, protocolEra: server.protocolEra });
-                          }}
+                          onClick={() => connectPreset(server, 'quick_pick')}
                         >
                           <CatalogServerLogo
                             name={server.name}
@@ -319,54 +384,56 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
                           {server.name}
                         </button>
                       </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            )}
-          </>
-        )}
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </>
+          )}
 
-        {!advancedOptions && onOpenAdvancedOptions && (
-          <button
-            type="button"
-            className="landing-advanced-toggle"
-            aria-expanded={false}
-            onClick={() => {
-              trackEvent('advanced_options_open');
-              onOpenAdvancedOptions();
-            }}
-          >
-            <i className="bi bi-gear" aria-hidden="true"></i>
-            Advanced options
-            <span className="landing-advanced-hint">headers, auth, proxy</span>
-          </button>
-        )}
+          {!advancedOptions && onOpenAdvancedOptions && (
+            <button
+              type="button"
+              className="landing-advanced-toggle"
+              aria-expanded={false}
+              onClick={() => {
+                trackEvent('advanced_options_open');
+                onOpenAdvancedOptions();
+              }}
+            >
+              <i className="bi bi-gear" aria-hidden="true"></i>
+              {LANDING_ADVANCED_LABEL}
+              <span className="landing-advanced-hint">{LANDING_ADVANCED_HINT}</span>
+            </button>
+          )}
 
-        {advancedOptions && (
-          <button
-            type="button"
-            className="landing-advanced-toggle"
-            aria-expanded={advancedOpen}
-            aria-controls={advancedOpen ? 'landing-advanced-panel' : undefined}
-            onClick={() => {
-              if (!advancedOpen) trackEvent('advanced_options_open');
-              setShowAdvanced((open) => !open);
-            }}
-          >
-            <i className="bi bi-gear" aria-hidden="true"></i>
-            {advancedOpen ? 'Simple connect' : 'Advanced options'}
-            <span className="landing-advanced-hint">
-              {advancedOpen ? '' : 'headers, auth, proxy'}
-            </span>
-          </button>
-        )}
+          {advancedOptions && (
+            <button
+              type="button"
+              className="landing-advanced-toggle"
+              aria-expanded={advancedOpen}
+              aria-controls={advancedOpen ? `${idPrefix}-advanced-panel` : undefined}
+              onClick={() => {
+                if (!advancedOpen) trackEvent('advanced_options_open');
+                setShowAdvanced((open) => !open);
+              }}
+            >
+              <i className="bi bi-gear" aria-hidden="true"></i>
+              {advancedOpen ? 'Simple connect' : LANDING_ADVANCED_LABEL}
+              <span className="landing-advanced-hint">
+                {advancedOpen ? '' : LANDING_ADVANCED_HINT}
+              </span>
+            </button>
+          )}
 
-        <ul className="landing-trust" aria-label={LANDING_TRUST_LABEL}>
-          {LANDING_TRUST_POINTS.map((point) => (
-            <li key={point}>{point}</li>
-          ))}
-        </ul>
+          <ul className="landing-trust" aria-label={LANDING_TRUST_LABEL}>
+            {LANDING_TRUST_POINTS.map((point) => (
+              <li key={point}>{point}</li>
+            ))}
+          </ul>
+        </div>
+
+        <LandingPreview idPrefix={idPrefix} />
       </div>
 
       {page ? <KeywordLandingContent page={page} /> : <HomeLandingContent catalogCount={catalogCount} />}

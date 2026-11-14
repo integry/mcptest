@@ -19,11 +19,15 @@ import type { ReleaseReadinessStatus } from './releaseReadiness';
 
 type NoParams = Record<string, never>;
 
-/** How a connection was started. The landing only offers the first three. */
-export type LandingConnectSource = 'manual' | 'quick_pick' | 'recent_chip';
+/**
+ * How a connection was started on the landing. The landing's "Run a sample
+ * test" button connects through the quick-pick path, so it reports
+ * `sample_test` here and `quick_pick` as its connect_attempt source.
+ */
+export type LandingConnectSource = 'manual' | 'quick_pick' | 'recent_chip' | 'sample_test';
 /** Keyword landing pages (src/content/keywordLandingPages.ts). */
 export type LandingPageKey = 'test-server' | 'inspector-online' | 'playground';
-export type ConnectSource = LandingConnectSource | 'catalog' | 'shared_link' | 'reconnect';
+export type ConnectSource = Exclude<LandingConnectSource, 'sample_test'> | 'catalog' | 'shared_link' | 'reconnect';
 export type ConnectOutcome = 'connected' | 'auth_required' | 'failed';
 /** Report grade, matching the grade shown next to the score, or `unscored`. */
 export type ScoreBand = 'A' | 'B' | 'C' | 'D' | 'F' | 'unscored';

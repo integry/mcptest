@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ConnectionTab } from '../types';
+import { NEW_TAB_LABEL, NEW_TAB_TOOLTIP } from '../content/landingFirstRun';
 import './Tabs.css';
 
 interface TabsProps {
@@ -74,13 +75,14 @@ const Tabs: React.FC<TabsProps> = ({ tabs, activeTabId, onSelectTab, onCloseTab,
     return null; // Don't render tabs if there are none
   }
 
+  // Status dots read the theme tokens: green for HTTP, info for legacy SSE.
   const getConnectionStatusColor = (status: string, transportType?: string) => {
     switch (status) {
       case 'Connected':
-        return transportType === 'legacy-sse' ? 'primary' : 'success'; // Blue for SSE, Green for HTTP
-      case 'Connecting': return 'warning';
-      case 'Error': return 'danger';
-      default: return 'secondary';
+        return transportType === 'legacy-sse' ? 'var(--info-color)' : 'var(--success-color)';
+      case 'Connecting': return 'var(--warning-color)';
+      case 'Error': return 'var(--danger-color)';
+      default: return 'var(--secondary-color)';
     }
   };
 
@@ -92,6 +94,9 @@ const Tabs: React.FC<TabsProps> = ({ tabs, activeTabId, onSelectTab, onCloseTab,
 
   return (
     <div className={stripClassName}>
+      <span className="playground-tab-count">
+        Sessions <span className="playground-tab-count-value">{tabs.length}</span>
+      </span>
       <div
         ref={stripRef}
         className="nav nav-tabs playground-tabs"
@@ -112,16 +117,7 @@ const Tabs: React.FC<TabsProps> = ({ tabs, activeTabId, onSelectTab, onCloseTab,
               >
                 <span
                   className="me-2 playground-tab-status"
-                  style={{
-                    width: '8px',
-                    height: '8px',
-                    borderRadius: '50%',
-                    backgroundColor: getConnectionStatusColor(tab.connectionStatus, tab.transportType) === 'success' ? '#198754' :
-                                     getConnectionStatusColor(tab.connectionStatus, tab.transportType) === 'primary' ? '#0d6efd' :
-                                     getConnectionStatusColor(tab.connectionStatus, tab.transportType) === 'warning' ? '#ffc107' :
-                                     getConnectionStatusColor(tab.connectionStatus, tab.transportType) === 'danger' ? '#dc3545' : '#6c757d',
-                    display: 'inline-block'
-                  }}
+                  style={{ backgroundColor: getConnectionStatusColor(tab.connectionStatus, tab.transportType) }}
                 ></span>
                 <span className="playground-tab-label">{label}</span>
               </button>
@@ -138,7 +134,15 @@ const Tabs: React.FC<TabsProps> = ({ tabs, activeTabId, onSelectTab, onCloseTab,
           );
         })}
       </div>
-      <button type="button" className="nav-link playground-tab-new" onClick={onNewTab}>+ New</button>
+      <button
+        type="button"
+        className="nav-link playground-tab-new"
+        onClick={onNewTab}
+        aria-label={NEW_TAB_LABEL}
+        title={NEW_TAB_TOOLTIP}
+      >
+        <span aria-hidden="true">+</span> New
+      </button>
     </div>
   );
 };

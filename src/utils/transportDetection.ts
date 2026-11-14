@@ -766,7 +766,8 @@ const observeAuthenticationResponses = (
   observedRequests: ObservedTransportRequest[],
   candidate: TransportCandidate,
   onRequest?: (request: ObservedTransportRequest) => void,
-  knownCredentials: readonly string[] = []
+  knownCredentials: readonly string[] = [],
+  onResponse?: (request: ObservedTransportRequest) => void
 ): FetchLike => {
   // One automatic retry per candidate, so rate limiting is never retried silently.
   let rateLimitRetryUsed = false;
@@ -867,8 +868,12 @@ const observeAuthenticationResponses = (
     } catch (error) {
       attemptedRequest.durationMs = Math.max(0, Date.now() - startedAtMs);
       attemptedRequest.outcome = 'failed';
+      onResponse?.(attemptedRequest);
       throw error;
     }
+    // Progress observers learn the settled request before any retry or
+    // challenge handling, so a slow or failing step is visible as it happens.
+    onResponse?.(attemptedRequest);
 
     // Only the target's own rate limit is retried; the proxy caller limit has
     // its own guidance and a response of unknown provenance is left alone.
@@ -1129,7 +1134,9 @@ export async function attemptParallelConnections(
   usesProxy = false,
   protocolEraHint?: 'stateless' | 'stateful' | 'legacy',
   onRequest?: (request: ObservedTransportRequest) => void,
-  preferredTransport?: TransportType
+  preferredTransport?: TransportType,
+  /** Called once per settled HTTP request (readable response or fetch failure). */
+  onResponse?: (request: ObservedTransportRequest) => void
 ): Promise<ConnectedCandidate & { protocolEra: ProtocolEra; protocolVersion?: string }> {
   const hasTargetCredential = usesProxy
     ? new Headers(requestHeaders).has('Authorization')
@@ -1160,7 +1167,8 @@ export async function attemptParallelConnections(
         [
           ...(authToken ? [authToken] : []),
           ...Array.from(headers.values()).filter(Boolean),
-        ]
+        ],
+        onResponse
       ),
     };
   };

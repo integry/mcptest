@@ -16,14 +16,36 @@ interface ContentTrackNavProps {
   idPrefix?: string;
   /** Rendered at the top of the group, above the guide hub link. */
   search?: React.ReactNode;
+  /**
+   * Whether the group's body (search, hub and tracks) is shown. With
+   * `onToggleOpen` the heading becomes a toggle; the links stay in the DOM
+   * (hidden) either way. Without it the group is always open.
+   */
+  open?: boolean;
+  onToggleOpen?: () => void;
+  /** Ref to the Learn heading toggle, the group's always-visible control. */
+  toggleRef?: React.Ref<HTMLButtonElement>;
 }
 
+/** Icon of the Learn group toggle, also shown on the icon rail. */
+export const LEARN_GROUP_ICON = 'bi-mortarboard';
+
 /**
- * The sidebar's Learn group: the guide hub plus the four tracks, always
- * visible. The track that owns the current page is expanded to its articles;
- * the others stay collapsed until toggled. Toggles reset on navigation.
+ * The sidebar's Learn group: the guide search, the guide hub and the four
+ * tracks, under a heading that can fold the whole group. The track that
+ * owns the current page is expanded to its articles; the others stay
+ * collapsed until toggled. Track toggles reset on navigation.
  */
-const ContentTrackNav: React.FC<ContentTrackNavProps> = ({ onNavigate, collapsed = false, onExpandSidebar, idPrefix = 'sidenav', search }) => {
+const ContentTrackNav: React.FC<ContentTrackNavProps> = ({
+  onNavigate,
+  collapsed = false,
+  onExpandSidebar,
+  idPrefix = 'sidenav',
+  search,
+  open,
+  onToggleOpen,
+  toggleRef,
+}) => {
   const { pathname } = useLocation();
   const activeTrackId = getLearnTrackForPath(pathname)?.id;
   const [overrides, setOverrides] = useState<Partial<Record<string, boolean>>>({});
@@ -44,9 +66,12 @@ const ContentTrackNav: React.FC<ContentTrackNavProps> = ({ onNavigate, collapsed
     setOverrides(current => ({ ...current, [trackId]: !isExpanded(trackId) }));
   };
 
-  return (
-    <section className="sidenav-group content-track-nav" aria-labelledby={`${idPrefix}-learn-heading`}>
-      <h2 id={`${idPrefix}-learn-heading`} className="sidenav-section-label">Learn</h2>
+  const collapsible = Boolean(onToggleOpen);
+  const bodyId = `${idPrefix}-learn-body`;
+  const bodyOpen = collapsible ? Boolean(open) : true;
+
+  const tracks = (
+    <>
       {search}
       <ul className="sidenav-list">
         <li className="nav-item">
@@ -96,6 +121,39 @@ const ContentTrackNav: React.FC<ContentTrackNavProps> = ({ onNavigate, collapsed
           );
         })}
       </ul>
+    </>
+  );
+
+  return (
+    <section className="sidenav-group content-track-nav" aria-labelledby={`${idPrefix}-learn-heading`}>
+      {collapsible ? (
+        <>
+          <h2 className="sidenav-section-heading">
+            <button
+              ref={toggleRef}
+              type="button"
+              id={`${idPrefix}-learn-heading`}
+              className="nav-link sidenav-link sidenav-group-toggle sidenav-section-toggle"
+              aria-expanded={bodyOpen}
+              aria-controls={bodyId}
+              onClick={onToggleOpen}
+              title={collapsed ? 'Learn' : undefined}
+            >
+              <i className={`bi ${LEARN_GROUP_ICON} sidenav-icon`} aria-hidden="true"></i>
+              <span className="sidenav-label">Learn</span>
+              <i className="bi bi-chevron-right sidenav-chevron" aria-hidden="true"></i>
+            </button>
+          </h2>
+          <div id={bodyId} className="sidenav-learn-body" hidden={!bodyOpen}>
+            {tracks}
+          </div>
+        </>
+      ) : (
+        <>
+          <h2 id={`${idPrefix}-learn-heading`} className="sidenav-section-label">Learn</h2>
+          {tracks}
+        </>
+      )}
     </section>
   );
 };

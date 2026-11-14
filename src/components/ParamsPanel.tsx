@@ -1,11 +1,14 @@
 import React from 'react';
 import {
+  formatExampleValue,
   getCapabilityInputSpec,
+  getExampleValue,
   getMissingRequiredParams,
   hasParameterValue,
   type CapabilityInputDefinition,
 } from '../utils/capabilityParams';
 import ToolSchemaDetails from './ToolSchemaDetails';
+import './ConnectedGuide.css';
 
 // Use 'any' for now until correct SDK types are confirmed/exported
 type SelectedTool = any;
@@ -39,6 +42,23 @@ interface ParamsPanelProps {
   renderCallHistory?: (showRequest: () => void) => React.ReactNode;
   callHistoryCount?: number;
 }
+
+/** Short descriptions are shown in full; long ones show their opening and expand. */
+const DESCRIPTION_PREVIEW_LENGTH = 220;
+const CapabilityDescription: React.FC<{ text: string; kind: string }> = ({ text, kind }) => {
+  if (text.length <= DESCRIPTION_PREVIEW_LENGTH) {
+    return <p className="capability-description-text">{text}</p>;
+  }
+  return (
+    <details className="capability-description">
+      <summary>
+        <span className="capability-description-preview">{text.slice(0, DESCRIPTION_PREVIEW_LENGTH).trimEnd()}…</span>
+        <span className="capability-description-more">Full description of this {kind}</span>
+      </summary>
+      <p>{text}</p>
+    </details>
+  );
+};
 
 const ParamsPanel: React.FC<ParamsPanelProps> = ({
   selectedTool,
@@ -150,6 +170,16 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
         const isRequired = requiredParams.includes(name);
         const inputType = definition.type || 'text'; // Default to text if type is missing
         const isMissing = isRequired && !hasParameterValue(params[name]);
+        const example = getExampleValue(definition);
+        const exampleText = example !== undefined ? formatExampleValue(example) : undefined;
+        const exampleFits = example !== undefined && (
+          inputType === 'object' || inputType === 'array'
+            ? typeof example === 'object'
+            : inputType === 'boolean' ? typeof example === 'boolean'
+              : inputType === 'integer' || inputType === 'number' ? typeof example === 'number'
+                : typeof example === 'string' || typeof example === 'number'
+        );
+        const exampleHintId = `${idPrefix}-${name}-example`;
 
         return (
             <div key={`${idPrefix}-${name}`} className="param-form mb-3">
@@ -157,6 +187,24 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
                 {name} {isRequired && <span className="required-mark" aria-label="required">*</span>} {definition.type && <span className="param-type">{definition.type}</span>}
             </label>
             {definition.description && <p className="param-description">{definition.description}</p>}
+            {exampleText !== undefined && (
+              <p className="param-example" id={exampleHintId}>
+                Example: <code>{exampleText}</code>
+                {exampleFits && (
+                  <button
+                    type="button"
+                    className="btn btn-link btn-sm param-example-use"
+                    onClick={() => handleParamChange(
+                      name,
+                      inputType === 'object' || inputType === 'array' ? JSON.stringify(example, null, 2) : example
+                    )}
+                    aria-label={`Use the example value for ${name}`}
+                  >
+                    Use example
+                  </button>
+                )}
+              </p>
+            )}
 
             {/* Input rendering logic based on type */}
             {inputType === 'boolean' ? (
@@ -241,7 +289,10 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
                 value={params[name] ?? ''}
                 onChange={(e) => handleParamChange(name, e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder={definition.default !== undefined ? `Default: ${definition.default}` : `Enter ${name}`}
+                placeholder={definition.default !== undefined
+                  ? `Default: ${definition.default}`
+                  : exampleText !== undefined ? `e.g. ${exampleText}` : `Enter ${name}`}
+                aria-describedby={exampleText !== undefined ? exampleHintId : undefined}
                 required={isRequired}
                 aria-required={isRequired}
                 aria-invalid={isMissing}
@@ -252,13 +303,14 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
     };
 
 
+    const hasRequired = parameterDefinitions.some(({ name }) => requiredParams.includes(name));
     return (
       <>
-        {item.description && (
-          <details className="capability-description">
-            <summary>About this {paramType}</summary>
-            <p>{item.description}</p>
-          </details>
+        {item.description && <CapabilityDescription text={item.description} kind={paramType} />}
+        {hasRequired && (
+          <p className="param-required-legend">
+            Fields marked <span className="required-mark" aria-hidden="true">*</span> are required.
+          </p>
         )}
         {parameterDefinitions.map((definition) => renderSingleInput(definition))}
       </>
@@ -364,9 +416,15 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
         {showingHistory ? (
           renderCallHistory!(() => setView('request'))
         ) : !isConnected ? (
-          <p className="text-muted p-2">Please connect to an MCP server to begin.</p>
+          <p className="text-muted p-2">Connect to an MCP server to build requests here.</p>
         ) : !selectedTool && !selectedResourceTemplate && !selectedPrompt ? (
-          <p className="text-muted p-2">Select a tool from the left to view its parameters and execute.</p>
+          <div className="request-empty-state">
+            <p className="request-empty-title">No capability selected</p>
+            <p>
+              Pick a tool from Capabilities to call it. Its description and a form built from its
+              input schema appear here, with required fields marked, and <strong>Run tool</strong> sends the call.
+            </p>
+          </div>
         ) : (
           <div id="paramsArea">
             {/* Render parameters/arguments based on selection */}

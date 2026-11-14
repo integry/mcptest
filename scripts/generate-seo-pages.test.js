@@ -679,7 +679,7 @@ describe('generated page metadata', () => {
     expect(html).not.toContain('The proxy is not configured in this build');
     // An app route: React mounts at load rather than on the first input.
     expect(html).not.toContain('data-deferred-mount');
-    expect(html).toContain('<a href="/tools/discovery" class="nav-link sidenav-link active" aria-current="page">');
+    expect(html).toMatch(/<a href="\/tools\/discovery" class="nav-link sidenav-link active" aria-current="page" aria-describedby="[^"]+" title="[^"]+">/);
     expect(renderDiscoveryHtml(indexHtml, metadata)).toContain('The proxy is not configured in this build');
   });
 

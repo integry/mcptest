@@ -1,0 +1,389 @@
+/* Guided connected view (issue #560): connection stages, the connected
+   summary, onboarding hints, empty states and plain-language failures.
+   Built only from the design tokens; every row wraps at 390px. */
+
+/* --- Connection stages --- */
+.connection-progress {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  background: var(--card-bg-secondary);
+}
+
+.connection-progress-title {
+  margin: 0 0 var(--space-2);
+  color: var(--text-accent);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+}
+
+.connection-stages {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.connection-stage {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.connection-stage-icon {
+  flex: 0 0 auto;
+  line-height: 1.4;
+}
+
+.connection-stage-text {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: var(--space-2);
+  min-width: 0;
+}
+
+.connection-stage-label {
+  color: var(--text-color);
+}
+
+.connection-stage-detail {
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.connection-stage--pending .connection-stage-label { color: var(--text-muted); }
+.connection-stage--active .connection-stage-icon { color: var(--info-color); }
+.connection-stage--active .connection-stage-label { font-weight: var(--weight-semibold); }
+.connection-stage--done .connection-stage-icon { color: var(--success-color); }
+.connection-stage--skipped .connection-stage-icon { color: var(--text-muted); }
+.connection-stage--waiting .connection-stage-icon { color: var(--warning-color); }
+.connection-stage--waiting .connection-stage-label { font-weight: var(--weight-semibold); }
+.connection-stage--failed .connection-stage-icon { color: var(--danger-color); }
+.connection-stage--failed .connection-stage-label { color: var(--danger-color); font-weight: var(--weight-semibold); }
+
+@media (prefers-reduced-motion: no-preference) {
+  .connection-stage--active .connection-stage-icon::before {
+    animation: connection-stage-spin 1s linear infinite;
+  }
+}
+
+.connection-stage--active .connection-stage-icon::before {
+  display: inline-block;
+}
+
+@keyframes connection-stage-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* --- Connected summary --- */
+.connected-summary-body {
+  padding: var(--space-3) var(--space-4);
+}
+
+.connected-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3) var(--space-6);
+}
+
+.connected-summary-identity {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+  flex: 1 1 18rem;
+}
+
+.connected-summary-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--text-color);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  overflow-wrap: anywhere;
+}
+
+.connected-summary-name:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: var(--border-radius-sm);
+}
+
+.connected-summary-version {
+  color: var(--text-muted);
+  font-family: var(--font-family-mono);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-regular);
+}
+
+.connected-summary-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.connected-summary-absent {
+  color: var(--text-muted) !important;
+}
+
+.connected-summary-next {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-1);
+  flex: 0 1 20rem;
+  min-width: 0;
+}
+
+.connected-summary-next p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.connected-summary-next .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/* --- Onboarding hints: dismissible, inline, never modal --- */
+.onboarding-hint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--primary-soft-border);
+  border-left-width: var(--rail-width);
+  border-left-color: var(--primary-color);
+  border-radius: var(--border-radius);
+  background: var(--accent-wash);
+  color: var(--text-color);
+  font-size: var(--text-sm);
+}
+
+.onboarding-hint--share {
+  margin: var(--space-3) 0 0;
+}
+
+.onboarding-hint-icon {
+  flex: 0 0 auto;
+  color: var(--accent-text);
+  line-height: 1.5;
+}
+
+.onboarding-hint-text {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-1);
+  /* Wide enough to read; the Dismiss button wraps below in narrow panes. */
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.onboarding-hint > .btn {
+  flex: 0 0 auto;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.onboarding-hint-text p {
+  margin: 0;
+}
+
+.onboarding-hint-title {
+  font-weight: var(--weight-semibold);
+}
+
+.capability-group--guided > summary {
+  color: var(--accent-text);
+}
+
+.capability-group--guided [role='listbox'] {
+  box-shadow: inset var(--rail-width) 0 0 var(--primary-color);
+}
+
+/* --- Empty and zero states --- */
+.capability-empty-loading,
+.capability-empty-states {
+  margin: var(--space-2) var(--space-3);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.capability-empty-states {
+  display: grid;
+  gap: var(--space-2);
+  padding: 0;
+  list-style: none;
+}
+
+.capability-empty-state {
+  padding: var(--space-2) var(--space-3);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--border-radius);
+}
+
+.capability-empty-state p {
+  margin: 0 0 var(--space-1);
+}
+
+.capability-empty-title,
+.request-empty-title,
+.result-empty-title {
+  color: var(--text-accent);
+  font-weight: var(--weight-semibold);
+}
+
+.request-empty-state,
+.result-empty-state {
+  padding: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.request-empty-state p,
+.result-empty-state p {
+  margin: 0 0 var(--space-1);
+}
+
+.awaiting-connection-steps {
+  margin: var(--space-3) 0 0;
+  padding-left: var(--space-5);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.awaiting-connection-steps li + li {
+  margin-top: var(--space-1);
+}
+
+.awaiting-connection-steps strong {
+  color: var(--text-accent);
+}
+
+/* --- Request form --- */
+.capability-description-text {
+  margin: 0 0 var(--space-3);
+  color: var(--text-color);
+  font-size: var(--text-sm);
+}
+
+.capability-description-preview {
+  display: block;
+  color: var(--text-color);
+}
+
+.capability-description-more {
+  color: var(--link-color);
+  font-size: var(--text-xs);
+}
+
+.param-required-legend {
+  margin: 0 0 var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.param-example {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1);
+  margin: 0 0 var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.param-example code {
+  overflow-wrap: anywhere;
+}
+
+.param-example-use {
+  padding: 0;
+  font-size: var(--text-xs);
+}
+
+/* --- Result view --- */
+.result-region:focus-visible {
+  outline: none;
+  box-shadow: inset var(--focus-ring);
+}
+
+.tool-result-explanation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+  margin: 0 0 var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.tool-result-raw-link {
+  padding: 0;
+  font-size: var(--text-sm);
+}
+
+/* --- Plain-language failures --- */
+.failure-guidance {
+  margin-bottom: var(--space-3);
+}
+
+.failure-guidance p {
+  margin: 0 0 var(--space-1);
+}
+
+.failure-guidance-what {
+  color: var(--text-color);
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+}
+
+.failure-guidance-label {
+  font-weight: var(--weight-semibold);
+}
+
+.failure-guidance-try ul {
+  margin: var(--space-1) 0 0;
+  padding-left: var(--space-5);
+}
+
+.failure-technical-label {
+  margin: 0 0 var(--space-1);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border-color);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+}
+
+.failure-guidance-learn {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-sm);
+}
+
+.call-failure-detail {
+  max-height: 12rem;
+  margin: 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: var(--text-xs);
+}

@@ -37,7 +37,7 @@ export const RecentServersPanel: React.FC<RecentServersPanelProps> = ({
   const serversToShow = showAll ? recentServers : recentServers.slice(0, INITIAL_DISPLAY_COUNT);
 
   return (
-    <div className="card mb-3">
+    <div className="card mb-3 recent-servers-panel">
       <div className="card-header">
         <h6 className="mb-0">Recent Connections</h6>
       </div>

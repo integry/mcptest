@@ -18,7 +18,7 @@ import { MCP_TEST_CLIENT_METADATA, MCP_TEST_SERVERS_METADATA, OAUTH_CHECKER_META
 import { BREAKING_CHANGES_TOOL_PATH } from '../utils/breakingChangesRoute';
 import { OG_IMAGE_HEIGHT, OG_IMAGE_WIDTH, getOgImagePath } from '../utils/ogImage';
 import { parseResultShareUrl } from '../utils/urlUtils';
-import { OAUTH_CHECKER_PATH, DISCOVERY_CHECKER_PATH, MCP_TEST_SERVERS_PATH, MCP_TEST_CLIENT_PATH, isKnownAppPath } from '../utils/appRoutes';
+import { OAUTH_CHECKER_PATH, DISCOVERY_CHECKER_PATH, DASHBOARDS_PATH, MCP_TEST_SERVERS_PATH, MCP_TEST_CLIENT_PATH, isKnownAppPath } from '../utils/appRoutes';
 import {
   LEARN_INDEX_METADATA,
   getContentPage,
@@ -29,6 +29,28 @@ import { getLandingFaqStructuredData } from '../content/landingCopy';
 import { getKeywordLandingFaqStructuredData, getKeywordLandingPage } from '../content/keywordLandingPages';
 
 const DEFAULT_IMAGE = `${SITE_URL}/logo.png`;
+
+/**
+ * App-only pages (no prerendered file of their own): each gets a title that
+ * names it, so the tab and the history match the sidebar's active entry.
+ */
+const getAppPageMetadata = (pathname: string): { title: string; description: string; robots?: string } | undefined => {
+  if (pathname === '/report' || pathname.startsWith('/report/')) {
+    return REPORT_METADATA;
+  }
+  if (pathname === '/submit') {
+    return SUBMIT_METADATA;
+  }
+  if (pathname === DASHBOARDS_PATH || pathname.startsWith(`${DASHBOARDS_PATH}/`)) {
+    // Dashboards hold the visitor's own saved calls; there is nothing to index.
+    return {
+      title: 'Dashboards | mcptest.io',
+      description: 'Saved MCP tool calls you can re-run and health-check together.',
+      robots: 'noindex, follow',
+    };
+  }
+  return undefined;
+};
 
 /** The build-time Open Graph card for a prerendered page path. */
 const ogImage = (pagePath: string) => `${SITE_URL}${getOgImagePath(pagePath)}`;
@@ -238,9 +260,9 @@ export const useMetaTags = () => {
         canonicalUrl: `${SITE_URL}${DISCOVERY_CHECKER_PATH}`,
         imageUrl: ogImage(DISCOVERY_CHECKER_PATH),
       });
-    } else if (location.pathname === '/report' || location.pathname === '/submit') {
+    } else if (isKnownAppPath(location.pathname) && getAppPageMetadata(location.pathname)) {
       applyMetadata({
-        ...(location.pathname === '/report' ? REPORT_METADATA : SUBMIT_METADATA),
+        ...getAppPageMetadata(location.pathname)!,
         canonicalUrl: `${SITE_URL}${location.pathname}`,
       });
     } else if (!isKnownAppPath(location.pathname)) {

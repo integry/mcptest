@@ -84,3 +84,11 @@
   padding: 0.18rem 0.6rem;
   font-size: 0.78rem;
 }
+
+/* The selected view is an accent chip, not a solid grey button. */
+.tool-result-view-switch .btn-secondary,
+.tool-result-view-switch .btn-secondary:hover {
+  background-color: var(--accent-wash);
+  border-color: var(--primary-color);
+  color: var(--accent-text);
+}

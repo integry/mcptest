@@ -3,14 +3,14 @@
 .reading-shell {
   --reading-measure: 68ch;
   --reading-code-keyword: #7c3aed;
-  --reading-code-string: #047857;
+  --reading-code-string: #167a2c;
   --reading-code-title: #1d4ed8;
   --reading-code-literal: #b45309;
-  --reading-code-comment: #6b7280;
+  --reading-code-comment: #5f6862;
   --reading-code-attr: #0f766e;
-  --reading-note-bg: #f0fdf4;
-  --reading-note-border: #047857;
-  --reading-rule: #e5e7eb;
+  --reading-note-bg: #eef6f0;
+  --reading-note-border: #167a2c;
+  --reading-rule: #dce1dd;
   display: grid;
   grid-template-columns: minmax(0, var(--reading-measure));
   justify-content: center;
@@ -26,14 +26,14 @@
 
 :root[data-theme='dark'] .reading-shell {
   --reading-code-keyword: #c4b5fd;
-  --reading-code-string: #6ee7b7;
+  --reading-code-string: #74e383;
   --reading-code-title: #93c5fd;
   --reading-code-literal: #fcd34d;
-  --reading-code-comment: #94a3b8;
+  --reading-code-comment: #9aa49e;
   --reading-code-attr: #5eead4;
-  --reading-note-bg: #132a24;
-  --reading-note-border: #36e0aa;
-  --reading-rule: #334155;
+  --reading-note-bg: #15291a;
+  --reading-note-border: #46d35a;
+  --reading-rule: #2a312d;
 }
 
 .reading-article {
@@ -44,13 +44,15 @@
 
 /* Breadcrumb and header */
 
+/* The breadcrumb is a path, so it is set in mono like one. */
 .reading-breadcrumb {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
   margin: 0 0 1.25rem;
   color: var(--text-muted);
-  font-size: 0.875rem;
+  font-family: var(--font-family-mono);
+  font-size: 0.8125rem;
 }
 
 .reading-breadcrumb a {
@@ -64,10 +66,15 @@
   text-decoration: underline;
 }
 
+/* Article head: the instrument face shared with the server profile and the
+   tool pages, accent signal line on top. */
 .reading-header {
   margin-bottom: 2rem;
-  padding-bottom: 1.5rem;
-  border-bottom: 1px solid var(--reading-rule);
+  padding: clamp(1.25rem, 3vw, 1.75rem) clamp(1rem, 3vw, 1.75rem);
+  border: 1px solid var(--hero-border);
+  border-radius: var(--border-radius);
+  background: var(--hero-bg);
+  box-shadow: inset 0 2px 0 var(--primary-color);
 }
 
 .reading-header h1 {
@@ -75,7 +82,7 @@
   font-size: clamp(1.75rem, 4vw, 2.375rem);
   font-weight: 700;
   line-height: 1.15;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.03em;
 }
 
 .reading-summary {
@@ -91,7 +98,8 @@
   gap: 0.5rem;
   margin: 1rem 0 0;
   color: var(--text-muted);
-  font-size: 0.9rem;
+  font-family: var(--font-family-mono);
+  font-size: 0.8125rem;
 }
 
 /* Prose */
@@ -116,8 +124,11 @@
   margin-top: 0;
 }
 
+/* Section headers: a heading over a hairline, as everywhere in the app. */
 .reading-prose h2 {
   margin: 2.75rem 0 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--reading-rule);
   font-size: 1.5rem;
   font-weight: 700;
   line-height: 1.25;
@@ -165,7 +176,7 @@
 
 /* Buttons rendered as links (e.g. "Test in mcptest.io") keep their own colours. */
 .reading-prose a:not(.btn) {
-  color: var(--primary-color);
+  color: var(--link-color);
   text-decoration: underline;
   text-decoration-thickness: 1px;
   text-underline-offset: 0.15em;
@@ -173,7 +184,7 @@
 
 .reading-prose a:not(.btn):hover,
 .reading-prose a:not(.btn):focus-visible {
-  color: var(--primary-hover);
+  color: var(--link-hover);
 }
 
 .reading-prose a[target='_blank']::after,
@@ -186,8 +197,8 @@
 .reading-prose blockquote {
   margin: 1.5rem 0;
   padding: 0.9rem 1.1rem;
-  border-left: 3px solid var(--reading-note-border);
-  border-radius: 0 0.4rem 0.4rem 0;
+  border-left: var(--rail-width) solid var(--reading-note-border);
+  border-radius: 0 var(--border-radius-sm) var(--border-radius-sm) 0;
   background: var(--reading-note-bg);
 }
 
@@ -235,10 +246,13 @@
   color: var(--text-accent);
 }
 
+/* Table heads match the app's tables: a raised band with mono labels. */
 .reading-table th {
   background: var(--card-bg-secondary);
   color: var(--text-color);
-  font-weight: 650;
+  font-family: var(--font-family-mono);
+  font-size: 0.875rem;
+  font-weight: 600;
 }
 
 /* Code blocks */
@@ -253,7 +267,7 @@
   margin: 0;
   padding: 1rem 1rem 1rem;
   border: 1px solid var(--reading-rule);
-  border-radius: 0.5rem;
+  border-radius: var(--code-radius);
   background: var(--card-bg-secondary);
   color: var(--text-color);
   font-family: var(--font-family-mono);
@@ -361,15 +375,19 @@
   min-width: 0;
   padding: 0.75rem 0.9rem;
   border: 1px solid var(--reading-rule);
-  border-radius: 0.5rem;
+  border-radius: var(--border-radius);
+  background: var(--card-bg);
   color: var(--text-color);
   text-decoration: none;
+  transition: border-color var(--motion-fast) ease, background-color var(--motion-fast) ease;
 }
 
+/* The pager lights up like a preset chip: accent border and wash. */
 .reading-pager-link:hover,
 .reading-pager-link:focus-visible {
   border-color: var(--primary-color);
-  color: var(--primary-color);
+  background: var(--accent-wash);
+  color: var(--accent-text);
 }
 
 .reading-pager-next {
@@ -378,7 +396,8 @@
 
 .reading-pager-label {
   color: var(--text-muted);
-  font-size: 0.85rem;
+  font-family: var(--font-family-mono);
+  font-size: 0.8125rem;
 }
 
 .reading-pager-title {
@@ -411,7 +430,7 @@
 
 .reading-related a,
 .reading-sources a {
-  color: var(--primary-color);
+  color: var(--link-color);
 }
 
 .reading-related-summary {
@@ -443,9 +462,10 @@
 
 .reading-outline-title {
   margin: 0 0 0.6rem;
-  color: var(--text-color);
-  font-size: 0.85rem;
-  font-weight: 650;
+  color: var(--text-muted);
+  font-family: var(--font-family-mono);
+  font-size: 0.8125rem;
+  font-weight: 500;
   letter-spacing: 0;
 }
 
@@ -470,7 +490,7 @@
 
 .reading-outline a:hover,
 .reading-outline a:focus-visible {
-  color: var(--primary-color);
+  color: var(--accent-text);
   text-decoration: underline;
 }
 
@@ -604,7 +624,7 @@
 
 .learn-track-item-title:hover,
 .learn-track-item-title:focus-visible {
-  color: var(--primary-color);
+  color: var(--accent-text);
   text-decoration: underline;
 }
 
@@ -620,7 +640,8 @@
   gap: 0.5rem;
   margin: 0;
   color: var(--text-muted);
-  font-size: 0.85rem;
+  font-family: var(--font-family-mono);
+  font-size: 0.8125rem;
 }
 
 @media (max-width: 767.98px) {
@@ -650,4 +671,4 @@
 .reading-inline-test { margin: 1.5rem 0; padding: 1rem 0; border-block: 1px solid var(--border-color, #888); }
 .reading-inline-test label { display: block; font-weight: 600; margin-bottom: .5rem; }
 .reading-inline-test input { flex: 1 1 14rem; min-width: 0; width: auto; }
-.reading-pager-next { border-inline-start: 3px solid var(--bs-primary); padding-inline-start: 1rem; }
+.reading-pager-next { border-inline-start: var(--rail-width) solid var(--primary-color); padding-inline-start: 1rem; }

@@ -1,23 +1,51 @@
 /* Design tokens. Imported first from src/index.css.
 
+   The mcptest.io design language ("inspector"): a bright, airy instrument on
+   a cool lavender wash, white surfaces with hairlines, mono for protocol
+   facts and one deep green accent. docs/design-language.md lists
+   every token and the rules for using them; read it before adding a colour.
+
    Three blocks, on purpose:
-   1. scale tokens that never change with the theme (type, radius, spacing);
+   1. scale tokens that never change with the theme (type, radius, spacing,
+      motion);
    2. the light palette, which is also the default;
    3. the dark palette, which must define every variable the light palette
-      defines (src/styles/tokens.test.ts enforces the parity). */
+      defines (src/styles/tokens.test.ts enforces the parity). The dark
+      palette is designed on its own, not inverted from the light one. */
 
 /* --- Scale: theme-independent --- */
 :root {
   --font-family-sans-serif: 'Inter Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', sans-serif;
+  /* Mono carries protocol facts: URLs, method and tool names, status codes,
+     versions, counts. Never body copy. */
   --font-family-mono: 'JetBrains Mono Variable', 'Fira Code', 'SF Mono', 'Monaco', 'Inconsolata', 'Source Code Pro', monospace;
+
+  /* Type scale (14px body). Labels never go below --text-2xs (11px). */
+  --text-2xs: 0.6875rem;
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.875rem;
+  --text-md: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.375rem;
+  --text-2xl: 1.75rem;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 650;
 
   /* Radius. App chrome (cards, panels, inputs, menus) uses --border-radius;
      small controls (badges, segmented items, inline icons) use the -sm value.
-     Buttons share the chrome radius so they echo the panels they sit in. */
-  --border-radius: 0.5rem;
-  --border-radius-sm: 0.375rem;
-  --button-radius: 0.5rem;
-  --button-radius-sm: 0.375rem;
+     Buttons share the chrome radius so they echo the panels they sit in.
+     Corners are tight, like an instrument panel. Only status pills are
+     fully round. */
+  --border-radius: 0.125rem;
+  --border-radius-sm: 0.125rem;
+  --button-radius: 0.125rem;
+  --button-radius-sm: 0.125rem;
+  --radius-pill: 999px;
+  /* Header controls (theme, sign in) are the one softened corner. */
+  --button-radius-lg: 0.5rem;
 
   /* 4px spacing scale. */
   --space-1: 0.25rem;
@@ -28,76 +56,221 @@
   --space-6: 1.5rem;
   --space-8: 2rem;
 
+  /* Workspace padding; the session strip bleeds back across it. */
+  --main-pad: clamp(1rem, 2.6vw, 2.5rem);
+
+  /* The signal rail: the 3px left edge that marks the active nav item, a
+     verdict, a JSON-RPC message on the wire and a callout. */
+  --rail-width: 3px;
+
+  /* Motion. Short and functional; zeroed under prefers-reduced-motion. */
+  --motion-fast: 120ms;
+  --motion-base: 200ms;
+  --ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
+
   /* One code block style for the inspector, the report and the reading
      layout (src/components/learn/ReadingLayout.css uses the same values). */
   --code-font-size: 0.8rem;
   --code-line-height: 1.55;
-  --code-radius: 0.5rem;
+  --code-radius: 0.25rem;
 }
 
-/* --- Light palette (default) --- */
+/* --- Light palette (default) ---
+   A bright inspector on a cool lavender wash: white surfaces with hairlines,
+   ink-navy text, and one deep green accent. Three distinct surface steps:
+   page < raised < surface. */
 :root,
 :root[data-theme='light'] {
-  --body-bg: #f6f7f9;
+  /* Surfaces */
+  --body-bg: #eaf0f8;
   --card-bg: #ffffff;
-  --card-bg-secondary: #f3f4f6;
-  --text-color: #111827;
-  --text-muted: #5b6472;
-  --text-accent: #374151;
-  --catalog-secondary-text: #4b5563;
-  --primary-color: #047857;
-  --primary-hover: #065f46;
-  --primary-light: #059669;
-  --secondary-color: #64748b;
-  --secondary-surface: #64748b;
-  --secondary-hover: #475569;
-  --success-color: #03664a;
-  --info-color: #0789a8;
-  --accent-violet: #7165e8;
-  --danger-color: #dc2626;
-  --warning-color: #d97706;
-  --border-color: #e5e7eb;
+  --card-bg-secondary: #f1f5f9;
+  --card-header-bg: #f8fafc;
+  /* The page wash behind the shell: a cool blue corner fading to lavender.
+     Decorative only; every surface on it is opaque. */
+  --page-wash: radial-gradient(1100px 580px at 8% -5%, rgba(56, 189, 248, 0.2), transparent 65%), radial-gradient(1000px 620px at 94% 8%, rgba(168, 85, 247, 0.16), transparent 65%), radial-gradient(950px 540px at 52% 42%, rgba(244, 63, 94, 0.09), transparent 70%), radial-gradient(1100px 600px at 18% 92%, rgba(20, 184, 166, 0.14), transparent 68%), linear-gradient(135deg, #eff5fc 0%, #e7eef8 48%, #efebf9 100%);
+  --sidebar-bg: rgba(255, 255, 255, 0.3);
+  --strip-bg: rgba(255, 255, 255, 0.25);
+  /* Text */
+  --text-color: #0f172a;
+  --text-muted: #475569;
+  --text-accent: #334155;
+  --catalog-secondary-text: #475569;
+  /* Accent: a deep instrument green, dark enough for white text */
+  --primary-color: #0d6e5b;
+  --primary-hover: #0a5848;
+  --primary-light: #0d9488;
+  --primary-ink: #ffffff;
+  --accent-text: #0b5c4c;
+  --accent-wash: #e0f2ee;
+  /* The primary action at reduced emphasis: Connect before a URL is typed.
+     Still green, still labelled, clearly short of the solid fill. */
+  --primary-soft: #d2ebe4;
+  --primary-soft-border: #94cdbf;
+  --primary-soft-ink: #0b5446;
+  /* The ink button: account actions (sign in) that sit beside the accent
+     without competing with it. */
+  --ink-button-bg: #0b1120;
+  --ink-button-hover: #1e293b;
+  --ink-button-text: #ffffff;
+  /* Neutral actions */
+  --secondary-color: #6b746f;
+  --secondary-surface: #575d6b;
+  --secondary-hover: #434957;
+  /* Status: shared with the published SVG badges (src/utils/badges.ts) */
+  --success-color: #167a2c;
+  --info-color: #0b6f8a;
+  --accent-violet: #6550d8;
+  --danger-color: #c42b2b;
+  --warning-color: #975300;
+  /* Lines */
+  --border-color: #dde4ee;
+  --border-strong: #cbd5e1;
+  /* Inputs: the border alone identifies the field, so it holds 3:1 */
   --input-bg: #ffffff;
-  --input-border: #d1d5db;
+  --input-border: #7c8799;
   --input-focus-border: var(--primary-color);
-  --link-color: #334155;
-  --link-hover: #0f172a;
-  --focus-ring: 0 0 0 3px rgba(4, 120, 87, 0.18);
+  /* Disabled is neutral, never a faded accent */
+  --disabled-bg: #e9eef5;
+  --disabled-text: #5b6577;
+  --disabled-border: #d6dde8;
+  /* The wire: outbound requests and inbound responses */
+  --wire-request: #475569;
+  --wire-response: #0d6e5b;
+  --link-color: #0b5c4c;
+  --link-hover: #020617;
+  --focus-ring: 0 0 0 3px rgba(13, 148, 136, 0.28);
   /* The only shadow in the system: floating surfaces (menus, popovers,
      dialogs). Panels and cards use a hairline border instead. */
-  --shadow-float: 0 4px 12px -2px rgba(15, 23, 42, 0.12), 0 0 0 1px rgba(15, 23, 42, 0.04);
-  --hover-wash: rgba(15, 23, 42, 0.06);
-  --active-wash: rgba(15, 23, 42, 0.09);
+  --shadow-float: 0 12px 32px -8px rgba(15, 23, 42, 0.18), 0 0 0 1px rgba(15, 23, 42, 0.06);
+  --hover-wash: rgba(255, 255, 255, 0.45);
+  --active-wash: rgba(255, 255, 255, 0.7);
+  /* Chrome: the header, the session strip and the endpoint command bars.
+     Light and quiet in the light theme, a step below the page in dark. */
+  --chrome-bg: #ffffff;
+  --chrome-raised: #f4f7fb;
+  --chrome-text: #0f172a;
+  --chrome-muted: #475569;
+  --chrome-border: #dde4ee;
+  --chrome-control-border: #7c8799;
+  --chrome-accent: #0d6e5b;
+  --chrome-accent-hover: #0a5848;
+  --chrome-accent-ink: #ffffff;
+  --chrome-accent-soft: #d2ebe4;
+  --chrome-accent-soft-border: #94cdbf;
+  --chrome-accent-soft-ink: #0b5446;
+  /* Page heads that identify a thing. */
+  --hero-bg: #ffffff;
+  --hero-border: #dde4ee;
+  /* Glass: the translucent panels, bands and bars that sit on the wash.
+     Text on them is measured against --card-bg-secondary, the lightest
+     the wash can show through. */
+  --glass-bg: rgba(255, 255, 255, 0.5);
+  --glass-strong: rgba(255, 255, 255, 0.72);
+  --glass-border: rgba(255, 255, 255, 0.85);
+  --glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  --glass-filter: blur(24px) saturate(1.5);
+  --hairline: rgba(15, 23, 42, 0.07);
+  /* The active-row rail and the selected tool. */
+  --rail-color: #0d9488;
+  /* The failure band: a rose-to-violet wash under a readable diagnosis. */
+  --danger-wash: linear-gradient(90deg, rgba(244, 63, 94, 0.08), rgba(244, 63, 94, 0.04) 50%, rgba(168, 85, 247, 0.05));
+  --danger-solid: #e11d48;
+  /* Glass elevation: a soft drop under bars that float on the wash. */
+  --shadow-glass: 0 8px 28px -6px rgba(15, 23, 42, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
-/* --- Dark palette --- */
+/* --- Dark palette ---
+   Deep ink-navy, not inverted: the page is darker than any surface, the
+   accent is a brighter instrument green, and text on it is a deep green
+   ink rather than white. */
 :root[data-theme='dark'] {
-  --body-bg: #0b1220;
-  --card-bg: #111827;
-  --card-bg-secondary: #1a2333;
-  --text-color: #f3f4f6;
-  --text-muted: #94a3b8;
-  --text-accent: #cbd5e1;
-  --catalog-secondary-text: #cbd5e1;
-  --primary-color: #34d399;
-  --primary-hover: #6ee7b7;
-  --primary-light: #a7f3d0;
-  --secondary-color: #94a3b8;
-  --secondary-surface: #475569;
-  --secondary-hover: #64748b;
-  --success-color: #34d399;
-  --info-color: #51d8f4;
-  --accent-violet: #9a91ff;
-  --danger-color: #f87171;
-  --warning-color: #fbbf24;
-  --border-color: #273244;
-  --input-bg: #0f172a;
-  --input-border: #3b4759;
+  /* Surfaces */
+  --body-bg: #0c0f16;
+  --card-bg: #151923;
+  --card-bg-secondary: #1c212d;
+  --card-header-bg: #181c27;
+  --page-wash: radial-gradient(1100px 580px at 8% -5%, rgba(56, 189, 248, 0.1), transparent 65%), radial-gradient(1000px 620px at 94% 8%, rgba(168, 85, 247, 0.1), transparent 65%), radial-gradient(950px 540px at 52% 42%, rgba(244, 63, 94, 0.05), transparent 70%), radial-gradient(1100px 600px at 18% 92%, rgba(20, 184, 166, 0.08), transparent 68%), linear-gradient(135deg, #0b1120 0%, #0c111c 48%, #110f1d 100%);
+  --sidebar-bg: rgba(255, 255, 255, 0.025);
+  --strip-bg: rgba(255, 255, 255, 0.02);
+  /* Text */
+  --text-color: #e8ebf2;
+  --text-muted: #9aa1b2;
+  --text-accent: #c5cad6;
+  --catalog-secondary-text: #b3b9c7;
+  /* Accent */
+  --primary-color: #3fc794;
+  --primary-hover: #6fd9b0;
+  --primary-light: #a3ecd0;
+  --primary-ink: #04140e;
+  --accent-text: #6fd9b0;
+  --accent-wash: #13291f;
+  --primary-soft: #183a2e;
+  --primary-soft-border: #2c6a53;
+  --primary-soft-ink: #8fdcbd;
+  --ink-button-bg: #e8ebf2;
+  --ink-button-hover: #ffffff;
+  --ink-button-text: #0c0f16;
+  /* Neutral actions */
+  --secondary-color: #9aa1b2;
+  --secondary-surface: #4a5060;
+  --secondary-hover: #5d6475;
+  /* Status */
+  --success-color: #46d38a;
+  --info-color: #5ccfe8;
+  --accent-violet: #a497ff;
+  --danger-color: #ff7a80;
+  --warning-color: #f2b33d;
+  /* Lines */
+  --border-color: #272c39;
+  --border-strong: #383e4d;
+  /* Inputs */
+  --input-bg: #10131b;
+  --input-border: #6a7184;
   --input-focus-border: var(--primary-color);
-  --link-color: var(--primary-light);
+  /* Disabled */
+  --disabled-bg: #222734;
+  --disabled-text: #8b92a3;
+  --disabled-border: #2e3342;
+  /* The wire */
+  --wire-request: #9aa1b2;
+  --wire-response: #3fc794;
+  --link-color: #6fd9b0;
   --link-hover: #ffffff;
-  --focus-ring: 0 0 0 3px rgba(52, 211, 153, 0.22);
-  --shadow-float: 0 8px 24px -4px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.06);
-  --hover-wash: rgba(255, 255, 255, 0.07);
-  --active-wash: rgba(255, 255, 255, 0.11);
+  --focus-ring: 0 0 0 3px rgba(63, 199, 148, 0.35);
+  --shadow-float: 0 10px 28px -6px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.07);
+  --hover-wash: rgba(255, 255, 255, 0.05);
+  --active-wash: rgba(255, 255, 255, 0.09);
+  /* Chrome: a step below the page, so the header frames the workspace. */
+  --chrome-bg: #0a0d13;
+  --chrome-raised: #151923;
+  --chrome-text: #e8ebf2;
+  --chrome-muted: #9aa1b2;
+  --chrome-border: #222734;
+  --chrome-control-border: #6a7184;
+  --chrome-accent: #3fc794;
+  --chrome-accent-hover: #6fd9b0;
+  --chrome-accent-ink: #04140e;
+  --chrome-accent-soft: #183a2e;
+  --chrome-accent-soft-border: #2c6a53;
+  --chrome-accent-soft-ink: #8fdcbd;
+  --hero-bg: #121620;
+  --hero-border: #272c39;
+  --glass-bg: rgba(255, 255, 255, 0.035);
+  --glass-strong: rgba(255, 255, 255, 0.06);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  --glass-filter: blur(24px) saturate(1.3);
+  --hairline: rgba(255, 255, 255, 0.07);
+  --rail-color: #3fc794;
+  --danger-wash: linear-gradient(90deg, rgba(244, 63, 94, 0.12), rgba(244, 63, 94, 0.06) 50%, rgba(168, 85, 247, 0.08));
+  --danger-solid: #be123c;
+  --shadow-glass: 0 8px 28px -6px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-fast: 0ms;
+    --motion-base: 0ms;
+  }
 }
