@@ -178,6 +178,7 @@ describe('catalog query params', () => {
     expect(view.catalog.sortOrder).toBe('name');
     expect(view.catalog.filteredServers.map(({ name }) => name)).toEqual([
       'CoinGecko',
+      'EOR Scope',
       'Yahoo Finance',
     ]);
     expect(view.location.pathname).toBe('/catalog/finance');
