@@ -39,6 +39,13 @@ const report = (transport: 'streamable-http' | 'legacy-sse'): EvaluationReport =
 });
 
 describe('ReportHistory', () => {
+  it('hides the history section and actions when no snapshots exist', () => {
+    expect(renderToStaticMarkup(
+      <ReportHistory snapshots={[]} onDeleteSnapshot={() => undefined}
+        onDeleteAll={() => undefined} onExportAll={() => undefined} />
+    )).toBe('');
+  });
+
   it('renders a readable prioritized diff with export and isolated delete controls', () => {
     const older = createReportSnapshot(
       report('streamable-http'), undefined, '2026-08-11T20:00:00.000Z'

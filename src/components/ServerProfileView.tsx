@@ -175,16 +175,16 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
         </div>
         <div className="server-signal-card">
           <span className="server-signal-label">Authentication</span>
-          <strong>{formatCatalogAuth(server.authType)}</strong>
+          <strong>{server.authType === 'oauth' ? <a href="/learn/oauth-for-mcp-explained">{formatCatalogAuth(server.authType)}</a> : formatCatalogAuth(server.authType)}</strong>
           <small>{alternativeAuthLabel(server)}</small>
         </div>
         <div className="server-signal-card">
           <span className="server-signal-label">Protocol lifecycle</span>
-          <strong>{formatProtocolEra(server.protocolEra, server.protocolVersion)}</strong>
+          <strong><a href="/docs/remote-vs-local">{formatProtocolEra(server.protocolEra, server.protocolVersion)}</a></strong>
           <small>{server.protocolEra === 'unknown' ? 'No lifecycle negotiation recorded' : 'Negotiated by the catalog validator'}</small>
         </div>
         <div className="server-signal-card">
-          <span className="server-signal-label">Browser access</span>
+          <a className="server-signal-label" href="/learn/mcp-cors-headers-for-browser-clients">Browser access</a>
           <strong>{browserAccessLabel(server)}</strong>
           <small>{server.browserUrl || 'Server-side validation is reported separately'}</small>
         </div>

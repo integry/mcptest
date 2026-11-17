@@ -249,7 +249,7 @@ const SAMPLE_EXPRESSION = `(() => {
     sidebar: [...(root?.querySelectorAll('.desktop-sidebar .app-sidenav') || [])].some(el => el.getClientRects().length > 0),
     landing: has('.landing-title'),
     recent: [...document.querySelectorAll('.landing-recent')].some(el => getComputedStyle(el).display !== 'none'),
-    newUserPicks: [...document.querySelectorAll('.landing-quick-picks')].some(el => el.textContent.includes('Try with') && getComputedStyle(el).display !== 'none'),
+    newUserPicks: [...document.querySelectorAll('.landing-quick-picks')].some(el => el.textContent.includes('No server yet') && getComputedStyle(el).display !== 'none'),
     recentHosts: [...document.querySelectorAll('.landing-recent-host')].map(el => el.textContent),
     connect: has('.landing-connect'),
     catalog: has('.catalog-view'),

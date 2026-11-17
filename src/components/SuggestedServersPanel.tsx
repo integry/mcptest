@@ -74,7 +74,7 @@ export const SuggestedServersPanel: React.FC<SuggestedServersPanelProps> = ({
             <div className="suggested-server-copy">
               <div className="suggested-server-title-row">
                 <strong>{LANDING_FIXTURE.name}</strong>
-                <span aria-hidden="true">↗</span>
+                <span aria-hidden="true">→</span>
               </div>
               <p>{LANDING_FIXTURE.description}</p>
               <small title={LANDING_FIXTURE.url}>{LANDING_FIXTURE.url}</small>
@@ -99,7 +99,7 @@ export const SuggestedServersPanel: React.FC<SuggestedServersPanelProps> = ({
               <div className="suggested-server-copy">
                 <div className="suggested-server-title-row">
                   <strong>{server.name}</strong>
-                  <span aria-hidden="true">↗</span>
+                  <span aria-hidden="true">→</span>
                 </div>
                 <p>{server.description}</p>
                 <small title={endpoint.url}>{endpoint.url}</small>
@@ -114,10 +114,7 @@ export const SuggestedServersPanel: React.FC<SuggestedServersPanelProps> = ({
         <Link to="/catalog" className="btn btn-sm btn-link p-0" style={{ textDecoration: 'none' }}>
           Browse the full server catalog &rarr;
         </Link>
-        <span className="text-muted mx-2" aria-hidden="true">·</span>
-        <Link to="/mcp-test-servers" className="btn btn-sm btn-link p-0" style={{ textDecoration: 'none' }}>
-          Public MCP test servers &rarr;
-        </Link>
+
       </div>
     </div>
   );

@@ -11,7 +11,7 @@ export const SITE_NAME = 'mcptest.io';
 export const SITE_URL = 'https://mcptest.io';
 
 export interface ContentTrack {
-  id: 'understand' | 'use' | 'build' | 'reference';
+  id: 'understand' | 'use' | 'build' | 'reference' | 'compare';
   label: string;
   description: string;
 }
@@ -36,6 +36,11 @@ export const CONTENT_TRACKS: readonly ContentTrack[] = [
     id: 'reference',
     label: 'Reference',
     description: 'Error decoders and checklists to keep open while you debug.',
+  },
+  {
+    id: 'compare',
+    label: 'Compare',
+    description: 'Compare MCP testing tools and choose the right inspector for your workflow.',
   },
 ] as const;
 

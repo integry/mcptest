@@ -121,6 +121,52 @@ describe('deferMountUntilInput', () => {
     expect(page.appClick).not.toHaveBeenCalled();
   });
 
+  it('replays a click made while the app renders, before its first commit', async () => {
+    const page = setup();
+    let commit!: () => void;
+    page.render.mockImplementationOnce(() => new Promise<void>((resolve) => {
+      commit = () => {
+        page.root.innerHTML = APP_HTML;
+        page.root.querySelector('#app-sidenav-desktop .sidenav-action')!.addEventListener('click', page.appClick);
+        resolve();
+      };
+    }));
+    page.root.querySelector<HTMLInputElement>('.guide-search-input')!.dispatchEvent(new Event('focusin', { bubbles: true }));
+    page.ready();
+    await flush();
+    expect(page.render).toHaveBeenCalledTimes(1);
+
+    // The static page is still shown: the click reaches its button.
+    page.root.querySelector<HTMLButtonElement>('.sidenav-action')!.click();
+    commit();
+    await flush();
+    expect(page.appClick).toHaveBeenCalledTimes(1);
+
+    // After the mount the app's buttons are its own.
+    page.root.querySelector<HTMLButtonElement>('.sidenav-action')!.click();
+    await flush();
+    expect(page.appClick).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not replay a click made while the app renders that a static handler served', async () => {
+    const page = setup({ isHandled: element => element.classList.contains('sidenav-action') });
+    let commit!: () => void;
+    page.render.mockImplementationOnce(() => new Promise<void>((resolve) => {
+      commit = () => {
+        page.root.innerHTML = APP_HTML;
+        page.root.querySelector('#app-sidenav-desktop .sidenav-action')!.addEventListener('click', page.appClick);
+        resolve();
+      };
+    }));
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab' }));
+    page.ready();
+    await flush();
+    page.root.querySelector<HTMLButtonElement>('.sidenav-action')!.click();
+    commit();
+    await flush();
+    expect(page.appClick).not.toHaveBeenCalled();
+  });
+
   it('keeps the scroll position of the replaced panel', async () => {
     // jsdom has no layout, so give elements a scroll offset to read back.
     const offsets = new WeakMap<Element, number>();

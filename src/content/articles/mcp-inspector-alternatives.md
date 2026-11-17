@@ -2,7 +2,7 @@
 title: "MCP Inspector alternatives: online, desktop and CLI options compared"
 navTitle: MCP Inspector alternatives
 summary: "Eight ways to inspect an MCP server besides, or alongside, the official MCP Inspector: mcptest.io, MCPJam, MCP Playground, Postman, Insomnia, Cloudflare's AI Playground and Glama, compared on install, stdio, OAuth, CI, reports, license and cost."
-track: understand
+track: compare
 level: practitioner
 order: 44
 category: Tools

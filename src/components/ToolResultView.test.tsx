@@ -102,6 +102,25 @@ describe('ToolResultView', () => {
     });
   });
 
+  it('formats multiple text blocks and preserves non-text blocks and raw JSON', () => {
+    const result = { content: [
+      { type: 'text', text: '**First match**\nNext line' },
+      { type: 'text', text: '## Second match\n`code`' },
+      { type: 'resource_link', uri: 'file:///example.ts', name: 'example.ts' },
+    ] };
+    render(toolResultEntry(result, null));
+    expect(container.querySelector('strong')?.textContent).toBe('First match');
+    expect(container.querySelector('br')).not.toBeNull();
+    expect(container.querySelector('h2')?.textContent).toBe('Second match');
+    expect(container.textContent).toContain('file:///example.ts');
+    const toggle = container.querySelector<HTMLButtonElement>('.tool-result-raw-link')!;
+    act(() => toggle.click());
+    expect(toggle.textContent).toBe('View formatted content');
+    expect(JSON.parse(container.querySelector('pre')!.textContent!)).toEqual(result);
+    act(() => toggle.click());
+    expect(container.querySelector('strong')?.textContent).toBe('First match');
+  });
+
   it('lists violations in plain language when validation fails', () => {
     render(toolResultEntry({ content: [], structuredContent: { city: 7 } }));
 

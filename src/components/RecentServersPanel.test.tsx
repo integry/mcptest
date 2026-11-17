@@ -23,10 +23,14 @@ describe('RecentServersPanel actions', () => {
     const remove = container.querySelector<HTMLButtonElement>('.recent-server-remove');
 
     expect(reconnect?.tagName).toBe('BUTTON');
+    expect(reconnect?.type).toBe('button');
     expect(reconnect?.textContent).toContain(url);
+    expect(remove?.tagName).toBe('BUTTON');
+    expect(remove?.type).toBe('button');
     expect(remove?.getAttribute('aria-label')).toBe(`Remove ${url} from recent connections`);
     expect(remove?.querySelector('.bi-x-lg')).not.toBeNull();
-    expect(remove?.classList.contains('btn-outline-secondary')).toBe(true);
+    // The remove action uses the subdued ghost styling, not an outlined button.
+    expect(remove?.classList.contains('btn-outline-secondary')).toBe(false);
     expect(remove?.classList.contains('btn-outline-danger')).toBe(false);
   });
 });

@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import ActionIcon from './ActionIcon';
+import React, { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
 import { LogEntry, Space, SpaceCard, SelectedTool, ResourceTemplate } from '../types';
 import ToolResultView from './ToolResultView';
@@ -8,6 +9,9 @@ import { getResultShareUrl } from '../utils/urlUtils';
 import { useShare } from '../hooks/useShare';
 
 interface OutputPanelProps {
+  onCallTool?: () => void;
+  callHistoryCount?: number;
+  onOpenHistory?: () => void;
   lastResult: LogEntry | null;
   responses: LogEntry[];
   autoScroll: boolean;
@@ -23,12 +27,62 @@ interface OutputPanelProps {
   resourceArgs: Record<string, any>;
   onRunAgain?: (callContext: LogEntry['callContext']) => void;
   useProxy?: boolean;
+  /** Set after the first successful run while the share hint is active. */
+  shareReportHref?: string;
+  onDismissShareHint?: () => void;
 }
+
+/** What assistive technology hears when a call finishes. */
+export const describeResult = (entry: LogEntry): string => {
+  const name = entry.callContext?.name;
+  if (entry.type === 'error') return 'The call failed. The result panel explains what happened.';
+  if (entry.type === 'tool_result') {
+    return entry.toolCall?.result.isError === true
+      ? `${name || 'The tool'} reported an error result.`
+      : `${name || 'The tool'} returned a result.`;
+  }
+  if (entry.type === 'resource_result') return `${name || 'The resource'} was read.`;
+  return 'A result arrived.';
+};
+
+/**
+ * The live-region text for the nth completed call. The sequence number keeps
+ * the text distinct when the same tool returns the same kind of outcome
+ * twice in a row, so a repeated run (often started with Enter, which leaves
+ * focus in the form) is still announced.
+ */
+export const describeCompletedCall = (entry: LogEntry, sequence: number): string =>
+  `Call ${sequence}: ${describeResult(entry)}`;
 
 const OutputPanel: React.FC<OutputPanelProps> = (props) => {
   const [activeTab, setActiveTab] = useState<'result' | 'logs'>('result');
+  const [formatControls, setFormatControls] = useState<HTMLDivElement | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const { share, shareStatus, shareMessage } = useShare();
+  const resultRef = useRef<HTMLDivElement>(null);
+  const [announcement, setAnnouncement] = useState('');
+  const announcedResultRef = useRef<LogEntry | null>(null);
+  const completedCallsRef = useRef(0);
+
+  // A finished call is announced, and when the Run button (or nothing) has
+  // focus, focus moves to the result. A run started from a form field with
+  // Enter keeps focus in the form so the next edit is one keystroke away.
+  useEffect(() => {
+    const entry = props.lastResult;
+    if (!entry) return;
+    // Count each completed call once, even if the effect reruns for it.
+    if (announcedResultRef.current !== entry) {
+      announcedResultRef.current = entry;
+      completedCallsRef.current += 1;
+    }
+    setAnnouncement(describeCompletedCall(entry, completedCallsRef.current));
+    const active = document.activeElement as HTMLElement | null;
+    const fromRunButton = !active || active === document.body || active.id === 'executeBtn';
+    if (!fromRunButton) return;
+    setActiveTab('result');
+    // Focus the result without scrolling the server context out of the workspace.
+    requestAnimationFrame(() => resultRef.current?.focus({ preventScroll: true }));
+  }, [props.lastResult]);
   
   // Handle share button click
   const handleShareResult = () => {
@@ -78,7 +132,7 @@ const OutputPanel: React.FC<OutputPanelProps> = (props) => {
   return (
     <div className="card output-panel">
       <div className="card-header d-flex justify-content-between align-items-center" style={{ paddingBottom: 0 }}>
-        <ul className="nav nav-tabs flex-grow-0" id="outputTabs" role="tablist" style={{ marginBottom: '-1px' }}>
+        <ul className="nav nav-tabs panel-view-tabs flex-grow-0" id="outputTabs" role="tablist">
           <li className="nav-item" role="presentation">
             <button 
               className={`nav-link ${activeTab === 'result' ? 'active' : ''}`} 
@@ -110,26 +164,26 @@ const OutputPanel: React.FC<OutputPanelProps> = (props) => {
           <div className="d-flex align-items-center pe-3 panel-actions">
             {/* Individual icon buttons, spaced — never welded into a strip */}
             <button
-              className="btn btn-sm btn-ghost"
+              className="btn btn-sm btn-ghost result-action"
               style={{ fontSize: '0.8rem', padding: '0.2rem 0.4rem' }}
               onClick={() => setIsFullscreen(true)}
-              title="Fullscreen"
-              aria-label="View result in fullscreen"
+              title="Expand result in fullscreen"
+              aria-label="Expand result in fullscreen"
             >
-              <i className="bi bi-arrows-fullscreen"></i>
+              <i className="bi bi-arrows-fullscreen" aria-hidden="true"></i>
             </button>
             {props.lastResult.callContext && props.serverUrl && (
               <div className="position-relative">
                 <button
                   type="button"
-                  className="btn btn-sm btn-ghost"
+                  className="btn btn-sm btn-ghost result-action"
                   style={{ fontSize: '0.8rem', padding: '0.2rem 0.4rem' }}
                   onClick={handleShareResult}
                   title="Share result link"
                   disabled={shareStatus !== 'idle'}
-                  aria-label="Copy share link to clipboard"
+                  aria-label="Share result link"
                 >
-                  {shareStatus === 'success' ? <i className="bi bi-check-lg"></i> : <i className="bi bi-share"></i>}
+                  {shareStatus === 'success' ? <i className="bi bi-check-lg"></i> : <ActionIcon name="share" />}<span className="result-action-label">Share result</span>
                 </button>
                 {shareStatus !== 'idle' && (
                   <div className="notification-tooltip" style={{right: 0}} aria-live="polite">
@@ -143,27 +197,25 @@ const OutputPanel: React.FC<OutputPanelProps> = (props) => {
             {props.lastResult.callContext && props.spaces.length > 0 && (
               props.spaces.length === 1 ? (
                 <button
-                  className="btn btn-sm btn-ghost"
+                  className="btn btn-sm btn-ghost result-action"
                   style={{ fontSize: '0.8rem', padding: '0.2rem 0.4rem' }}
                   title={`Add to dashboard: ${props.spaces[0].name}`}
                   onClick={() => handleAddToSpace(props.spaces[0].id)}
-                  aria-label="Add result to dashboard"
                 >
-                  <i className="bi bi-plus-square me-1" aria-hidden="true"></i>Add to dashboard
+                  <i className="bi bi-plus-square" aria-hidden="true"></i><span className="result-action-label">Add to dashboard</span>
                 </button>
               ) : (
                 <div className="dropdown">
                   <button
-                    className="btn btn-sm btn-ghost dropdown-toggle"
+                    className="btn btn-sm btn-ghost result-action dropdown-toggle"
                     style={{ fontSize: '0.8rem', padding: '0.2rem 0.4rem' }}
                     type="button"
                     id={`dropdownAddToSpace-result`}
                     data-bs-toggle="dropdown"
                     aria-expanded="false"
                     title="Add to Dashboard..."
-                    aria-label="Add result to dashboard"
                   >
-                    <i className="bi bi-plus-square me-1" aria-hidden="true"></i>Add to dashboard
+                    <i className="bi bi-plus-square" aria-hidden="true"></i><span className="result-action-label">Add to dashboard</span>
                   </button>
                   <ul className="dropdown-menu dropdown-menu-sm" aria-labelledby={`dropdownAddToSpace-result`}>
                     {props.spaces.map(space => (
@@ -192,10 +244,13 @@ const OutputPanel: React.FC<OutputPanelProps> = (props) => {
           </div>
         )}
       </div>
+      {activeTab === 'result' && props.lastResult && (
+        <div className="result-format-controls" ref={setFormatControls} />
+      )}
       <div className="card-body output-panel-body p-0 d-flex flex-column">
         <div className="tab-content flex-grow-1 overflow-hidden" id="outputTabsContent">
           <div className={`tab-pane fade ${activeTab === 'result' ? 'show active' : ''} h-100`} id="result-panel" role="tabpanel" aria-labelledby="result-tab">
-            <ResultPanel {...props} />
+            <ResultPanel {...props} resultRef={resultRef} controlsTarget={formatControls} />
           </div>
           <div className={`tab-pane fade ${activeTab === 'logs' ? 'show active' : ''} h-100`} id="logs-panel" role="tabpanel" aria-labelledby="logs-tab">
             <ResponsePanel {...props} />
@@ -203,6 +258,8 @@ const OutputPanel: React.FC<OutputPanelProps> = (props) => {
         </div>
       </div>
       
+      <p className="visually-hidden" role="status" aria-live="polite">{announcement}</p>
+
       {/* Fullscreen modal */}
       {isFullscreen && props.lastResult && ReactDOM.createPortal(
         <div 

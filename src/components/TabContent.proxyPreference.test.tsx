@@ -271,7 +271,7 @@ describe('endpoint-scoped preferred transport hints', () => {
 
     expect(connectionMocks.attempt).toHaveBeenCalledOnce();
     expect(connectionMocks.attempt.mock.calls[0][0]).toBe(endpoint);
-    expect(view.container.textContent).toContain('Entered URL: https://mcp.example/');
+    expect(view.container.querySelector('.connection-url-metadata')).toBeNull();
     expect(view.onUpdateTab).toHaveBeenCalledWith(tab.id, { shouldReconnect: false });
 
     view.rerender(tab);

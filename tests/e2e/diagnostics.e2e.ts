@@ -52,9 +52,11 @@ test('session resilience runs only on click and leaves the inspector session wor
     && response.request().method() === 'POST' && response.request().postDataJSON()?.method === 'initialize');
   await connect(page, '2025');
   await expect(page.getByRole('heading', { name: 'MCP connection ready' })).toBeVisible();
-  const panel = page.getByRole('region', { name: 'Session resilience diagnostics' });
+  const panel = page.getByRole('group', { name: 'Session resilience diagnostics' });
   await expect(panel.getByTestId('transport-diagnostic')).toHaveCount(0);
-  await panel.getByRole('button', { name: 'Check session resilience', exact: true }).click();
+  await panel.getByText('Check resilience', { exact: true }).click();
+  await expect(panel.getByTestId('transport-diagnostic')).toHaveCount(0);
+  await panel.getByRole('button', { name: 'Run session checks', exact: true }).click();
   await expect(panel.getByTestId('transport-diagnostic')).toHaveCount(4);
   await expect(panel.locator('.badge')).toHaveText(['Pass', 'Pass', 'Pass', 'Pass']);
   await expect(panel).toContainText('0/12 session rejections');
@@ -71,8 +73,10 @@ test('session resilience runs only on click and leaves the inspector session wor
 test('session resilience detects alternating replica loss', async ({ page }) => {
   await connect(page, 'session-replicas');
   await expect(page.getByRole('heading', { name: 'MCP connection ready' })).toBeVisible();
-  const panel = page.getByRole('region', { name: 'Session resilience diagnostics' });
-  await panel.getByRole('button', { name: 'Check session resilience', exact: true }).click();
+  const panel = page.getByRole('group', { name: 'Session resilience diagnostics' });
+  await panel.getByText('Check resilience', { exact: true }).click();
+  await expect(panel.getByTestId('transport-diagnostic')).toHaveCount(0);
+  await panel.getByRole('button', { name: 'Run session checks', exact: true }).click();
   const finding = panel.getByTestId('transport-diagnostic').filter({ hasText: 'session.stickiness' });
   await expect(finding.locator('.badge')).toHaveText('Error');
   await expect(finding).toContainText('6/12 session rejections');
@@ -81,8 +85,10 @@ test('session resilience detects alternating replica loss', async ({ page }) => 
 test('stateless session diagnostics explain applicability', async ({ page }) => {
   await connect(page, '2026');
   await expect(page.getByRole('heading', { name: 'MCP connection ready' })).toBeVisible();
-  const panel = page.getByRole('region', { name: 'Session resilience diagnostics' });
-  await panel.getByRole('button', { name: 'Check session resilience', exact: true }).click();
+  const panel = page.getByRole('group', { name: 'Session resilience diagnostics' });
+  await panel.getByText('Check resilience', { exact: true }).click();
+  await expect(panel.getByTestId('transport-diagnostic')).toHaveCount(0);
+  await panel.getByRole('button', { name: 'Run session checks', exact: true }).click();
   await expect(panel.locator('.badge')).toHaveText(['Pass', 'Pass', 'Pass', 'Pass']);
   await expect(panel).toContainText('Not applicable: stateless');
 });

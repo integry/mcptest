@@ -11,6 +11,8 @@ vi.mock('../firebase', () => ({
   onFirebaseLoaded: vi.fn(),
 }));
 
+import { LANDING_FIXTURE } from '../data/publicFixtures';
+import { LANDING_FIXTURE_SELECTION } from '../utils/landingFixture';
 import { LEARN_ARTICLES } from '../content/learnRegistry';
 import BadgeEmbed from './BadgeEmbed';
 import { LandingHero } from './LandingHero';
@@ -59,7 +61,7 @@ describe('landing funnel events', () => {
   it('sends landing_view once and a host-only landing_connect for manual entry', () => {
     const container = render(
       <LandingHero
-        serverUrl="https://user:secret@mcp.example.com/mcp?api_key=1"
+        serverUrl="https://mcp.example.com/mcp?api_key=1"
         onServerUrlChange={vi.fn()}
         onConnect={vi.fn()}
         isConnecting={false}
@@ -97,12 +99,38 @@ describe('landing funnel events', () => {
     const container = render(
       <LandingHero serverUrl="" onServerUrlChange={vi.fn()} onConnect={vi.fn()} isConnecting={false} />
     );
-    const pick = container.querySelector<HTMLButtonElement>('.landing-quick-pick');
+    const pick = container.querySelector<HTMLButtonElement>(`.landing-quick-pick:not([data-server-id="${LANDING_FIXTURE.id}"])`);
     click(pick);
     expectSent('landing_connect', {
       source: 'quick_pick',
       host: new URL(pick!.title).host,
     });
+  });
+
+  it('sends quick_pick for the one-click echo fixture and connects to its endpoint', () => {
+    const onConnect = vi.fn();
+    const container = render(
+      <LandingHero serverUrl="" onServerUrlChange={vi.fn()} onConnect={onConnect} isConnecting={false} />
+    );
+    const sample = container.querySelector<HTMLButtonElement>(`[data-server-id="${LANDING_FIXTURE.id}"]`);
+    expect(sample).not.toBeNull();
+    click(sample);
+    expect(onConnect).toHaveBeenCalledExactlyOnceWith(LANDING_FIXTURE_SELECTION);
+    expectSent('landing_connect', { source: 'quick_pick', host: new URL(LANDING_FIXTURE.url).host });
+  });
+
+  it('sends nothing for a malformed URL the landing rejects', () => {
+    const container = render(
+      <LandingHero
+        serverUrl="https://user:secret@mcp.example.com/mcp"
+        onServerUrlChange={vi.fn()}
+        onConnect={vi.fn()}
+        isConnecting={false}
+      />
+    );
+    firebase.logEvent.mockClear();
+    click(container.querySelector('#connectBtn'));
+    expect(firebase.logEvent.mock.calls.filter(([, name]) => name === 'landing_connect')).toHaveLength(0);
   });
 });
 

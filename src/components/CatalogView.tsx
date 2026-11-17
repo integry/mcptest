@@ -121,6 +121,9 @@ const CatalogView: React.FC<CatalogViewProps> = ({ onTestServer }) => {
               </p>
             </>
           )}
+          <Link to="/submit" className="btn btn-primary mt-3">
+            <i className="bi bi-plus-lg" aria-hidden="true" /> Submit server
+          </Link>
           <div className="catalog-results-bar" aria-live="polite">
             <p className="catalog-results-count">
               Showing <strong>{filteredServers.length}</strong> of {totalInScope}{' '}

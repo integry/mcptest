@@ -17,7 +17,9 @@ const FindingReferenceLink: React.FC<FindingReferenceLinkProps> = ({ id, showId 
   const href = referencePathFor(id);
   if (!href) return showId ? <code className={className}>{id}</code> : null;
   return (
-    <a href={href} className={className} aria-label={`Learn more about ${id}`}>
+    // With the id shown, the visible text already names the link; a different
+    // aria-label would hide what sighted and voice users read.
+    <a href={href} className={className} {...(showId ? {} : { 'aria-label': `Learn more about ${id}` })}>
       {showId && <><code>{id}</code>{' '}</>}
       <span className="small text-decoration-underline">Learn more</span>
     </a>

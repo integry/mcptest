@@ -2,7 +2,7 @@
 title: "MCP testing tools compared (2026)"
 navTitle: MCP testing tools roundup
 summary: "MCP testing tools grouped by job: browser testers, local inspectors and API clients, CI and contract testing, evals, load testing, and test servers. Each entry says what it tests, where it runs, how to install it, its license and its stated price."
-track: understand
+track: compare
 level: practitioner
 order: 41
 category: Tools

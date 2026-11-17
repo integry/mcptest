@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ConnectionTab } from '../types';
+import { NEW_TAB_LABEL, NEW_TAB_TOOLTIP } from '../content/landingFirstRun';
 import './Tabs.css';
 
 interface TabsProps {
@@ -8,6 +9,7 @@ interface TabsProps {
   onSelectTab: (id: string) => void;
   onCloseTab: (id: string) => void;
   onNewTab: () => void;
+  onCloseOtherTabs?: () => void;
 }
 
 /**
@@ -30,13 +32,19 @@ export const getTabDisplayLabel = (title: string): string => {
 
 type FadeState = { start: boolean; end: boolean };
 
-const Tabs: React.FC<TabsProps> = ({ tabs, activeTabId, onSelectTab, onCloseTab, onNewTab }) => {
+const Tabs: React.FC<TabsProps> = ({ tabs, activeTabId, onSelectTab, onCloseTab, onNewTab, onCloseOtherTabs }) => {
+  const pickerRef = useRef<HTMLDetailsElement>(null);
   const stripRef = useRef<HTMLDivElement>(null);
   const [fade, setFade] = useState<FadeState>({ start: false, end: false });
 
   const updateFade = useCallback(() => {
     const strip = stripRef.current;
     if (!strip) return;
+    const bounds = strip.getBoundingClientRect();
+    strip.querySelectorAll<HTMLElement>('.nav-item').forEach(item => {
+      const rect = item.getBoundingClientRect();
+      item.toggleAttribute('data-clipped', rect.left < bounds.left - 1 || rect.right > bounds.right + 1);
+    });
     const overflow = strip.scrollWidth - strip.clientWidth;
     const next: FadeState = overflow > 1
       ? { start: strip.scrollLeft > 1, end: strip.scrollLeft < overflow - 1 }
@@ -63,7 +71,7 @@ const Tabs: React.FC<TabsProps> = ({ tabs, activeTabId, onSelectTab, onCloseTab,
   // Keep the active tab in view when it changes, a tab is added, or a label
   // change pushes it past the edge of the strip.
   useEffect(() => {
-    const active = stripRef.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');
+    const active = stripRef.current?.querySelector<HTMLElement>('.nav-item:has([role="tab"][aria-selected="true"])');
     if (active && typeof active.scrollIntoView === 'function') {
       active.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     }
@@ -74,13 +82,14 @@ const Tabs: React.FC<TabsProps> = ({ tabs, activeTabId, onSelectTab, onCloseTab,
     return null; // Don't render tabs if there are none
   }
 
+  // Status dots read the theme tokens: green for HTTP, info for legacy SSE.
   const getConnectionStatusColor = (status: string, transportType?: string) => {
     switch (status) {
       case 'Connected':
-        return transportType === 'legacy-sse' ? 'primary' : 'success'; // Blue for SSE, Green for HTTP
-      case 'Connecting': return 'warning';
-      case 'Error': return 'danger';
-      default: return 'secondary';
+        return transportType === 'legacy-sse' ? 'var(--info-color)' : 'var(--success-color)';
+      case 'Connecting': return 'var(--warning-color)';
+      case 'Error': return 'var(--danger-color)';
+      default: return 'var(--secondary-color)';
     }
   };
 
@@ -90,16 +99,61 @@ const Tabs: React.FC<TabsProps> = ({ tabs, activeTabId, onSelectTab, onCloseTab,
     fade.end ? 'playground-tab-strip--fade-end' : '',
   ].filter(Boolean).join(' ');
 
+  const labels = tabs.map(tab => getTabDisplayLabel(tab.title));
+
   return (
     <div className={stripClassName}>
+      <details className="session-picker" ref={pickerRef}
+        onBlur={event => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node)) event.currentTarget.open = false;
+        }}
+        onKeyDown={event => {
+          if (event.key === 'Escape') {
+            event.currentTarget.open = false;
+            event.currentTarget.querySelector('summary')?.focus();
+          }
+        }}>
+        <summary className="playground-tab-count">
+          Sessions <span className="playground-tab-count-value">{tabs.length}</span><span aria-hidden="true">▾</span>
+        </summary>
+        <div className="session-picker-popover">
+          <ul aria-label="Open sessions">
+            {tabs.map((tab, index) => {
+              const params = tab.selectedPrompt ? tab.promptParams
+                : tab.selectedResourceTemplate ? tab.resourceArgs : tab.toolParams;
+              const context = [tab.selectedTool?.name || tab.selectedPrompt?.name || tab.selectedResourceTemplate?.name,
+                params && Object.entries(params).filter(([, value]) => value !== '' && value != null)
+                  .map(([key, value]) => `${key}: ${typeof value === 'string' ? value : JSON.stringify(value)}`).join(', ')]
+                .filter(Boolean).join(' — ');
+              return <li key={tab.id}>
+                <button type="button" aria-current={tab.id === activeTabId ? 'true' : undefined}
+                  onClick={() => { onSelectTab(tab.id); if (pickerRef.current) pickerRef.current.open = false; }}>
+                  <span>{labels[index]}{labels.filter(label => label === labels[index]).length > 1
+                    ? ` #${labels.slice(0, index + 1).filter(label => label === labels[index]).length}` : ''}</span>
+                  <small>{context || tab.connectionStatus}</small>
+                </button>
+              </li>;
+            })}
+          </ul>
+          {onCloseOtherTabs && <button type="button" className="session-picker-close"
+            disabled={tabs.length < 2} onClick={() => {
+              onCloseOtherTabs();
+              if (pickerRef.current) pickerRef.current.open = false;
+            }}>Close other tabs</button>}
+        </div>
+      </details>
+      {(fade.start || fade.end) && <button type="button" className="playground-tab-scroll" aria-label="Scroll sessions left" disabled={!fade.start}
+        onClick={() => stripRef.current?.scrollBy({ left: -stripRef.current.clientWidth * 0.7, behavior: 'smooth' })}>‹</button>}
       <div
         ref={stripRef}
         className="nav nav-tabs playground-tabs"
         role="tablist"
         onScroll={updateFade}
       >
-        {tabs.map(tab => {
-          const label = getTabDisplayLabel(tab.title);
+        {tabs.map((tab, index) => {
+          const label = labels[index];
+          const duplicate = labels.filter(value => value === label).length > 1;
+          const suffix = duplicate ? ` #${labels.slice(0, index + 1).filter(value => value === label).length}` : '';
           return (
             <div key={tab.id} className="nav-item position-relative" role="presentation">
               <button
@@ -108,22 +162,14 @@ const Tabs: React.FC<TabsProps> = ({ tabs, activeTabId, onSelectTab, onCloseTab,
                 onClick={() => onSelectTab(tab.id)}
                 role="tab"
                 aria-selected={activeTabId === tab.id}
-                title={tab.title}
+                title={`${tab.title}${suffix}`}
               >
                 <span
                   className="me-2 playground-tab-status"
-                  style={{
-                    width: '8px',
-                    height: '8px',
-                    borderRadius: '50%',
-                    backgroundColor: getConnectionStatusColor(tab.connectionStatus, tab.transportType) === 'success' ? '#198754' :
-                                     getConnectionStatusColor(tab.connectionStatus, tab.transportType) === 'primary' ? '#0d6efd' :
-                                     getConnectionStatusColor(tab.connectionStatus, tab.transportType) === 'warning' ? '#ffc107' :
-                                     getConnectionStatusColor(tab.connectionStatus, tab.transportType) === 'danger' ? '#dc3545' : '#6c757d',
-                    display: 'inline-block'
-                  }}
+                  style={{ backgroundColor: getConnectionStatusColor(tab.connectionStatus, tab.transportType) }}
                 ></span>
                 <span className="playground-tab-label">{label}</span>
+                {suffix && <span className="playground-tab-index">{suffix}</span>}
               </button>
               {tabs.length > 1 && (
                 <button
@@ -131,14 +177,24 @@ const Tabs: React.FC<TabsProps> = ({ tabs, activeTabId, onSelectTab, onCloseTab,
                   className="btn-close btn-close-sm position-absolute top-50 end-0 translate-middle-y me-2"
                   style={{ zIndex: 2 }}
                   onClick={() => onCloseTab(tab.id)}
-                  aria-label={`Close ${tab.title} tab`}
+                  aria-label={`Close ${tab.title}${suffix} tab`}
                 ></button>
               )}
             </div>
           );
         })}
       </div>
-      <button type="button" className="nav-link playground-tab-new" onClick={onNewTab}>+ New</button>
+      {(fade.start || fade.end) && <button type="button" className="playground-tab-scroll" aria-label="Scroll sessions right" disabled={!fade.end}
+        onClick={() => stripRef.current?.scrollBy({ left: stripRef.current.clientWidth * 0.7, behavior: 'smooth' })}>›</button>}
+      <button
+        type="button"
+        className="nav-link playground-tab-new"
+        onClick={onNewTab}
+        aria-label={NEW_TAB_LABEL}
+        title={NEW_TAB_TOOLTIP}
+      >
+        <span aria-hidden="true">+</span> New
+      </button>
     </div>
   );
 };

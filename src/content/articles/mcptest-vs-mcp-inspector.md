@@ -2,7 +2,7 @@
 title: "mcptest.io vs MCP Inspector, MCPJam, Glama and Postman"
 navTitle: Testing tools compared
 summary: "An honest comparison of five MCP testing tools on install, remote OAuth, browser CORS evidence, shareable reports, catalogs, CI and price, with what each does best."
-track: understand
+track: compare
 level: practitioner
 order: 40
 category: Tools

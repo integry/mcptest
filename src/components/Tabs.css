@@ -5,6 +5,7 @@
   display: flex;
   align-items: stretch;
   position: relative;
+  z-index: 10;
   min-width: 0;
   max-width: 100%;
 }
@@ -35,9 +36,12 @@
   white-space: nowrap;
 }
 
-.playground-tab-status {
+.playground-tab-status,
+.playground-tab-index {
   flex: 0 0 auto;
 }
+
+.playground-tab-index { margin-left: 0.35rem; }
 
 .playground-tab-label {
   min-width: 0;
@@ -46,24 +50,23 @@
   white-space: nowrap;
 }
 
-.playground-tab-strip--fade-start .playground-tabs,
+.playground-tab-strip--fade-start .playground-tabs {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 48px);
+  mask-image: linear-gradient(to right, transparent, #000 48px);
+}
 .playground-tab-strip--fade-end .playground-tabs {
-  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 var(--tab-fade-start, 0), #000 calc(100% - var(--tab-fade-end, 0px)), transparent 100%);
-  mask-image: linear-gradient(to right, transparent 0, #000 var(--tab-fade-start, 0), #000 calc(100% - var(--tab-fade-end, 0px)), transparent 100%);
+  -webkit-mask-image: linear-gradient(to left, transparent, #000 48px);
+  mask-image: linear-gradient(to left, transparent, #000 48px);
 }
-
-.playground-tab-strip--fade-start {
-  --tab-fade-start: 2rem;
-}
-
-.playground-tab-strip--fade-end {
-  --tab-fade-end: 2rem;
+.playground-tab-strip--fade-start.playground-tab-strip--fade-end .playground-tabs {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 48px, #000 calc(100% - 48px), transparent);
+  mask-image: linear-gradient(to right, transparent, #000 48px, #000 calc(100% - 48px), transparent);
 }
 
 @media (max-width: 767.98px) {
   .playground-tabs .nav-link {
     max-width: 11rem;
-    min-height: 2.75rem;
+    min-height: var(--workspace-strip-height);
   }
 }
 
@@ -71,4 +74,172 @@
   flex: 0 0 auto;
   padding: 0.5rem 1rem;
   color: var(--text-muted);
+}
+
+/* --- The session strip ---
+   A full-width bar under the header: a mono "Sessions" count, then one
+   mono tab per connection divided by hairlines. The active session is a
+   white surface that opens onto the page below. */
+.playground-tab-strip {
+  align-items: stretch;
+  min-height: var(--workspace-strip-height);
+  border-bottom: 1px solid var(--border-color);
+  background: var(--workspace-canvas);
+}
+
+.playground-tab-count {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0 var(--workspace-inset);
+  border-right: 1px solid var(--border-color);
+  color: var(--text-muted);
+  font-family: var(--font-family-mono);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.playground-tab-count-value {
+  color: var(--text-color);
+}
+
+.playground-tab-strip .playground-tabs.nav-tabs {
+  align-items: stretch;
+  gap: 0;
+  width: auto;
+  flex: 1 1 0%;
+  margin: 0 0 -1px !important;
+  padding: 0 .5rem;
+  scroll-padding-inline: .5rem;
+  border: 0 !important;
+  background: transparent;
+}
+
+.playground-tab-strip .playground-tabs .nav-item {
+  flex: 0 0 auto;
+  display: flex;
+  border-right: 1px solid var(--border-color);
+}
+
+.playground-tab-strip .playground-tabs .nav-link {
+  flex-shrink: 0;
+  min-height: var(--workspace-strip-height);
+  margin: 0;
+  padding: 0 var(--space-4);
+  color: var(--text-muted);
+  font-family: var(--font-family-mono);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+}
+
+.playground-tab-strip .playground-tabs .nav-link.pe-5 {
+  padding-right: 3rem !important;
+}
+
+.playground-tab-strip .playground-tabs .nav-link:not(.active):hover {
+  color: var(--text-color);
+  background-color: var(--hover-wash) !important;
+}
+
+.playground-tab-strip .playground-tabs .nav-link.active {
+  margin: 0 0 -1px;
+  z-index: 1;
+  color: var(--text-color) !important;
+  background-color: var(--card-bg) !important;
+  font-weight: var(--weight-semibold);
+  box-shadow: none;
+}
+
+.playground-tab-status {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.playground-tab-strip .playground-tab-new {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-4);
+  border: 0;
+  background: transparent;
+  color: var(--text-accent);
+  font-size: var(--text-sm);
+}
+
+.playground-tab-strip .playground-tab-new:hover {
+  color: var(--text-color);
+  background: var(--hover-wash);
+}
+
+@media (max-width: 767.98px) {
+  .playground-tab-count {
+    padding: 0 var(--workspace-inset);
+  }
+}
+
+.playground-tabs-wrapper {
+  flex-shrink: 0;
+}
+
+.playground-tab-scroll {
+  flex: 0 0 2rem;
+  border: 0;
+  background: transparent;
+  color: var(--text-color);
+  font-size: 1.25rem;
+}
+.playground-tab-scroll:not(:disabled):hover { background: var(--hover-wash); }
+
+/* Keep the control boundaries visible even when an arrow is disabled. */
+.playground-tab-scroll[aria-label="Scroll sessions left"] { border-right: 1px solid var(--border-color); }
+.playground-tab-scroll[aria-label="Scroll sessions right"] { border-left: 1px solid var(--border-color); }
+.playground-tab-scroll:disabled { opacity: 1; color: var(--text-muted); }
+
+.session-picker { position: relative; flex: 0 0 auto; }
+.session-picker > summary { height: 100%; cursor: pointer; list-style: none; }
+.session-picker > summary::-webkit-details-marker { display: none; }
+.session-picker-popover {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 1050;
+  width: min(26rem, calc(100vw - 4rem));
+  padding: .5rem;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  box-shadow: 0 8px 24px #0002;
+}
+.session-picker-popover ul { list-style: none; margin: 0; padding: 0; max-height: min(24rem, 60vh); overflow-y: auto; }
+.session-picker-popover button { display: block; width: 100%; text-align: left; padding: .5rem .75rem; border: 0; border-radius: .25rem; background: var(--card-bg); color: var(--text-color); }
+.session-picker-popover button:hover,
+.session-picker-popover button[aria-current="true"] { background: var(--card-bg-secondary); }
+.session-picker-popover small { display: block; color: var(--text-muted); overflow-wrap: anywhere; }
+.session-picker-popover .session-picker-close { margin-top: .5rem; border-top: 1px solid var(--border-color); color: var(--text-accent); }
+
+/* Keep a clipped inactive tab from leaving a detached close icon behind.
+   Keyboard focus and touch users retain access to the close control. */
+@media (hover: hover) {
+  .playground-tabs .nav-item:has(.nav-link:not(.active)) > .btn-close { opacity: 0; }
+  .playground-tabs .nav-item:hover > .btn-close,
+  .playground-tabs .nav-item:focus-within > .btn-close { opacity: 1; }
+}
+
+/* Keep partial inactive labels from peeking beside the scroll controls.
+   Their layout is retained for scrolling; every session is also in the picker. */
+.playground-tabs .nav-item[data-clipped]:has(.nav-link:not(.active)) {
+  visibility: hidden;
+}
+.playground-tabs .nav-item[data-clipped] > .btn-close { opacity: 0; }
+
+/* Inset connection cards do not attach to the active session tab. */
+.app-shell--home .playground-tab-strip .playground-tabs .nav-link.active {
+  margin-bottom: 0;
+  border-bottom: 1px solid var(--border-color) !important;
 }

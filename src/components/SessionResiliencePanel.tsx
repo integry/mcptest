@@ -37,12 +37,15 @@ export default function SessionResiliencePanel(props: Props) {
     } catch { if (!controller.signal.aborted) setError(true); }
     finally { active.current = null; if (!controller.signal.aborted) setRunning(false); }
   };
-  return <section className="mb-3" aria-label="Session resilience diagnostics">
-    <button className="btn btn-outline-primary btn-sm" disabled={running} onClick={() => void run()}>
-      {running ? 'Checking session resilience…' : 'Check session resilience'}
+  return <details className="session-resilience" aria-label="Session resilience diagnostics">
+    <summary className="btn btn-sm btn-outline-secondary"><i className="bi bi-shield-check" aria-hidden="true" /> Check resilience</summary>
+    <div className="pt-2">
+    <button className="btn btn-outline-secondary btn-sm" disabled={running} onClick={() => void run()}>
+      {running ? 'Checking session resilience…' : 'Run session checks'}
     </button>
     <p className="small text-muted mt-1">Free, opt-in check: temporary sessions, 8 sequential then 4 parallel pings, and DELETE. No tools run. This sample cannot prove survival of a future restart.</p>
     {error && <p role="alert">Session checks could not complete. Reconnect and try again.</p>}
     <div aria-live="polite"><TransportDiagnosticsPanel diagnostics={results} /></div>
-  </section>;
+    </div>
+  </details>;
 }

@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useDebouncedCallback } from 'use-debounce';
 import { Space, ConnectionTab } from '../types';
+import { withoutUntouchedDefaultDashboard } from '../utils/defaultWorkspace';
 
 const SPACES_KEY = 'mcpSpaces';
 const TABS_KEY = 'mcpConnectionTabs';
@@ -42,10 +43,10 @@ export const useDataSync = ({ spaces, tabs, setSpaces, setTabs }: DataSyncProps)
         
         if (data.spaces) {
           // Ensure each space has a cards array
-          const validatedSpaces = data.spaces.map((space: Space) => ({
+          const validatedSpaces = withoutUntouchedDefaultDashboard(data.spaces.map((space: Space) => ({
             ...space,
             cards: Array.isArray(space.cards) ? space.cards : []
-          }));
+          })));
           setSpaces(validatedSpaces);
           // Only update localStorage if we have non-empty data from Cloudflare
           if (data.spaces.length > 0) {

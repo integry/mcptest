@@ -5,7 +5,7 @@ import { enhanceEngagement } from '../utils/pageEngagement';
  * shell around the page body. React does not mount over them at load
  * (issue #405); src/main.tsx defers the mount until the first input. Until
  * then these vanilla handlers make the static controls work: the theme
- * toggle, the sidebar collapse and group toggles, code copy buttons, the `/`
+ * toggle, the sidebar group toggles, code copy buttons, the `/`
  * search shortcut, guide link analytics and the page view. Other buttons (the
  * mobile menu, whose drawer only exists in the app) are replayed on the app
  * once the input that started the mount has mounted it (deferredMount.ts).
@@ -13,12 +13,7 @@ import { enhanceEngagement } from '../utils/pageEngagement';
  * Handlers are attached to the static shell element, which the React mount
  * removes, so they never run alongside the app's own.
  */
-import {
-  MENU_OPEN_CLASS,
-  SIDEBAR_COLLAPSED_CLASS,
-  SIDEBAR_COLLAPSED_KEY,
-  readStoredSidebarCollapsed,
-} from '../utils/layoutState';
+import { MENU_OPEN_CLASS } from '../utils/layoutState';
 import { logPageView, recordStaticPageEvent, trackEvent, trackGuideLinkClick } from '../utils/analytics';
 import { handleCodeCopyClick, handleCopyFromClick } from '../utils/codeCopy';
 import { setFieldValue } from './deferredMount';
@@ -45,39 +40,6 @@ const toggleTheme = (): void => {
     // The toggle still applies for this page view.
   }
   trackEvent('theme_changed', { theme_name: next });
-};
-
-/** Mirrors useSidebarCollapsed and SideNav's collapsed rendering on the static sidebar. */
-const applySidebarCollapsed = (shell: HTMLElement, collapsed: boolean): void => {
-  document.body.classList.toggle(SIDEBAR_COLLAPSED_CLASS, collapsed);
-  const nav = shell.querySelector('.desktop-sidebar .app-sidenav');
-  nav?.classList.toggle('app-sidenav--collapsed', collapsed);
-  const toggle = nav?.querySelector('.sidenav-collapse-toggle');
-  if (toggle) {
-    toggle.setAttribute('aria-expanded', String(!collapsed));
-    toggle.setAttribute('aria-label', collapsed ? 'Expand sidebar' : 'Collapse sidebar');
-    toggle.setAttribute('title', collapsed ? 'Expand sidebar' : 'Collapse sidebar');
-    const icon = toggle.querySelector('i');
-    if (icon) icon.className = `bi ${collapsed ? 'bi-chevron-double-right' : 'bi-chevron-double-left'}`;
-  }
-  // The collapsed rail swaps the search field for a button that comes with the app.
-  const search = nav?.querySelector<HTMLElement>('.guide-search--sidebar');
-  if (search) search.hidden = collapsed;
-  // A collapsed sidebar shows no group bodies.
-  nav?.querySelectorAll<HTMLElement>('.sidenav-group-toggle[aria-controls]').forEach(button => {
-    const body = document.getElementById(button.getAttribute('aria-controls') || '');
-    if (!body) return;
-    if (collapsed) {
-      button.dataset.expandedBeforeCollapse = button.getAttribute('aria-expanded') || 'false';
-      body.hidden = true;
-      button.setAttribute('aria-expanded', 'false');
-    } else if (button.dataset.expandedBeforeCollapse) {
-      const expanded = button.dataset.expandedBeforeCollapse === 'true';
-      body.hidden = !expanded;
-      button.setAttribute('aria-expanded', String(expanded));
-      delete button.dataset.expandedBeforeCollapse;
-    }
-  });
 };
 
 /** Marks a sidebar group the visitor opened or closed on the static page. */
@@ -156,13 +118,10 @@ export const snapshotStaticPageState = (root: HTMLElement): (() => void) => {
       appSearch.setSelectionRange(search.selectionStart, search.selectionEnd);
     }
   };
-  const isCollapsed = () => document.body.classList.contains(SIDEBAR_COLLAPSED_CLASS);
-  if (isCollapsed()) return restoreInputs;
   const groups = Array.from(root.querySelectorAll(`.sidenav-group-toggle[aria-controls][${TOGGLED_GROUP_ATTRIBUTE}]`))
     .map(button => ({ controls: button.getAttribute('aria-controls')!, expanded: button.getAttribute('aria-expanded') === 'true' }));
   return () => {
     restoreInputs();
-    if (isCollapsed()) return;
     for (const { controls, expanded } of groups) {
       const button = Array.from(root.querySelectorAll<HTMLElement>('.sidenav-group-toggle[aria-controls]'))
         .find(candidate => candidate.getAttribute('aria-controls') === controls);
@@ -206,15 +165,13 @@ const reportPageView = (shell: HTMLElement): void => {
 
 /** Wires the static page's controls. */
 export const enhanceStaticPage = (shell: HTMLElement): void => {
-  if (readStoredSidebarCollapsed()) applySidebarCollapsed(shell, true);
 
   const endpoint = shell.querySelector<HTMLInputElement>('.seo-landing-fallback #serverUrl');
   const connect = shell.querySelector<HTMLButtonElement>('#connectBtn');
-  endpoint?.addEventListener('input', () => {
-    if (connect) connect.disabled = !endpoint.value.trim();
-  });
+  // Enter submits like the button. The click is replayed on the app's Connect
+  // after the mount, which validates the URL (LandingHero).
   endpoint?.addEventListener('keydown', event => {
-    if (event.key === 'Enter' && endpoint.value.trim()) {
+    if (event.key === 'Enter') {
       event.preventDefault();
       connect?.click();
     }
@@ -244,16 +201,7 @@ export const enhanceStaticPage = (shell: HTMLElement): void => {
     if (button.closest('[data-inline-test]')) { handledClicks.add(button); return; }
     if (button.matches('.app-theme-toggle')) {
       toggleTheme();
-    } else if (button.matches('.sidenav-collapse-toggle')) {
-      const collapsed = !document.body.classList.contains(SIDEBAR_COLLAPSED_CLASS);
-      trackEvent('sidebar_collapse', { collapsed });
-      try {
-        localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(collapsed));
-      } catch {
-        // Applies for this page view only.
-      }
-      applySidebarCollapsed(shell, collapsed);
-    } else if (button.matches('.sidenav-group-toggle[aria-controls]') && !document.body.classList.contains(SIDEBAR_COLLAPSED_CLASS)) {
+    } else if (button.matches('.sidenav-group-toggle[aria-controls]')) {
       toggleGroup(button);
     } else {
       return;

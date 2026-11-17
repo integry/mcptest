@@ -114,7 +114,7 @@ describe('playground landing', () => {
     expect(container.querySelector('.connection-console')).not.toBeNull();
     expect(container.querySelector('.awaiting-connection-panel')).not.toBeNull();
     expect(container.querySelector('.suggested-servers-panel')).not.toBeNull();
-    expect(container.querySelector('.recent-server-link')?.textContent).toBe('https://returning.example/mcp');
+    expect(container.querySelector('.recent-server-link > span:not([aria-hidden])')?.textContent).toBe('https://returning.example/mcp');
   });
 
   it('reconnects a recent server from the workspace and removes entries in place', async () => {
@@ -128,7 +128,7 @@ describe('playground landing', () => {
       container.querySelector('[aria-label="Remove https://second.example/mcp from recent connections"]')
         ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
-    expect(Array.from(container.querySelectorAll('.recent-server-link'), link => link.textContent))
+    expect(Array.from(container.querySelectorAll('.recent-server-link > span:not([aria-hidden])'), link => link.textContent))
       .toEqual(['https://returning.example/mcp']);
     const stored: Array<string | { url: string }> = JSON.parse(localStorage.getItem('mcpRecentServers') ?? '[]');
     expect(stored.map(entry => (typeof entry === 'string' ? entry : entry.url))).toEqual(['https://returning.example/mcp']);
@@ -151,7 +151,9 @@ describe('playground landing', () => {
 
     act(() => toggle.dispatchEvent(new MouseEvent('click', { bubbles: true })));
 
-    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    const collapseToggle = container.querySelector<HTMLButtonElement>('.landing-advanced-toggle')!;
+    expect(collapseToggle.getAttribute('aria-expanded')).toBe('true');
+    expect(container.querySelector('.landing-advanced')?.id).toBe(collapseToggle.getAttribute('aria-controls'));
     expect(container.querySelector('.landing .landing-advanced .connection-console')).not.toBeNull();
     expect(container.querySelector('.landing .connection-advanced')).not.toBeNull();
     expect(container.querySelector('.landing-connect')).toBeNull();
@@ -159,9 +161,9 @@ describe('playground landing', () => {
     expect(container.querySelector('.landing-paths')).not.toBeNull();
 
     act(() => setInputValue(container.querySelector<HTMLInputElement>('#serverUrl')!, 'https://typed.example/mcp'));
-    act(() => toggle.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    act(() => collapseToggle.dispatchEvent(new MouseEvent('click', { bubbles: true })));
 
-    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(container.querySelector('.landing-advanced-toggle')?.getAttribute('aria-expanded')).toBe('false');
     expect(container.querySelector('.connection-console')).toBeNull();
     expect(container.querySelector<HTMLInputElement>('.landing-connect #serverUrl')?.value).toBe('https://typed.example/mcp');
   });

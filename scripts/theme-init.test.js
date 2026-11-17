@@ -99,7 +99,7 @@ describe('returning-visitor bootstrap', () => {
     dom.window.localStorage.setItem('mcpConnectionTabs', JSON.stringify([{ id: 'default-tab', title: 'New Connection', serverUrl: '' }, { id: 'server', title: unsafe, serverUrl: 'https://example.com/mcp' }]));
     dom.window.eval(source);
     expect(dom.window.document.documentElement.getAttribute('data-returning-visitor')).toBe('true');
-    expect(dom.window.document.documentElement.getAttribute('data-sidebar-collapsed')).toBe('true');
+    expect(dom.window.document.documentElement.getAttribute('data-sidebar-collapsed')).toBeNull();
     const { default: generator } = await import('./generate-seo-pages.js');
     dom.window.document.body.innerHTML = generator.renderShellFallback({ catalogCount: 1 });
     await new Promise(resolve => dom.window.setTimeout(resolve, 0));

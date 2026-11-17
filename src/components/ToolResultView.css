@@ -1,5 +1,7 @@
 .tool-result-view {
   display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.6rem;
 }
 
@@ -75,12 +77,45 @@
 }
 
 .tool-result-view-switch {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
+  flex-wrap: nowrap;
+  font-size: 0.78rem;
+  white-space: nowrap;
 }
 
-.tool-result-view-switch .btn {
-  padding: 0.18rem 0.6rem;
-  font-size: 0.78rem;
+.tool-result-view-switch .segmented-control-item.active {
+  box-shadow: 0 1px 3px rgb(0 0 0 / 12%);
+}
+
+.tool-result-view-switch .segmented-control-item:focus-visible {
+  outline: 2px solid var(--input-focus-border);
+  outline-offset: 2px;
+}
+
+.result-json { color: var(--text-muted); }
+.result-json .hljs-attr { color: #2563a6; }
+.result-json .hljs-string { color: #18794e; }
+.result-json .hljs-number,
+.result-json .hljs-literal { color: #9a4d12; }
+.result-json .hljs-punctuation { color: var(--text-muted); }
+[data-theme='dark'] .result-json .hljs-attr { color: #83b8f1; }
+[data-theme='dark'] .result-json .hljs-string { color: #7dd3a8; }
+[data-theme='dark'] .result-json .hljs-number,
+[data-theme='dark'] .result-json .hljs-literal { color: #eab676; }
+
+/* Keep long payloads inside the result column, with every line readable in place. */
+.tool-result-view > *,
+.tool-result-explanation > span {
+  min-width: 0;
+}
+
+.tool-result-view .tool-result-explanation {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.tool-result-view pre,
+.tool-result-view pre code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: normal;
 }

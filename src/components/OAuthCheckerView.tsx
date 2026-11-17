@@ -29,7 +29,7 @@ export default function OAuthCheckerView() {
       const result = await checkOAuthReadiness(input, { fetchDocument, probeEndpoint });
       if (runId === active.current) setReport(result);
     } catch {
-      if (runId === active.current) setError('Enter an HTTPS MCP endpoint without credentials, query parameters or a fragment. HTTP is allowed for localhost.');
+      if (runId === active.current) setError(copy.inputHint);
     } finally { if (runId === active.current) setBusy(false); }
   };
   return <div className="discovery-checker">
@@ -42,9 +42,22 @@ export default function OAuthCheckerView() {
           aria-describedby={`${id}-hint`} aria-invalid={Boolean(error)} onChange={event => setInput(event.target.value)} />
         <button className="btn btn-primary" disabled={busy || !input.trim()}>{busy ? 'Checking…' : 'Check OAuth'}</button>
       </div>
-      <p className="discovery-hint" id={`${id}-hint`}>{copy.hint}</p>
+      <p className="discovery-hint" id={`${id}-hint`}>{copy.inputHint}</p>
+      <p className="discovery-hint">{copy.hint}</p>
     </form>
     <p className="discovery-hint"><Link className="text-decoration-underline" to={GUIDE}>How MCP OAuth discovery works, step by step</Link></p>
+    {!report && !busy && <section className="oauth-step-preview" aria-labelledby="oauth-preview-heading">
+      <h2 id="oauth-preview-heading">What this check covers</h2>
+      <ol>
+        {[
+          ['MCP 401 challenge', 'Inspect the unauthenticated response and its discovery link.'],
+          ['Protected resource metadata', 'Find the resource URL and advertised authorization servers.'],
+          ['Auth server metadata', 'Check endpoints and client registration options.'],
+          ['PKCE flow', 'Verify advertised S256 and authorization code support.'],
+        ].map(([title, description]) => <li key={title}><h3>{title}</h3><p>{description}</p></li>)}
+      </ol>
+      <p className="discovery-hint">Metadata checks only; no login or token exchange is performed.</p>
+    </section>}
     {busy && <p role="status">Checking OAuth discovery…</p>}
     {error && <p role="alert">{error}</p>}
     {report && <div aria-live="polite">

@@ -135,7 +135,7 @@ export const getLearnArticle = (slug: string | null | undefined) =>
   slug ? articlesBySlug.get(slug) : undefined;
 
 export const isLearnIndexPath = (pathname: string) =>
-  pathname === '/learn' || pathname === '/learn/';
+  ['/learn', '/learn/', '/guides', '/guides/'].includes(pathname);
 
 const normalizePath = (pathname: string): string | undefined => {
   const trimmed = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname;
@@ -150,7 +150,7 @@ const normalizePath = (pathname: string): string | undefined => {
 export const getContentPage = (pathname: string): ContentPage | undefined => {
   const normalized = normalizePath(pathname);
   if (!normalized) return undefined;
-  const article = articlesByPath.get(normalized);
+  const article = articlesByPath.get(normalized) ?? (normalized.startsWith('/guides/') ? articlesBySlug.get(normalized.slice('/guides/'.length)) : undefined);
   if (article) return { kind: 'article', article };
   const page = pagesByPath.get(normalized);
   if (page) return { kind: 'page', page };
@@ -158,10 +158,10 @@ export const getContentPage = (pathname: string): ContentPage | undefined => {
 };
 
 export const isContentPath = (pathname: string) =>
-  isLearnIndexPath(pathname) || pathname.startsWith('/learn/') || pathname.startsWith('/docs/');
+  isLearnIndexPath(pathname) || pathname.startsWith('/guides/') || pathname.startsWith('/learn/') || pathname.startsWith('/docs/');
 
 export const getLearnArticleSlugFromPath = (pathname: string): string | undefined => {
-  const match = pathname.match(/^\/learn\/([^/]+)\/?$/);
+  const match = pathname.match(/^\/(?:learn|guides)\/([^/]+)\/?$/);
   if (!match) return undefined;
 
   try {

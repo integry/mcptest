@@ -1,8 +1,13 @@
 import { getConnectionShareUrl, getLegacyServerFallback } from '../utils/urlUtils';
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, useReducer } from 'react';
 import { LogEntry, Resource, TransportType } from '../types';
 import { Client, type ProtocolEra } from '@modelcontextprotocol/client';
 import { formatErrorForDisplay } from '../utils/errorHandling';
+import {
+  IDLE_CONNECTION_PROGRESS,
+  reduceConnectionProgress,
+  type ConnectionProgressEvent,
+} from '../utils/connectionStages';
 import {
   attemptParallelConnections,
   getObservedAuthenticationChallenge,
@@ -97,6 +102,13 @@ export const useConnection = (
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectionStartTime, setConnectionStartTime] = useState<Date | null>(null);
   const [connectionError, setConnectionError] = useState<ConnectionErrorDetails | null>(null);
+  const [connectionProgress, dispatchConnectionProgress] = useReducer(
+    reduceConnectionProgress,
+    IDLE_CONNECTION_PROGRESS
+  );
+  // Only the newest attempt may report progress; a superseded attempt's
+  // late responses must not move the stages of the current one.
+  const progressAttemptRef = useRef(0);
   const clientRef = useRef<Client | null>(null); // Store the SDK Client instance
   const abortControllerRef = useRef<AbortController | null>(null);
   const { currentUser } = useAuth();
@@ -295,6 +307,8 @@ export const useConnection = (
     if (connectionStatus !== 'Disconnected' && !isConnecting) {
         trackEvent('disconnect');
         addLogEntry({ type: 'info', data: 'Disconnecting...' });
+        progressAttemptRef.current += 1;
+        dispatchConnectionProgress({ type: 'reset' });
         await cleanupConnection();
     }
   }, [connectionStatus, isConnecting, addLogEntry, cleanupConnection, serverUrl]);
@@ -308,6 +322,8 @@ export const useConnection = (
       trackEvent('connect_abort');
       console.log('[DEBUG] Aborting connection attempt...');
       abortControllerRef.current.abort();
+      dispatchConnectionProgress({ type: 'aborted' });
+      progressAttemptRef.current += 1;
       addLogEntry({ type: 'info', data: 'Connection aborted by user' });
       cleanupConnection();
     }
@@ -414,6 +430,26 @@ export const useConnection = (
     setProtocolEra(null);
     setProtocolVersion(null);
     setConnectionStartTime(new Date());
+    const progressAttempt = ++progressAttemptRef.current;
+    const reportProgress = (event: ConnectionProgressEvent) => {
+      if (progressAttemptRef.current === progressAttempt) dispatchConnectionProgress(event);
+    };
+    const observeProgress = (route: 'direct' | 'proxy') => (request: ObservedTransportRequest) => {
+      reportProgress({
+        type: 'response',
+        status: request.status,
+        ok: request.outcome === 'succeeded',
+        mcpMethod: request.mcpMethod,
+        route,
+        ...(request.responseSource ? { source: request.responseSource } : {}),
+      });
+    };
+    reportProgress({
+      type: 'start',
+      credentialed: Boolean(latestAccessToken) || Object.keys(requestHeaders || {}).some((header) => (
+        ['authorization', 'x-api-key', 'api-key'].includes(header.toLowerCase())
+      )),
+    });
     setResponses([]); // Clear logs for new connection attempt
     if (queryOmitted) addLogEntry({ type: 'warning', data: "The shareable link does not include the server's query parameters or fragment because they may contain credentials." });
     
@@ -535,7 +571,8 @@ export const useConnection = (
         false,
         protocolEraHint,
         observeOAuthRetryRequest('direct'),
-        ...(effectivePreferredTransport ? [effectivePreferredTransport] : [])
+        effectivePreferredTransport,
+        observeProgress('direct')
       );
     };
 
@@ -549,6 +586,7 @@ export const useConnection = (
       const proxyUrl = import.meta.env.VITE_PROXY_URL;
       const connectionUrl = `${proxyUrl}?target=${encodeURIComponent(targetUrl)}`;
       setIsProxied(true);
+      reportProgress({ type: 'proxy-fallback' });
       addLogEntry({ type: 'info', data: `Direct connection failed with CORS error. Attempting connection via proxy to ${targetUrl}...` });
       let authToken: string | undefined;
       if (currentUser) {
@@ -574,7 +612,8 @@ export const useConnection = (
         true,
         protocolEraHint,
         observeOAuthRetryRequest('proxy'),
-        ...(effectivePreferredTransport ? [effectivePreferredTransport] : [])
+        effectivePreferredTransport,
+        observeProgress('proxy')
       );
     };
 
@@ -673,6 +712,7 @@ export const useConnection = (
             setNeedsOAuthConfig(true);
             setOAuthConfigServerUrl(targetUrl);
             setConnectionStatus('Proxy limit reached');
+            reportProgress({ type: 'failed', detail: 'The mcptest proxy limit was reached; sign in to continue' });
             setIsConnecting(false);
             setConnectionStartTime(null);
             abortControllerRef.current = null;
@@ -715,6 +755,7 @@ export const useConnection = (
               setNeedsOAuthConfig(true);
               setOAuthConfigServerUrl(targetUrl);
               setConnectionStatus('Proxy authentication required');
+              reportProgress({ type: 'failed', detail: 'The mcptest proxy rejected the saved login' });
               setIsConnecting(false);
               setConnectionStartTime(null);
               abortControllerRef.current = null;
@@ -742,6 +783,7 @@ export const useConnection = (
             data: `🔐 The MCP server returned HTTP ${challenge.status}. Discovering its OAuth configuration...`
           });
           setConnectionStatus('Authorization required');
+          reportProgress({ type: 'auth-challenge', status: challenge.status });
           setIsAuthFlowActive(true);
           setOauthProgress('Discovering the protected resource and authorization server...');
           onAuthFlowStart?.();
@@ -792,6 +834,7 @@ export const useConnection = (
             oauthTrace = reloadLatestOAuthTrace();
 
             if (result === 'REDIRECT') {
+              reportProgress({ type: 'auth-waiting', detail: 'Continue at the authorization server' });
               setIsConnecting(false);
               setConnectionStartTime(null);
               abortControllerRef.current = null;
@@ -815,6 +858,7 @@ export const useConnection = (
             });
 
             trackOAuthFlow('success', targetUrl);
+            reportProgress({ type: 'auth-complete' });
             setIsAuthFlowActive(false);
             setOauthProgress(null);
             setConnectionStatus('Connecting...');
@@ -839,6 +883,7 @@ export const useConnection = (
               setNeedsOAuthConfig(true);
               setOAuthConfigServerUrl(targetUrl);
               setConnectionStatus('Authorization required');
+              reportProgress({ type: 'auth-waiting', detail: 'This provider needs a pre-registered OAuth client' });
               addLogEntry({
                 type: 'warning',
                 data: '⚠️ Automatic OAuth discovery completed, but this provider requires a pre-registered client.'
@@ -853,6 +898,7 @@ export const useConnection = (
               setNeedsOAuthConfig(true);
               setOAuthConfigServerUrl(targetUrl);
               setConnectionStatus('Authorization prerequisite');
+              reportProgress({ type: 'auth-waiting', detail: 'Complete the authorization step below' });
               addLogEntry({
                 type: 'warning',
                 data: prerequisite.explanation,
@@ -872,6 +918,7 @@ export const useConnection = (
               ? oauthError.message
               : 'Unknown OAuth error';
             setConnectionStatus('Error');
+            reportProgress({ type: 'failed', detail: 'OAuth authorization failed' });
             setConnectionError({
               error: `OAuth authorization failed: ${message}`,
               failureStage: 'oauth',
@@ -912,6 +959,7 @@ export const useConnection = (
             updateConnectionUrl(displayUrl, attemptedLegacyFallback ? finalTransportType || undefined : forcedTransport);
             setServerUrl(displayUrl); // Set UI URL to the actual connected URL with endpoint
             setConnectionStatus('Connected');
+            reportProgress({ type: 'connected', protocolVersion: finalProtocolVersion, transport: finalTransportType });
             setIsConnecting(false);
             addLogEntry({ type: 'info', data: `SDK Client Connected successfully.` });
             trackConnectResult('connected', { protocolEra: finalProtocolEra, transport: finalTransportType });
@@ -934,6 +982,7 @@ export const useConnection = (
           finalizeOAuthRetry(isUserAborted ? 'cancelled' : 'failed', connectionRoute, { error });
           oauthRetryPending = false;
         }
+        reportProgress(isUserAborted ? { type: 'aborted' } : { type: 'failed' });
         if (!isUserAborted) {
             // Handle all other errors normally
             const errorDetails = formatErrorForDisplay(error, {
@@ -983,6 +1032,8 @@ export const useConnection = (
     connectionStartTime,
     connectionError,
     clearConnectionError,
+    /** Event-driven stages of the current or last connection attempt. */
+    connectionProgress,
     client: clientRef.current, // Expose the connected client instance
     recentServers, // Expose recent servers
     handleConnect, // Keep original signature for export, wrapper in App.tsx handles the override

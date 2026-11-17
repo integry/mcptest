@@ -1,14 +1,24 @@
 /* /tools/breaking-changes and the report history's "Changes since the previous snapshot". */
 .breaking-changes {
-  max-width: 52rem;
+  max-width: var(--page-content-width);
   margin: 0 auto;
   padding: var(--space-2) 0 var(--space-8);
 }
 
+/* Match the rounded headers on the other content pages. */
 .breaking-changes-header {
   margin-bottom: var(--space-5);
-  padding-bottom: var(--space-5);
-  border-bottom: 1px solid var(--border-color);
+  padding: var(--space-5) var(--space-6);
+  border: 1px solid var(--hero-border);
+  border-radius: var(--button-radius-lg);
+  background: var(--hero-bg);
+  box-shadow: none;
+}
+
+@media (max-width: 768px) {
+  .breaking-changes-header {
+    padding: var(--space-4);
+  }
 }
 
 .breaking-changes-header h1 {
@@ -221,4 +231,10 @@
 
 .breaking-changes-header a {
   text-decoration: underline;
+}
+
+/* Bootstrap floats checks with a negative margin; these rows use flex instead. */
+.breaking-changes .form-check .form-check-input {
+  float: none;
+  margin: 0;
 }

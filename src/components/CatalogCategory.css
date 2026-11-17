@@ -1,6 +1,18 @@
 /* Catalog category pages (/catalog/<slug>) and the category rail links.
    Theme colors come from the shared tokens, so both themes follow. */
 
+/* Category overviews include an introduction and metrics, so they need the
+   full header width even on screens where the main catalog uses two columns.
+   Match the shared markup in both React and the prerendered category pages. */
+.catalog-command-bar:has(.catalog-category-breadcrumb) {
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-4);
+}
+
+.catalog-command-bar:has(.catalog-category-breadcrumb) .catalog-command-copy {
+  min-width: 0;
+}
+
 .catalog-command-copy h1 {
   font-size: 1.375rem;
   letter-spacing: -0.02em;
@@ -33,33 +45,57 @@
 
 .catalog-category-summary {
   display: grid;
-  gap: var(--space-1);
-  margin: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin: var(--space-4) 0;
   font-size: 0.8125rem;
 }
 
 .catalog-category-summary > div {
-  display: grid;
-  grid-template-columns: 8.5rem minmax(0, 1fr);
-  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  background: var(--card-bg);
 }
 
 .catalog-category-summary dt {
+  margin-bottom: var(--space-2);
   color: var(--text-muted);
+  font-family: var(--font-family-mono);
+  font-size: 0.6875rem;
   font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .catalog-category-summary dd {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0 var(--space-3);
   margin: 0;
   color: var(--text-accent);
+  line-height: 1.8;
+}
+
+.catalog-category-summary dd:has(.catalog-category-count) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.catalog-category-count {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: 0.125rem var(--space-2);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  background: var(--hover-wash);
 }
 
 .catalog-category-summary strong {
   color: var(--text-color);
+  font-family: var(--font-family-mono);
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Rail entries are links to category pages. */
@@ -154,8 +190,8 @@ a.badge.catalog-metadata-badge--category:focus-visible {
 }
 
 @media (max-width: 768px) {
-  .catalog-category-summary > div {
-    grid-template-columns: 1fr;
-    gap: 0;
+  .catalog-category-summary {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-2);
   }
 }

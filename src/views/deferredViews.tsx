@@ -99,7 +99,7 @@ export const getRouteView = (pathname: string, search = ''): RouteView => {
   const content = getContentPage(pathname);
   if (content?.kind === 'article') return 'article';
   if (content?.kind === 'page') return 'page';
-  if (pathname.startsWith('/learn/') || pathname.startsWith('/docs/')) return 'learn-index';
+  if (pathname.startsWith('/guides/') || pathname.startsWith('/learn/') || pathname.startsWith('/docs/')) return 'learn-index';
   if (parseServerUrl(pathname) || parseResultShareUrl(pathname, search)) return 'playground';
   return 'playground';
 };

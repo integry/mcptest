@@ -118,7 +118,9 @@ describe('CatalogView', () => {
     expect(rows).toHaveLength(2);
     expect(container.querySelector('.row.g-3, .catalog-result-column, .catalog-server-card')).toBeNull();
     expect(catalogCss).not.toMatch(/\.catalog-result-column/);
-    expect(catalogCss).toMatch(/\.catalog-server-list\s*\{[^}]*border-top:\s*1px solid var\(--border-color\);/);
+    // One surface holding hairline-divided rows, not a grid of cards.
+    expect(catalogCss).toMatch(/\.catalog-server-list\s*\{[^}]*border:\s*1px solid var\(--border-color\);/);
+    expect(catalogCss).toMatch(/\.catalog-server-list-item\s*\{[^}]*border-bottom:\s*1px solid var\(--border-color\);/);
 
     act(() => {
       root.unmount();
@@ -146,14 +148,16 @@ describe('CatalogView', () => {
     expect(testRule).not.toMatch(/flex:/);
   });
 
-  it('uses the stronger brand color and medium weight for an active category', () => {
+  it('marks the active category like the active sidebar item: accent wash, rail and accent text', () => {
     const catalogCss = readStylesheet();
     const activeCategoryRule = catalogCss.match(
       /\.catalog-category-option\[aria-pressed='true'\]\s*\{([^}]*)\}/
     )?.[1] ?? '';
 
-    expect(activeCategoryRule).toMatch(/color:\s*var\(--primary-hover\);/);
-    expect(activeCategoryRule).toMatch(/font-weight:\s*500;/);
+    expect(activeCategoryRule).toMatch(/(?:^|[^-])color:\s*var\(--accent-text\);/);
+    expect(activeCategoryRule).toMatch(/background:\s*var\(--accent-wash\);/);
+    expect(activeCategoryRule).toMatch(/box-shadow:\s*inset var\(--rail-width\) 0 0 var\(--primary-color\);/);
+    expect(activeCategoryRule).toMatch(/font-weight:\s*var\(--weight-semibold\);/);
   });
 
   it('folds the three selects into a Filters disclosure that counts the active filters', () => {

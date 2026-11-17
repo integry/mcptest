@@ -56,7 +56,7 @@ let container: HTMLDivElement;
 const snapshot = () => ({
   header: Boolean(container.querySelector('.app-header')),
   sidebarLinks: Array.from(
-    container.querySelectorAll('.desktop-sidebar .app-sidenav .sidenav-group:first-child .sidenav-list > .nav-item > a.nav-link'),
+    container.querySelectorAll('.desktop-sidebar .app-sidenav .sidenav-group:not(.content-track-nav) .sidenav-list > .nav-item > a.nav-link'),
     link => link.textContent?.trim()
   ),
   dashboards: Array.from(
@@ -81,9 +81,11 @@ const mount = () => {
 
 const FIRST_FRAME = {
   header: true,
-  sidebarLinks: ['Playground', 'Catalog', 'Reports', 'Breaking changes', 'OAuth checker', 'Discovery checker'],
-  dashboards: ['My first dashboard'],
-  tabs: ['New Connection'],
+  sidebarLinks: ['Playground', 'Catalog', 'Breaking changes', 'OAuth checker', 'Discovery checker', 'Reports', 'Dashboards'],
+  // A new visitor has no dashboards until they create one (no empty default).
+  dashboards: [],
+  // A first visit has no tab strip until a connection starts or a second tab opens.
+  tabs: [],
   landing: 'Test remote MCP servers online',
   connectionPanel: false,
 };

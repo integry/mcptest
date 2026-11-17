@@ -169,16 +169,35 @@ export const deferMountUntilInput = ({ root, prepare, isHandled = () => false, s
       const focus = snapshotFocus(root);
       const restoreState = snapshotState(root);
       // Decided now: the static handlers run after this capture-phase listener saw the click.
-      const click = clickedButton && !isHandled(clickedButton) ? locateElement(root, clickedButton) : null;
+      let click = clickedButton && !isHandled(clickedButton) ? locateElement(root, clickedButton) : null;
       removeListeners();
+      // The static page stays until the app's first commit. A click in that
+      // window (a slow device, or the Connect press right after typing) would
+      // otherwise land on a button the app never sees: the last one no static
+      // handler served is replayed too.
+      // Only clicks on the static page: one on the app's own DOM is the app's.
+      const staticPage = root.firstElementChild;
+      let lateClick: { button: Element; locator: ElementLocator | null } | null = null;
+      const recordLateClick = (event: Event) => {
+        const button = (event.target as Element | null)?.closest?.('button');
+        if (!button || !staticPage?.isConnected || !staticPage.contains(button)) return;
+        lateClick = { button, locator: locateElement(root, button) };
+      };
+      document.addEventListener('click', recordLateClick, { capture: true, passive: true });
+      const stopRecording = () => document.removeEventListener('click', recordLateClick, { capture: true });
       render!()
         .then(() => {
+          stopRecording();
+          if (lateClick && !isHandled(lateClick.button)) click = lateClick.locator;
           restoreScroll(root, scroll);
           restoreFocus(root, focus);
           restoreState();
           if (click) resolveElement(root, click)?.click();
         })
-        .catch(error => console.error('[Startup] The app failed to mount over the static page.', error));
+        .catch(error => {
+          stopRecording();
+          console.error('[Startup] The app failed to mount over the static page.', error);
+        });
     }, 0);
   };
 

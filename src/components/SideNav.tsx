@@ -1,21 +1,21 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Space } from '../types'; // Import Space type
 import { getSpaceUrl } from '../utils/urlUtils';
 import { trackEvent } from '../utils/analytics';
-import { VERSION_INFO, getGithubCommitUrl } from '../utils/versionInfo';
 import { useAuth } from '../context/AuthContext';
 import {
   DASHBOARDS_NAVIGATION,
-  FOOTER_NAVIGATION,
-  LEGAL_NAVIGATION,
-  PRIMARY_NAVIGATION,
+  NAVIGATION_GROUPS,
+  PLAYGROUND_NAVIGATION,
+  isNavigationItemActive,
+  navigationDescriptionId,
+  navigationTooltip,
+  HEADER_COPY,
+  SIGN_IN_HINT_ID,
+  type NavigationLink,
 } from '../content/navigation';
-import { useSidebarCollapsed } from '../hooks/useSidebarCollapsed';
 import { closeMobileDrawer, useMobileDrawer } from '../hooks/useMobileDrawer';
-import ContentTrackNav from './learn/ContentTrackNav';
-import GuideSearch from './learn/GuideSearch';
-import { isGuideSearchShortcutView } from './learn/guideSearchShortcut';
 
 type ActiveView = 'playground' | 'dashboards' | 'docs' | 'learn' | 'report' | 'catalog' | 'server-profile' | 'breaking-changes' | 'discovery' | 'oauth-check' | 'mcp-test-servers' | 'mcp-test-client' | 'keyword-landing';
 
@@ -34,16 +34,6 @@ interface SideNavProps {
   onToggleTheme?: () => void;
   isMobile?: boolean;
 }
-
-/** Which views light up each primary link; the catalog owns server profiles too. */
-const PRIMARY_ACTIVE_VIEWS: Record<string, ActiveView[]> = {
-  '/': ['playground'],
-  '/catalog': ['catalog', 'server-profile'],
-  '/report': ['report'],
-  '/tools/breaking-changes': ['breaking-changes'],
-  '/tools/oauth-check': ['oauth-check'],
-  '/tools/discovery': ['discovery'],
-};
 
 const SideNav: React.FC<SideNavProps> = ({
   activeView,
@@ -70,14 +60,13 @@ const SideNav: React.FC<SideNavProps> = ({
   const dashboardListRef = useRef<(HTMLAnchorElement | null)[]>([]);
   const navRef = useRef<HTMLElement>(null);
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const { currentUser, loginWithGoogle, logout } = useAuth();
   const authEnabled = import.meta.env.VITE_FIREBASE_AUTH_ENABLED === 'true';
-  const [collapsed, toggleCollapsed, expandSidebar] = useSidebarCollapsed(!isMobile);
   useMobileDrawer(isMobile, navRef);
   const idSuffix = isMobile ? 'mobile' : 'desktop';
   const dashboardsListId = `sidenav-dashboards-${idSuffix}`;
-  const dashboardsExpanded = dashboardsOpen && !collapsed;
-
+  const dashboardsExpanded = dashboardsOpen;
   useEffect(() => {
     if (focusedDashboardIndex !== null && dashboardListRef.current[focusedDashboardIndex]) {
       dashboardListRef.current[focusedDashboardIndex]?.focus();
@@ -85,11 +74,6 @@ const SideNav: React.FC<SideNavProps> = ({
   }, [focusedDashboardIndex]);
 
   const handleDashboardsToggle = () => {
-    if (collapsed) {
-      expandSidebar();
-      setDashboardsOpen(true);
-      return;
-    }
     setDashboardsOpen(open => !open);
   };
 
@@ -276,162 +260,182 @@ const SideNav: React.FC<SideNavProps> = ({
     );
   };
 
-  const buildDate = new Date(VERSION_INFO.commitDate);
+
+
+  const renderDescription = (item: NavigationLink) => (
+    item.description
+      ? <span id={navigationDescriptionId(item, idSuffix)} className="visually-hidden">{item.description}</span>
+      : null
+  );
+
+  const renderLink = (item: NavigationLink, isActive: boolean, extraClass = '') => (
+    <li className={`nav-item${extraClass ? ` ${extraClass}` : ''}`} key={item.path}>
+      <Link
+        to={item.path}
+        className={`nav-link sidenav-link${item === PLAYGROUND_NAVIGATION ? ' sidenav-link--primary' : ''}${isActive ? ' active' : ''}`}
+        aria-current={isActive ? 'page' : undefined}
+        aria-describedby={item.description ? navigationDescriptionId(item, idSuffix) : undefined}
+        onClick={closeMobileDrawer}
+        title={navigationTooltip(item, false)}
+      >
+        <i className={`bi ${item.icon} sidenav-icon`} aria-hidden="true"></i>
+        <span className="sidenav-label">{item.label}</span>
+      </Link>
+      {renderDescription(item)}
+    </li>
+  );
+
+  const renderDashboards = () => {
+    // A visitor who has never created a dashboard sees one entry that leads to
+    // the dashboards page, which explains them and offers the create action.
+    if (spaces.length === 0) {
+      return renderLink(DASHBOARDS_NAVIGATION, activeView === 'dashboards', 'sidenav-dashboards');
+    }
+    return (
+      <li className="nav-item sidenav-dashboards" key={DASHBOARDS_NAVIGATION.path}>
+        <div className="sidenav-group-header">
+          <button
+            type="button"
+            className={`nav-link sidenav-link sidenav-group-toggle${activeView === 'dashboards' ? ' active' : ''}`}
+            aria-expanded={dashboardsExpanded}
+            aria-controls={dashboardsListId}
+            aria-describedby={navigationDescriptionId(DASHBOARDS_NAVIGATION, idSuffix)}
+            onClick={handleDashboardsToggle}
+            title={navigationTooltip(DASHBOARDS_NAVIGATION, false)}
+          >
+            <i className={`bi ${DASHBOARDS_NAVIGATION.icon} sidenav-icon`} aria-hidden="true"></i>
+            <span className="sidenav-label">{DASHBOARDS_NAVIGATION.label}</span>
+            <i className="bi bi-chevron-right sidenav-chevron" aria-hidden="true"></i>
+          </button>
+          <div className="sidenav-group-actions">
+            <button
+              type="button"
+              className="btn btn-sm btn-ghost sidenav-action"
+              onClick={performAllDashboardsHealthCheck}
+              title="Refresh health status"
+              aria-label="Refresh health status of all dashboards"
+            >
+              <i className="bi bi-arrow-clockwise" aria-hidden="true"></i>
+            </button>
+            <button
+              type="button"
+              className="btn btn-sm btn-ghost sidenav-action"
+              onClick={handleCreateClick}
+              title="Create new dashboard"
+              aria-label="Create new dashboard"
+            >
+              <i className="bi bi-plus-lg" aria-hidden="true"></i>
+            </button>
+          </div>
+        </div>
+        {renderDescription(DASHBOARDS_NAVIGATION)}
+
+        <div id={dashboardsListId} className="sidenav-dashboards-body" hidden={!dashboardsExpanded}>
+          <ul className="nav flex-column dashboard-list" onKeyDown={handleDashboardKeyDown} aria-label="Dashboards">
+            {spaces.map((space, index) => (
+              <li
+                className={`nav-item ${dragOverIndex === index ? 'space-drag-over' : ''} ${cardDropTargetSpaceId === space.id ? 'card-drop-target' : ''}`}
+                key={space.id}
+                onDragOver={(e) => handleSpaceDragOver(e, index)}
+                onDragLeave={handleSpaceDragLeave}
+                onDrop={(e) => handleSpaceDrop(e, index)}
+              >
+                <Link
+                  ref={(el) => { dashboardListRef.current[index] = el; }}
+                  onFocus={() => setFocusedDashboardIndex(index)}
+                  aria-current={selectedSpaceId === space.id && activeView === 'dashboards' ? 'page' : undefined}
+                  to={getSpaceUrl(space.name)}
+                  className={`dashboard-link nav-link sidenav-sublink py-1 d-flex align-items-center ${selectedSpaceId === space.id && activeView === 'dashboards' ? 'active' : ''}`}
+                  draggable
+                  onDragStart={(e) => handleSpaceDragStart(e, space.id)}
+                  onDragEnd={handleSpaceDragEnd}
+                  onClick={() => {
+                    handleSelectSpace(space.id);
+                    closeMobileDrawer();
+                  }}
+                  style={{
+                    cursor: 'move',
+                    opacity: draggedSpaceId === space.id ? 0.5 : 1,
+                    transition: 'opacity 0.2s ease',
+                    userSelect: 'none'
+                  }}
+                >
+                  {renderHealthIndicator(space.id)}
+                  <span className="dashboard-name flex-grow-1 text-truncate" title={space.name}>{space.name}</span>
+                  <span
+                    className="dashboard-card-count"
+                    title={`${space.cards.length} saved connection ${space.cards.length === 1 ? 'card' : 'cards'}`}
+                    aria-label={`${space.cards.length} saved connection ${space.cards.length === 1 ? 'card' : 'cards'}`}
+                  >
+                    {space.cards.length} {space.cards.length === 1 ? 'card' : 'cards'}
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+
+          {showCreateInput && (
+            <div className="inline-edit-group sidenav-create">
+              <input
+                type="text"
+                className="form-control form-control-sm"
+                placeholder="New dashboard name..."
+                aria-label="New dashboard name"
+                value={newSpaceName}
+                onChange={handleInputChange}
+                onKeyDown={handleInputKeyDown}
+                autoFocus
+              />
+              <button className="btn btn-sm btn-ghost btn-confirm" type="button" onClick={handleCreateConfirm} title="Create" aria-label="Create dashboard">
+                <i className="bi bi-check-lg" aria-hidden="true"></i>
+              </button>
+              <button className="btn btn-sm btn-ghost" type="button" onClick={handleCreateCancel} title="Cancel" aria-label="Cancel">
+                <i className="bi bi-x-lg" aria-hidden="true"></i>
+              </button>
+            </div>
+          )}
+        </div>
+      </li>
+    );
+  };
 
   return (
     <nav
       ref={navRef}
       id={`app-sidenav-${idSuffix}`}
-      className={`app-sidenav d-flex flex-column flex-grow-1${collapsed ? ' app-sidenav--collapsed' : ''}`}
+      className="app-sidenav d-flex flex-column flex-grow-1"
       aria-label="Main"
     >
-      {/* Workspace: app destinations plus the collapsible dashboards group */}
-      <section className="sidenav-group" aria-labelledby={`workspace-nav-heading-${idSuffix}`}>
-        <h2 id={`workspace-nav-heading-${idSuffix}`} className="sidenav-section-label">Workspace</h2>
-        <ul className="sidenav-list">
-          {PRIMARY_NAVIGATION.map(item => {
-            const isActive = (PRIMARY_ACTIVE_VIEWS[item.path] ?? []).includes(activeView);
-            return (
-              <li className="nav-item" key={item.path}>
-                <Link
-                  to={item.path}
-                  className={`nav-link sidenav-link${isActive ? ' active' : ''}`}
-                  aria-current={isActive ? 'page' : undefined}
-                  onClick={closeMobileDrawer}
-                  title={collapsed ? item.label : undefined}
-                >
-                  <i className={`bi ${item.icon} sidenav-icon`} aria-hidden="true"></i>
-                  <span className="sidenav-label">{item.label}</span>
-                </Link>
-              </li>
-            );
-          })}
+      {/* Ordered by what people come to do: test and browse, the checks, then saved work */}
+      {NAVIGATION_GROUPS.map(group => (
+        <section
+          key={group.id}
+          className={`sidenav-group sidenav-group--${group.id}`}
+          aria-labelledby={`sidenav-${group.id}-heading-${idSuffix}`}
+        >
+          <h2
+            id={`sidenav-${group.id}-heading-${idSuffix}`}
+            className={group.labelHidden ? 'visually-hidden' : 'sidenav-section-label'}
+          >
+            {group.label}
+          </h2>
+          <ul className="sidenav-list">
+            {group.items.map(item => (
+              item === DASHBOARDS_NAVIGATION
+                ? renderDashboards()
+                : renderLink(item, isNavigationItemActive(item, activeView))
+            ))}
+          </ul>
+        </section>
+      ))}
 
-          <li className="nav-item sidenav-dashboards">
-            <div className="sidenav-group-header">
-              <button
-                type="button"
-                className={`nav-link sidenav-link sidenav-group-toggle${activeView === 'dashboards' ? ' active' : ''}`}
-                aria-expanded={dashboardsExpanded}
-                aria-controls={dashboardsListId}
-                onClick={handleDashboardsToggle}
-                title={collapsed ? DASHBOARDS_NAVIGATION.label : undefined}
-              >
-                <i className={`bi ${DASHBOARDS_NAVIGATION.icon} sidenav-icon`} aria-hidden="true"></i>
-                <span className="sidenav-label">{DASHBOARDS_NAVIGATION.label}</span>
-                <i className="bi bi-chevron-right sidenav-chevron" aria-hidden="true"></i>
-              </button>
-              <div className="sidenav-group-actions">
-                <button
-                  type="button"
-                  className="btn btn-sm btn-ghost sidenav-action"
-                  onClick={performAllDashboardsHealthCheck}
-                  title="Refresh health status"
-                  aria-label="Refresh health status of all dashboards"
-                >
-                  <i className="bi bi-arrow-clockwise" aria-hidden="true"></i>
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-sm btn-ghost sidenav-action"
-                  onClick={handleCreateClick}
-                  title="Create new dashboard"
-                  aria-label="Create new dashboard"
-                >
-                  <i className="bi bi-plus-lg" aria-hidden="true"></i>
-                </button>
-              </div>
-            </div>
-
-            <div id={dashboardsListId} className="sidenav-dashboards-body" hidden={!dashboardsExpanded}>
-              {spaces.length === 0 && !showCreateInput ? (
-                <p className="sidenav-empty-hint">Create a dashboard to pin saved connections.</p>
-              ) : (
-                <ul className="nav flex-column dashboard-list" onKeyDown={handleDashboardKeyDown} aria-label="Dashboards">
-                  {spaces.map((space, index) => (
-                    <li
-                      className={`nav-item ${dragOverIndex === index ? 'space-drag-over' : ''} ${cardDropTargetSpaceId === space.id ? 'card-drop-target' : ''}`}
-                      key={space.id}
-                      onDragOver={(e) => handleSpaceDragOver(e, index)}
-                      onDragLeave={handleSpaceDragLeave}
-                      onDrop={(e) => handleSpaceDrop(e, index)}
-                    >
-                      <Link
-                        ref={(el) => { dashboardListRef.current[index] = el; }}
-                        onFocus={() => setFocusedDashboardIndex(index)}
-                        aria-current={selectedSpaceId === space.id && activeView === 'dashboards' ? 'page' : undefined}
-                        to={getSpaceUrl(space.name)}
-                        className={`dashboard-link nav-link sidenav-sublink py-1 d-flex align-items-center ${selectedSpaceId === space.id && activeView === 'dashboards' ? 'active' : ''}`}
-                        draggable
-                        onDragStart={(e) => handleSpaceDragStart(e, space.id)}
-                        onDragEnd={handleSpaceDragEnd}
-                        onClick={() => {
-                          handleSelectSpace(space.id);
-                          closeMobileDrawer();
-                        }}
-                        style={{
-                          cursor: 'move',
-                          opacity: draggedSpaceId === space.id ? 0.5 : 1,
-                          transition: 'opacity 0.2s ease',
-                          userSelect: 'none'
-                        }}
-                      >
-                        {renderHealthIndicator(space.id)}
-                        <span className="dashboard-name flex-grow-1 text-truncate" title={space.name}>{space.name}</span>
-                        <span
-                          className="dashboard-card-count"
-                          title={`${space.cards.length} saved connection ${space.cards.length === 1 ? 'card' : 'cards'}`}
-                          aria-label={`${space.cards.length} saved connection ${space.cards.length === 1 ? 'card' : 'cards'}`}
-                        >
-                          {space.cards.length} {space.cards.length === 1 ? 'card' : 'cards'}
-                        </span>
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              )}
-
-              {showCreateInput && (
-                <div className="inline-edit-group sidenav-create">
-                  <input
-                    type="text"
-                    className="form-control form-control-sm"
-                    placeholder="New dashboard name..."
-                    aria-label="New dashboard name"
-                    value={newSpaceName}
-                    onChange={handleInputChange}
-                    onKeyDown={handleInputKeyDown}
-                    autoFocus
-                  />
-                  <button className="btn btn-sm btn-ghost btn-confirm" type="button" onClick={handleCreateConfirm} title="Create">
-                    <i className="bi bi-check-lg"></i>
-                  </button>
-                  <button className="btn btn-sm btn-ghost" type="button" onClick={handleCreateCancel} title="Cancel">
-                    <i className="bi bi-x-lg"></i>
-                  </button>
-                </div>
-              )}
-            </div>
-          </li>
-        </ul>
-      </section>
-
-      {/* Learn: the guide hub and the four tracks, with the current track expanded */}
-      <ContentTrackNav
-        onNavigate={closeMobileDrawer}
-        collapsed={collapsed}
-        onExpandSidebar={expandSidebar}
-        idPrefix={`sidenav-${idSuffix}`}
-        search={(
-          <GuideSearch
-            idPrefix={`sidenav-${idSuffix}`}
-            shortcutEnabled={!isMobile && isGuideSearchShortcutView(activeView)}
-            collapsed={collapsed}
-            onExpandSidebar={expandSidebar}
-            onNavigate={closeMobileDrawer}
-          />
-        )}
-      />
+      {/* Keep article trees and search in the Guides hub. */}
+        <section className="sidenav-group" aria-labelledby={`sidenav-learn-heading-${idSuffix}`}>
+          <h2 id={`sidenav-learn-heading-${idSuffix}`} className="sidenav-section-label">Learn</h2>
+          <Link to="/guides" className="nav-link sidenav-link" title="Guides" onClick={closeMobileDrawer} aria-current={pathname === '/guides' ? 'page' : undefined}>
+            <i className="bi bi-book sidenav-icon" aria-hidden="true" /><span className="sidenav-label">Guides</span>
+          </Link>
+        </section>
 
       {/* Theme and Auth Controls - Only show on mobile */}
       {isMobile && (
@@ -457,76 +461,26 @@ const SideNav: React.FC<SideNavProps> = ({
                     <img src={currentUser.photoURL || undefined} alt={currentUser.displayName || 'User'} className="rounded-circle me-2" width="32" height="32" />
                     <span>{currentUser.displayName}</span>
                   </div>
-                  <button className="btn btn-sm btn-outline-secondary w-100" onClick={logout}>Logout</button>
+                  <button type="button" className="btn btn-sm btn-outline-secondary w-100" onClick={logout}>Logout</button>
                 </div>
               ) : (
-                <button className="btn btn-sm btn-primary w-100" onClick={loginWithGoogle}>Login with Google</button>
+                <>
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-primary w-100"
+                    onClick={loginWithGoogle}
+                    aria-describedby={`${SIGN_IN_HINT_ID}-${idSuffix}`}
+                  >
+                    {HEADER_COPY.signIn}
+                  </button>
+                  <p id={`${SIGN_IN_HINT_ID}-${idSuffix}`} className="sidenav-auth-hint">{HEADER_COPY.signInDescription}</p>
+                </>
               )}
             </div>
           )}
         </div>
       )}
 
-      {/* Footer: project links, legal links and the build, in quieter type */}
-      <div className="sidenav-footer">
-        <ul className="sidenav-footer-links" aria-label="Project links">
-          {FOOTER_NAVIGATION.map(link => (
-            <li key={link.href}>
-              {link.external ? (
-                <a href={link.href} target="_blank" rel="noopener noreferrer" className="sidenav-footer-link">
-                  {link.label}
-                  <span className="visually-hidden"> (opens in a new tab)</span>
-                </a>
-              ) : (
-                <Link to={link.href} reloadDocument={link.reloadDocument} className="sidenav-footer-link" onClick={closeMobileDrawer}>
-                  {link.label}
-                </Link>
-              )}
-            </li>
-          ))}
-        </ul>
-        <div className="sidenav-legal">
-          {LEGAL_NAVIGATION.map(link => (
-            <Link key={link.href} to={link.href} className="sidenav-footer-link" onClick={closeMobileDrawer}>
-              {link.label}
-            </Link>
-          ))}
-        </div>
-        <p className="sidenav-build">
-          <span>&copy; {new Date().getFullYear()} Unchained Development OÜ</span>
-          <span>
-            Updated{' '}
-            <a
-              href={getGithubCommitUrl(VERSION_INFO.commitHash)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="sidenav-footer-link"
-            >
-              <time dateTime={VERSION_INFO.commitDate}>
-                {buildDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}{' '}
-                {buildDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-              </time>
-            </a>
-          </span>
-        </p>
-        {!isMobile && (
-          <button
-            type="button"
-            className="sidenav-collapse-toggle"
-            onClick={() => {
-              trackEvent('sidebar_collapse', { collapsed: !collapsed });
-              toggleCollapsed();
-            }}
-            aria-expanded={!collapsed}
-            aria-controls={`app-sidenav-${idSuffix}`}
-            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          >
-            <i className={`bi ${collapsed ? 'bi-chevron-double-right' : 'bi-chevron-double-left'}`} aria-hidden="true"></i>
-            <span className="sidenav-label">Collapse</span>
-          </button>
-        )}
-      </div>
     </nav>
   );
 };

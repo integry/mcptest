@@ -69,8 +69,8 @@ describe('McpResponseDisplay markdown security', () => {
       />
     );
 
-    expect(markup).toContain(
-      '<p>first line<br/>\nsecond line<br/>\nthird line</p>'
-    );
+    expect(markup).toContain('first line\nsecond line\nthird line');
+    expect(markup).toContain('white-space:pre-wrap');
+    expect(markup).toContain('font-family:var(--font-family-mono)');
   });
 });

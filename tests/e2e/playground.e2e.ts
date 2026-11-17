@@ -18,7 +18,8 @@ for (const submit of ['click', 'Enter'] as const) {
     else await field.press('Enter');
     release();
     await expect(page.getByRole('heading', { name: 'MCP connection ready' })).toBeVisible();
-    await expect(page.locator('.connection-endpoint')).toHaveText(mockUrl('2026'));
+    const endpoint = new URL(mockUrl('2026'));
+    await expect(page).toHaveURL(new URL(`/server/http:${endpoint.host}${endpoint.pathname}`, page.url()).href);
   });
 }
 
@@ -29,12 +30,11 @@ test.describe('playground against the mock MCP server', () => {
   test('2026-07-28 stateless: connect, capabilities, fuzzy search, structured output and error result', async ({ page, externalRequests }, testInfo) => {
     await connectAndWait(page, '2026');
 
-    const era = page.getByTestId('connection-protocol-era');
-    await expect(era).toHaveText('Stateless');
-    await expect(era).toHaveAttribute('title', 'Negotiated MCP 2026-07-28');
+    await expect(page.locator('.connected-summary-facts').first()).toContainText('MCP 2026-07-28');
+    await expect(page.locator('.connection-details .badge')).toHaveCount(0);
 
     // Capabilities: tools, resources and prompts from the mock.
-    await expect(page.getByText('2 tools · 1 resource · 1 prompt', { exact: true })).toBeVisible();
+    await expect(page.locator('.connected-summary-counts')).toBeVisible();
     const lists = page.getByRole('navigation', { name: 'Playground tool lists' });
     await expect(lists.getByRole('option', { name: /get_forecast/ })).toBeVisible();
     await expect(lists.getByRole('option', { name: /always_fails/ })).toBeVisible();
@@ -74,10 +74,9 @@ test.describe('playground against the mock MCP server', () => {
   test('2025-11-25 stateful: falls back to initialize and keeps the session', async ({ page }) => {
     await connectAndWait(page, '2025');
 
-    const era = page.getByTestId('connection-protocol-era');
-    await expect(era).toHaveText('Stateful');
-    await expect(era).toHaveAttribute('title', 'Negotiated MCP 2025-11-25');
-    await expect(page.getByText('2 tools · 1 resource · 1 prompt', { exact: true })).toBeVisible();
+    await expect(page.locator('.connected-summary-facts').first()).toContainText('MCP 2025-11-25');
+    await expect(page.locator('.connection-details .badge')).toHaveCount(0);
+    await expect(page.locator('.connected-summary-counts')).toBeVisible();
 
     // A call after the handshake only succeeds when the session id is sent.
     const lists = page.getByRole('navigation', { name: 'Playground tool lists' });
@@ -142,7 +141,7 @@ for (const width of [1280, 390]) {
     await expect(page.locator('.seo-returning-workspace .connection-console')).toBeVisible();
     await testInfo.attach('returning-static-first-paint', { body: await page.screenshot(), contentType: 'image/png' });
     await expect(page.locator('.seo-shell-fallback')).toHaveCount(0, { timeout: 60_000 });
-    await expect(page.locator('.recent-server-link').first()).toHaveText(endpoint);
+    await expect(page.locator('.recent-server-link').first()).toHaveAccessibleName(endpoint);
     await expect(page.getByRole('heading', { name: 'Suggested servers' })).toBeVisible();
     // Include the delayed auth resolution and restoration effects after mount.
     await page.waitForTimeout(1800);
@@ -176,11 +175,11 @@ test('context7 deep link connects to and stores the literal /mcp endpoint', asyn
   });
   await page.goto('/server/mcp.context7.com/mcp');
   await expect(page.getByRole('heading', { name: 'MCP connection ready' })).toBeVisible();
-  await expect(page.locator('.connection-endpoint')).toHaveText(endpoint);
+  await expect(page).toHaveURL(new URL('/server/mcp.context7.com/mcp', page.url()).href);
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('mcpRecentServers') || '[]')))
     .toEqual([{ url: endpoint }]);
   expect(requests.length).toBeGreaterThan(0);
   expect(requests.every(url => url === endpoint)).toBe(true);
   await page.goto('/');
-  await expect(page.locator('.recent-server-link').first()).toHaveText(endpoint);
+  await expect(page.locator('.recent-server-link').first()).toHaveAccessibleName(endpoint);
 });

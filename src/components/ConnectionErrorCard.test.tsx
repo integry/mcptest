@@ -34,6 +34,11 @@ const unreadableAttempt = (
   message: 'Failed to fetch',
 });
 
+/** The plain-language guidance the card leads with. */
+const guidanceId = (container: HTMLElement) => (
+  container.querySelector('section[role="alert"]')?.getAttribute('data-guidance-id')
+);
+
 const renderError = (
   overrides: Partial<ConnectionErrorDetails> = {},
   props: Partial<React.ComponentProps<typeof ConnectionErrorCard>> = {}
@@ -117,6 +122,7 @@ describe('evidence-based connection diagnostics', () => {
 
     expect(container.textContent).toContain('MCP endpoint returned HTTP 404');
     expect(container.textContent).not.toContain('Browser access blocked');
+    expect(guidanceId(container)).toBe('not-found');
   });
 
   it('renders initialize HTTP 200 as evidence and the later request as the cause', () => {
@@ -170,6 +176,9 @@ describe('evidence-based connection diagnostics', () => {
     expect(text).toContain('readable intermediate response');
     expect(text).not.toContain('MCP endpoint returned HTTP 200');
     expect(text).not.toContain('Verify that the publisher');
+    // The guessed-path 404 came before a successful initialize; it does not explain the failure.
+    expect(guidanceId(container)).toBe('browser-blocked-after-initialize');
+    expect(text).not.toContain('Nothing answers MCP at this address');
   });
 
   it.each([404, 500])(
@@ -198,6 +207,7 @@ describe('evidence-based connection diagnostics', () => {
       expect(container.textContent).toContain('The mcptest proxy observed a readable response');
       expect(container.textContent).not.toContain('Browser access blocked');
       expect(container.textContent).not.toContain('The browser received a readable response');
+      expect(guidanceId(container)).toBe(status === 404 ? 'not-found' : 'server-error');
     }
   );
 
@@ -234,6 +244,7 @@ describe('evidence-based connection diagnostics', () => {
     expect(text).not.toContain('firebase-jwt');
     expect(text).not.toContain('target-secret');
     expect(text).not.toContain('<html>');
+    expect(guidanceId(container)).toBe('forbidden');
   });
 
   it('does not present a proxy-owned infrastructure response as the target response', () => {
@@ -259,6 +270,8 @@ describe('evidence-based connection diagnostics', () => {
     expect(container.textContent).toContain('Browser access blocked');
     expect(container.textContent).toContain('HTTP 500 from mcptest proxy');
     expect(container.textContent).not.toContain('MCP endpoint returned HTTP 500');
+    expect(guidanceId(container)).toBe('browser-blocked');
+    expect(container.textContent).not.toContain('The server failed while answering');
   });
 
   it('keeps target OAuth ahead of a proxy-login challenge', () => {
@@ -292,6 +305,8 @@ describe('evidence-based connection diagnostics', () => {
 
     expect(container.textContent).toContain('OAuth authorization required');
     expect(container.textContent).not.toContain('mcptest proxy authentication required');
+    expect(guidanceId(container)).toBe('unauthorized');
+    expect(container.textContent).not.toContain('The mcptest proxy refused the request');
   });
 
   it.each([
@@ -354,7 +369,8 @@ it('surfaces the later OAuth failure and retry instead of the earlier successful
     }],
   }, { onRetry, useProxy: false, showProxyOption: true, onRetryWithProxy: vi.fn() });
   expect(container.querySelector('h6')?.textContent).toBe('OAuth authorization failed');
-  expect(container.querySelector('p')?.textContent).toContain('Protected resource does not match');
+  expect(container.querySelector('.connection-diagnosis-summary')?.textContent).toContain('Protected resource does not match');
+  expect(container.querySelector('.failure-guidance-what')?.textContent).toBe('Signing in to the server did not finish.');
   expect(container.textContent).toContain('Entered URL: https://mcp.sentry.dev/');
   expect(container.textContent).not.toContain('Automatically use proxy');
   expect(container.textContent).not.toContain('Enable proxy and retry');
@@ -362,4 +378,23 @@ it('surfaces the later OAuth failure and retry instead of the earlier successful
   expect(retry).toBeDefined();
   act(() => retry?.click());
   expect(onRetry).toHaveBeenCalledOnce();
+});
+
+it('leads with plain language, then the technical detail, then the matching Learn article', () => {
+  const container = renderError();
+  const card = container.querySelector('section[role="alert"]')!;
+  expect(card.getAttribute('data-guidance-id')).toBe('browser-blocked');
+  // The accessible name is the plain sentence; the technical heading describes it.
+  const label = card.querySelector(`[id="${card.getAttribute('aria-labelledby')}"]`);
+  expect(label?.textContent).toBe('Your browser blocked mcptest from reading the server response.');
+  const text = card.textContent!;
+  const plain = text.indexOf('Most likely cause:');
+  const technical = text.indexOf('Browser access blocked');
+  const learn = text.indexOf('Learn:');
+  expect(plain).toBeGreaterThan(-1);
+  expect(plain).toBeLessThan(technical);
+  expect(technical).toBeLessThan(learn);
+  const link = card.querySelector<HTMLAnchorElement>('.failure-guidance-learn a')!;
+  expect(link.getAttribute('href')).toBe('/learn/mcp-cors-headers-for-browser-clients');
+  expect(link.getAttribute('target')).toBe('_blank');
 });

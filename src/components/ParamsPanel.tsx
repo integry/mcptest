@@ -1,11 +1,17 @@
 import React from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import {
+  formatExampleValue,
+  normalizeArrayQuotes,
   getCapabilityInputSpec,
+  getExampleValue,
   getMissingRequiredParams,
   hasParameterValue,
   type CapabilityInputDefinition,
 } from '../utils/capabilityParams';
 import ToolSchemaDetails from './ToolSchemaDetails';
+import './ConnectedGuide.css';
 
 // Use 'any' for now until correct SDK types are confirmed/exported
 type SelectedTool = any;
@@ -38,7 +44,44 @@ interface ParamsPanelProps {
   /** Renders the server's call history; `showRequest` switches back to the form. */
   renderCallHistory?: (showRequest: () => void) => React.ReactNode;
   callHistoryCount?: number;
+  openHistoryRequest?: number;
+  firstToolName?: string;
+  onOpenFirstTool?: () => void;
 }
+
+/** Render server Markdown safely; long manuals expand on demand. */
+const CapabilityDescription: React.FC<{ text: string; kind: string }> = ({ text, kind }) => (
+  <div className="capability-description-text">
+    {text.length <= 220 ? <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown> : (
+      <details className="capability-description">
+        <summary>About this {kind}</summary>
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
+      </details>
+    )}
+  </div>
+);
+
+/** Resize after edits, restored history, examples, and column width changes. */
+const JsonInput: React.FC<React.TextareaHTMLAttributes<HTMLTextAreaElement>> = (props) => {
+  const ref = React.useRef<HTMLTextAreaElement>(null);
+  React.useLayoutEffect(() => {
+    const input = ref.current;
+    if (!input) return;
+    const resize = () => {
+      input.style.height = 'auto';
+      input.style.height = `${input.scrollHeight + 2}px`;
+    };
+    resize();
+    if (typeof ResizeObserver === 'undefined') return;
+    let width = input.clientWidth;
+    const observer = new ResizeObserver(() => {
+      if (width !== input.clientWidth) { width = input.clientWidth; resize(); }
+    });
+    observer.observe(input);
+    return () => observer.disconnect();
+  }, [props.value]);
+  return <textarea {...props} ref={ref} />;
+};
 
 const ParamsPanel: React.FC<ParamsPanelProps> = ({
   selectedTool,
@@ -55,17 +98,24 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
   handleExecutePrompt,
   handleAccessResource,
   parseUriTemplateArgs,
-  // History props
-  toolHistory,
-  resourceHistory,
-  setToolParams,
-  setResourceArgs,
   isExecuting,
   executionStartTime,
   renderCallHistory,
   callHistoryCount = 0,
+  openHistoryRequest = 0,
+  firstToolName,
+  onOpenFirstTool,
 }) => {
+  const panelId = React.useId();
   const [view, setView] = React.useState<'request' | 'history'>('request');
+  const historyTabRef = React.useRef<HTMLButtonElement>(null);
+  React.useEffect(() => {
+    if (openHistoryRequest > 0) {
+      setView('history');
+      historyTabRef.current?.focus();
+      historyTabRef.current?.scrollIntoView?.({ block: 'nearest' });
+    }
+  }, [openHistoryRequest]);
   const showingHistory = view === 'history' && Boolean(renderCallHistory) && isConnected;
 
   // Timer state
@@ -141,7 +191,7 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
     const { definitions: parameterDefinitions, required: requiredParams } = getCapabilityInputSpec(item);
 
     if (parameterDefinitions.length === 0) {
-      return <p className="text-muted">This {paramType} has no parameters.</p>;
+      return <>{item.description && <CapabilityDescription text={item.description} kind={paramType} />}<p className="text-muted">This {paramType} has no parameters.</p></>;
     }
 
     // Helper function to render a single input based on schema/arg definition
@@ -150,32 +200,53 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
         const isRequired = requiredParams.includes(name);
         const inputType = definition.type || 'text'; // Default to text if type is missing
         const isMissing = isRequired && !hasParameterValue(params[name]);
+        const example = getExampleValue(definition);
+        const exampleText = example !== undefined ? formatExampleValue(example) : undefined;
+        const exampleFits = example !== undefined && (
+          inputType === 'object' || inputType === 'array'
+            ? typeof example === 'object'
+            : inputType === 'boolean' ? typeof example === 'boolean'
+              : inputType === 'integer' || inputType === 'number' ? typeof example === 'number'
+                : typeof example === 'string' || typeof example === 'number'
+        );
+        const jsonValue = params[name] == null ? '' : typeof params[name] === 'string'
+          ? params[name] : JSON.stringify(params[name], null, 2);
+        const exampleHintId = `${idPrefix}-${name}-example`;
 
         return (
             <div key={`${idPrefix}-${name}`} className="param-form mb-3">
-            <label htmlFor={`${idPrefix}-${name}`} className="form-label">
-                {name} {isRequired && <span className="required-mark" aria-label="required">*</span>} {definition.type && <span className="param-type">{definition.type}</span>}
+            <label htmlFor={`${idPrefix}-${name}`} className={`form-label ${inputType === 'boolean' ? 'param-boolean-label' : ''}`}>
+                {inputType === 'boolean' && (
+                  <input type="checkbox" className="form-check-input" id={`${idPrefix}-${name}`}
+                    checked={!!params[name]} onChange={(e) => handleParamChange(name, e.target.checked)}
+                    onKeyDown={handleKeyDown} aria-required={isRequired}
+                    aria-describedby={definition.description ? `${idPrefix}-${name}-description` : undefined} />
+                )}
+                {name} {isRequired && <span className="required-mark" aria-label="required">*</span>} {definition.type && <span className="param-type">{definition.type}{inputType === 'array' ? ' (JSON)' : ''}</span>}
             </label>
-            {definition.description && <p className="param-description">{definition.description}</p>}
+            {definition.description && <p className="param-description" id={`${idPrefix}-${name}-description`}>{definition.description}</p>}
+            {exampleText !== undefined && (
+              <p className="param-example" id={exampleHintId}>
+                Example: <code>{exampleText}</code>
+                {exampleFits && (
+                  <button
+                    type="button"
+                    className="btn btn-link btn-sm param-example-use"
+                    onClick={() => handleParamChange(
+                      name,
+                      inputType === 'object' || inputType === 'array' ? JSON.stringify(example, null, 2) : example
+                    )}
+                    aria-label={`Use the example value for ${name}`}
+                  >
+                    Use example
+                  </button>
+                )}
+              </p>
+            )}
 
+            {inputType === 'array' && <p className="param-description" id={`${idPrefix}-${name}-json-help`}>JSON array; single-quoted strings are accepted.</p>}
             {/* Input rendering logic based on type */}
-            {inputType === 'boolean' ? (
-                <div className="form-check">
-                <input
-                    type="checkbox"
-                    className="form-check-input"
-                    id={`${idPrefix}-${name}`}
-                    checked={!!params[name]}
-                    onChange={(e) => handleParamChange(name, e.target.checked)}
-                    onKeyDown={handleKeyDown}
-                    required={isRequired}
-                    aria-required={isRequired}
-                />
-                <label className="form-check-label" htmlFor={`${idPrefix}-${name}`}>
-                    {definition.title || name}
-                </label>
-                </div>
-            ) : inputType === 'integer' || inputType === 'number' ? (
+            {inputType === 'boolean' ? null : inputType === 'integer' || inputType === 'number' ? (
                 <input
                 type="number"
                 className="form-control"
@@ -203,18 +274,21 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
                 {definition.enum.map((option: string) => (<option key={option} value={option}>{option}</option>))}
                 </select>
             ) : inputType === 'object' || inputType === 'array' ? (
-                <textarea
-                className="form-control font-monospace"
+                <JsonInput
+                className="form-control font-monospace param-json-input"
                 id={`${idPrefix}-${name}`}
-                rows={5}
-                value={params[name] == null
-                  ? ''
-                  : typeof params[name] === 'string'
-                    ? params[name]
-                    : JSON.stringify(params[name], null, 2)}
+                rows={inputType === 'array' ? Math.min(10, jsonValue.split('\n').length) : 5}
+                value={jsonValue}
+                onBlur={(e) => {
+                  if (inputType === 'array') {
+                    const normalized = normalizeArrayQuotes(e.target.value);
+                    if (normalized !== e.target.value) handleParamChange(name, normalized);
+                  }
+                }}
                 onChange={(e) => handleParamChange(name, e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder={inputType === 'array' ? '[ ]' : '{ }'}
+                aria-describedby={inputType === 'array' ? `${idPrefix}-${name}-json-help` : undefined}
+                placeholder={inputType === 'array' ? 'e.g., ["TypeScript", "TSX"]' : 'e.g., { }'}
                 required={isRequired}
                 aria-required={isRequired}
                 aria-invalid={isMissing}
@@ -241,7 +315,10 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
                 value={params[name] ?? ''}
                 onChange={(e) => handleParamChange(name, e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder={definition.default !== undefined ? `Default: ${definition.default}` : `Enter ${name}`}
+                placeholder={definition.default !== undefined
+                  ? `Default: ${definition.default}`
+                  : exampleText !== undefined ? `e.g. ${exampleText}` : `Enter ${name}`}
+                aria-describedby={exampleText !== undefined ? exampleHintId : undefined}
                 required={isRequired}
                 aria-required={isRequired}
                 aria-invalid={isMissing}
@@ -252,13 +329,14 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
     };
 
 
+    const hasRequired = parameterDefinitions.some(({ name }) => requiredParams.includes(name));
     return (
       <>
-        {item.description && (
-          <details className="capability-description">
-            <summary>About this {paramType}</summary>
-            <p>{item.description}</p>
-          </details>
+        {item.description && <CapabilityDescription text={item.description} kind={paramType} />}
+        {hasRequired && (
+          <p className="param-required-legend">
+            Fields marked <span className="required-mark" aria-hidden="true">*</span> are required.
+          </p>
         )}
         {parameterDefinitions.map((definition) => renderSingleInput(definition))}
       </>
@@ -299,40 +377,6 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
     );
   }; // End of renderResourceTemplateArgs
 
-  // --- History Click Handlers ---
-  const handleToolHistoryClick = (historyItem: any) => {
-    setToolParams(historyItem);
-  };
-
-  const handleResourceHistoryClick = (historyItem: any) => {
-    setResourceArgs(historyItem);
-  };
-
-  // --- Render Helper for History List ---
-  const renderHistoryList = (history: any[], onClick: (item: any) => void) => {
-    if (!history || history.length === 0) {
-      return <p className="text-muted small mt-2">No recent history.</p>;
-    }
-    return (
-      <div className="mt-3 border-top pt-3">
-        <h6>Recent Calls {selectedTool ? `(${selectedTool.name})` : selectedResourceTemplate ? `(${selectedResourceTemplate.name || selectedResourceTemplate.uriTemplate})` : ''}:</h6>
-        <ul className="list-group list-group-flush" style={{ maxHeight: '150px', overflowY: 'auto' }}>
-          {history.map((item, index) => (
-            <li key={index} className="list-group-item list-group-item-action p-2" onClick={() => onClick(item)} style={{ cursor: 'pointer', lineHeight: '1.3' }}>
-              {Object.entries(item).map(([key, value]) => (
-                <div key={key} style={{ marginBottom: '2px' }}>
-                  <span style={{ fontSize: '0.75em', color: '#6c757d', display: 'block' }}>{key}:</span>
-                  <span style={{ wordBreak: 'break-all', fontSize: '0.85em' }}>{JSON.stringify(value)}</span> {/* Stringify value in case it's not a string */}
-                </div>
-              ))}
-            </li>
-          ))}
-        </ul>
-      </div>
-    );
-  };
-
-
   // --- Main Component Return ---
   return (
     // Add conditional class for deactivated state
@@ -349,24 +393,44 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
              || 'Select a capability'}
           </h5>
           {renderCallHistory && isConnected && (
-            <div className="request-view-switch" role="group" aria-label="Request panel view">
-              <button type="button" className="btn" aria-pressed={!showingHistory} onClick={() => setView('request')}>
+            <div className="nav nav-tabs panel-view-tabs" role="tablist" aria-label="Request panel view"
+              onKeyDown={(event) => {
+                if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+                event.preventDefault();
+                const history = event.key === 'End' || (event.key !== 'Home' && !showingHistory);
+                setView(history ? 'history' : 'request');
+                event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]')[history ? 1 : 0]?.focus();
+              }}>
+              <button type="button" className={`nav-link ${!showingHistory ? 'active' : ''}`} role="tab" id={`${panelId}-request`} aria-controls={`${panelId}-body`} tabIndex={!showingHistory ? 0 : -1} aria-selected={!showingHistory} onClick={() => setView('request')}>
                 Request
               </button>
-              <button type="button" className="btn" aria-pressed={showingHistory} onClick={() => setView('history')}>
+              <button type="button" className={`nav-link ${showingHistory ? 'active' : ''}`} ref={historyTabRef} role="tab" id={`${panelId}-history`} aria-controls={`${panelId}-body`} tabIndex={showingHistory ? 0 : -1} aria-selected={showingHistory} onClick={() => setView('history')}>
                 History{callHistoryCount > 0 ? ` (${callHistoryCount})` : ''}
               </button>
             </div>
           )}
         </div>
       </div>
-      <div className="card-body request-panel-body">
+      <div className="card-body request-panel-body" id={`${panelId}-body`}
+        role={renderCallHistory && isConnected ? 'tabpanel' : undefined}
+        aria-labelledby={renderCallHistory && isConnected ? `${panelId}-${showingHistory ? 'history' : 'request'}` : undefined}>
         {showingHistory ? (
           renderCallHistory!(() => setView('request'))
         ) : !isConnected ? (
-          <p className="text-muted p-2">Please connect to an MCP server to begin.</p>
+          <p className="text-muted p-2">Connect to an MCP server to build requests here.</p>
         ) : !selectedTool && !selectedResourceTemplate && !selectedPrompt ? (
-          <p className="text-muted p-2">Select a tool from the left to view its parameters and execute.</p>
+          <div className="request-empty-state">
+            <p className="request-empty-title">No capability selected</p>
+            <p>
+              Pick a tool from Capabilities to call it. Its description and a form built from its
+              input schema appear here, with required fields marked, and <strong>Run tool</strong> sends the call.
+            </p>
+            {firstToolName && onOpenFirstTool && (
+              <button type="button" className="btn btn-primary" onClick={onOpenFirstTool}>
+                Open {firstToolName} <span aria-hidden="true">→</span>
+              </button>
+            )}
+          </div>
         ) : (
           <div id="paramsArea">
             {/* Render parameters/arguments based on selection */}
@@ -375,21 +439,10 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
             {selectedPrompt && renderInputParams(selectedPrompt, promptParams, 'prompt')}
             {selectedResourceTemplate && renderResourceTemplateArgs()}
 
-          {/* Render History */}
-          {selectedTool && (
-            <div>
-              <div className="small text-muted">Tool: {selectedTool.name}</div>
-              {renderHistoryList(toolHistory, handleToolHistoryClick)}
-            </div>
-          )}
-          {selectedResourceTemplate && (
-            <div>
-              <div className="small text-muted">Resource: {selectedResourceTemplate.uriTemplate}</div>
-              {renderHistoryList(resourceHistory, handleResourceHistoryClick)}
-            </div>
-          )}
           </div>
         )}
+
+      </div>
 
         {/* Buttons */}
         {!showingHistory && (selectedTool || selectedPrompt || selectedResourceTemplate) && (
@@ -416,7 +469,6 @@ const ParamsPanel: React.FC<ParamsPanelProps> = ({
             </button>
           </div>
         )}
-      </div>
     </div>
   );
 };

@@ -2,7 +2,7 @@
 title: "mcptest.io vs the glama.ai inspector"
 navTitle: mcptest.io vs Glama
 summary: "Two zero-install browser inspectors for remote MCP servers compared on connection path, OAuth, CORS evidence, report sharing and badges, catalog, diagnostics, structured output, price and openness."
-track: understand
+track: compare
 level: practitioner
 order: 42
 category: Tools

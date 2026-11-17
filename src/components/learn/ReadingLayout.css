@@ -3,18 +3,18 @@
 .reading-shell {
   --reading-measure: 68ch;
   --reading-code-keyword: #7c3aed;
-  --reading-code-string: #047857;
+  --reading-code-string: #167a2c;
   --reading-code-title: #1d4ed8;
   --reading-code-literal: #b45309;
-  --reading-code-comment: #6b7280;
+  --reading-code-comment: #5f6862;
   --reading-code-attr: #0f766e;
-  --reading-note-bg: #f0fdf4;
-  --reading-note-border: #047857;
-  --reading-rule: #e5e7eb;
+  --reading-note-bg: #eef6f0;
+  --reading-note-border: #167a2c;
+  --reading-rule: #dce1dd;
   display: grid;
-  grid-template-columns: minmax(0, var(--reading-measure));
-  justify-content: center;
-  column-gap: clamp(2rem, 4vw, 4rem);
+  grid-template-columns: minmax(0, 1fr);
+  justify-content: start;
+  column-gap: 1.5rem;
   width: 100%;
   min-width: 0;
   margin: 0 auto;
@@ -26,31 +26,37 @@
 
 :root[data-theme='dark'] .reading-shell {
   --reading-code-keyword: #c4b5fd;
-  --reading-code-string: #6ee7b7;
+  --reading-code-string: #74e383;
   --reading-code-title: #93c5fd;
   --reading-code-literal: #fcd34d;
-  --reading-code-comment: #94a3b8;
+  --reading-code-comment: #9aa49e;
   --reading-code-attr: #5eead4;
-  --reading-note-bg: #132a24;
-  --reading-note-border: #36e0aa;
-  --reading-rule: #334155;
+  --reading-note-bg: #15291a;
+  --reading-note-border: #46d35a;
+  --reading-rule: #2a312d;
 }
 
 .reading-article {
   min-width: 0;
-  max-width: var(--reading-measure);
+  max-width: none;
+  padding: clamp(1rem, 2vw, 2rem);
+  border: 1px solid var(--border-color);
+  border-radius: .5rem;
+  background: var(--card-bg);
   overflow-wrap: anywhere;
 }
 
 /* Breadcrumb and header */
 
+/* The breadcrumb is a path, so it is set in mono like one. */
 .reading-breadcrumb {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
   margin: 0 0 1.25rem;
   color: var(--text-muted);
-  font-size: 0.875rem;
+  font-family: var(--font-family-mono);
+  font-size: 0.8125rem;
 }
 
 .reading-breadcrumb a {
@@ -64,10 +70,13 @@
   text-decoration: underline;
 }
 
+/* Rounded, opaque headers match the other content cards. */
 .reading-header {
   margin-bottom: 2rem;
-  padding-bottom: 1.5rem;
-  border-bottom: 1px solid var(--reading-rule);
+  padding: clamp(1.25rem, 3vw, 1.75rem) clamp(1rem, 3vw, 1.75rem);
+  border: 1px solid var(--border-color);
+  border-radius: .5rem;
+  background: var(--card-bg);
 }
 
 .reading-header h1 {
@@ -75,7 +84,7 @@
   font-size: clamp(1.75rem, 4vw, 2.375rem);
   font-weight: 700;
   line-height: 1.15;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.03em;
 }
 
 .reading-summary {
@@ -91,7 +100,8 @@
   gap: 0.5rem;
   margin: 1rem 0 0;
   color: var(--text-muted);
-  font-size: 0.9rem;
+  font-family: var(--font-family-mono);
+  font-size: 0.8125rem;
 }
 
 /* Prose */
@@ -116,8 +126,11 @@
   margin-top: 0;
 }
 
+/* Section headers: a heading over a hairline, as everywhere in the app. */
 .reading-prose h2 {
   margin: 2.75rem 0 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--reading-rule);
   font-size: 1.5rem;
   font-weight: 700;
   line-height: 1.25;
@@ -165,7 +178,7 @@
 
 /* Buttons rendered as links (e.g. "Test in mcptest.io") keep their own colours. */
 .reading-prose a:not(.btn) {
-  color: var(--primary-color);
+  color: var(--link-color);
   text-decoration: underline;
   text-decoration-thickness: 1px;
   text-underline-offset: 0.15em;
@@ -173,11 +186,13 @@
 
 .reading-prose a:not(.btn):hover,
 .reading-prose a:not(.btn):focus-visible {
-  color: var(--primary-hover);
+  color: var(--link-hover);
 }
 
 .reading-prose a[target='_blank']::after,
 .reading-sources a[target='_blank']::after {
+  display: inline-block;
+  text-decoration: none;
   margin-left: 0.2em;
   content: '↗';
   font-size: 0.75em;
@@ -186,8 +201,8 @@
 .reading-prose blockquote {
   margin: 1.5rem 0;
   padding: 0.9rem 1.1rem;
-  border-left: 3px solid var(--reading-note-border);
-  border-radius: 0 0.4rem 0.4rem 0;
+  border-left: var(--rail-width) solid var(--reading-note-border);
+  border-radius: 0 var(--border-radius-sm) var(--border-radius-sm) 0;
   background: var(--reading-note-bg);
 }
 
@@ -235,10 +250,13 @@
   color: var(--text-accent);
 }
 
+/* Table heads match the app's tables: a raised band with mono labels. */
 .reading-table th {
   background: var(--card-bg-secondary);
   color: var(--text-color);
-  font-weight: 650;
+  font-family: var(--font-family-mono);
+  font-size: 0.875rem;
+  font-weight: 600;
 }
 
 /* Code blocks */
@@ -253,7 +271,7 @@
   margin: 0;
   padding: 1rem 1rem 1rem;
   border: 1px solid var(--reading-rule);
-  border-radius: 0.5rem;
+  border-radius: var(--code-radius);
   background: var(--card-bg-secondary);
   color: var(--text-color);
   font-family: var(--font-family-mono);
@@ -361,15 +379,19 @@
   min-width: 0;
   padding: 0.75rem 0.9rem;
   border: 1px solid var(--reading-rule);
-  border-radius: 0.5rem;
+  border-radius: .5rem;
+  background: var(--card-bg);
   color: var(--text-color);
   text-decoration: none;
+  transition: border-color var(--motion-fast) ease, background-color var(--motion-fast) ease;
 }
 
+/* The pager lights up like a preset chip: accent border and wash. */
 .reading-pager-link:hover,
 .reading-pager-link:focus-visible {
   border-color: var(--primary-color);
-  color: var(--primary-color);
+  background: var(--accent-wash);
+  color: var(--accent-text);
 }
 
 .reading-pager-next {
@@ -378,7 +400,8 @@
 
 .reading-pager-label {
   color: var(--text-muted);
-  font-size: 0.85rem;
+  font-family: var(--font-family-mono);
+  font-size: 0.8125rem;
 }
 
 .reading-pager-title {
@@ -411,7 +434,7 @@
 
 .reading-related a,
 .reading-sources a {
-  color: var(--primary-color);
+  color: var(--link-color);
 }
 
 .reading-related-summary {
@@ -435,28 +458,29 @@
   align-self: start;
   max-height: calc(100vh - 6rem);
   overflow-y: auto;
-  padding-left: 1rem;
-  border-left: 1px solid var(--reading-rule);
+  padding-left: 0;
   font-size: 0.85rem;
   line-height: 1.4;
 }
 
 .reading-outline-title {
   margin: 0 0 0.6rem;
-  color: var(--text-color);
-  font-size: 0.85rem;
-  font-weight: 650;
+  color: var(--text-muted);
+  font-family: var(--font-family-mono);
+  font-size: 0.8125rem;
+  font-weight: 500;
   letter-spacing: 0;
 }
 
 .reading-outline ol {
+  border-left: 1px solid var(--border-color);
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
 .reading-outline li + li {
-  margin-top: 0.35rem;
+  margin-top: 0.5rem;
 }
 
 .reading-outline-sub {
@@ -464,13 +488,18 @@
 }
 
 .reading-outline a {
+  display: block;
+  padding: .25rem .75rem;
+  margin-left: -1px;
+  border-left: 2px solid transparent;
+  font-family: var(--font-family-sans-serif);
   color: var(--text-muted);
   text-decoration: none;
 }
 
 .reading-outline a:hover,
 .reading-outline a:focus-visible {
-  color: var(--primary-color);
+  color: var(--accent-text);
   text-decoration: underline;
 }
 
@@ -547,13 +576,13 @@
   }
 
   .reading-shell {
-    grid-template-columns: minmax(0, var(--reading-measure)) 12rem;
+    grid-template-columns: minmax(0, 1fr) 13rem;
   }
 
   /* Shells without an outline column (index, prerendered fallback) stay single-column. */
   .reading-shell-index,
   .reading-shell-single {
-    grid-template-columns: minmax(0, var(--reading-measure));
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .reading-outline {
@@ -604,7 +633,7 @@
 
 .learn-track-item-title:hover,
 .learn-track-item-title:focus-visible {
-  color: var(--primary-color);
+  color: var(--accent-text);
   text-decoration: underline;
 }
 
@@ -620,7 +649,8 @@
   gap: 0.5rem;
   margin: 0;
   color: var(--text-muted);
-  font-size: 0.85rem;
+  font-family: var(--font-family-mono);
+  font-size: 0.8125rem;
 }
 
 @media (max-width: 767.98px) {
@@ -650,4 +680,74 @@
 .reading-inline-test { margin: 1.5rem 0; padding: 1rem 0; border-block: 1px solid var(--border-color, #888); }
 .reading-inline-test label { display: block; font-weight: 600; margin-bottom: .5rem; }
 .reading-inline-test input { flex: 1 1 14rem; min-width: 0; width: auto; }
-.reading-pager-next { border-inline-start: 3px solid var(--bs-primary); padding-inline-start: 1rem; }
+
+
+.reading-shell-index { display: block; }
+.reading-shell-index .reading-article { max-width: none; }
+.learn-track-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.5rem; margin-top: 2rem; }
+.learn-track-grid .learn-track { margin: 0; padding: 1.5rem; border: 1px solid var(--reading-rule); border-radius: .5rem; background: var(--card-bg); min-width: 0; }
+@media (max-width: 767px) { .learn-track-grid { grid-template-columns: 1fr; } }
+
+/* Keep prose readable while allowing the surrounding card to fill the canvas. */
+.reading-prose { max-width: var(--reading-measure); margin-inline: auto; }
+.reading-outline-title { font-family: var(--font-family-sans-serif); font-weight: 600; }
+.reading-outline a[aria-current='location'] {
+  border-left-color: var(--primary-color);
+  color: var(--accent-text);
+  background: var(--accent-wash);
+  font-weight: 600;
+}
+.reading-outline-sub { padding-left: 0; }
+.reading-outline-sub a { padding-left: 1.5rem; }
+.reading-outline-inline a[aria-current='location'] { color: var(--accent-text); font-weight: 600; }
+.reading-shell-index .reading-article { padding: 0; border: 0; background: transparent; }
+.main-content:has(.reading-shell) { background: var(--body-bg); }
+
+.reading-header .guide-search--page { margin: 1.5rem 0 0; }
+
+/* One balanced article surface, with the prose and outline sharing its gutters. */
+.reading-shell:not(.reading-shell-index) {
+  max-width: 69rem;
+  padding: clamp(1rem, 3vw, 2.5rem);
+  border: 1px solid var(--border-color);
+  border-radius: .5rem;
+  background: var(--card-bg);
+  column-gap: 2.5rem;
+}
+.reading-shell:not(.reading-shell-index) > .reading-article {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+}
+.reading-shell:not(.reading-shell-index) .reading-header {
+  padding: 0 0 1.5rem;
+  border: 0;
+  border-bottom: 1px solid var(--reading-rule);
+  border-radius: 0;
+}
+.reading-shell:not(.reading-shell-index) .reading-prose { margin-inline: 0; }
+.learn-track-jumps { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: 1rem; }
+.learn-track-jumps a {
+  padding: .3rem .85rem;
+  border: 1px solid var(--reading-rule);
+  border-radius: 999px;
+  color: var(--text-color);
+  font-size: .875rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+.learn-track-item { padding: 0; }
+.learn-track-item-link {
+  display: block;
+  padding: .9rem .65rem;
+  border-radius: .375rem;
+  text-decoration: none;
+}
+.learn-track-item-link:hover,
+.learn-track-item-link:focus-visible,
+.learn-track-jumps a:hover,
+.learn-track-jumps a:focus-visible { background: var(--accent-wash); color: var(--accent-text); }
+.learn-track-item-link:focus-visible,
+.learn-track-jumps a:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
+.learn-track-item-link:hover .learn-track-item-title,
+.learn-track-item-link:focus-visible .learn-track-item-title { color: var(--accent-text); }

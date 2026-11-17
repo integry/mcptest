@@ -2,6 +2,7 @@
 const { renderServerActions, renderServerNextSteps } = require('../src/utils/serverNextSteps.ts');
 
 const { redactCapabilityAuthValues } = require('../src/utils/capabilityInventory.ts');
+const { FOOTER_COLUMNS } = require('../src/content/siteLinks.ts');
 const fs = require('fs');
 const path = require('path');
 const { getPreferredCatalogEndpoint } = require('../src/utils/clientSetup.ts');
@@ -47,19 +48,32 @@ const {
   getLandingFaqStructuredData,
   parseLandingText,
 } = require('../src/content/landingCopy.ts');
+const {
+  LANDING_ADVANCED_LABEL,
+  LANDING_ALTERNATIVES_LABEL,
+  LANDING_CONNECT_LABEL,
+  LANDING_FIELD_LABEL,
+  LANDING_FIELD_PLACEHOLDER,
+  LANDING_PREVIEW_SAMPLE,
+  NEW_TAB_LABEL,
+  NEW_TAB_TOOLTIP,
+} = require('../src/content/landingFirstRun.ts');
 const { OG_IMAGE_HEIGHT, OG_IMAGE_WIDTH, getOgImagePath } = require('../src/utils/ogImage.ts');
 const {
   DASHBOARDS_NAVIGATION,
   FOOTER_NAVIGATION,
-  LEARN_HUB_NAVIGATION,
+  HEADER_COPY,
   LEGAL_NAVIGATION,
-  PRIMARY_NAVIGATION,
+  NAVIGATION_GROUPS,
+  PLAYGROUND_NAVIGATION,
   buildLearnTrackNavigation,
+  isNavigationItemActive,
+  navigationDescriptionId,
+  navigationTooltip,
 } = require('../src/content/navigationLinks.ts');
-const { createDefaultSpaces, createDefaultTabs } = require('../src/utils/defaultWorkspace.ts');
+const { createDefaultTabs } = require('../src/utils/defaultWorkspace.ts');
 const { selectLandingQuickPicks } = require('../src/utils/landingQuickPicks.ts');
 const { VERSION_INFO, getGithubCommitUrl } = require('../src/utils/versionInfo.ts');
-const { getSpaceUrl } = require('../src/utils/urlUtils.ts');
 const { highlightCode } = require('../src/content/codeHighlighting.ts');
 const { DISCOVERY_COPY, DISCOVERY_GUIDE_PATH } = require('../src/content/discoveryCopy.ts');
 const {
@@ -436,14 +450,14 @@ function renderServerFallback(server) {
     ...(server.browserUrl && server.browserUrl !== server.validatedUrl
       ? [`      <div><dt>Browser-verified endpoint</dt><dd><code class="technical-string technical-string-url">${escapeHtml(server.browserUrl)}</code></dd></div>`]
       : []),
-    `      <div><dt>Browser access</dt><dd>${escapeHtml(server.browserAccess === 'direct' ? 'Direct browser connection verified' : server.browserAccess === 'proxy-required' ? 'Authenticated proxy required' : 'Not yet measured')}</dd></div>`,
+    `      <div><dt><a href="/learn/mcp-cors-headers-for-browser-clients">Browser access</a></dt><dd>${escapeHtml(server.browserAccess === 'direct' ? 'Direct browser connection verified' : server.browserAccess === 'proxy-required' ? 'Authenticated proxy required' : 'Not yet measured')}</dd></div>`,
     `      <div><dt>Declared MCP transport</dt><dd>${escapeHtml(transportLabel(server.declaredTransport))}</dd></div>`,
     `      <div><dt>Live-validated MCP transport</dt><dd>${escapeHtml(transportLabel(server.transport))} — ${escapeHtml(validationTransportNote(server))}</dd></div>`,
     `      <div><dt>Declared authentication</dt><dd>${escapeHtml(authenticationLabel(server.declaredAuthType))}</dd></div>`,
-    `      <div><dt>Detected authentication</dt><dd>${escapeHtml(detectedAuthenticationLabel(server))}</dd></div>`,
+    `      <div><dt>Detected authentication</dt><dd>${server.authType === 'oauth' ? `<a href="/learn/oauth-for-mcp-explained">${escapeHtml(detectedAuthenticationLabel(server))}</a>` : escapeHtml(detectedAuthenticationLabel(server))}</dd></div>`,
     ...alternativeAuthTypes,
     ...alternativeEndpoints,
-    `      <div><dt>Protocol lifecycle</dt><dd>${escapeHtml(protocolLabel(server.protocolEra, server.protocolVersion))}</dd></div>`,
+    `      <div><dt>Protocol lifecycle</dt><dd><a href="/docs/remote-vs-local">${escapeHtml(protocolLabel(server.protocolEra, server.protocolVersion))}</a></dd></div>`,
     ...requiredHeaders,
     ...authorizationServers,
     `      <div><dt>Category</dt><dd><a href="${escapeHtml(getCatalogCategoryPath(server.category))}">${escapeHtml(server.category)}</a></dd></div>`,
@@ -927,13 +941,13 @@ function renderLearnArticleHtml(indexHtml, article, articles, learnIndex = DEFAU
 /** As renderLearnArticleHtml: `options.pageHtml` is LearnIndex's markup, `options.shell` the app shell. */
 function renderLearnIndexHtml(indexHtml, learnIndex, articles, options = {}) {
   const page = options.pageHtml || renderLearnIndexFallback(learnIndex, articles);
-  return renderStaticPageHtml(indexHtml, '/learn', {
+  return renderStaticPageHtml(indexHtml, options.pathname || '/learn', {
     title: `${learnIndex.title} | mcptest.io`,
     description: learnIndex.description,
   }, {
     feed: true,
     fallbackHtml: options.shell
-      ? renderContentShell(page, { view: 'learn', pathname: '/learn', pageViewTitle: 'Learn MCP', shell: options.shell })
+      ? renderContentShell(page, { view: 'learn', pathname: options.pathname || '/learn', pageViewTitle: 'Learn MCP', shell: options.shell })
       : page,
   });
 }
@@ -944,9 +958,10 @@ const STRUCTURED_DATA_PATTERN = /[ \t]*<script id="server-structured-data" type=
 const LANDING_FALLBACK_PATTERN = /<div id="root">\s*<section class="landing seo-landing-fallback"[\s\S]*?<\/section>\s*<\/div>/;
 
 function renderQuickPicks(quickPicks) {
+  // Each preset is a single one-click starter, including the echo fixture.
   return [
     '    <div class="landing-quick-picks">',
-    '      <span class="landing-quick-picks-label" id="landing-quick-picks-label">Try with</span>',
+    `      <span class="landing-quick-picks-label" id="landing-quick-picks-label">${escapeHtml(LANDING_ALTERNATIVES_LABEL)}</span>`,
     '      <ul aria-labelledby="landing-quick-picks-label">',
     // LandingHero offers mcptest's own echo fixture first, then the catalog picks.
     [
@@ -964,6 +979,29 @@ function renderQuickPicks(quickPicks) {
   ];
 }
 
+/** Static copy of src/components/LandingPreview.tsx, from the same sample object. */
+function renderLandingPreview(sample = LANDING_PREVIEW_SAMPLE) {
+  return [
+    '  <figure class="landing-preview" aria-labelledby="landing-preview-caption">',
+    `    <figcaption id="landing-preview-caption" class="landing-preview-caption"><span class="landing-preview-tag">${escapeHtml(sample.caption)}</span><span class="landing-preview-title">${escapeHtml(sample.title)}</span></figcaption>`,
+    '    <div class="landing-preview-server">',
+    `      <p class="landing-preview-endpoint">${escapeHtml(sample.endpoint)}</p>`,
+    `      <p class="landing-preview-name">${escapeHtml(sample.serverName)} <span class="landing-preview-version">v${escapeHtml(sample.serverVersion)}</span></p>`,
+    '      <ul class="landing-preview-checks" aria-label="Checks">',
+    ...sample.checks.map(check => `        <li><span class="badge bg-${escapeHtml(check.status)}">${escapeHtml(check.label)}</span></li>`),
+    '      </ul>',
+    '    </div>',
+    '    <div class="landing-preview-section">',
+    `      <p class="landing-preview-heading">Capabilities · ${escapeHtml(sample.counts)}</p>`,
+    '      <ul class="landing-preview-tools">',
+    ...sample.tools.map(tool => `        <li><span class="landing-preview-tool">${escapeHtml(tool.name)}</span><span class="landing-preview-tool-description">${escapeHtml(tool.description)}</span></li>`),
+    '      </ul>',
+    '    </div>',
+    ...sample.exchange.map(message => `<div class="landing-preview-section"><p class="landing-preview-heading">${message.direction === 'request' ? 'Request' : 'Result'}</p><p class="landing-preview-direction">${escapeHtml(message.label)}</p><code class="landing-preview-json">${escapeHtml(JSON.stringify(JSON.parse(message.body), null, 2))}</code></div>`),
+    '  </figure>',
+  ].join('\n');
+}
+
 /** LandingHero's LandingText: `[label](href)` links as anchors, external ones opening in a new tab. */
 function renderLandingText(value) {
   return parseLandingText(value).map(part => {
@@ -975,33 +1013,39 @@ function renderLandingText(value) {
 
 /**
  * Static copy of LandingHero: the same strings from src/content/landingCopy.ts
- * in the component's own elements and classes, including the connect form
- * and quick picks as inert markup, so the page looks the same before React
- * mounts and replaces the root.
+ * and src/content/landingFirstRun.ts in the component's own elements and
+ * classes, including the connect form, quick picks and example result as
+ * inert markup, so the page looks the same before React mounts and replaces
+ * the root.
  */
 function renderLandingFallback(catalogCount, quickPicks = [], { advancedToggle = false } = {}) {
   return [
     '<section class="landing seo-landing-fallback" aria-labelledby="landing-title">',
     '  <div class="landing-hero">',
+    '  <div class="landing-intro">',
     `    <h1 id="landing-title" class="landing-title">${escapeHtml(LANDING_HEADLINE)}</h1>`,
     `    <p class="landing-lede">${escapeHtml(LANDING_LEDE)}</p>`,
-    '    <div class="landing-connect">',
-    '      <label for="serverUrl" class="visually-hidden">MCP endpoint URL</label>',
-    '      <input id="serverUrl" type="text" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" class="form-control landing-connect-input" placeholder="https://example.com/mcp" value="">',
-    '      <button id="connectBtn" type="button" class="btn btn-primary landing-connect-button" disabled>Connect</button>',
+    '    <div class="landing-form">',
+    `      <label for="serverUrl" class="landing-field-label">${escapeHtml(LANDING_FIELD_LABEL)}</label>`,
+    '      <div class="landing-connect">',
+    `        <input id="serverUrl" type="text" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" class="form-control landing-connect-input" placeholder="${escapeHtml(LANDING_FIELD_PLACEHOLDER)}" value="">`,
+    `        <button id="connectBtn" type="button" class="btn btn-primary landing-connect-button">${escapeHtml(LANDING_CONNECT_LABEL)}</button>`,
+    '      </div>',
     '    </div>',
+    // TabContent passes the connection panel as LandingHero's advancedOptions.
+    ...(advancedToggle
+      ? [`    <button type="button" class="landing-advanced-toggle" aria-expanded="false"><i class="bi bi-gear" aria-hidden="true"></i>${escapeHtml(LANDING_ADVANCED_LABEL)}<span class="landing-advanced-hint">⌄</span></button>`]
+      : []),
     ...renderQuickPicks(quickPicks),
     '    <div class="landing-quick-picks landing-recent" data-prerendered-recent>',
     '      <span class="landing-quick-picks-label" id="landing-recent-label">Recent</span><ul aria-labelledby="landing-recent-label"></ul>',
     '    </div>',
     '    <template data-recent-chip><li class="landing-recent-item"><button type="button" class="landing-quick-pick landing-recent-connect"><i class="bi bi-clock-history landing-recent-icon" aria-hidden="true"></i><span class="landing-recent-host"></span></button><button type="button" class="landing-recent-remove"><i class="bi bi-x-lg" aria-hidden="true"></i></button></li></template>', 
-    // TabContent passes the connection panel as LandingHero's advancedOptions.
-    ...(advancedToggle
-      ? ['    <button type="button" class="landing-advanced-toggle" aria-expanded="false"><i class="bi bi-gear" aria-hidden="true"></i>Advanced options<span class="landing-advanced-hint">headers, auth, proxy</span></button>']
-      : []),
     `    <ul class="landing-trust" aria-label="${escapeHtml(LANDING_TRUST_LABEL)}">`,
     ...LANDING_TRUST_POINTS.map(point => `      <li>${escapeHtml(point)}</li>`),
     '    </ul>',
+    '  </div>',
+    renderLandingPreview(),
     '  </div>',
     '  <section class="landing-steps" aria-labelledby="landing-steps-title">',
     `    <h2 id="landing-steps-title" class="landing-section-title">${escapeHtml(LANDING_STEPS_TITLE)}</h2>`,
@@ -1012,6 +1056,7 @@ function renderLandingFallback(catalogCount, quickPicks = [], { advancedToggle =
     '    </ol>',
     '  </section>',
     `  <nav class="landing-paths" aria-label="${escapeHtml(LANDING_PATHS_LABEL)}">`,
+    `    <h2 class="landing-section-title">${escapeHtml(LANDING_PATHS_LABEL)}</h2>`,
     '    <ul>',
     ...LANDING_AUDIENCE_PATHS.map(item => [
       `      <li><a href="${escapeHtml(item.to)}" class="landing-path">`,
@@ -1054,136 +1099,55 @@ function renderHeaderFallback({ authEnabled }) {
   return [
     '<header class="app-header">',
     '  <div class="app-header-brand">',
-    '    <button type="button" class="mobile-menu-toggle d-md-none position-relative" aria-label="Toggle navigation menu"><span class="hamburger"></span></button>',
+    '    <button type="button" class="mobile-menu-toggle d-md-none position-relative" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="mobile-sidebar"><span class="hamburger"></span></button>',
     '    <a href="/" class="app-logo" aria-label="mcptest.io home"><img src="/logo-96.png" alt="MCP Logo" width="40" height="40"></a>',
     '    <a href="/" class="app-brand-copy">',
     '      <span class="app-brand-title">mcptest.io</span>',
-    '      <p class="app-brand-subtitle d-none d-md-block">Remote MCP Inspector</p>',
+    `      <p class="app-brand-subtitle d-none d-md-block">${escapeHtml(HEADER_COPY.descriptor)}</p>`,
     '    </a>',
     '  </div>',
     '  <div class="app-header-actions d-none d-md-flex">',
     '    <button type="button" class="btn btn-outline-secondary app-theme-toggle" aria-label="Toggle color theme">'
-      + '<i class="theme-toggle-icon bi bi-moon-stars-fill"></i><i class="theme-toggle-icon bi bi-sun-fill"></i></button>',
+      + '<i class="theme-toggle-icon bi bi-moon-stars-fill" aria-hidden="true"></i><i class="theme-toggle-icon bi bi-sun-fill" aria-hidden="true"></i></button>',
+    // Header.tsx holds the sign-in control's space while auth resolves.
     ...(authEnabled
-      ? ['    <button type="button" class="btn btn-sm btn-primary app-auth-placeholder" style="visibility: hidden;" aria-hidden="true" tabindex="-1" disabled>Login with Google</button>']
+      ? [`    <div class="app-auth app-auth-placeholder" aria-busy="true"><button type="button" class="btn btn-sm app-signin-btn" tabindex="-1" disabled><i class="bi bi-google" aria-hidden="true"></i>${escapeHtml(HEADER_COPY.signIn)}</button></div>`]
       : []),
     '  </div>',
     '</header>',
   ].join('\n');
 }
 
-/** Same inline style SideNav gives a dashboard with no cards to check. */
-const HEALTH_INDICATOR_STYLE = 'display: inline-block; width: 12px; height: 12px; border-radius: 50%; background-color: #6c757d; flex-shrink: 0; vertical-align: middle; position: relative; top: -1px;';
-
-function cardCountLabel(count) {
-  return `${count} ${count === 1 ? 'card' : 'cards'}`;
-}
-
-/** Which views light up each primary link, as PRIMARY_ACTIVE_VIEWS in SideNav. */
-const PRIMARY_ACTIVE_VIEWS = {
-  '/': ['playground'],
-  '/catalog': ['catalog', 'server-profile'],
-  '/report': ['report'],
-  '/tools/breaking-changes': ['breaking-changes'],
-  '/tools/oauth-check': ['oauth-check'],
-  [DISCOVERY_CHECKER_PATH]: ['discovery'],
-};
-
-/** Views on which the guide search takes the `/` shortcut (components/learn/guideSearchShortcut.ts). */
-const GUIDE_SEARCH_SHORTCUT_VIEWS = ['learn', 'docs'];
-
-/**
- * Desktop sidebar as src/components/SideNav.tsx renders it for a visitor with
- * nothing saved and the sidebar expanded, on `view` at `pathname`: the
- * workspace and learn groups from src/content/navigationLinks.ts (the track
- * owning the page expanded, as ContentTrackNav does), the default dashboard
- * from src/utils/defaultWorkspace.ts, and the footer.
- */
-function renderSideNavFallback({ learnTracks, versionInfo, year, view = 'playground', pathname = '/' }) {
+/** Desktop app/hub navigation, matching SideNav before hydration. */
+function renderSideNavFallback({ view = 'playground' }) {
   const idSuffix = 'desktop';
-  const currentPath = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname;
-  const currentTrack = learnTracks.find(track => track.items.some(item => item.path === currentPath));
-  const shortcut = GUIDE_SEARCH_SHORTCUT_VIEWS.includes(view);
-  // NavLink: `active` and aria-current on an exact match.
-  const navLinkState = (path, className) => (path === currentPath
-    ? { className: `${className} active`, extra: ' aria-current="page"' }
-    : { className, extra: '' });
-  const learnPrefix = `sidenav-${idSuffix}`;
-  const commitDate = new Date(versionInfo.commitDate);
-  const updated = `${commitDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} ${commitDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
   const sidenavLink = (item, className, extra = '') => (
     `<a href="${escapeHtml(item.path)}" class="${className}"${extra}><i class="bi ${escapeHtml(item.icon)} sidenav-icon" aria-hidden="true"></i><span class="sidenav-label">${escapeHtml(item.label)}</span></a>`
   );
+  // SideNav's renderLink: the description is a sibling of the link, named by aria-describedby.
+  const groupLink = (item, extraItemClass = '') => {
+    const active = isNavigationItemActive(item, view);
+    const descriptionId = navigationDescriptionId(item, idSuffix);
+    const title = navigationTooltip(item, false);
+    const className = `nav-link sidenav-link${item === PLAYGROUND_NAVIGATION ? ' sidenav-link--primary' : ''}${active ? ' active' : ''}`;
+    const extra = `${active ? ' aria-current="page"' : ''}${item.description ? ` aria-describedby="${escapeHtml(descriptionId)}"` : ''}${title ? ` title="${escapeHtml(title)}"` : ''}`;
+    return [
+      `      <li class="nav-item${extraItemClass ? ` ${extraItemClass}` : ''}">${sidenavLink(item, className, extra)}`,
+      item.description ? `<span id="${escapeHtml(descriptionId)}" class="visually-hidden">${escapeHtml(item.description)}</span>` : '',
+      '</li>',
+    ].join('');
+  };
   return [
     `<nav id="app-sidenav-${idSuffix}" class="app-sidenav d-flex flex-column flex-grow-1" aria-label="Main">`,
-    `  <section class="sidenav-group" aria-labelledby="workspace-nav-heading-${idSuffix}">`,
-    `    <h2 id="workspace-nav-heading-${idSuffix}" class="sidenav-section-label">Workspace</h2>`,
-    '    <ul class="sidenav-list">',
-    ...PRIMARY_NAVIGATION.map(item => {
-      const active = (PRIMARY_ACTIVE_VIEWS[item.path] || []).includes(view);
-      return `      <li class="nav-item">${sidenavLink(item, `nav-link sidenav-link${active ? ' active' : ''}`, active ? ' aria-current="page"' : '')}</li>`;
-    }),
-    '      <li class="nav-item sidenav-dashboards">',
-    '        <div class="sidenav-group-header">',
-    `          <button type="button" class="nav-link sidenav-link sidenav-group-toggle${view === 'dashboards' ? ' active' : ''}" aria-expanded="true" aria-controls="sidenav-dashboards-${idSuffix}"><i class="bi ${escapeHtml(DASHBOARDS_NAVIGATION.icon)} sidenav-icon" aria-hidden="true"></i><span class="sidenav-label">${escapeHtml(DASHBOARDS_NAVIGATION.label)}</span><i class="bi bi-chevron-right sidenav-chevron" aria-hidden="true"></i></button>`,
-    '          <div class="sidenav-group-actions">',
-    '            <button type="button" class="btn btn-sm btn-ghost sidenav-action" title="Refresh health status" aria-label="Refresh health status of all dashboards"><i class="bi bi-arrow-clockwise" aria-hidden="true"></i></button>',
-    '            <button type="button" class="btn btn-sm btn-ghost sidenav-action" title="Create new dashboard" aria-label="Create new dashboard"><i class="bi bi-plus-lg" aria-hidden="true"></i></button>',
-    '          </div>',
-    '        </div>',
-    `        <div id="sidenav-dashboards-${idSuffix}" class="sidenav-dashboards-body">`,
-    '          <ul class="nav flex-column dashboard-list" aria-label="Dashboards">',
-    ...createDefaultSpaces().map(space => [
-      '            <li class="nav-item">',
-      `<a href="${escapeHtml(getSpaceUrl(space.name))}" class="dashboard-link nav-link sidenav-sublink py-1 d-flex align-items-center" style="cursor: move; opacity: 1; user-select: none;">`,
-      `<span class="me-2 health-indicator health-indicator-gray" title="No cards to check" style="${HEALTH_INDICATOR_STYLE}"></span>`,
-      `<span class="dashboard-name flex-grow-1 text-truncate" title="${escapeHtml(space.name)}">${escapeHtml(space.name)}</span>`,
-      `<span class="dashboard-card-count">${cardCountLabel(space.cards.length)}</span></a></li>`,
-    ].join('')),
-    '          </ul>',
-    '        </div>',
-    '      </li>',
-    '    </ul>',
-    '  </section>',
-    `  <section class="sidenav-group content-track-nav" aria-labelledby="${learnPrefix}-learn-heading">`,
-    `    <h2 id="${learnPrefix}-learn-heading" class="sidenav-section-label">Learn</h2>`,
-    // The guide search field, inert until React mounts, so the tracks below it do not shift.
-    `    <div class="guide-search guide-search--sidebar" role="search" aria-label="Guides"><div class="guide-search-field"><i class="bi bi-search guide-search-icon" aria-hidden="true"></i><input type="search" class="guide-search-input" placeholder="Search guides" aria-label="Search guides"${shortcut ? ' aria-keyshortcuts="/"' : ''} role="combobox" aria-expanded="false" aria-controls="${learnPrefix}-guide-search-results" aria-autocomplete="list" autocomplete="off" spellcheck="false">${shortcut ? '<kbd class="guide-search-shortcut" aria-hidden="true">/</kbd>' : ''}</div><p class="guide-search-status visually-hidden" role="status" aria-live="polite"></p><div id="${learnPrefix}-guide-search-results" class="guide-search-results" role="listbox" aria-label="Guide search results" hidden></div></div>`,
-    '    <ul class="sidenav-list">',
-    (() => {
-      const hub = navLinkState(LEARN_HUB_NAVIGATION.path, 'nav-link sidenav-link');
-      return `      <li class="nav-item">${sidenavLink(LEARN_HUB_NAVIGATION, hub.className, hub.extra)}</li>`;
-    })(),
-    ...learnTracks.map(track => {
-      const current = track === currentTrack;
-      return [
-        `      <li class="nav-item content-track" data-track="${escapeHtml(track.id)}">`,
-        `<button type="button" class="nav-link sidenav-link sidenav-group-toggle content-track-label${current ? ' is-current' : ''}" aria-expanded="${current}" aria-controls="${learnPrefix}-track-${escapeHtml(track.id)}"><i class="bi ${escapeHtml(track.icon)} sidenav-icon" aria-hidden="true"></i><span class="sidenav-label">${escapeHtml(track.label)}</span><i class="bi bi-chevron-right sidenav-chevron" aria-hidden="true"></i></button>`,
-        `<ul id="${learnPrefix}-track-${escapeHtml(track.id)}" class="sidenav-list sidenav-sublist" aria-label="${escapeHtml(track.label)} guides"${current ? '' : ' hidden'}>`,
-        ...track.items.map(item => {
-          const link = navLinkState(item.path, 'nav-link sidenav-link sidenav-sublink');
-          return `<li class="nav-item"><a href="${escapeHtml(item.path)}" class="${link.className}"${link.extra}>${escapeHtml(item.navTitle)}</a></li>`;
-        }),
-        '</ul></li>',
-      ].join('');
-    }),
-    '    </ul>',
-    '  </section>',
-    '  <div class="sidenav-footer">',
-    '    <ul class="sidenav-footer-links" aria-label="Project links">',
-    ...FOOTER_NAVIGATION.map(link => (link.external
-      ? `      <li><a href="${escapeHtml(link.href)}" target="_blank" rel="noopener noreferrer" class="sidenav-footer-link">${escapeHtml(link.label)}<span class="visually-hidden"> (opens in a new tab)</span></a></li>`
-      : `      <li><a href="${escapeHtml(link.href)}" class="sidenav-footer-link">${escapeHtml(link.label)}</a></li>`
-    )),
-    '    </ul>',
-    '    <div class="sidenav-legal">',
-    ...LEGAL_NAVIGATION.map(link => (
-      `      <a href="${escapeHtml(link.href)}" class="sidenav-footer-link">${escapeHtml(link.label)}</a>`
-    )),
-    '    </div>',
-    `    <p class="sidenav-build"><span>&copy; ${year} Unchained Development OÜ</span><span>Updated <a href="${escapeHtml(getGithubCommitUrl(versionInfo.commitHash))}" target="_blank" rel="noopener noreferrer" class="sidenav-footer-link"><time datetime="${escapeHtml(versionInfo.commitDate)}">${escapeHtml(updated)}</time></a></span></p>`,
-    `    <button type="button" class="sidenav-collapse-toggle" aria-expanded="true" aria-controls="app-sidenav-${idSuffix}" aria-label="Collapse sidebar" title="Collapse sidebar"><i class="bi bi-chevron-double-left" aria-hidden="true"></i><span class="sidenav-label">Collapse</span></button>`,
-    '  </div>',
+    ...NAVIGATION_GROUPS.flatMap(group => [
+      `  <section class="sidenav-group sidenav-group--${group.id}" aria-labelledby="sidenav-${group.id}-heading-${idSuffix}">`,
+      `    <h2 id="sidenav-${group.id}-heading-${idSuffix}" class="${group.labelHidden ? 'visually-hidden' : 'sidenav-section-label'}">${escapeHtml(group.label)}</h2>`,
+      '    <ul class="sidenav-list">',
+      ...group.items.map(item => groupLink(item, item === DASHBOARDS_NAVIGATION ? 'sidenav-dashboards' : '')),
+      '    </ul>',
+      '  </section>',
+    ]),
+    '<section class="sidenav-group" aria-labelledby="sidenav-learn-heading-desktop"><h2 id="sidenav-learn-heading-desktop" class="sidenav-section-label">Learn</h2><a href="/guides" class="nav-link sidenav-link" title="Guides"><i class="bi bi-book sidenav-icon" aria-hidden="true"></i><span class="sidenav-label">Guides</span></a></section>',
     '</nav>',
   ].join('\n');
 }
@@ -1194,11 +1158,21 @@ function renderSideNavFallback({ learnTracks, versionInfo, year, view = 'playgro
  * view's panel content). The mobile drawer is omitted; it is off-screen until
  * opened. `attributes` go on the shell element (src/staticPage reads them).
  */
+function renderSiteFooter() {
+  const columns = [
+    ...FOOTER_COLUMNS.map(column => ({ title: column.title, links: column.links.map(([label, href]) => ({ label, href })) })),
+    { title: 'Tools', links: FOOTER_NAVIGATION.slice(3, 6) },
+    { title: 'Project', links: FOOTER_NAVIGATION.slice(6) },
+  ];
+  const linkColumns = columns.map(column => `<section><h2>${escapeHtml(column.title)}</h2><ul>${column.links.map(link => `<li><a href="${escapeHtml(link.href)}">${escapeHtml(link.label)}</a></li>`).join('')}</ul></section>`).join('');
+  return `<footer class="site-footer" aria-label="Site resources"><div class="site-link-columns">${linkColumns}</div><div class="site-footer-meta"><nav aria-label="Project and legal links">${LEGAL_NAVIGATION.map(link => `<a href="${escapeHtml(link.href)}">${escapeHtml(link.label)}</a>`).join('')}</nav><small>© ${new Date().getFullYear()} Unchained Development OÜ</small></div></footer>`;
+}
+
 function renderAppShell({
   content,
   view = 'playground',
   pathname = '/',
-  panelStyle = 'height: 100%;',
+  panelStyle = 'min-height: 100%;',
   attributes = {},
   learnTracks = [],
   authEnabled = false,
@@ -1210,7 +1184,7 @@ function renderAppShell({
     .map(([name, value]) => (value === true ? ` ${name}` : ` ${name}="${escapeHtml(value)}"`))
     .join('');
   return [
-    `<div class="app-shell container-fluid vh-100 d-flex flex-column p-0 seo-shell-fallback"${attributeHtml}>`,
+    `<div class="app-shell container-fluid vh-100 d-flex flex-column p-0 seo-shell-fallback${pathname === '/' ? ' app-shell--home' : ''}"${attributeHtml}>`,
     '<style>',
     ":root[data-theme='dark'] .seo-shell-fallback .theme-toggle-icon.bi-moon-stars-fill,",
     ":root:not([data-theme='dark']) .seo-shell-fallback .theme-toggle-icon.bi-sun-fill { display: none; }",
@@ -1224,6 +1198,7 @@ function renderAppShell({
     panelStyle ? `<div class="view-panel" style="${escapeHtml(panelStyle)}">` : '<div class="view-panel">',
     content,
     '</div>',
+    ['playground', 'catalog', 'server-profile', 'docs', 'learn', 'keyword-landing', 'mcp-test-servers', 'mcp-test-client', 'oauth-check', 'discovery', 'breaking-changes'].includes(view) ? renderSiteFooter() : '',
     '</div>',
     '</main>',
     '</div>',
@@ -1241,8 +1216,7 @@ function renderReturningWorkspace() {
     '<div class="card-body"><div class="mb-3"><label class="form-label">MCP endpoint URL</label><div class="input-group"><input id="returning-server-url" aria-label="Saved endpoint URL" class="form-control" placeholder="mcp.context7.com" readonly><button class="btn btn-primary" disabled>Connect</button></div><details class="connection-advanced mt-3"><summary><i class="bi bi-gear me-2" aria-hidden="true"></i>Advanced options</summary></details></div></div>',
     '</div>',
     '<div class="playground-layout flex-grow-1 playground-idle"><div class="w-100 idle-onboarding-layout">',
-    '<section class="awaiting-connection-panel"><div class="awaiting-connection-tabs" aria-hidden="true"><span>Server capabilities</span><span>Inspector</span><span>Connection logs</span></div><div class="awaiting-connection-empty"><span class="awaiting-connection-icon" aria-hidden="true"><i class="bi bi-terminal"></i></span><div><h2>Awaiting connection</h2><p>Connect a server and its capabilities, requests, and output will appear here.</p></div></div></section>',
-    '<div class="row g-3"><div class="col-md-6" data-workspace-recent><div class="card mb-3"><div class="card-header"><h6 class="mb-0">Recent Connections</h6></div><ul class="list-group list-group-flush"></ul></div></div><div class="col-md-6" data-workspace-suggested>',
+    '<div class="row g-3"><div class="col-12" data-workspace-recent><div class="card mb-3 recent-servers-panel"><div class="card-header"><h6 class="mb-0">Recent Connections</h6></div><ul class="list-group list-group-flush"></ul></div></div><div class="col-12" data-workspace-suggested>',
     '<div class="card mb-3 suggested-servers-panel"><div class="card-header"><div><h6 class="mb-0">Suggested servers</h6></div></div><div class="card-body p-3"><small class="text-muted d-block mb-3">Connect to a curated public endpoint and inspect the negotiated protocol.</small><ul class="suggested-server-grid">',
     ...mergeCatalogServers(
       JSON.parse(fs.readFileSync(catalogPath, 'utf8')),
@@ -1255,7 +1229,9 @@ function renderReturningWorkspace() {
       return `<li class="suggested-server-row"><button type="button" class="suggested-server-action"><span class="catalog-server-logo suggested-server-logo"><img src="${escapeHtml(server.logoUrl)}" alt="" width="40" height="40"></span><div class="suggested-server-copy"><div class="suggested-server-title-row"><strong>${escapeHtml(server.name)}</strong><span aria-hidden="true">↗</span></div><p>${escapeHtml(server.description)}</p><small title="${escapeHtml(endpoint)}">${escapeHtml(endpoint)}</small></div></button></li>`;
     }),
     '</ul></div><div class="card-footer text-center p-2"><a href="/catalog" class="btn btn-sm btn-link p-0" style="text-decoration:none">Browse the full server catalog &rarr;</a></div></div>',
-    '</div></div></div></div></div>',
+    '</div></div>',
+    '<section class="awaiting-connection-panel"><div class="awaiting-connection-tabs" aria-hidden="true"><span>Server capabilities</span><span>Inspector</span><span>Connection logs</span></div><div class="awaiting-connection-empty"><span class="awaiting-connection-icon" aria-hidden="true"><i class="bi bi-terminal"></i></span><div><h2>Awaiting connection</h2><p>Connect a server and its capabilities, requests, and output will appear here.</p></div></div></section>',
+    '</div></div></div>',
   ].join('\n');
 }
 
@@ -1274,8 +1250,9 @@ function renderShellFallback({
     'data-deferred-mount': true,
     'data-page-view-title': 'Playground',
   }, content: [
-    '<div class="h-100 d-flex flex-column">',
-    '<div class="playground-tabs-wrapper">',
+    '<div class="d-flex flex-column">',
+    // Shown only for a returning workspace (LandingHero.css); a first visit has no tab strip.
+    '<div class="playground-tabs-wrapper" data-returning-tabs>',
     '<div class="playground-tab-strip">',
     '<div class="nav nav-tabs playground-tabs" role="tablist">',
     '<div class="nav-item position-relative" role="presentation">'
@@ -1283,7 +1260,7 @@ function renderShellFallback({
       + '<span class="me-2 playground-tab-status" style="width: 8px; height: 8px; border-radius: 50%; background-color: #6c757d; display: inline-block;"></span>'
       + `<span class="playground-tab-label">${escapeHtml(tab.title)}</span></button></div>`,
     '</div>',
-    '<button type="button" class="nav-link playground-tab-new">+ New</button>',
+    `<button type="button" class="nav-link playground-tab-new" aria-label="${escapeHtml(NEW_TAB_LABEL)}" title="${escapeHtml(NEW_TAB_TOOLTIP)}"><span aria-hidden="true">+</span> New</button>`,
     '</div>',
     '</div>',
     '<div class="flex-grow-1 position-relative">',
@@ -1309,7 +1286,7 @@ function renderContentShell(content, { view, pathname, pageViewTitle, guide, she
     view,
     pathname,
     // App.tsx: content views fill at least the panel; the server profile panel is the panel.
-    panelStyle: view === 'server-profile' ? 'height: 100%;' : 'min-height: 100%;',
+    panelStyle: 'min-height: 100%;',
     attributes: {
       'data-deferred-mount': true,
       'data-page-view-title': pageViewTitle,
@@ -1673,6 +1650,7 @@ function buildOgCards({ servers, articles, pageMetadata }) {
     { pagePath: MCP_TEST_SERVERS_PATH, eyebrow: 'Free test servers', title: MCP_TEST_SERVERS_COPY.heading, summary: pageMetadata.mcpTestServers.description },
     { pagePath: MCP_TEST_CLIENT_PATH, eyebrow: 'Client checklist', title: MCP_TEST_CLIENT_COPY.heading, summary: pageMetadata.mcpTestClient.description },
     { pagePath: '/learn', eyebrow: 'Guides', title: pageMetadata.learn.title, summary: pageMetadata.learn.description },
+    { pagePath: '/guides', eyebrow: 'Guides', title: pageMetadata.learn.title, summary: pageMetadata.learn.description },
     ...Object.entries(pageMetadata.tools || {}).map(([slug, metadata]) => ({
       pagePath: `/tools/${slug}`,
       eyebrow: 'Free tool',
@@ -1770,6 +1748,8 @@ function writeArticlePages(indexHtml, learnIndex, articles, { shell, prerender }
     'utf8'
   );
 
+  fs.writeFileSync(distPathFor('/guides') + '.html', renderLearnIndexHtml(indexHtml, learnIndex, articles, { shell, pageHtml: prerender.renderLearnIndexPage(), pathname: '/guides' }), 'utf8');
+  // Prerender only canonical article paths. /guides/:slug remains an app alias.
   for (const article of articles) {
     const pageHtml = prerender.renderArticlePage(article.path);
     if (!pageHtml) throw new Error(`The app has no article at ${article.path}; the guide registries disagree.`);
@@ -2012,6 +1992,7 @@ function getSitemapEntries(servers, articles, docsSlugs = []) {
     { pathname: DISCOVERY_CHECKER_PATH },
     { pathname: CI_PATH },
     { pathname: '/learn', lastModified: guidesReviewed },
+    { pathname: '/guides', lastModified: guidesReviewed },
     { pathname: '/tools/breaking-changes' },
     { pathname: '/tools/oauth-check' },
     { pathname: MCP_TEST_SERVERS_PATH },
@@ -2372,6 +2353,7 @@ module.exports = {
   addFontPreloads,
   findFirstFrameFontAssets,
   renderLandingFallback,
+  renderLandingPreview,
   renderShellFallback,
   renderAppShell,
   renderLearnArticleHtml,

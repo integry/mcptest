@@ -37,7 +37,7 @@ export const RecentServersPanel: React.FC<RecentServersPanelProps> = ({
   const serversToShow = showAll ? recentServers : recentServers.slice(0, INITIAL_DISPLAY_COUNT);
 
   return (
-    <div className="card mb-3">
+    <div className="card mb-3 recent-servers-panel">
       <div className="card-header">
         <h6 className="mb-0">Recent Connections</h6>
       </div>
@@ -57,11 +57,13 @@ export const RecentServersPanel: React.FC<RecentServersPanelProps> = ({
               onClick={() => handleReconnect(url)}
               disabled={isConnected || isConnecting}
             >
-              {url}
+              <i className="bi bi-clock-history" aria-hidden="true" />
+              <span>{url}</span>
+              <span className="recent-server-arrow" aria-hidden="true">→</span>
             </button>
             <button
               type="button"
-              className="btn btn-sm btn-outline-secondary recent-server-remove"
+              className="btn btn-sm recent-server-remove"
               onClick={() => removeRecentServer(url)}
               title={`Remove ${url} from recent connections`}
               aria-label={`Remove ${url} from recent connections`}

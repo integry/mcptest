@@ -1,3 +1,4 @@
+import JsonCode from './JsonCode';
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkBreaks from 'remark-breaks';
@@ -129,7 +130,10 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
 
     if (!isJson) {
         if (isResultType) {
-            markdownContent = dataString;
+            // Preserve raw server text (including code indentation) unless it
+            // explicitly uses Markdown formatting.
+            const hasMarkdown = /(^|\n) {0,3}(?:#{1,6}\s|```|~~~|[-*+]\s|\d+\.\s|>\s)|\*\*[^*]+\*\*|__[^_]+__|`[^`\n]+`|\[[^\]]+\]\([^)]+\)/.test(dataString);
+            markdownContent = hasMarkdown ? dataString : null;
         } else if (itemType === 'error') {
             // Ensure errors are displayed plainly, not converted
             markdownContent = null;
@@ -184,11 +188,11 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
             }}
           >
             {isJson ? (
-                <pre><code className="language-json">{textContent}</code></pre>
+                <pre><JsonCode text={textContent || ''} /></pre>
             ) : renderedMarkdown !== null ? (
               renderedMarkdown
             ) : (
-              <span className="event-data" style={{ whiteSpace: 'pre-wrap' }}>{textContent}</span>
+              <span className="event-data" style={{ whiteSpace: 'pre-wrap', fontFamily: 'var(--font-family-mono)', fontSize: '12.5px', lineHeight: 1.625 }}>{textContent}</span>
             )}
           </div>
         </div>
@@ -280,11 +284,11 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
             }}
           >
             {isJson ? (
-                <pre><code className="language-json">{textContent}</code></pre>
+                <pre><JsonCode text={textContent || ''} /></pre>
             ) : renderedMarkdown !== null ? (
               renderedMarkdown
             ) : (
-              <span className="event-data" style={{ whiteSpace: 'pre-wrap' }}>{textContent}</span>
+              <span className="event-data" style={{ whiteSpace: 'pre-wrap', fontFamily: 'var(--font-family-mono)', fontSize: '12.5px', lineHeight: 1.625 }}>{textContent}</span>
             )}
           </div>
         </div>
@@ -292,11 +296,11 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
         /* Regular content for non-result types */
         <div className="event-data-wrapper">
           {isJson ? (
-              <pre><code className="language-json">{textContent}</code></pre>
+              <pre><JsonCode text={textContent || ''} /></pre>
           ) : renderedMarkdown !== null ? (
             renderedMarkdown
           ) : (
-            <span className="event-data" style={{ whiteSpace: 'pre-wrap' }}>{textContent}</span>
+            <span className="event-data" style={{ whiteSpace: 'pre-wrap', fontFamily: 'var(--font-family-mono)', fontSize: '12.5px', lineHeight: 1.625 }}>{textContent}</span>
           )}
         </div>
       )}
@@ -316,11 +320,11 @@ const McpResponseDisplay: React.FC<McpResponseDisplayProps> = ({
               </div>
               <div className="modal-body p-3" style={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>
                 {isJson ? (
-                    <pre><code className="language-json">{textContent}</code></pre>
+                    <pre><JsonCode text={textContent || ''} /></pre>
                 ) : renderedMarkdown !== null ? (
                   renderedMarkdown
                 ) : (
-                  <pre style={{ whiteSpace: 'pre-wrap' }}>{textContent}</pre>
+                  <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'var(--font-family-mono)', fontSize: '12.5px', lineHeight: 1.625 }}>{textContent}</pre>
                 )}
               </div>
             </div>

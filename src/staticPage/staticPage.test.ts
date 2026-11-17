@@ -21,7 +21,6 @@ const SHELL = `
         <div class="guide-search guide-search--sidebar"><input type="search" class="guide-search-input" aria-keyshortcuts="/"></div>
         <button type="button" class="sidenav-group-toggle" aria-expanded="false" aria-controls="track-use">Use</button>
         <ul id="track-use" hidden><li><a href="/learn/guide">Guide</a></li></ul>
-        <button type="button" class="sidenav-collapse-toggle" aria-expanded="true" aria-label="Collapse sidebar" title="Collapse sidebar"><i class="bi bi-chevron-double-left"></i></button>
       </nav>
     </div>
     <article class="reading-article">
@@ -83,42 +82,11 @@ describe('static page handlers', () => {
     expect(shell.querySelector('#track-use')!.hasAttribute('hidden')).toBe(true);
   });
 
-  it('collapses the sidebar as the app does and remembers it', () => {
-    const shell = mountShell();
-    shell.querySelector<HTMLButtonElement>('.sidenav-group-toggle')!.click();
-    shell.querySelector<HTMLButtonElement>('.sidenav-collapse-toggle')!.click();
-
-    expect(localStorage.getItem('mcpSidebarCollapsed')).toBe('true');
-    expect(document.body.classList.contains('sidenav-collapsed')).toBe(true);
-    expect(shell.querySelector('.app-sidenav')!.classList.contains('app-sidenav--collapsed')).toBe(true);
-    expect(shell.querySelector('.sidenav-collapse-toggle')!.getAttribute('aria-label')).toBe('Expand sidebar');
-    expect(shell.querySelector<HTMLElement>('.guide-search--sidebar')!.hidden).toBe(true);
-    expect(shell.querySelector('#track-use')!.hasAttribute('hidden')).toBe(true);
-
-    // Expanding restores the group that was open.
-    shell.querySelector<HTMLButtonElement>('.sidenav-collapse-toggle')!.click();
-    expect(shell.querySelector('#track-use')!.hasAttribute('hidden')).toBe(false);
-  });
-
-  it('carries no group state into a collapsed app sidebar, whose toggles would expand it', () => {
-    const shell = mountShell();
-    shell.querySelector<HTMLButtonElement>('.sidenav-group-toggle')!.click();
-    shell.querySelector<HTMLButtonElement>('.sidenav-collapse-toggle')!.click();
-    const root = document.getElementById('root')!;
-    const restore = snapshotStaticPageState(root);
-
-    root.innerHTML = '<button type="button" class="sidenav-group-toggle" aria-expanded="false" aria-controls="track-use"></button>';
-    const appToggle = vi.fn();
-    root.querySelector('button')!.addEventListener('click', appToggle);
-    restore();
-    expect(appToggle).not.toHaveBeenCalled();
-  });
-
-  it('starts collapsed when the visitor collapsed the sidebar before', () => {
+  it('ignores a previously saved sidebar collapse preference', () => {
     localStorage.setItem('mcpSidebarCollapsed', 'true');
     const shell = mountShell();
-    expect(document.body.classList.contains('sidenav-collapsed')).toBe(true);
-    expect(shell.querySelector('.sidenav-collapse-toggle')!.getAttribute('aria-expanded')).toBe('false');
+    expect(document.body.classList.contains('sidenav-collapsed')).toBe(false);
+    expect(shell.querySelector('.app-sidenav')!.classList.contains('app-sidenav--collapsed')).toBe(false);
   });
 
   it('leaves the mobile menu to the app, which the same tap mounts', () => {

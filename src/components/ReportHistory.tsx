@@ -53,7 +53,7 @@ const ReportHistory: React.FC<ReportHistoryProps> = ({
           <button type="button" className="btn btn-outline-secondary" onClick={onExportAll}>
             <i className="bi bi-download me-2" aria-hidden="true"></i>Export history
           </button>
-          <button type="button" className="btn btn-outline-danger" onClick={onDeleteAll}>
+          <button type="button" className="btn btn-outline-secondary report-history-delete" onClick={onDeleteAll}>
             <i className="bi bi-trash3 me-2" aria-hidden="true"></i>Delete all history
           </button>
         </div>

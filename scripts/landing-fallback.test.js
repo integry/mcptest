@@ -45,6 +45,9 @@ const fallback = parse(renderLandingFallback(catalogSeeds.length));
 const describeLanding = root => ({
   headline: text(root.querySelector('h1')),
   lede: text(root.querySelector('.landing-lede')),
+  fieldLabel: text(root.querySelector('label[for="serverUrl"]')),
+  fieldHelp: text(root.querySelector('#serverUrl-help')),
+  preview: Array.from(root.querySelectorAll('.landing-preview :is(figcaption, p, li)'), text),
   pathsLabel: root.querySelector('nav').getAttribute('aria-label'),
   paths: Array.from(root.querySelectorAll('nav a'), link => ({
     href: link.getAttribute('href'),
@@ -95,8 +98,9 @@ describe('crawler-visible landing fallback', () => {
   });
 
   it('uses semantic elements and only classes the component also renders', () => {
-    expect(fallback.querySelector('section > div > h1')).not.toBeNull();
-    expect(fallback.querySelector('section > div > p')).not.toBeNull();
+    expect(fallback.querySelector('section > .landing-hero > .landing-intro > h1')).not.toBeNull();
+    expect(fallback.querySelector('section > .landing-hero > .landing-intro > p.landing-lede')).not.toBeNull();
+    expect(fallback.querySelector('section > .landing-hero > figure.landing-preview > figcaption')).not.toBeNull();
     expect(fallback.querySelectorAll('section > nav > ul > li > a')).toHaveLength(landingCopy.LANDING_AUDIENCE_PATHS.length);
     expect(fallback.querySelectorAll('.landing-coverage > ul > li')).toHaveLength(landingCopy.LANDING_REPORT_COVERAGE.length);
 
@@ -118,8 +122,9 @@ const HIDDEN_IN_FIRST_FRAME = [
   '.view-panel.d-none',
   '.main-content > .d-none',
   'style',
-  // Static alternative selected before first paint for returning visitors.
+  // Static alternatives selected before first paint for returning visitors.
   '[data-prerendered-recent]',
+  '[data-returning-tabs]',
   'template',
   // The shell carries both theme icons and shows one with CSS.
   '.theme-toggle-icon',
@@ -180,13 +185,17 @@ describe('static first frame (header, sidebar, playground landing)', () => {
     // This variant is hidden by CSS for new visitors.
     shell.querySelector('.seo-returning-workspace')?.remove();
     expect(outline(shell)).toEqual(outline(app));
+    expect(shell.querySelector('.sidenav-resources')).toBeNull();
+    expect(shell.querySelector('.main-content > .site-footer')).not.toBeNull();
+    expect(shell.querySelector('.home-guides')).toBeNull();
+    expect(shell.querySelectorAll('.site-footer .site-link-columns section')).toHaveLength(5);
     expect(Boolean(shell.querySelector('.app-auth-placeholder'))).toBe(authEnabled);
   });
 
   it('builds the sidebar links from the shared navigation module', () => {
     const shell = renderShell(false);
     const sidebarLinks = Array.from(
-      shell.querySelectorAll('.desktop-sidebar .app-sidenav .sidenav-group:first-child .sidenav-list > .nav-item > a.nav-link'),
+      shell.querySelectorAll('.desktop-sidebar .app-sidenav .sidenav-group:not(.content-track-nav) .sidenav-list > .nav-item > a.nav-link'),
       link => ({
         path: link.getAttribute('href'),
         label: text(link),
@@ -198,20 +207,27 @@ describe('static first frame (header, sidebar, playground landing)', () => {
       label: item.label,
       active: item.path === '/',
     })));
-    expect(shell.querySelector('.content-track-nav .sidenav-list > .nav-item > a').getAttribute('href'))
-      .toBe(LEARN_HUB_NAVIGATION.path);
-    expect(Array.from(shell.querySelectorAll('.content-track-nav .sidenav-sublink'), link => link.getAttribute('href')))
-      .toEqual(LEARN_TRACKS.flatMap(track => track.items.map(item => item.path)));
+    expect(shell.querySelector('.desktop-sidebar a[href="/guides"]')).not.toBeNull();
+    expect(shell.querySelector('.content-track-nav')).toBeNull();
   });
 
   it('renders an editable connect form and quick picks for the deferred mount', () => {
     const shell = renderShell(false);
     const input = shell.querySelector('.landing-connect input#serverUrl');
     expect(input.hasAttribute('readonly')).toBe(false);
-    expect(shell.querySelector('.landing-connect button#connectBtn').disabled).toBe(true);
+    // Enabled before a URL is typed; the app validates the replayed click.
+    expect(shell.querySelector('.landing-connect button#connectBtn').disabled).toBe(false);
+    expect(shell.querySelector('label[for="serverUrl"]').textContent).toBe('MCP endpoint URL');
+    // Like LandingHero, the initial form has no helper; validation adds error help after mount.
+    expect(input.getAttribute('aria-describedby')).toBeNull();
+    expect(shell.querySelector('#serverUrl-help')).toBeNull();
     expect(shell.querySelectorAll('[onclick], script')).toHaveLength(0);
     expect(Array.from(shell.querySelectorAll('.landing-quick-pick'), button => button.dataset.serverId))
       .toEqual(['mcptest-echo', ...selectLandingQuickPicks(getCatalogServers()).map(server => server.id)]);
+    // The echo quick pick is the one-click sample, replayed by server id after mount.
+    const sample = shell.querySelector('.landing-quick-pick[data-server-id="mcptest-echo"]');
+    expect(sample).not.toBeNull();
+    expect(sample.disabled).toBe(false);
   });
 
   it('shows the theme icon matching data-theme and nothing else', () => {
@@ -246,6 +262,7 @@ describe('static frame of a prerendered Learn page', () => {
 
   it.each([
     '/learn/mcp-http-headers-reference',
+    '/guides/mcp-http-headers-reference',
     '/learn/connect-remote-mcp-server',
   ])('matches the app React mounts over %s', async (pathname) => {
     // As in the browser without a prerendered body: the article and Markdown chunks and highlight.js.

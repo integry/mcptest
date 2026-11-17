@@ -53,7 +53,7 @@ const TransportDiagnosticsPanel: React.FC<TransportDiagnosticsPanelProps> = ({
 
   return (
     <div className="mb-3">
-      <strong>Transport diagnostics</strong>
+      <strong className="transport-diagnostics-heading">Transport diagnostics</strong>
       <div className="transport-diagnostics mt-2">
         {diagnostics.map((diagnostic) => {
           const modifier = diagnostic.status === 'detected' ? diagnostic.severity : diagnostic.status;

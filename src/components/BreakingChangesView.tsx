@@ -193,7 +193,7 @@ const BreakingChangesView: React.FC<BreakingChangesViewProps> = ({ initialEndpoi
           Pasted payloads never leave your browser. Read <a href={BREAKING_CHANGES_GUIDE_PATH}>which MCP tool changes break clients</a> for
           the rules and how to ship changes safely.
         </p>
-      </header>
+      <p><a href="/learn/which-mcp-tool-changes-break-clients">How this check works →</a></p></header>
 
       <section className="breaking-changes-section" aria-labelledby={fieldId('compare')}>
         <h2 id={fieldId('compare')}>Compare</h2>

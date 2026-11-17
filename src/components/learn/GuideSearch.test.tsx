@@ -28,6 +28,7 @@ afterEach(() => {
   container = null;
   document.body.classList.remove(MENU_OPEN_CLASS);
   localStorage.clear();
+  vi.restoreAllMocks();
 });
 
 const INDEX: SearchIndex = {
@@ -292,30 +293,19 @@ describe('guide search placement', () => {
     path
   );
 
-  it('puts the field at the top of the sidebar Learn group, in both the drawer and the desktop sidebar', () => {
-    mountSideNavs('playground', '/');
+  it.each([['playground', '/'], ['learn', '/guides'], ['learn', '/guides/connect-remote-mcp-server']] as const)('keeps %s navigation to a Guides link without article search', (view, path) => {
+    mountSideNavs(view, path);
     for (const scope of ['.mobile-sidebar', '.desktop-sidebar']) {
-      const group = container!.querySelector(`${scope} .content-track-nav`)!;
-      expect(group.querySelector('h2')?.nextElementSibling?.classList).toContain('guide-search');
+      const sidebar = container!.querySelector(scope)!;
+      expect(field(sidebar)).toBeNull();
+      expect(sidebar.querySelector('a[href="/guides"]')?.textContent).toBe('Guides');
     }
-    const ids = Array.from(container!.querySelectorAll('[id]'), element => element.id);
-    expect(new Set(ids).size).toBe(ids.length);
-  });
-
-  it('lets `/` reach the desktop sidebar field on content pages only', () => {
-    mountSideNavs('playground', '/');
     expect(press(document.body, '/').defaultPrevented).toBe(false);
-    act(() => root!.unmount());
-    container!.remove();
-
-    mountSideNavs('learn', '/learn/what-is-mcp');
-    press(document.body, '/');
-    expect(document.activeElement).toBe(field(container!.querySelector('.desktop-sidebar')!));
   });
 
   it('puts a page-sized field at the top of the /learn index', () => {
     mount(<LearnIndex />, '/learn');
-    const search = container!.querySelector('.reading-header + .guide-search');
+    const search = container!.querySelector('.reading-header .guide-search');
     expect(search?.classList).toContain('guide-search--page');
     press(document.body, '/');
     expect(document.activeElement).toBe(field(search!));

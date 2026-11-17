@@ -9,7 +9,7 @@ beforeAll(() => {
 });
 
 describe('SuggestedServersPanel', () => {
-  it('suggests the public echo fixture first and links to the test servers page', () => {
+  it('suggests the public echo fixture first and links to the server catalog', () => {
     const onServerSelect = vi.fn();
     const container = document.createElement('div');
     const root = createRoot(container);
@@ -26,7 +26,8 @@ describe('SuggestedServersPanel', () => {
       endpoint: expect.objectContaining({ url: 'https://mcptest.io/fixtures/echo/mcp', transport: 'streamable-http' }),
       protocolEra: 'stateless',
     });
-    expect(container.querySelector('a[href="/mcp-test-servers"]')).not.toBeNull();
+    expect(container.querySelector('a[href="/catalog"]')).not.toBeNull();
+    expect(container.querySelectorAll('.card-footer a')).toHaveLength(1);
     act(() => root.unmount());
   });
 });

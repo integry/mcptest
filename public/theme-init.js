@@ -21,12 +21,6 @@
   }
   document.documentElement.setAttribute('data-theme', theme);
 
-  try {
-    if (window.localStorage.getItem('mcpSidebarCollapsed') === 'true') {
-      document.documentElement.setAttribute('data-sidebar-collapsed', 'true');
-    }
-  } catch (error) { /* Storage may be blocked. */ }
-
   // Read the same persisted formats as App and useConnection before paint.
   var recent = [];
   var tabs = [];

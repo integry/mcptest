@@ -679,7 +679,7 @@ describe('generated page metadata', () => {
     expect(html).not.toContain('The proxy is not configured in this build');
     // An app route: React mounts at load rather than on the first input.
     expect(html).not.toContain('data-deferred-mount');
-    expect(html).toContain('<a href="/tools/discovery" class="nav-link sidenav-link active" aria-current="page">');
+    expect(html).toMatch(/<a href="\/tools\/discovery" class="nav-link sidenav-link active" aria-current="page" aria-describedby="[^"]+" title="[^"]+">/);
     expect(renderDiscoveryHtml(indexHtml, metadata)).toContain('The proxy is not configured in this build');
   });
 
@@ -711,7 +711,11 @@ describe('generated page metadata', () => {
     // The connect form the app mounts over, in the app shell.
     expect(body.querySelector(`#${page.key}-server-url`)).not.toBeNull();
     expect(body.querySelector('.seo-shell-fallback .desktop-sidebar')).not.toBeNull();
-    expect(body.querySelector(`.sidenav-footer a[href="${path}"]`)).not.toBeNull();
+    // The compact footer exposes the current tools and project destinations.
+    for (const href of ['/catalog', '/tools/oauth-check', '/tools/breaking-changes', '/submit']) {
+      expect(body.querySelector(`.site-footer a[href="${href}"]`), href).not.toBeNull();
+    }
+    expect(body.querySelector(`.site-footer a[href="${path}"]`)).toBeNull();
     // An app route: React mounts at load.
     expect(html).not.toContain('data-deferred-mount');
 
@@ -1020,7 +1024,21 @@ describe('content pages in the app shell (issue #405)', () => {
   const shell = { learnTracks, authEnabled: false };
   const rootOf = html => new DOMParser().parseFromString(html, 'text/html').getElementById('root');
 
-  it('puts a guide in the header and sidebar, mounted on first input, with its track open', () => {
+  it('renders visible guide footer links in the initial HTML of every scrollable shell', () => {
+    for (const pathname of ['/', '/guides', '/catalog', '/servers/notion/']) {
+      const root = new DOMParser().parseFromString(seoGenerator.renderAppShell({ ...shell, pathname, content: '<h1>Page</h1>' }), 'text/html');
+      const footer = root.querySelector('.main-content > .site-footer');
+      const links = [...footer.querySelectorAll('.site-link-columns a[href^="/docs/"], .site-link-columns a[href^="/learn/"]')];
+      expect(links).toHaveLength(9);
+      for (const link of links) {
+        expect(link.closest('[hidden], details')).toBeNull();
+        expect(articles.some(article => article.path === link.getAttribute('href'))).toBe(true);
+      }
+      expect(root.querySelector('.desktop-sidebar .content-track-nav')).toBeNull();
+    }
+  });
+
+  it('renders a guide with hub-only sidebar navigation before hydration', () => {
     const article = articles.find(item => item.slug === 'mcp-clients-compared');
     const root = rootOf(renderLearnArticleHtml(indexHtml, article, articles, learnIndex, { shell, pageHtml: '<div class="reading-shell">guide</div>' }));
     const app = root.querySelector(':scope > .app-shell.seo-shell-fallback');
@@ -1035,20 +1053,9 @@ describe('content pages in the app shell (issue #405)', () => {
     expect(app.querySelector('.main-content > .view-panel').getAttribute('style')).toBe('min-height: 100%;');
     expect(app.querySelector('.main-content > .view-panel').innerHTML.trim()).toBe('<div class="reading-shell">guide</div>');
 
-    // ContentTrackNav: the owning track is expanded and the guide is the current link.
-    const track = learnTracks.find(item => item.items.some(entry => entry.path === article.path));
-    const toggle = app.querySelector(`.content-track[data-track="${track.id}"] > button`);
-    expect(toggle.classList.contains('is-current')).toBe(true);
-    expect(toggle.getAttribute('aria-expanded')).toBe('true');
-    expect(app.querySelector(`#${toggle.getAttribute('aria-controls')}`).hasAttribute('hidden')).toBe(false);
-    const current = app.querySelector('.sidenav-sublink[aria-current="page"]');
-    expect(current.getAttribute('href')).toBe(article.path);
-    expect(current.classList.contains('active')).toBe(true);
-    expect(app.querySelectorAll('.content-track > button[aria-expanded="true"]')).toHaveLength(1);
-    // No primary destination is active on a guide; the guide search takes `/`.
-    expect(app.querySelectorAll('.sidenav-group:first-child a.nav-link.active')).toHaveLength(0);
-    expect(app.querySelector('.guide-search-input').getAttribute('aria-keyshortcuts')).toBe('/');
-    expect(app.querySelector('.guide-search-field kbd.guide-search-shortcut').textContent).toBe('/');
+    expect(app.querySelector('.desktop-sidebar a[href="/guides"]')).not.toBeNull();
+    expect(app.querySelector('.content-track-nav, .sidenav-footer, .sidenav-collapse-toggle')).toBeNull();
+
   });
 
   it('logs documentation articles under the docs page view title', () => {
@@ -1060,7 +1067,7 @@ describe('content pages in the app shell (issue #405)', () => {
   it('marks the guide hub on the Learn index', () => {
     const app = rootOf(renderLearnIndexHtml(indexHtml, learnIndex, articles, { shell })).firstElementChild;
     expect(app.dataset.pageViewTitle).toBe('Learn MCP');
-    expect(app.querySelector('.content-track-nav a.active[aria-current="page"]').getAttribute('href')).toBe('/learn');
+    expect(app.querySelector('.desktop-sidebar a[href="/guides"]')).not.toBeNull();
     expect(app.querySelectorAll('.content-track > button[aria-expanded="true"]')).toHaveLength(0);
   });
 
@@ -1070,7 +1077,7 @@ describe('content pages in the app shell (issue #405)', () => {
 
     expect(app.hasAttribute('data-deferred-mount')).toBe(true);
     expect(app.dataset.pageViewTitle).toBe('Example Server MCP Server Report');
-    expect(app.querySelector('.main-content > .view-panel').getAttribute('style')).toBe('height: 100%;');
+    expect(app.querySelector('.main-content > .view-panel').getAttribute('style')).toBe('min-height: 100%;');
     expect(app.querySelector('.sidenav-group:first-child a.nav-link.active').getAttribute('href')).toBe('/catalog');
     expect(app.querySelector('.server-profile-logo img').getAttribute('width')).toBe('40');
     expect(app.querySelector('.server-profile-logo img').getAttribute('height')).toBe('40');

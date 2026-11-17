@@ -104,9 +104,12 @@ describe('keyword landing routes', () => {
     // Not the playground: no tab strip, no NotFound.
     expect(container.querySelector('.view-panel:not(.d-none) .playground-tabs-wrapper')).toBeNull();
     expect(container.querySelector('.not-found-page')).toBeNull();
-    // No primary sidebar link claims the page; its footer link is there.
+    // No primary sidebar link claims the page; public resource navigation remains available.
     expect(container.querySelector('.desktop-sidebar .sidenav-list > .nav-item > a.nav-link.active')).toBeNull();
-    expect(container.querySelector(`.desktop-sidebar .sidenav-footer a[href="${path}"]`)).not.toBeNull();
+    for (const href of ['/catalog', '/tools/oauth-check', '/tools/breaking-changes']) {
+      expect(container.querySelector(`.site-footer a[href="${href}"]`), href).not.toBeNull();
+    }
+    expect(container.querySelector(`.site-footer a[href="${path}"]`)).toBeNull();
 
     expect(document.title).toBe(page.title);
     expect(document.querySelector("link[rel='canonical']")?.getAttribute('href')).toBe(`https://mcptest.io${path}`);
@@ -119,12 +122,10 @@ describe('keyword landing routes', () => {
     expect(logPageView).toHaveBeenCalledWith(path, page.pageViewTitle);
   });
 
-  it('navigates between the pages, the home page and back in the app', async () => {
-    mount('/');
+  it('navigates between landing pages and home in the app, retaining public resources', async () => {
+    // Start at a landing page to test app navigation.
+    mount('/mcp-playground');
     await act(async () => {});
-    expect(visibleTitle()).toBe('Test remote MCP servers online');
-
-    click(container.querySelector('.desktop-sidebar .sidenav-footer a[href="/mcp-playground"]'));
     expect(currentLocation?.pathname).toBe('/mcp-playground');
     expect(visibleTitle()).toBe('MCP playground');
     expect(document.title).toBe(getKeywordLandingPage('/mcp-playground')!.title);
@@ -137,6 +138,9 @@ describe('keyword landing routes', () => {
     click(container.querySelector('.desktop-sidebar a.sidenav-link[href="/"]'));
     expect(currentLocation?.pathname).toBe('/');
     expect(visibleTitle()).toBe('Test remote MCP servers online');
+    for (const href of ['/catalog', '/tools/oauth-check', '/tools/breaking-changes']) {
+      expect(container.querySelector(`.site-footer a[href="${href}"]`), href).not.toBeNull();
+    }
     // The home page's FAQPage JSON-LD replaces the landing page's.
     const jsonLd = JSON.parse(document.getElementById('server-structured-data')?.textContent || '{}');
     expect(jsonLd.mainEntity[0].name).toBe('Is mcptest.io free?');

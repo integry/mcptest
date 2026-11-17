@@ -154,7 +154,7 @@ describe('ParamsPanel history view', () => {
     );
     expect(button('Run tool')).toBeDefined();
     click(button('History (3)'));
-    expect(button('History (3)')?.getAttribute('aria-pressed')).toBe('true');
+    expect(button('History (3)')?.getAttribute('aria-selected')).toBe('true');
     expect(button('Run tool')).toBeUndefined();
     click(button('history body'));
     expect(button('Run tool')).toBeDefined();

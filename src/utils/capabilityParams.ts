@@ -7,7 +7,21 @@ export interface CapabilityInputDefinition {
   format?: string;
   title?: string;
   required?: boolean;
+  /** JSON Schema `examples`; the first one is offered in the form. */
+  examples?: unknown[];
 }
+
+/** The first example value the schema provides for a field, if any. */
+export const getExampleValue = (definition: CapabilityInputDefinition): unknown => {
+  if (Array.isArray(definition.examples) && definition.examples.length > 0) return definition.examples[0];
+  return undefined;
+};
+
+/** A short, single-line rendering of an example for hints and placeholders. */
+export const formatExampleValue = (value: unknown): string => {
+  const text = typeof value === 'string' ? value : JSON.stringify(value);
+  return text.length > 60 ? `${text.slice(0, 57)}…` : text;
+};
 
 export interface CapabilityInputSpec {
   definitions: CapabilityInputDefinition[];
@@ -51,6 +65,23 @@ export const getMissingRequiredParams = (
   return required.filter((name) => !hasParameterValue(params[name]));
 };
 
+/** Accept flat single-quoted string arrays copied from schema examples, without evaluating code. */
+export const normalizeArrayQuotes = (value: string): string => {
+  const single = "'(?:[^'\\\\]|\\\\.)*'";
+  const double = '"(?:[^"\\\\]|\\\\.)*"';
+  const item = `(?:${single}|${double})`;
+  if (!new RegExp(`^\\s*\\[\\s*${item}(?:\\s*,\\s*${item})*\\s*\\]\\s*$`).test(value)) return value;
+  return value.replace(new RegExp(`${double}|${single}`, 'g'), (token) => {
+    if (token.startsWith('"')) return token;
+    // JSON handles standard escapes; only apostrophe escapes need conversion.
+    const content = token.slice(1, -1).replace(/\\(.)|"/g, (match, escaped) => {
+      if (escaped === "'") return "'";
+      return escaped === undefined ? '\\"' : match;
+    });
+    try { return JSON.stringify(JSON.parse(`"${content}"`)); } catch { return token; }
+  });
+};
+
 export const normalizeCapabilityParams = (
   item: any,
   params: Record<string, unknown>
@@ -71,7 +102,7 @@ export const normalizeCapabilityParams = (
 
     let parsed: unknown;
     try {
-      parsed = JSON.parse(value);
+      parsed = JSON.parse(definition.type === 'array' ? normalizeArrayQuotes(value) : value);
     } catch {
       throw new Error(`“${definition.name}” must contain valid JSON.`);
     }

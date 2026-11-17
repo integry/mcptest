@@ -1,6 +1,9 @@
+import ActionIcon from './ActionIcon';
 import React, { useState, useEffect } from 'react';
 import type { ProtocolEra } from '@modelcontextprotocol/client';
 import ConnectionErrorCard from './ConnectionErrorCard';
+import ConnectionProgress from './ConnectionProgress';
+import type { ConnectionStage } from '../utils/connectionStages';
 import { TransportType } from '../types';
 import type { CatalogAuthType } from '../types/catalog';
 import { getServerUrl } from '../utils/urlUtils';
@@ -49,6 +52,12 @@ interface ConnectionPanelProps {
   setCredentialValue?: (value: string) => void;
   credentialInputId?: string;
   autoFocusUrl?: boolean;
+  /** Stages of the current or last attempt, shown while connecting and after a failure. */
+  connectionStages?: readonly ConnectionStage[];
+  /** Rendered as the body of the connected card. */
+  connectedSummary?: React.ReactNode | ((actions: React.ReactNode) => React.ReactNode);
+  connectionActions?: React.ReactNode;
+  showConnectionShare?: boolean;
   /** Starts with the "Advanced options" disclosure open (a landing page's Advanced options control). */
   defaultAdvancedOpen?: boolean;
 }
@@ -84,6 +93,10 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
   setCredentialValue,
   credentialInputId = 'catalog-credential',
   autoFocusUrl = false,
+  connectionStages,
+  connectedSummary,
+  connectionActions,
+  showConnectionShare = true,
   defaultAdvancedOpen = false,
 }) => {
   const [connectionTimer, setConnectionTimer] = useState(0);
@@ -149,13 +162,58 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
     });
   }, [isConnected, isAuthFlowActive, oauthUserInfo, oauthProgress, isOAuthConnection]);
 
+  const connectedControls = (
+    <div className="connection-details d-flex align-items-center gap-2" aria-label="Negotiated connection details">
+      {isOAuthConnection && (
+        <div className="d-flex align-items-center gap-1">
+          <button
+            type="button"
+            className="btn btn-sm btn-link text-decoration-none p-0"
+            onClick={() => setShowUserInfoModal(true)}
+            title={oauthUserInfo ? "View detailed OAuth user info" : "View OAuth session info"}
+            aria-label={oauthUserInfo ? "View detailed OAuth user info" : "View OAuth session info"}
+          >
+            <ActionIcon name="info" />
+          </button>
+        </div>
+      )}
+      {showConnectionShare && <div className="position-relative">
+        <button
+          type="button"
+          className="btn btn-sm btn-outline-secondary"
+          onClick={handleShareConnection}
+          title="Share server link"
+          aria-label="Share server link"
+          disabled={shareStatus !== 'idle'}
+        >
+          {shareStatus === 'success' ? <i className="bi bi-check-lg" aria-hidden="true"></i> : <ActionIcon name="share" />} Share server
+        </button>
+        {shareStatus !== 'idle' && (
+          <div className="notification-tooltip" aria-live="polite">
+            {shareMessage}
+          </div>
+        )}
+      </div>}
+      <button
+        id="disconnectBtn"
+        className="btn btn-sm btn-outline-secondary connected-disconnect"
+        onClick={handleDisconnect}
+        disabled={isConnecting}
+      >
+        <i className="bi bi-plug" aria-hidden="true" /> Disconnect
+      </button>
+    </div>
+  );
+
   // Return JSX directly without outer parentheses
   return (
     <>
       <div className={`card connection-console ${isConnected ? 'connection-console--connected' : ''}`}>
       <div className="card-header d-flex justify-content-between align-items-center">
         <div className="connection-heading">
-          <div className="connection-title-row">
+          {isConnected && (typeof connectedSummary === 'function' ? connectedSummary(connectedControls) : connectedSummary)}
+          {isConnected && connectionActions}
+          <div className={`connection-title-row ${isConnected && connectedSummary ? 'visually-hidden' : ''}`}>
             <h5 className="mb-0">{isConnected ? 'MCP connection ready' : 'Connect a remote endpoint'}</h5>
             {!isConnected && (
               <span id="connectionStatus" className={`badge bg-${connectionStatusClass}`} aria-live="polite">
@@ -163,82 +221,9 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
               </span>
             )}
           </div>
-          {isConnected && <code className="connection-endpoint" title={serverUrl}>{serverUrl}</code>}
+          {isConnected && !connectedSummary && <code className="connection-endpoint" title={serverUrl}>{serverUrl}</code>}
         </div>
-        {isConnected && (
-          <div className="connection-details d-flex align-items-center gap-2" aria-label="Negotiated connection details">
-            {transportType && <span className={`badge ${transportType === 'streamable-http' ? 'bg-success' : 'bg-primary'}`}>{transportType === 'streamable-http' ? 'HTTP' : 'SSE'}</span>}
-            {protocolEra && (
-              <span
-                className={`badge ${protocolEra === 'modern' ? 'bg-dark' : 'bg-secondary'}`}
-                data-testid="connection-protocol-era"
-                title={protocolVersion ? `Negotiated MCP ${protocolVersion}` : `Negotiated MCP ${protocolEra} protocol`}
-              >
-                {protocolEra === 'modern' ? 'Stateless' : 'Stateful'}
-              </span>
-            )}
-            {isProxied && <span className="badge bg-warning text-dark">Proxy</span>}
-            {isOAuthConnection && (
-              <div className="d-flex align-items-center gap-1">
-                <span className="badge bg-secondary text-white d-flex align-items-center gap-1">
-                  <i className="bi bi-shield-lock"></i>
-                  OAuth
-                  {oauthUserInfo ? (
-                    <>
-                      {oauthUserInfo.picture && (
-                        <img
-                          src={oauthUserInfo.picture}
-                          alt="User avatar"
-                          className="rounded-circle"
-                          style={{ width: '16px', height: '16px' }}
-                        />
-                      )}
-                      <span className="small">
-                        {oauthUserInfo.name || oauthUserInfo.email || 'User'}
-                      </span>
-                    </>
-                  ) : (
-                    <span className="small">Authenticated</span>
-                  )}
-                </span>
-                <button
-                  type="button"
-                  className="btn btn-sm btn-link text-decoration-none p-0"
-                  onClick={() => setShowUserInfoModal(true)}
-                  title={oauthUserInfo ? "View detailed OAuth user info" : "View OAuth session info"}
-                  aria-label={oauthUserInfo ? "View detailed OAuth user info" : "View OAuth session info"}
-                >
-                  <i className="bi bi-info-circle" aria-hidden="true"></i>
-                </button>
-              </div>
-            )}
-            <div className="position-relative">
-              <button
-                type="button"
-                className="btn btn-sm btn-ghost py-0"
-                onClick={handleShareConnection}
-                title="Share connection link"
-                aria-label="Share connection link"
-                disabled={shareStatus !== 'idle'}
-              >
-                {shareStatus === 'success' ? <i className="bi bi-check-lg" aria-hidden="true"></i> : <i className="bi bi-share" aria-hidden="true"></i>}
-              </button>
-              {shareStatus !== 'idle' && (
-                <div className="notification-tooltip" aria-live="polite">
-                  {shareMessage}
-                </div>
-              )}
-            </div>
-            <button
-              id="disconnectBtn"
-              className="btn btn-sm btn-outline-secondary"
-              onClick={handleDisconnect}
-              disabled={isConnecting}
-            >
-              Disconnect
-            </button>
-          </div>
-        )}
+        {isConnected && typeof connectedSummary !== 'function' && connectedControls}
       </div>
       {!isConnected && (
       <div className="card-body">
@@ -249,7 +234,7 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
               type="text"
               className="form-control"
               id="serverUrl"
-              placeholder={placeholder}
+              placeholder={`e.g., ${placeholder}`}
               value={serverUrl}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setServerUrl(e.target.value)}
               onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -270,7 +255,7 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
                  onClick={handleDisconnect}
                  disabled={isConnecting}
                >
-                 Disconnect
+                 <i className="bi bi-plug" aria-hidden="true" /> Disconnect
                </button>
             ) : (
                <button
@@ -384,6 +369,10 @@ const ConnectionPanel: React.FC<ConnectionPanelProps> = ({
           </div>
         )}
         
+        {connectionStages && connectionStages.some(({ status }) => status !== 'pending') && (
+          <ConnectionProgress stages={connectionStages} />
+        )}
+
         {connectionError && (
           <ConnectionErrorCard
             errorDetails={{

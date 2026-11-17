@@ -4,8 +4,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import SideNav from './SideNav';
-import { LEARN_TRACKS } from '../content/navigation';
-import { TRACK_NAVIGATION } from '../content/learnRegistry';
+import { DASHBOARDS_NAVIGATION, NAVIGATION_GROUPS, PRIMARY_NAVIGATION } from '../content/navigation';
 import { SIDEBAR_COLLAPSED_CLASS, SIDEBAR_COLLAPSED_KEY } from '../hooks/useSidebarCollapsed';
 import { readStylesheet } from '../styles/readStylesheet';
 
@@ -42,11 +41,6 @@ const renderStatic = (activeView: ActiveView, path: string, spaces?: Array<{ id:
   container.innerHTML = markup;
   return container;
 };
-
-const expandedTracks = (container: ParentNode) =>
-  Array.from(container.querySelectorAll<HTMLElement>('.content-track'))
-    .filter(track => track.querySelector('.sidenav-group-toggle')?.getAttribute('aria-expanded') === 'true')
-    .map(track => track.dataset.track);
 
 describe('SideNav dashboard rows', () => {
   it('keeps the card count beside a flexible, truncatable dashboard name', () => {
@@ -87,63 +81,107 @@ describe('SideNav dashboard rows', () => {
     style.remove();
   });
 
-  it('presents section labels in natural case without micro-label typography', () => {
+  it('sets section labels as small mono capitals, the Learn toggle included', () => {
     const sidebarCss = readStylesheet();
     const container = renderStatic('playground', '/', []);
 
     expect(
       Array.from(container.querySelectorAll('.sidenav-section-label'), (label) => label.textContent)
-    ).toEqual(['Workspace', 'Learn']);
-    expect(sidebarCss).not.toMatch(/text-transform:\s*uppercase/i);
+    ).toEqual(['Workspace', 'Checks', 'Saved work', 'Learn']);
 
-    const sectionRuleStart = sidebarCss.indexOf('.sidenav-section-label {');
-    const sectionRuleEnd = sidebarCss.indexOf('}', sectionRuleStart);
-    const sectionRule = sidebarCss.slice(sectionRuleStart, sectionRuleEnd);
-    // Body-sized, not a micro-label: at least 13px and no tracking.
-    expect(parseFloat(sectionRule.match(/font-size:\s*([\d.]+)rem/)?.[1] ?? '0')).toBeGreaterThanOrEqual(0.8125);
-    expect(sectionRule).toMatch(/letter-spacing:\s*0/);
-
-    const labelSelectors = [
-      '.sidenav-section-label',
-      '.catalog-category-heading',
-      '.server-signal-label',
-      '.server-endpoint-box span',
-      '.catalog-filters .form-label',
-      '.authorization-setup-kicker',
-    ];
-
-    labelSelectors.forEach((selector) => {
-      const ruleStart = sidebarCss.indexOf(`${selector} {`);
-      const ruleEnd = sidebarCss.indexOf('}', ruleStart);
-      const rule = sidebarCss.slice(ruleStart, ruleEnd);
-
-      expect(ruleStart, `${selector} should have a style rule`).toBeGreaterThan(-1);
-      expect(parseFloat(rule.match(/font-size:\s*([\d.]+)rem/)?.[1] ?? '0')).toBeGreaterThanOrEqual(0.8);
-      expect(rule).not.toMatch(/text-transform/);
-      expect(rule).toMatch(/letter-spacing:\s*0/);
+    const ruleBody = (selector: string) => {
+      const start = sidebarCss.indexOf(`${selector} {`);
+      expect(start, `${selector} should have a style rule`).toBeGreaterThan(-1);
+      return sidebarCss.slice(start, sidebarCss.indexOf('}', start));
+    };
+    // The structural labels share one type: mono, 11px, tracked capitals.
+    ['.sidenav-section-label', '.app-sidenav .sidenav-section-toggle.nav-link', '.catalog-category-heading'].forEach((selector) => {
+      const rule = ruleBody(selector);
+      expect(rule, selector).toMatch(/font-family:\s*var\(--font-family-mono\)/);
+      expect(rule, selector).toMatch(/font-size:\s*var\(--text-2xs\)/);
+      expect(rule, selector).toMatch(/letter-spacing:\s*0\.08em/);
+      expect(rule, selector).toMatch(/text-transform:\s*uppercase/);
     });
   });
 });
 
 describe('SideNav information architecture', () => {
-  it('groups the workspace links, a collapsible dashboards group and the learn tracks', () => {
+  const groupLinks = (container: ParentNode, groupId: string) => Array.from(
+    container.querySelectorAll(`.sidenav-group--${groupId} > .sidenav-list > .nav-item`),
+    item => item.querySelector('a.sidenav-link, button.sidenav-group-toggle')!
+  ).map(link => [link.querySelector('.sidenav-label')?.textContent?.trim(), link.getAttribute('href')]);
+
+  it('orders the groups by what people come to do: test and browse, checks, saved work, then learn', () => {
     const container = renderStatic('catalog', '/catalog');
 
-    const workspaceLinks = Array.from(
-      container.querySelectorAll('.sidenav-group:first-of-type > .sidenav-list > .nav-item > a'),
-      link => [link.textContent?.trim(), link.getAttribute('href')]
-    );
-    expect(workspaceLinks).toEqual([
-      ['Playground', '/'],
-      ['Catalog', '/catalog'],
-      ['Reports', '/report'],
+    const sections = Array.from(container.querySelectorAll('.app-sidenav > section.sidenav-group'));
+    expect(sections.map(section => section.querySelector('h2')?.textContent?.trim()))
+      .toEqual(['Workspace', 'Checks', 'Saved work', 'Learn']);
+    // Every group, the first included, shows its heading as a section label.
+    sections.slice(0, 3).forEach(section => {
+      expect(section.querySelector('h2')?.classList).toContain('sidenav-section-label');
+    });
+    // Each group is a region named by its own heading.
+    sections.forEach(section => {
+      expect(section.querySelector(`[id="${section.getAttribute('aria-labelledby')}"]`)?.textContent?.trim()).toBeTruthy();
+    });
+
+    expect(groupLinks(container, 'start')).toEqual([['Playground', '/'], ['Catalog', '/catalog']]);
+    expect(groupLinks(container, 'checks')).toEqual([
       ['Breaking changes', '/tools/breaking-changes'],
       ['OAuth checker', '/tools/oauth-check'],
       ['Discovery checker', '/tools/discovery'],
     ]);
+    expect(groupLinks(container, 'saved')).toEqual([['Reports', '/report'], ['Dashboards', null]]);
+    expect(PRIMARY_NAVIGATION.map(item => item.path)).toEqual(
+      NAVIGATION_GROUPS.flatMap(group => group.items.map(item => item.path))
+    );
+
+    // Playground is the primary action.
+    expect(container.querySelector('a[href="/"]')?.classList).toContain('sidenav-link--primary');
+    expect(container.querySelectorAll('.sidenav-link--primary')).toHaveLength(1);
     expect(container.querySelector('a[href="/catalog"]')?.classList).toContain('active');
     expect(container.querySelector('a[href="/catalog"]')?.getAttribute('aria-current')).toBe('page');
 
+    expect(container.querySelector('.sidenav-resources')).toBeNull();
+    expect(container.querySelector('a[href="/guides"]')?.textContent?.trim()).toBe('Guides');
+    expect(container.querySelector('.content-track-nav')).toBeNull();
+  });
+
+  it('gives every tool entry a one-line description as its tooltip and accessible description', () => {
+    const container = renderStatic('playground', '/');
+    for (const item of PRIMARY_NAVIGATION) {
+      expect(item.description, item.label).toMatch(/^[^\n]{10,90}$/);
+      const control = Array.from(container.querySelectorAll<HTMLElement>('.app-sidenav .sidenav-link'))
+        .find(element => element.querySelector('.sidenav-label')?.textContent === item.label)!;
+      expect(control, item.label).toBeTruthy();
+      expect(control.title).toBe(item.description);
+      const description = container.querySelector(`#${control.getAttribute('aria-describedby')}`);
+      expect(description?.textContent).toBe(item.description);
+      expect(description?.classList).toContain('visually-hidden');
+      // The description is not part of the link's name.
+      expect(control.textContent?.trim()).toBe(item.label);
+    }
+  });
+
+  it('shows a single Dashboards entry, not an empty default dashboard, to a visitor with none', () => {
+    const container = renderStatic('playground', '/', []);
+    const entry = container.querySelector('.sidenav-dashboards')!;
+
+    expect(entry.querySelector('a')?.getAttribute('href')).toBe(DASHBOARDS_NAVIGATION.path);
+    expect(entry.querySelector('a')?.textContent?.trim()).toBe('Dashboards');
+    expect(container.querySelector('.dashboard-list')).toBeNull();
+    expect(container.textContent).not.toContain('My first dashboard');
+    expect(container.textContent).not.toContain('0 cards');
+    expect(container.querySelector('[aria-label="Create new dashboard"]')).toBeNull();
+    expect(container.querySelector('[aria-label="Refresh health status of all dashboards"]')).toBeNull();
+
+    const onPage = renderStatic('dashboards', '/space', []);
+    expect(onPage.querySelector('.sidenav-dashboards a')?.getAttribute('aria-current')).toBe('page');
+  });
+
+  it('keeps the collapsible dashboards group for a visitor who has dashboards', () => {
+    const container = renderStatic('catalog', '/catalog');
     const dashboardsToggle = container.querySelector<HTMLElement>('.sidenav-dashboards .sidenav-group-toggle');
     expect(dashboardsToggle?.textContent).toContain('Dashboards');
     expect(dashboardsToggle?.getAttribute('aria-expanded')).toBe('true');
@@ -152,100 +190,56 @@ describe('SideNav information architecture', () => {
     expect(dashboardsBody?.textContent).toContain('Saved space');
     expect(container.querySelector('.sidenav-dashboards [aria-label="Create new dashboard"]')).not.toBeNull();
     expect(container.querySelector('.sidenav-dashboards [aria-label="Refresh health status of all dashboards"]')).not.toBeNull();
-
-    // The old "Resources" trio is gone; its entries live under the tracks.
-    expect(container.textContent).not.toContain('Resources');
-    expect(container.textContent).not.toContain('Guides & Tutorials');
-    expect(container.querySelector('a[href="/learn"]')?.textContent?.trim()).toBe('Guides');
-    expect(
-      Array.from(container.querySelectorAll('.content-track-label .sidenav-label'), label => label.textContent)
-    ).toEqual(['Understand', 'Use', 'Build', 'Reference']);
-    // Off content pages every track is collapsed, but all four stay visible.
-    expect(expandedTracks(container)).toEqual([]);
-    container.querySelectorAll('.content-track').forEach(track => {
-      expect(track.querySelector('.sidenav-group-toggle')?.getAttribute('aria-expanded')).toBe('false');
-      expect(track.querySelector<HTMLElement>('.sidenav-sublist')?.hidden).toBe(true);
-    });
   });
 
-  it('expands only the active track to its articles on a content page', () => {
-    const container = renderStatic('learn', '/learn/mcp-clients-compared');
-
-    expect(expandedTracks(container)).toEqual(['use']);
-    const useTrack = container.querySelector('.content-track[data-track="use"]')!;
-    const hrefs = Array.from(useTrack.querySelectorAll('.sidenav-sublist a'), link => link.getAttribute('href'));
-    expect(hrefs).toEqual(TRACK_NAVIGATION.find(track => track.id === 'use')!.items.map(item => item.path));
-    expect(useTrack.querySelector('a[href="/learn/mcp-clients-compared"]')?.classList).toContain('active');
-    expect(container.querySelector('a[href="/learn"]')?.classList).not.toContain('active');
-
-    // Every article of every track is still in the DOM in reading order, just hidden when collapsed.
-    const allHrefs = Array.from(container.querySelectorAll('.sidenav-sublist a'), link => link.getAttribute('href'));
-    expect(allHrefs).toEqual(LEARN_TRACKS.flatMap(track => track.items.map(item => item.path)));
-    const preExisting = [
-      '/docs/what-is-mcp',
-      '/docs/remote-vs-local',
-      '/learn/should-you-build-mcp-server',
-      '/learn/connect-remote-mcp-server',
-      '/learn/mcp-clients-compared',
-      '/learn/oauth-for-mcp-explained',
-      '/docs/testing-guide',
-      '/learn/designing-production-mcp-server',
-      '/learn/mcp-server-trust-checklist',
-      '/docs/troubleshooting',
-    ];
-    expect(allHrefs.filter(href => preExisting.includes(href as string))).toEqual(preExisting);
-
-    // Dashboards stay available on content pages too; the workspace links lead back to the app.
-    expect(container.querySelector('.sidenav-dashboards')).not.toBeNull();
-    expect(container.querySelector('a[href="/"]')).not.toBeNull();
-    expect(container.querySelector('a[href="/report"]')).not.toBeNull();
-
-    const docs = renderStatic('docs', '/docs/troubleshooting');
-    expect(expandedTracks(docs)).toEqual(['reference']);
-    expect(docs.querySelector('a[href="/docs/troubleshooting"]')?.classList).toContain('active');
-    expect(expandedTracks(renderStatic('docs', '/docs/troubleshooting/'))).toEqual(['reference']);
+  it.each([
+    ['playground', '/'],
+    ['catalog', '/catalog'],
+    ['report', '/report'],
+    ['breaking-changes', '/tools/breaking-changes'],
+    ['dashboards', '/space'],
+  ] as const)('keeps only the Guides hub link on the app page %s', (view, path) => {
+    const container = renderStatic(view, path);
+    expect(container.querySelector('a[href="/guides"]')).not.toBeNull();
+    expect(container.querySelector('.content-track-nav')).toBeNull();
   });
 
-  it('renders the footer links in order, with external links opening in a new tab', () => {
+  it('keeps article navigation in the Guides hub on reading pages', () => {
+    for (const path of ['/guides/mcp-clients-compared', '/docs/troubleshooting']) {
+      const container = renderStatic('learn', path, []);
+      expect(container.querySelector('a[href="/guides"]')).not.toBeNull();
+      expect(container.querySelector('.content-track-nav, .guide-search')).toBeNull();
+      for (const label of container.querySelectorAll('.sidenav-label')) {
+        expect(label.textContent!.trim().split(/\s+/).length).toBeLessThanOrEqual(3);
+      }
+    }
+  });
+
+  it.each([
+    ['playground', '/', '/'],
+    ['catalog', '/catalog', '/catalog'],
+    ['server-profile', '/servers/example/', '/catalog'],
+    ['breaking-changes', '/tools/breaking-changes', '/tools/breaking-changes'],
+    ['oauth-check', '/tools/oauth-check', '/tools/oauth-check'],
+    ['discovery', '/tools/discovery', '/tools/discovery'],
+    ['report', '/report/example.com', '/report'],
+    ['dashboards', '/space', '/space'],
+  ] as const)('marks only the entry for %s active', (view, path, expected) => {
+    const container = renderStatic(view, path, []);
+    const active = Array.from(container.querySelectorAll('.sidenav-group:not(.content-track-nav) a.active'), link => link.getAttribute('href'));
+    expect(active).toEqual([expected]);
+    expect(container.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
+  });
+
+  it('leaves the sidebar bottom free of duplicate legal links and collapse controls', () => {
     const container = renderStatic('playground', '/');
-    const footer = container.querySelector('.sidenav-footer')!;
-
-    const projectLinks = Array.from(footer.querySelectorAll('.sidenav-footer-links a'), link => [
-      link.textContent?.replace(/\s*\(opens in a new tab\)/, '').trim(),
-      link.getAttribute('href'),
-      link.getAttribute('target'),
-      link.getAttribute('rel'),
-    ]);
-    expect(projectLinks).toEqual([
-      ['Test an MCP server', '/mcp-test-server', null, null],
-      ['MCP Inspector online', '/mcp-inspector-online', null, null],
-      ['MCP playground', '/mcp-playground', null, null],
-      ['CI release gate', '/ci', null, null],
-      ['MCP test servers', '/mcp-test-servers', null, null],
-      ['Test your MCP client', '/mcp-test-client', null, null],
-      ['Submit a server', '/submit', null, null],
-      ['Badges', 'https://github.com/integry/mcptest#embedding-a-badge', '_blank', 'noopener noreferrer'],
-      ['GitHub repository', 'https://github.com/integry/mcptest', '_blank', 'noopener noreferrer'],
-    ]);
-    expect(
-      Array.from(footer.querySelectorAll('.sidenav-legal a'), link => [link.textContent, link.getAttribute('href')])
-    ).toEqual([
-      ['Contact', '/docs/contact'],
-      ['Privacy', '/docs/privacy-policy'],
-      ['Terms', '/docs/terms-of-service'],
-    ]);
-    expect(footer.querySelector('.sidenav-build time')).not.toBeNull();
-    expect(footer.querySelector('.sidenav-build a')?.getAttribute('href')).toMatch(/github\.com\/integry\/mcptest\/commit\//);
-
-    // Quieter type than the navigation links.
-    const css = readStylesheet('layout');
-    const footerRule = css.match(/\.sidenav-footer\s*\{([^}]*)\}/)?.[1] ?? '';
-    expect(parseFloat(footerRule.match(/font-size:\s*([\d.]+)rem/)?.[1] ?? '1')).toBeLessThan(0.875);
-    expect(footerRule).toMatch(/border-top:\s*1px solid var\(--border-color\)/);
+    expect(container.querySelector('.sidenav-footer')).toBeNull();
+    expect(container.querySelector('a[href="/docs/privacy-policy"]')).toBeNull();
+    expect(container.querySelector('.sidenav-collapse-toggle')).toBeNull();
   });
 });
 
-describe('SideNav collapsed desktop mode', () => {
+describe('SideNav permanent desktop navigation', () => {
   beforeAll(() => {
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   });
@@ -279,65 +273,16 @@ describe('SideNav collapsed desktop mode', () => {
     element?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
   });
 
-  it('collapses to an icon rail from the bottom control, remembers it, and restores it', () => {
-    mount();
-    const nav = host.querySelector<HTMLElement>('.app-sidenav')!;
-    const toggle = host.querySelector<HTMLButtonElement>('.sidenav-collapse-toggle')!;
-
-    expect(toggle.getAttribute('aria-expanded')).toBe('true');
-    expect(toggle.getAttribute('aria-controls')).toBe(nav.id);
-    expect(nav.classList).not.toContain('app-sidenav--collapsed');
-    expect(expandedTracks(host)).toEqual(['use']);
-
-    click(toggle);
-
-    expect(nav.classList).toContain('app-sidenav--collapsed');
-    expect(toggle.getAttribute('aria-expanded')).toBe('false');
-    expect(toggle.getAttribute('aria-label')).toBe('Expand sidebar');
-    expect(document.body.classList).toContain(SIDEBAR_COLLAPSED_CLASS);
-    expect(localStorage.getItem(SIDEBAR_COLLAPSED_KEY)).toBe('true');
-    // Icon-only: groups fold, but every link keeps a name for its tooltip.
-    expect(expandedTracks(host)).toEqual([]);
-    expect(host.querySelector('.sidenav-dashboards .sidenav-group-toggle')?.getAttribute('aria-expanded')).toBe('false');
-    host.querySelectorAll('.sidenav-group:first-of-type > .sidenav-list > .nav-item > a').forEach(link => {
-      expect(link.getAttribute('title')).toBe(link.textContent?.trim());
-    });
-
-    // Opening a group from the rail expands the sidebar first.
-    click(host.querySelector('.content-track[data-track="build"] .sidenav-group-toggle'));
-    expect(nav.classList).not.toContain('app-sidenav--collapsed');
-    expect(expandedTracks(host)).toEqual(['build']);
-    expect(localStorage.getItem(SIDEBAR_COLLAPSED_KEY)).toBe('false');
-
-    act(() => root?.unmount());
-    root = undefined;
-    expect(document.body.classList).not.toContain(SIDEBAR_COLLAPSED_CLASS);
-
-    // A remembered collapse applies on the next mount; the mobile drawer ignores it.
+  it('ignores the legacy collapse preference', () => {
     localStorage.setItem(SIDEBAR_COLLAPSED_KEY, 'true');
     mount();
-    expect(host.querySelector('.app-sidenav')?.classList).toContain('app-sidenav--collapsed');
-    expect(document.body.classList).toContain(SIDEBAR_COLLAPSED_CLASS);
-    act(() => root?.unmount());
-    root = undefined;
-
-    mount({ isMobile: true, theme: 'light', onToggleTheme: vi.fn() });
-    expect(host.querySelector('.app-sidenav')?.classList).not.toContain('app-sidenav--collapsed');
-    expect(host.querySelector('.sidenav-collapse-toggle')).toBeNull();
     expect(document.body.classList).not.toContain(SIDEBAR_COLLAPSED_CLASS);
+    expect(host.querySelector('.sidenav-collapse-toggle')).toBeNull();
+    expect(host.querySelector('a[href="/guides"]')).not.toBeNull();
   });
 
-  it('narrows the desktop column to 56px and hides labels in the stylesheet', () => {
-    const css = readStylesheet('layout');
-    expect(css).toMatch(/\.sidenav-collapsed \.desktop-sidebar\s*\{[^}]*width:\s*56px;/);
-    const hidden = css.match(/((?:\.app-sidenav--collapsed [^,{]+,?\s*)+)\{\s*display:\s*none;\s*\}/)?.[1] ?? '';
-    ['.sidenav-label', '.sidenav-section-label', '.sidenav-footer-links', '.sidenav-legal'].forEach(selector => {
-      expect(hidden).toContain(`.app-sidenav--collapsed ${selector}`);
-    });
-  });
-
-  it('toggles the dashboards group and the learn tracks with aria-expanded', () => {
-    mount({}, '/catalog');
+  it('toggles the saved dashboards group with aria-expanded', () => {
+    mount({ activeView: 'learn' }, '/learn/mcp-clients-compared');
     const dashboardsToggle = host.querySelector<HTMLButtonElement>('.sidenav-dashboards .sidenav-group-toggle')!;
     const body = host.querySelector<HTMLElement>(`#${dashboardsToggle.getAttribute('aria-controls')}`)!;
 
@@ -348,15 +293,6 @@ describe('SideNav collapsed desktop mode', () => {
     click(dashboardsToggle);
     expect(body.hidden).toBe(false);
 
-    const understand = host.querySelector<HTMLButtonElement>('.content-track[data-track="understand"] .sidenav-group-toggle')!;
-    const list = host.querySelector<HTMLElement>(`#${understand.getAttribute('aria-controls')}`)!;
-    expect(list.hidden).toBe(true);
-    click(understand);
-    expect(understand.getAttribute('aria-expanded')).toBe('true');
-    expect(list.hidden).toBe(false);
-    expect(expandedTracks(host)).toEqual(['understand']);
-    click(understand);
-    expect(expandedTracks(host)).toEqual([]);
   });
 });
 
@@ -385,6 +321,7 @@ describe('SideNav mobile drawer', () => {
     drawer.remove();
     opener.remove();
     document.body.classList.remove('menu-open');
+    vi.unstubAllEnvs();
   });
 
   const waitForObserver = () => act(async () => {
@@ -392,6 +329,7 @@ describe('SideNav mobile drawer', () => {
   });
 
   it('traps focus while open, closes on Escape and restores focus to the hamburger', async () => {
+    vi.stubEnv('VITE_FIREBASE_AUTH_ENABLED', 'true');
     root = createRoot(drawer);
     act(() => root!.render(
       <MemoryRouter initialEntries={['/']}>
@@ -409,6 +347,14 @@ describe('SideNav mobile drawer', () => {
     const focusable = Array.from(drawer.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled])'))
       .filter(element => !element.closest('[hidden]'));
     expect(document.activeElement).toBe(focusable[0]);
+    // The primary action is the drawer's first control: one tap after opening.
+    expect(focusable[0].getAttribute('href')).toBe('/');
+    expect(focusable[0].classList).toContain('sidenav-link--primary');
+    // Learn is folded on app pages, so the drawer's tab order skips its guide links.
+    expect(focusable.some(element => element.closest('.sidenav-learn-body'))).toBe(false);
+    // Signing in is explained in the drawer too.
+    const signIn = Array.from(drawer.querySelectorAll('button')).find(button => button.textContent === 'Login with Google')!;
+    expect(drawer.querySelector(`#${signIn.getAttribute('aria-describedby')}`)?.textContent).toMatch(/^Optional\. Testing works without an account/);
 
     focusable[focusable.length - 1].focus();
     act(() => {

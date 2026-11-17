@@ -191,7 +191,7 @@ describe('content registry', () => {
   it('builds track navigation covering every article exactly once', () => {
     const slugs = TRACK_NAVIGATION.flatMap(track => track.items.map(item => item.slug));
     expect(slugs.sort()).toEqual(LEARN_ARTICLES.map(article => article.slug).sort());
-    expect(TRACK_NAVIGATION.map(track => track.id)).toEqual(['understand', 'use', 'build', 'reference']);
+    expect(TRACK_NAVIGATION.map(track => track.id)).toEqual(['understand', 'use', 'build', 'reference', 'compare']);
     for (const track of TRACK_NAVIGATION) {
       expect(track.items.map(item => item.order)).toEqual([...track.items.map(item => item.order)].sort((a, b) => a - b));
     }
@@ -215,12 +215,15 @@ describe('content registry', () => {
 
   it('derives the sidebar learn tracks from the content registry', () => {
     expect(LEARN_HUB_NAVIGATION.path).toBe('/learn');
-    expect(LEARN_TRACKS.map(track => track.label)).toEqual(['Understand', 'Use', 'Build', 'Reference']);
+    expect(LEARN_TRACKS.map(track => track.label)).toEqual(['Understand', 'Use', 'Build', 'Reference', 'Compare']);
     expect(LEARN_TRACKS.every(track => track.icon.startsWith('bi-'))).toBe(true);
     // The former "Resources" entries live inside their tracks.
     expect(getLearnTrackForPath('/docs/what-is-mcp')?.id).toBe('understand');
     expect(getLearnTrackForPath('/docs/troubleshooting/')?.id).toBe('reference');
     expect(getLearnTrackForPath('/catalog')).toBeUndefined();
+    for (const slug of ['mcptest-vs-mcp-inspector', 'best-remote-mcp-testing-tools', 'mcptest-vs-glama-inspector', 'mcp-inspector-alternatives']) {
+      expect(getLearnArticle(slug)?.track).toBe('compare');
+    }
   });
 });
 
@@ -231,13 +234,19 @@ describe('Learn index', () => {
     expect(container.querySelector('h1')?.textContent).toBe('Learn MCP');
     expect(container.querySelector('.learn-grid, .learn-card')).toBeNull();
     const trackHeadings = Array.from(container.querySelectorAll('.learn-track h2'), heading => heading.textContent);
-    expect(trackHeadings).toEqual(['Understand', 'Use', 'Build', 'Reference']);
-    expect(container.querySelectorAll('.learn-track-description')).toHaveLength(4);
+    expect(trackHeadings).toEqual(['Understand', 'Use', 'Build', 'Reference', 'Compare']);
+    for (const link of container.querySelectorAll<HTMLAnchorElement>('.learn-track-jumps a')) {
+      expect(container.querySelector(link.hash)?.querySelector('h2')?.textContent).toBe(link.textContent);
+    }
+    expect(container.querySelectorAll('.learn-track-description')).toHaveLength(5);
     expect(container.querySelectorAll('.learn-track-item')).toHaveLength(LEARN_ARTICLES.length);
     for (const article of LEARN_ARTICLES) {
-      const link = container.querySelector(`a[href="${article.path}"]`);
-      expect(link?.textContent).toBe(article.title);
-      expect(container.textContent).toContain(article.summary);
+      const link = container.querySelector<HTMLAnchorElement>(`.learn-track-item-link[href="${article.path}"]`);
+      expect(link?.querySelector('.learn-track-item-title')?.textContent).toBe(`${article.title} →`);
+      expect(getLearnArticleFromPath(link!.getAttribute('href')!)).toBe(article);
+      const item = link!.closest('.learn-track-item')!;
+      expect(item.querySelector('.learn-track-item-summary')?.textContent).toBe(article.summary);
+      expect(item.querySelector('.learn-track-item-meta')?.textContent).toContain(`${article.readingTimeMinutes} min read`);
     }
     expect(container.textContent).toContain(`${LEARN_ARTICLES[0].readingTimeMinutes} min read`);
     expect(container.textContent).toContain('Practitioner');

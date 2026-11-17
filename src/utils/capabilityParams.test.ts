@@ -47,6 +47,14 @@ describe('capability parameters', () => {
     });
   });
 
+  it('accepts single-quoted schema examples while preserving valid JSON and rejecting expressions', () => {
+    expect(normalizeCapabilityParams(tool, { ids: "['TypeScript', 'TSX']" }).ids).toEqual(['TypeScript', 'TSX']);
+    expect(normalizeCapabilityParams(tool, { ids: '[1, {"name":"test"}, true]' }).ids).toEqual([1, { name: 'test' }, true]);
+    expect(normalizeCapabilityParams(tool, { ids: `["O'Reilly", 'TSX']` }).ids).toEqual(["O'Reilly", 'TSX']);
+    expect(() => normalizeCapabilityParams(tool, { ids: "['TSX', alert(1)]" })).toThrow('valid JSON');
+    expect(() => normalizeCapabilityParams(tool, { ids: "['unfinished]" })).toThrow('valid JSON');
+  });
+
   it('returns an actionable error for malformed structured input', () => {
     expect(() => normalizeCapabilityParams(tool, { options: '{nope}' }))
       .toThrow('“options” must contain valid JSON.');

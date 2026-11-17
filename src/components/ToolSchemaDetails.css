@@ -5,9 +5,10 @@
 }
 
 .tool-schema-details {
-  border: 1px solid var(--border-color);
-  border-radius: 0.5rem;
-  background: var(--card-bg-secondary);
+  border: 0;
+  border-top: 1px solid var(--border-color);
+  border-radius: 0;
+  background: transparent;
 }
 
 .tool-schema-details summary {
@@ -39,4 +40,20 @@
   margin: 0;
   overflow: auto;
   font-size: 0.74rem;
+}
+
+.tool-schemas,
+.tool-schema-details { min-width: 0; }
+
+.tool-schema-details .event-data pre {
+  padding: 0.75rem;
+  max-height: 320px;
+  overflow: auto;
+}
+
+.tool-schema-details pre,
+.tool-schema-details pre code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: normal;
 }
