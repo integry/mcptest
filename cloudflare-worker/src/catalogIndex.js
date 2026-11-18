@@ -21,7 +21,6 @@ export const MAX_TOOL_NAMES = 50;
 const MAX_TOOL_NAME_LENGTH = 100;
 const MAX_CAVEATS = 3;
 const MAX_CAVEAT_LENGTH = 300;
-export const MAX_QUERY_TERMS = 8;
 
 const truncate = (value, max) => (value.length > max ? `${value.slice(0, max - 1).trimEnd()}…` : value);
 const normalize = (value) => String(value ?? "").normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase();
@@ -138,8 +137,11 @@ export const resolveCatalogCategory = (category) => {
   return CATALOG_CATEGORIES.find((candidate) => normalize(candidate.name) === wanted)?.name;
 };
 
-/** Distinct lowercased query terms, at most MAX_QUERY_TERMS. */
-export const queryTerms = (query) => [...new Set(words(query))].slice(0, MAX_QUERY_TERMS);
+/**
+ * Distinct lowercased query terms. None are dropped: search requires every one
+ * to match, and the query's character limit already bounds how many there are.
+ */
+export const queryTerms = (query) => [...new Set(words(query))];
 
 // One term's weight in one entry, or 0 when the term matches nowhere. Name and
 // id matches dominate, then category, tool names and the description.

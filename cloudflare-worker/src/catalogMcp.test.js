@@ -190,6 +190,15 @@ describe('search_catalog', () => {
     expect(structuredContent).toEqual({ total: 0, returned: 0, results: [] });
   });
 
+  it('requires every word of a long query to match, not only the first few', async () => {
+    const matching = 'g gi git gith githu github developer tools';
+    const found = await result('search_catalog', { query: matching });
+    expect(found.structuredContent.results.map((entry) => entry.id)).toContain('github');
+
+    const { structuredContent } = await result('search_catalog', { query: `${matching} zzqqxxnotaword` });
+    expect(structuredContent).toEqual({ total: 0, returned: 0, results: [] });
+  });
+
   it('filters by category case-insensitively and by status', async () => {
     const { structuredContent } = await result('search_catalog', { category: 'developer tools', limit: MAX_SEARCH_LIMIT });
     expect(structuredContent.total).toBe(serverCatalog.filter((seed) => seed.category === 'Developer Tools').length);
