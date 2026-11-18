@@ -10,6 +10,7 @@ import { loadFirebase, scheduleAnalyticsLoad, shouldRestoreAuthSession } from '.
 import { deferMountUntilInput } from './staticPage/deferredMount'
 import { enhanceStaticPage, getDeferredStaticPage, isHandledByStaticPage, snapshotStaticPageState } from './staticPage/staticPage'
 import { canonicalAliasPath } from './utils/appRoutes'
+import { startSiteAssistant } from './siteAssistant/siteAssistant'
 
 /*
  * The entry stays small: React, the router and the app are one dynamic
@@ -32,6 +33,8 @@ const restoringSession = shouldRestoreAuthSession()
 if (restoringSession) loadFirebase().catch(() => {})
 // Analytics loads once the page is idle; earlier events are queued.
 scheduleAnalyticsLoad()
+// The solv.chat assistant, when this build configures one: a launcher after load and idle.
+startSiteAssistant()
 
 const root = document.getElementById('root')!
 const deferredPage = getDeferredStaticPage(root)

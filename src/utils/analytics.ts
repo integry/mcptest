@@ -74,6 +74,10 @@ export interface AnalyticsEventCatalog {
   sidebar_collapse: { collapsed: boolean };
   oauth_flow: { stage: OAuthFlowStage; provider_policy_id?: string };
 
+  // Site assistant (src/siteAssistant/launcher.ts).
+  assistant_launcher_click: NoParams;
+  assistant_widget_load: { outcome: 'loaded' | 'failed'; trigger: 'launcher' | 'restore'; duration_ms: number };
+
   // Playground and dashboard interactions.
   theme_changed: { theme_name: string };
   server_setup_copied: { server_id: string; target: string };

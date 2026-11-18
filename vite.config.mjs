@@ -5,6 +5,7 @@ import fs from 'node:fs'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { applySiteAssistantToHtml, readSiteAssistantEnv } from './src/siteAssistant/config.mts'
 
 // The Node content loader, shared with scripts/generate-seo-pages.js.
 const require = createRequire(import.meta.url)
@@ -25,6 +26,29 @@ const versionedThemeInit = () => ({
     return versionThemeInitTag(html, fs.readFileSync(path.join(rootDir, 'public', 'theme-init.js')))
   },
 })
+
+/**
+ * The solv.chat site assistant (src/siteAssistant/config.mts): with
+ * VITE_SOLV_ENDPOINT and VITE_SOLV_ASSISTANT_KEY set, index.html's policy
+ * allows that one origin and carries the config meta tag. Every prerendered
+ * page is built from this index.html. Unset, the HTML is unchanged.
+ */
+const siteAssistant = () => {
+  let config = null
+  return {
+    name: 'site-assistant',
+    configResolved(resolved) {
+      config = readSiteAssistantEnv(resolved.env)
+      const requested = resolved.env.VITE_SOLV_ENDPOINT || resolved.env.VITE_SOLV_ASSISTANT_KEY
+      if (requested && !config) {
+        resolved.logger.warn('[site-assistant] VITE_SOLV_ENDPOINT must be an https origin and VITE_SOLV_ASSISTANT_KEY a public key, and both must be set; the assistant is off.')
+      }
+    },
+    transformIndexHtml(html) {
+      return applySiteAssistantToHtml(html, config)
+    },
+  }
+}
 
 const loadContent = () => {
   const { loadArticleIndex, loadArticles } = require('./scripts/content/loadArticles.js')
@@ -125,6 +149,7 @@ export default defineConfig({
     learnArticleIndex(),
     learnSearchIndexDevServer(),
     versionedThemeInit(),
+    siteAssistant(),
     // Module-level sizes per chunk for scripts/bundle-graph.test.js and `npm run analyze`.
     visualizer({ template: 'raw-data', filename: 'dist/.vite/bundle-stats.json', gzipSize: false }),
   ],

@@ -75,6 +75,7 @@ import type {
 import { consumeOAuthReconnectRequest } from './utils/oauthReconnect';
 import { isLandingEligible, isReturningWorkspace, needsTabStrip } from './utils/landingEligibility';
 import { createDefaultSpaces, createDefaultTabs, createFirstDashboard, withoutUntouchedDefaultDashboard } from './utils/defaultWorkspace';
+import { syncSiteAssistantRoute } from './siteAssistant/siteAssistant';
 
 type SavedCardRuntime = typeof import('./utils/savedCardRuntime');
 const loadSavedCardRuntime = (): Promise<SavedCardRuntime> => import('./utils/savedCardRuntime');
@@ -249,6 +250,11 @@ function App() {
     scrolledPathnameRef.current = location.pathname;
     if (!location.hash) window.scrollTo(0, 0);
   }, [location.pathname, location.hash]);
+
+  // The site assistant stays off on auth flows and pages with a visitor's own data.
+  useEffect(() => {
+    syncSiteAssistantRoute(location.pathname);
+  }, [location.pathname]);
   
   // Activate the data sync hook
   useDataSync({ spaces, tabs, setSpaces, setTabs });

@@ -61,6 +61,8 @@ const SAMPLE_EVENTS: { [K in AnalyticsEventName]: AnalyticsEventParams<K> } = {
   advanced_options_open: {},
   sidebar_collapse: { collapsed: false },
   oauth_flow: { stage: 'callback', provider_policy_id: 'docusign-developer' },
+  assistant_launcher_click: {},
+  assistant_widget_load: { outcome: 'loaded', trigger: 'launcher', duration_ms: 412 },
   theme_changed: { theme_name: 'dark' },
   server_setup_copied: { server_id: 'context7', target: 'agent_prompt' },
   server_url_connection: { host: 'localhost:3000', transport_method: 'sse' },
