@@ -144,9 +144,18 @@ export const mountSiteAssistantLauncher = (config: SiteAssistantConfig): SiteAss
     return loading;
   };
 
+  // One pending opening per load: the widget's launcher toggles, so a second
+  // press while widget.js loads must not queue a second click (which would
+  // close the panel the first one opened). Cleared once the load settles, so a
+  // failed load can be retried.
+  let opening = false;
+
   button.addEventListener('click', () => {
     trackEvent('assistant_launcher_click');
+    if (opening) return;
+    opening = true;
     void load('launcher').then(loaded => {
+      opening = false;
       if (!loaded || !widget?.isConnected) return;
       // The widget has no public open method; its own launcher toggles the panel
       // and moves focus into it, which is what pressing this button means.

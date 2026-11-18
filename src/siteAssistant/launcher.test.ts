@@ -11,7 +11,9 @@ const launcherButton = () => document.querySelector<HTMLButtonElement>('.site-as
 const widgetScript = () => document.head.querySelector<HTMLScriptElement>('script[data-site-assistant]');
 
 /** What widget.js does: define <solv-chat> with its own launcher in an open shadow root. */
+let onWidgetLauncherClick: () => void = () => {};
 const defineStubWidget = (onOpen: () => void) => {
+  onWidgetLauncherClick = onOpen;
   if (customElements.get('solv-chat')) return;
   customElements.define('solv-chat', class extends HTMLElement {
     connectedCallback() {
@@ -19,7 +21,7 @@ const defineStubWidget = (onOpen: () => void) => {
       const root = this.attachShadow({ mode: 'open' });
       const button = document.createElement('button');
       button.className = 'solv-launcher';
-      button.addEventListener('click', onOpen);
+      button.addEventListener('click', () => onWidgetLauncherClick());
       root.append(button);
     }
   });
@@ -36,6 +38,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   document.body.replaceChildren();
 });
 
@@ -89,6 +92,27 @@ describe('site assistant launcher', () => {
     expect(launcherButton()!.hidden).toBe(true);
   });
 
+  it('opens the panel once when pressed again while widget.js loads', async () => {
+    let panelOpen = false;
+    // Like the real widget, its launcher toggles the panel.
+    defineStubWidget(() => { opened += 1; panelOpen = !panelOpen; });
+    vi.spyOn(customElements, 'get').mockReturnValue(undefined);
+    let define!: () => void;
+    vi.spyOn(customElements, 'whenDefined')
+      .mockReturnValue(new Promise(resolve => { define = () => resolve(customElements as never); }));
+    mountSiteAssistantLauncher(CONFIG).setActive(true);
+    launcherButton()!.click();
+    launcherButton()!.click();
+    launcherButton()!.click();
+    expect(document.head.querySelectorAll('script[data-site-assistant]')).toHaveLength(1);
+
+    define();
+    await flush();
+    expect(opened).toBe(1);
+    expect(panelOpen).toBe(true);
+    expect(launcherButton()!.hidden).toBe(true);
+  });
+
   it('restores the widget without opening it in a tab that already used it', async () => {
     defineStubWidget(() => { opened += 1; });
     sessionStorage.setItem('mcptest.siteAssistant.opened', '1');
@@ -116,7 +140,8 @@ describe('site assistant launcher', () => {
     expect(trackEvent).toHaveBeenCalledWith('assistant_widget_load', expect.objectContaining({ outcome: 'failed', trigger: 'launcher' }));
 
     button.click();
-    expect(widgetScript()).not.toBeNull();
+    button.click();
+    expect(document.head.querySelectorAll('script[data-site-assistant]')).toHaveLength(1);
     get.mockRestore();
     whenDefined.mockRestore();
   });
