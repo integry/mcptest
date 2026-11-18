@@ -2,6 +2,7 @@ import { UserState } from "./UserState";
 import { PublishedReports } from "./PublishedReports";
 import { handleBadgeRequest } from "./badges";
 import { handleFixtureRequest } from "./fixtures";
+import { handleCatalogMcpRequest } from "./catalogMcp";
 import { handleSubmissionRequest, SubmissionRateLimiter } from "./submissions";
 import { handlePublishedReportRequest } from "./publishedReportRoutes";
 import { runWeeklyWatch } from "./weeklyWatch";
@@ -28,6 +29,9 @@ export default {
     // Public deterministic MCP fixture servers (/fixtures/<name>/mcp): stateless, no storage.
     const fixtureResponse = await handleFixtureRequest(request);
     if (fixtureResponse) return fixtureResponse;
+    // Public read-only catalog MCP server (/mcp/catalog): bundled data, per-IP rate limit.
+    const catalogMcpResponse = await handleCatalogMcpRequest(request, env);
+    if (catalogMcpResponse) return catalogMcpResponse;
     const submissionResponse = await handleSubmissionRequest(request, env);
     if (submissionResponse) return submissionResponse;
     // Published report permalinks and their badges are anonymous as well.

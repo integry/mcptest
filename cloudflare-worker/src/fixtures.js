@@ -303,7 +303,8 @@ const validateNonRequest = async (message, request, fixture) => {
   }
 };
 
-const serverInfo = (fixture) => ({ name: `mcptest-fixture-${fixture.name}`, title: fixture.title, version: FIXTURE_SERVER_VERSION });
+const serverInfo = (fixture) => fixture.serverInfo
+  ?? { name: `mcptest-fixture-${fixture.name}`, title: fixture.title, version: FIXTURE_SERVER_VERSION };
 
 const encodeResult = (method, result, fixture, era) => {
   if (era !== 'modern') return result;
@@ -531,7 +532,17 @@ export const handleFixtureRequest = async (request, options = {}) => {
 
   const unauthorized = authorizationFailure(fixture, request);
   if (unauthorized) return unauthorized;
+  return serveMcpServer(request, fixture, options);
+};
 
+/**
+ * Serves one fixture-shaped MCP server definition ({ name, title, instructions,
+ * tools, resources, prompts, optional serverInfo }) at a path the caller already
+ * matched: CORS preflight, the permitted GET/DELETE 405s and both protocol eras
+ * on POST. Shared by the fixtures and the public catalog endpoint (catalogMcp.js).
+ */
+export const serveMcpServer = async (request, server, options = {}) => {
+  if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: FIXTURE_CORS_HEADERS });
   if (request.method === 'GET' || request.method === 'DELETE') {
     // No standalone SSE stream and no session termination: both are permitted 405s.
     return respond(405, undefined, { Allow: 'POST, OPTIONS' });
@@ -540,7 +551,7 @@ export const handleFixtureRequest = async (request, options = {}) => {
     return respond(405, rpcError(null, INVALID_REQUEST, 'Method Not Allowed'), { Allow: 'POST, OPTIONS' });
   }
   try {
-    return await handlePost(request, fixture, { wait: options.wait ?? defaultWait });
+    return await handlePost(request, server, { wait: options.wait ?? defaultWait });
   } catch (error) {
     if (error instanceof HttpFailure) return error.response;
     throw error;

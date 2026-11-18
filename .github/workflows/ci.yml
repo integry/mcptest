@@ -188,3 +188,72 @@ jobs:
         with:
           name: action-smoke-reports
           path: mcptest-reports/
+
+  # The public catalog MCP endpoint (cloudflare-worker/src/catalogMcp.js) must pass
+  # mcptest's own checks. wrangler dev runs the worker in workerd with the real
+  # rate-limiter Durable Object; the catalog data is the bundled snapshot.
+  catalog-mcp-smoke:
+    name: Local composite action against the catalog MCP endpoint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: cloudflare-worker/package-lock.json
+      - name: Install worker dependencies
+        run: npm ci --prefix cloudflare-worker --no-audit --no-fund
+      - name: Start the worker locally
+        working-directory: cloudflare-worker
+        env:
+          WRANGLER_SEND_METRICS: 'false'
+        run: |
+          nohup npx wrangler dev --ip 127.0.0.1 --port 8787 > "$RUNNER_TEMP/wrangler-dev.log" 2>&1 &
+          for attempt in {1..60}; do
+            if curl --fail --silent --output /dev/null --request OPTIONS http://127.0.0.1:8787/mcp/catalog; then exit 0; fi
+            sleep 2
+          done
+          cat "$RUNNER_TEMP/wrangler-dev.log"
+          exit 1
+      - name: Call each catalog tool
+        run: |
+          call() {
+            curl --fail --silent --show-error http://127.0.0.1:8787/mcp/catalog \
+              -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
+              -H 'MCP-Protocol-Version: 2026-07-28' -H 'Mcp-Method: tools/call' -H "Mcp-Name: $1" \
+              -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"$1\",\"arguments\":$2,\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientCapabilities\":{}}}}"
+          }
+          call search_catalog '{"query":"github","limit":1}' | grep -q '\\"id\\": \\"github\\"'
+          call get_catalog_server '{"id":"github"}' | grep -q 'badge/server/github.svg'
+          call get_catalog_server '{"id":"not-listed"}' | grep -q '"isError":true'
+          call list_catalog_categories '{}' | grep -q 'totalServers'
+      - name: Run this checkout's composite action
+        id: gate
+        uses: ./
+        with:
+          endpoints: http://127.0.0.1:8787/mcp/catalog
+          session-resilience: 'true'
+          comment: 'false'
+          publish: 'false'
+      - name: Assert action outputs
+        env:
+          DECISION: ${{ steps.gate.outputs.decision }}
+          BREAKING_COUNT: ${{ steps.gate.outputs.breaking-count }}
+          REPORT_PATH: ${{ steps.gate.outputs.report-path }}
+        run: |
+          test "$DECISION" = ready || test "$DECISION" = review
+          test "$BREAKING_COUNT" = 0
+          test -f "$REPORT_PATH/summary.md"
+      - name: Show the worker log
+        if: failure()
+        run: cat "$RUNNER_TEMP/wrangler-dev.log"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: catalog-mcp-smoke-reports
+          path: mcptest-reports/
+          if-no-files-found: ignore

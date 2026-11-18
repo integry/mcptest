@@ -15,7 +15,9 @@ routes = [
   # Catalog submissions from the /submit page are posted same-origin.
   { pattern = "mcptest.io/api/catalog/submissions", zone_name = "mcptest.io" },
   # Public deterministic MCP fixture servers (src/fixtures.js): /fixtures/<name>/mcp.
-  { pattern = "mcptest.io/fixtures/*", zone_name = "mcptest.io" }
+  { pattern = "mcptest.io/fixtures/*", zone_name = "mcptest.io" },
+  # Public read-only catalog MCP server (src/catalogMcp.js), no authentication.
+  { pattern = "mcptest.io/mcp/catalog", zone_name = "mcptest.io" }
 ]
 
 [vars]
@@ -28,7 +30,8 @@ bindings = [
   # Published report snapshots and publish rate limits, keyed by endpoint (see
   # cloudflare-worker/src/PublishedReports.js). No secrets are required.
   { name = "PUBLISHED_REPORTS", class_name = "PublishedReports" },
-  # Per-IP and per-host counters for POST /api/catalog/submissions.
+  # Per-IP and per-host counters for POST /api/catalog/submissions, and the
+  # per-IP request counters of the public catalog MCP endpoint (/mcp/catalog).
   { name = "SUBMISSION_RATE_LIMITER", class_name = "SubmissionRateLimiter" }
 ]
 

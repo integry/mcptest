@@ -68,7 +68,7 @@ const failure = (request, status, error, message, extra = {}, headers = {}) => (
   json(request, status, { error, message, ...extra }, headers)
 );
 
-const sha256Hex = async (value) => {
+export const sha256Hex = async (value) => {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 };
@@ -100,8 +100,8 @@ const verifyTurnstile = async (secret, token, remoteIp) => {
   }
 };
 
-/** Consumes one slot from a sliding-window counter; returns { allowed, retryAfterSeconds }. */
-const consumeRateLimit = async (env, key, { limit, windowMs }) => {
+/** Consumes one slot from a sliding-window counter; returns { allowed, retryAfterSeconds }. Also used by catalogMcp.js. */
+export const consumeRateLimit = async (env, key, { limit, windowMs }) => {
   const stub = env.SUBMISSION_RATE_LIMITER.get(env.SUBMISSION_RATE_LIMITER.idFromName(key));
   const response = await stub.fetch("https://rate-limiter/consume", {
     method: "POST",
