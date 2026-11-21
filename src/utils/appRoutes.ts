@@ -54,6 +54,7 @@ export interface AppRouteOptions {
 export const EXACT_APP_ROUTES: readonly string[] = [
   '/',
   '/catalog',
+  '/evals',
   '/learn',
   '/guides',
   '/report',

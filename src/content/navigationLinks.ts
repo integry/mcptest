@@ -61,6 +61,15 @@ export const CATALOG_NAVIGATION: NavigationLink = {
   matchDescendants: true,
 };
 
+/** Score how reliably a model picks a server's tools for scripted prompts. */
+export const EVALS_NAVIGATION: NavigationLink = {
+  label: 'Tool-selection evals',
+  path: '/evals',
+  icon: 'bi-bezier2',
+  description: 'Check that models pick the right tools for your prompts.',
+  matchDescendants: true,
+};
+
 /** The free single-purpose checks under /tools. */
 export const CHECKS_NAVIGATION: readonly NavigationLink[] = [
   // The free breaking-change check (src/components/BreakingChangesView.tsx).
@@ -106,7 +115,7 @@ export const DASHBOARDS_NAVIGATION: NavigationLink = {
 };
 
 export const NAVIGATION_GROUPS: readonly NavigationGroup[] = [
-  { id: 'start', label: 'Workspace', items: [PLAYGROUND_NAVIGATION, CATALOG_NAVIGATION] },
+  { id: 'start', label: 'Workspace', items: [PLAYGROUND_NAVIGATION, CATALOG_NAVIGATION, EVALS_NAVIGATION] },
   { id: 'checks', label: 'Checks', items: CHECKS_NAVIGATION },
   { id: 'saved', label: 'Saved work', items: [REPORTS_NAVIGATION, DASHBOARDS_NAVIGATION] },
 ];
@@ -118,6 +127,7 @@ export const NAVIGATION_GROUPS: readonly NavigationGroup[] = [
 export const NAVIGATION_ACTIVE_VIEWS: Readonly<Record<string, readonly string[]>> = {
   '/': ['playground'],
   '/catalog': ['catalog', 'server-profile'],
+  '/evals': ['evals'],
   '/tools/breaking-changes': ['breaking-changes'],
   '/tools/oauth-check': ['oauth-check'],
   '/tools/discovery': ['discovery'],

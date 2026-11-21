@@ -1,0 +1,231 @@
+import { describe, expect, it, vi } from 'vitest';
+import { createAnthropicProvider, createOpenAiProvider } from './providers';
+import type { EvalProviderRequest } from './types';
+
+const request: EvalProviderRequest = {
+  case: {
+    id: 'weather',
+    prompt: 'Weather in Lisbon?',
+    acceptableTools: ['get_weather'],
+    toolReturnedData: { temperature: 21 },
+    expectedFigures: [21],
+  },
+  tools: [{
+    name: 'get_weather',
+    description: 'Get weather.',
+    inputSchema: { type: 'object', properties: { city: { type: 'string' } }, required: ['city'] },
+  }],
+  arm: 'with-mcp',
+  model: 'provider-model',
+  trial: 1,
+};
+
+describe('browser model providers', () => {
+  it('normalizes OpenAI tool calls and completes a tool-result turn', async () => {
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        choices: [{ message: { role: 'assistant', content: null, tool_calls: [{ id: 'call-1', type: 'function', function: { name: 'get_weather', arguments: '{"city":"Lisbon"}' } }] } }],
+        usage: { prompt_tokens: 20, completion_tokens: 8 },
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        choices: [{ message: { role: 'assistant', content: 'It is 21 degrees.' } }],
+        usage: { prompt_tokens: 30, completion_tokens: 7 },
+      }), { status: 200 }));
+
+    const result = await createOpenAiProvider('session-secret', fetcher as typeof fetch).run(request);
+    expect(result).toMatchObject({
+      toolCalls: [{ name: 'get_weather', arguments: { city: 'Lisbon' }, result: { temperature: 21 } }],
+      finalAnswer: 'It is 21 degrees.', inputTokens: 50, outputTokens: 15,
+    });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    const firstInit = fetcher.mock.calls[0][1] as RequestInit;
+    expect(new Headers(firstInit.headers).get('authorization')).toBe('Bearer session-secret');
+    expect(String(firstInit.body)).not.toContain('session-secret');
+    const secondBody = JSON.parse(String((fetcher.mock.calls[1][1] as RequestInit).body));
+    expect(secondBody.messages).toContainEqual(expect.objectContaining({ role: 'tool', content: '{"temperature":21}' }));
+  });
+
+  it('normalizes Anthropic tool calls and completes a tool-result turn', async () => {
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        content: [{ type: 'tool_use', id: 'tool-1', name: 'get_weather', input: { city: 'Lisbon' } }],
+        usage: { input_tokens: 18, output_tokens: 6 },
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        content: [{ type: 'text', text: 'The temperature is 21.' }],
+        usage: { input_tokens: 22, output_tokens: 7 },
+      }), { status: 200 }));
+
+    const result = await createAnthropicProvider('session-secret', fetcher as typeof fetch).run(request);
+    expect(result).toMatchObject({
+      toolCalls: [{ name: 'get_weather', arguments: { city: 'Lisbon' }, result: { temperature: 21 } }],
+      finalAnswer: 'The temperature is 21.', inputTokens: 40, outputTokens: 13,
+    });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    const headers = new Headers((fetcher.mock.calls[0][1] as RequestInit).headers);
+    expect(headers.get('x-api-key')).toBe('session-secret');
+    expect(headers.get('anthropic-dangerous-direct-browser-access')).toBe('true');
+  });
+
+  it('omits tools in the plain-context arm and includes supplied data in the prompt', async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      choices: [{ message: { role: 'assistant', content: '21 degrees.' } }],
+      usage: {},
+    }), { status: 200 }));
+    await createOpenAiProvider('key', fetcher as typeof fetch).run({ ...request, arm: 'plain-context', tools: [] });
+    const body = JSON.parse(String((fetcher.mock.calls[0][1] as RequestInit).body));
+    expect(body.tools).toBeUndefined();
+    expect(body.messages[0].content).toContain('{"temperature":21}');
+    expect(body.messages[0].content).toContain('Do not claim that you called a tool');
+  });
+
+  it.each([
+    {
+      provider: 'OpenAI',
+      create: (fetcher: typeof fetch) => createOpenAiProvider('key', fetcher),
+      body: {
+        choices: [{ message: { role: 'assistant', content: 'Done.' } }],
+        usage: { prompt_tokens: -1, completion_tokens: 1.5 },
+      },
+    },
+    {
+      provider: 'Anthropic',
+      create: (fetcher: typeof fetch) => createAnthropicProvider('key', fetcher),
+      body: {
+        content: [{ type: 'text', text: 'Done.' }],
+        usage: { input_tokens: '4', output_tokens: Number.MAX_SAFE_INTEGER + 1 },
+      },
+    },
+  ])('treats malformed $provider usage counts as unavailable', async ({ create, body }) => {
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify(body), { status: 200 }));
+    const result = await create(fetcher as typeof fetch).run({
+      ...request,
+      tools: [],
+      arm: 'without-mcp',
+      case: { ...request.case, toolReturnedData: undefined },
+    });
+
+    expect(result.inputTokens).toBeUndefined();
+    expect(result.outputTokens).toBeUndefined();
+  });
+
+  it('drops a token total when a successful follow-up makes it unsafe', async () => {
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        choices: [{ message: { role: 'assistant', content: null, tool_calls: [{ id: 'call-1', type: 'function', function: { name: 'get_weather', arguments: '{"city":"Lisbon"}' } }] } }],
+        usage: { prompt_tokens: Number.MAX_SAFE_INTEGER, completion_tokens: 1 },
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        choices: [{ message: { role: 'assistant', content: 'Done.' } }],
+        usage: { prompt_tokens: 1, completion_tokens: 1 },
+      }), { status: 200 }));
+
+    const result = await createOpenAiProvider('key', fetcher as typeof fetch).run(request);
+
+    expect(result.inputTokens).toBeUndefined();
+    expect(result.outputTokens).toBe(2);
+  });
+
+  it('redacts provider errors immediately and preserves successful observations for scoring', async () => {
+    const secret = 'reflected-secret';
+    const errorFetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      error: { message: `Invalid key ${secret}` },
+    }), { status: 401 }));
+    await expect(createOpenAiProvider(secret, errorFetch as typeof fetch).run({ ...request, case: { ...request.case, toolReturnedData: undefined } }))
+      .rejects.toThrow('Invalid key [redacted]');
+
+    const answerFetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      choices: [{ message: { role: 'assistant', content: `Never show ${secret}` } }],
+      usage: {},
+    }), { status: 200 }));
+    const result = await createOpenAiProvider(secret, answerFetch as typeof fetch).run({
+      ...request,
+      tools: [],
+      arm: 'without-mcp',
+      case: { ...request.case, toolReturnedData: undefined },
+    });
+    expect(result.finalAnswer).toBe(`Never show ${secret}`);
+  });
+
+  it('preserves reflected tool calls until the runner has scored them', async () => {
+    const secret = 'reflected-tool-secret';
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      choices: [{ message: {
+        role: 'assistant',
+        content: null,
+        tool_calls: [{
+          id: 'call-1',
+          type: 'function',
+          function: { name: `tool-${secret}`, arguments: JSON.stringify({ value: secret, nested: { [secret]: secret } }) },
+        }],
+      } }],
+      usage: {},
+    }), { status: 200 }));
+
+    const result = await createOpenAiProvider(secret, fetcher as typeof fetch).run({
+      ...request,
+      case: { ...request.case, toolReturnedData: undefined },
+    });
+    expect(result.toolCalls[0].name).toBe(`tool-${secret}`);
+    expect(result.toolCalls[0].arguments).toEqual({ value: secret, nested: { [secret]: secret } });
+  });
+
+  it('preserves reflected property names for the report boundary to sanitize', async () => {
+    const secret = 'reflected-key';
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      choices: [{ message: {
+        role: 'assistant',
+        content: null,
+        tool_calls: [{
+          id: 'call-1',
+          type: 'function',
+          function: {
+            name: 'get_weather',
+            arguments: JSON.stringify({ [secret]: 'credential key', '[redacted]': 'existing key' }),
+          },
+        }],
+      } }],
+      usage: {},
+    }), { status: 200 }));
+
+    const result = await createOpenAiProvider(secret, fetcher as typeof fetch).run({
+      ...request,
+      case: { ...request.case, toolReturnedData: undefined },
+    });
+    expect(result.toolCalls[0].arguments).toEqual({
+      [secret]: 'credential key',
+      '[redacted]': 'existing key',
+    });
+  });
+
+  it('preserves first-turn tool calls when optional grounding follow-ups fail', async () => {
+    const secret = 'follow-up-secret';
+    const openAiFetcher = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        choices: [{ message: { role: 'assistant', content: null, tool_calls: [{ id: 'call-1', type: 'function', function: { name: 'get_weather', arguments: '{"city":"Lisbon"}' } }] } }],
+        usage: { prompt_tokens: 20, completion_tokens: 8 },
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: { message: `Failed ${secret}` } }), { status: 500 }));
+    const openAiResult = await createOpenAiProvider(secret, openAiFetcher as typeof fetch).run(request);
+    expect(openAiResult).toMatchObject({
+      toolCalls: [{ name: 'get_weather', arguments: { city: 'Lisbon' } }],
+      inputTokens: 20,
+      outputTokens: 8,
+      error: 'Failed [redacted]',
+    });
+
+    const anthropicFetcher = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        content: [{ type: 'tool_use', id: 'tool-1', name: 'get_weather', input: { city: 'Lisbon' } }],
+        usage: { input_tokens: 18, output_tokens: 6 },
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: { message: `Failed ${secret}` } }), { status: 500 }));
+    const anthropicResult = await createAnthropicProvider(secret, anthropicFetcher as typeof fetch).run(request);
+    expect(anthropicResult).toMatchObject({
+      toolCalls: [{ name: 'get_weather', arguments: { city: 'Lisbon' } }],
+      inputTokens: 18,
+      outputTokens: 6,
+      error: 'Failed [redacted]',
+    });
+  });
+});

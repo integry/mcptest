@@ -20,7 +20,7 @@ test.describe('sidebar navigation', () => {
     await expect(nav.getByRole('link', { name: 'Guides' })).toBeVisible();
 
     await nav.getByRole('link', { name: 'Playground', exact: true }).focus();
-    const order = ['Catalog', 'Breaking changes', 'OAuth checker', 'Discovery checker', 'Reports', 'Dashboards', 'Guides'];
+    const order = ['Catalog', 'Tool-selection evals', 'Breaking changes', 'OAuth checker', 'Discovery checker', 'Reports', 'Dashboards', 'Guides'];
     for (const name of order) {
       await page.keyboard.press('Tab');
       await expect(page.locator(':focus .sidenav-label')).toHaveText(name);

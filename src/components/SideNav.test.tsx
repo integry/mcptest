@@ -125,7 +125,11 @@ describe('SideNav information architecture', () => {
       expect(section.querySelector(`[id="${section.getAttribute('aria-labelledby')}"]`)?.textContent?.trim()).toBeTruthy();
     });
 
-    expect(groupLinks(container, 'start')).toEqual([['Playground', '/'], ['Catalog', '/catalog']]);
+    expect(groupLinks(container, 'start')).toEqual([
+      ['Playground', '/'],
+      ['Catalog', '/catalog'],
+      ['Tool-selection evals', '/evals'],
+    ]);
     expect(groupLinks(container, 'checks')).toEqual([
       ['Breaking changes', '/tools/breaking-changes'],
       ['OAuth checker', '/tools/oauth-check'],
