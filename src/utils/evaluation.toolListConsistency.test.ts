@@ -10,7 +10,7 @@ vi.mock('./transportDetection', async (importOriginal) => {
   return { ...actual, attemptParallelConnections: connectionMocks.attempt };
 });
 
-import { evaluateServer } from './evaluation';
+import { evaluateServer, type EvaluationOptions } from './evaluation';
 import type { ObservedTransportRequest } from './transportDetection';
 import { createCompatibilityMatrix, createReleaseDecision } from './releaseReadiness';
 import {
@@ -91,7 +91,7 @@ const replicaServer = (lists: ReadonlyArray<readonly unknown[]>, options: { page
   return { connect, clients, connections: () => connections };
 };
 
-const evaluate = (options: Parameters<typeof evaluateServer>[6] = {}, headers?: HeadersInit) => evaluateServer(
+const evaluate = (options: EvaluationOptions = {}, headers?: HeadersInit) => evaluateServer(
   ENDPOINT, undefined, vi.fn(), null, headers, undefined,
   { runtime: 'headless', toolListConsistency: { spacingMs: 0 }, ...options }
 );
