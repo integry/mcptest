@@ -13,8 +13,48 @@ const {
   validateArticles,
 } = require('../../src/content/contentModel.ts');
 const { extractOutline } = require('../../src/content/outline.ts');
+const { findFigures, validateFigureSvg, validateFigureUsage } = require('../../src/content/figures.ts');
 
 const ARTICLES_DIR = path.join(__dirname, '..', '..', 'src', 'content', 'articles');
+const FIGURES_DIR = path.join(__dirname, '..', '..', 'src', 'content', 'figures');
+
+/**
+ * Fails the build on a figure that is placed wrongly, missing, breaks the SVG
+ * contract (docs/article-figures.md), or sits in the figures directory unused.
+ *
+ * @param {import('../../src/content/contentModel').LearnArticle[]} articles
+ * @param {string} [figuresDirectory]
+ */
+function validateArticleFigures(articles, figuresDirectory = FIGURES_DIR) {
+  const errors = [];
+  const used = new Set();
+  for (const article of articles) {
+    for (const error of validateFigureUsage(article.content, article.slug)) {
+      errors.push(`${article.slug}: ${error}`);
+    }
+    for (const figure of findFigures(article.content)) {
+      const relative = path.join(figure.slug, `${figure.name}.svg`);
+      used.add(relative);
+      const file = path.join(figuresDirectory, relative);
+      if (!fs.existsSync(file)) {
+        errors.push(`${article.slug}: figure file ${relative} does not exist`);
+        continue;
+      }
+      for (const error of validateFigureSvg(fs.readFileSync(file, 'utf8'))) {
+        errors.push(`${relative}: ${error}`);
+      }
+    }
+  }
+  if (fs.existsSync(figuresDirectory)) {
+    for (const slug of fs.readdirSync(figuresDirectory).sort()) {
+      for (const file of fs.readdirSync(path.join(figuresDirectory, slug)).sort()) {
+        const relative = path.join(slug, file);
+        if (!used.has(relative)) errors.push(`${relative}: no article places this figure`);
+      }
+    }
+  }
+  if (errors.length) throw new Error(`Invalid article figures:\n${errors.join('\n')}`);
+}
 
 /**
  * @param {object} [options]
@@ -39,6 +79,8 @@ function loadArticles(options = {}) {
     knownComponents: CONTENT_COMPONENT_NAMES,
     reservedPaths: options.reservedPaths || [],
   });
+  // A custom article directory (tests) carries no figures of its own.
+  if (!options.directory || options.figuresDirectory) validateArticleFigures(articles, options.figuresDirectory);
   return sortArticlesForReading(articles);
 }
 
@@ -67,4 +109,4 @@ function loadArticleIndex(options = {}) {
   return loadArticles(options).map(toArticleIndexEntry);
 }
 
-module.exports = { ARTICLES_DIR, hasCodeBlock, loadArticleIndex, loadArticles, toArticleIndexEntry };
+module.exports = { ARTICLES_DIR, FIGURES_DIR, hasCodeBlock, loadArticleIndex, loadArticles, toArticleIndexEntry, validateArticleFigures };

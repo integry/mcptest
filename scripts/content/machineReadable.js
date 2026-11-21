@@ -10,6 +10,7 @@ const {
   getArticleCanonicalUrl,
   getTrack,
 } = require('../../src/content/contentModel.ts');
+const { describeFiguresAsText } = require('../../src/content/figures.ts');
 const { PUBLIC_FIXTURES } = require('../../src/data/publicFixtures.ts');
 const { MCP_TEST_CLIENT_PATH, MCP_TEST_SERVERS_PATH } = require('../../src/utils/appRoutes.ts');
 const { KEYWORD_LANDING_PAGES } = require('../../src/content/keywordLandingPages.ts');
@@ -45,7 +46,7 @@ function renderArticleMarkdown(article) {
     '',
     `Canonical URL: ${getArticleCanonicalUrl(article)}`,
     '',
-    getArticleBodyMarkdown(article),
+    describeFiguresAsText(getArticleBodyMarkdown(article)),
   ];
   if (article.sourceLinks.length) {
     lines.push('', '## Sources', '', ...article.sourceLinks.map(link => `- [${link.title}](${link.url})`));

@@ -259,6 +259,128 @@
   font-weight: 600;
 }
 
+/* Figures: inlined SVG diagrams, styled only through these classes (docs/article-figures.md) */
+
+.reading-figure {
+  margin: 1.75rem 0;
+}
+
+.reading-figure-canvas {
+  overflow-x: auto;
+  padding: 1rem;
+  border: 1px solid var(--reading-rule);
+  border-radius: var(--border-radius-sm);
+  background: var(--card-bg);
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Never scaled up, and not below two thirds of its drawn size: on a phone the canvas scrolls instead. */
+.reading-figure-canvas svg {
+  display: block;
+  max-width: 100%;
+  min-width: 30rem;
+  height: auto;
+  margin: 0 auto;
+}
+
+.reading-figure figcaption,
+.reading-figure-missing {
+  margin: 0.6rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.reading-figure .fig-box {
+  fill: var(--card-bg-secondary);
+  stroke: var(--reading-rule);
+  stroke-width: 1;
+}
+
+.reading-figure .fig-box-accent {
+  fill: var(--accent-wash);
+  stroke: var(--primary-soft-border);
+  stroke-width: 1;
+}
+
+.reading-figure .fig-line {
+  fill: none;
+  stroke: var(--text-muted);
+  stroke-width: 1.25;
+}
+
+.reading-figure .fig-line-accent {
+  fill: none;
+  stroke: var(--primary-color);
+  stroke-width: 1.5;
+}
+
+.reading-figure .fig-line-danger {
+  fill: none;
+  stroke: var(--danger-color);
+  stroke-width: 1.5;
+}
+
+.reading-figure .fig-dashed {
+  stroke-dasharray: 5 4;
+}
+
+.reading-figure .fig-guide {
+  fill: none;
+  stroke: var(--border-color);
+  stroke-width: 1;
+  stroke-dasharray: 2 4;
+}
+
+.reading-figure .fig-rule {
+  fill: none;
+  stroke: var(--reading-rule);
+  stroke-width: 1;
+}
+
+.reading-figure .fig-head,
+.reading-figure .fig-dot {
+  fill: var(--text-muted);
+}
+
+.reading-figure .fig-head-accent,
+.reading-figure .fig-dot-accent {
+  fill: var(--primary-color);
+}
+
+.reading-figure .fig-head-danger {
+  fill: var(--danger-color);
+}
+
+.reading-figure .fig-label,
+.reading-figure .fig-title {
+  fill: var(--text-color);
+  font-family: var(--font-family-sans-serif);
+  font-size: 13px;
+}
+
+.reading-figure .fig-title {
+  font-weight: 600;
+}
+
+.reading-figure .fig-mono {
+  fill: var(--text-accent);
+  font-family: var(--font-family-mono);
+  font-size: 11.5px;
+}
+
+.reading-figure .fig-muted {
+  fill: var(--text-muted);
+}
+
+.reading-figure .fig-accent-text {
+  fill: var(--accent-text);
+}
+
+.reading-figure .fig-danger-text {
+  fill: var(--danger-color);
+}
+
 /* Code blocks */
 
 .reading-code {

@@ -51,6 +51,8 @@ This page walks through the sequence. The [MCP OAuth 2.1 reference](/learn/mcp-o
 
 ## The sequence, step by step
 
+![Sequence diagram of MCP authorization between the user, the MCP client, the MCP server and the authorization server: a 401 challenge, protected resource metadata, authorization server metadata, client identity, the authorization request with PKCE, user sign-in, the callback with the code, the token exchange, and the retried MCP request with a Bearer token.](../figures/oauth-for-mcp-explained/authorization-sequence.svg "The seven steps as messages between the four parties. Solid arrows are requests, dashed arrows are responses.")
+
 ### 1. MCP request and `401` challenge
 
 The client sends an MCP request without a usable token. The server answers HTTP `401 Unauthorized` with a Bearer `WWW-Authenticate` challenge:
