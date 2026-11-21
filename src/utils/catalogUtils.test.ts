@@ -251,6 +251,10 @@ describe('catalog authentication metadata', () => {
       'ffmpeg-api', 'feedhive', 'geckoboard', 'g2x', 'datocapital', 'kindwise',
       'legitfit', 'leadboxer', 'qencode',
     ];
+    const publisherSources = new Map([
+      ['unstoppabledomains', 'https://docs.unstoppabledomains.com/user-api/mcp-server'],
+      ['uptimerobot', 'https://help.uptimerobot.com/en/articles/12928342-uptimerobot-mcp-integration-guide'],
+    ]);
     const catalog = getCatalogServers();
     expect(addedIds.length).toBeGreaterThanOrEqual(60);
     for (const id of addedIds) {
@@ -258,7 +262,11 @@ describe('catalog authentication metadata', () => {
       expect(entry, id).toBeDefined();
       expect(entry?.status, id).toBe('online');
       expect(entry?.homepageUrl, id).toMatch(/^https:\/\//);
-      expect(entry?.listingSource.kind, id).toBe('mcp-registry');
+      expect(entry?.registryUrl, id).toMatch(/^https:\/\//);
+      const publisherUrl = publisherSources.get(id);
+      expect(entry?.listingSource, id).toEqual(publisherUrl
+        ? { kind: 'publisher', url: publisherUrl }
+        : { kind: 'mcp-registry', url: entry?.registryUrl });
       expect(catalogValidation.find(result => result.serverId === id)?.validatedUrl, id)
         .toMatch(/^https:\/\//);
     }
