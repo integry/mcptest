@@ -20,6 +20,7 @@
     "analyze": "vite build && node scripts/bundle/report.mjs",
     "lighthouse-summary": "node scripts/bundle/lighthouse-summary.mjs",
     "mcptest": "vite-node scripts/mcptest.ts",
+    "monitor": "vite-node scripts/monitor.ts",
     "typecheck": "tsc --noEmit",
     "validate-catalog": "vite-node scripts/run-validate-catalog.ts",
     "oauth-sweep": "vite-node scripts/oauth-sweep.ts",
