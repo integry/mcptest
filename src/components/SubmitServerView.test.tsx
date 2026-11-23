@@ -1,4 +1,5 @@
 import React, { act } from 'react';
+import { MemoryRouter } from 'react-router-dom';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import SubmitServerView from './SubmitServerView';
@@ -39,7 +40,7 @@ const render = (props: Partial<React.ComponentProps<typeof SubmitServerView>> = 
   document.body.appendChild(container);
   const probe = vi.fn(async (url: string) => evidenceFor(url));
   root = createRoot(container);
-  act(() => root!.render(<SubmitServerView probe={probe} submitUrl="/api/catalog/submissions" turnstileSiteKey="" {...props} />));
+  act(() => root!.render(<MemoryRouter><SubmitServerView probe={probe} submitUrl="/api/catalog/submissions" turnstileSiteKey="" {...props} /></MemoryRouter>));
   return { container, probe };
 };
 

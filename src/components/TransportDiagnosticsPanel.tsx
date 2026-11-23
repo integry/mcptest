@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import React from 'react';
 import type {
   TransportDiagnostic,
@@ -119,7 +120,7 @@ const TransportDiagnosticsPanel: React.FC<TransportDiagnosticsPanelProps> = ({
                   )}
                   <p className="small mb-1"><strong>How to fix:</strong> {diagnostic.remediation.summary}</p>
                   {learnMore && (
-                    <p className="small mb-1">Learn more: <a href={learnMore.path}>{learnMore.title}</a></p>
+                    <p className="small mb-1">Learn more: <Link to={learnMore.path}>{learnMore.title}</Link></p>
                   )}
                   <details>
                     <summary className="small">Code hints for common stacks</summary>

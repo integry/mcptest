@@ -1,6 +1,9 @@
 import type { Locator, Page } from '@playwright/test';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { APP_PORT } from '../../playwright.config';
-import { applySiteAssistantToHtml, readSiteAssistantEnv, SITE_ASSISTANT_META_NAME } from '../../src/siteAssistant/config.mts';
+import { readSiteAssistantEnv, SITE_ASSISTANT_BOOT_SOURCE, SITE_ASSISTANT_META_NAME } from '../../src/siteAssistant/config.mts';
+import { siteAssistantHtmlTransform } from '../../src/siteAssistant/html.mts';
 import { expect, hasHorizontalScroll, mockUrl, test } from './fixtures';
 
 /**
@@ -19,12 +22,17 @@ import { expect, hasHorizontalScroll, mockUrl, test } from './fixtures';
  * load.
  */
 
+const applySiteAssistantToHtml = siteAssistantHtmlTransform(readFileSync(resolve('src/siteAssistant/boot.js')));
 const ENDPOINT = 'https://solv.example.test';
 const CONFIG = readSiteAssistantEnv({ VITE_SOLV_ENDPOINT: ENDPOINT, VITE_SOLV_ASSISTANT_KEY: 'pk_e2e_test' })!;
 
 const CHECK_FRAME = `${ENDPOINT}/v1/check/frame`;
 const LAUNCHER_LABEL = 'Ask MCP Test AI';
 const PANEL_WIDTH = 460;
+const DOCK_KEY = `solv-dock:1:${CONFIG.assistantKey}`;
+const DOCK_STATE = JSON.stringify([
+  'right', `${PANEL_WIDTH}px`, 'position:fixed;top:0;right:0;bottom:0;width:460px;background:#fff', LAUNCHER_LABEL,
+]);
 
 const STUB_WIDGET = `
 customElements.define('solv-chat', class extends HTMLElement {
@@ -104,10 +112,10 @@ const CSP_CONTENT = /(<meta http-equiv="Content-Security-Policy" content=")([^"]
 const withoutBuildAssistant = (html: string): string => {
   const endpoint = CONFIG_META.exec(html)?.[1];
   if (!endpoint) return html;
-  return html.replace(CONFIG_META, '').replace(CSP_CONTENT, (_match, start: string, policy: string, end: string) => {
+  return html.replace(CONFIG_META, '').replace(/<script data-key="[^"]*">[\s\S]*?<\/script>/, '').replace(CSP_CONTENT, (_match, start: string, policy: string, end: string) => {
     const directives = policy.split(';').map(part => {
       const [name, ...sources] = part.trim().split(/\s+/);
-      return name === 'script-src' || name === 'connect-src' ? [name, ...sources.filter(source => source !== endpoint)].join(' ') : part.trim();
+      return name === 'script-src' || name === 'connect-src' ? [name, ...sources.filter(source => source !== endpoint && source !== SITE_ASSISTANT_BOOT_SOURCE)].join(' ') : part.trim();
     });
     return `${start}${directives.filter(Boolean).join('; ')}${end}`;
   });
@@ -174,6 +182,89 @@ test.describe('with VITE_SOLV_* set', () => {
         await route.fulfill({ status: 404, contentType: 'application/json', body: '{}' });
       }
     });
+  });
+
+  test('full navigation with a saved dock skips boot on excluded routes', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.addInitScript(key => {
+      // Record parser-time mutations even if the callback redirects or the boot times out.
+      new MutationObserver(records => {
+        for (const record of records) {
+          if (Array.from(record.addedNodes).some(node => node instanceof HTMLElement && node.id === key)) {
+            document.documentElement.dataset.sawDockPlaceholder = 'true';
+          }
+          if (record.type === 'attributes' && record.target === document.documentElement
+            && (document.documentElement.style.getPropertyValue('--solv-chat-panel-width')
+              || record.oldValue?.includes('--solv-chat-panel-width'))) {
+            document.documentElement.dataset.sawDockReservation = 'true';
+          }
+        }
+      }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['style'], attributeOldValue: true });
+    }, DOCK_KEY);
+
+    const root = page.locator('html');
+    await page.goto('/learn');
+    await page.evaluate(([key, value]) => sessionStorage.setItem(key, value), [DOCK_KEY, DOCK_STATE]);
+
+    for (const path of ['/oauth/callback', '/space/team']) {
+      await page.goto(path, { waitUntil: 'domcontentloaded' });
+      expect(await root.getAttribute('data-saw-dock-placeholder'), path).toBeNull();
+      expect(await root.getAttribute('data-saw-dock-reservation'), path).toBeNull();
+      expect(await page.evaluate(key => sessionStorage.getItem(key), DOCK_KEY)).toBe(DOCK_STATE);
+    }
+
+    await page.goto('/learn', { waitUntil: 'domcontentloaded' });
+    await expect(root).toHaveAttribute('data-saw-dock-placeholder', 'true');
+    await expect(root).toHaveAttribute('data-saw-dock-reservation', 'true');
+    await expect.poll(() => widgetRequests).toEqual([`${ENDPOINT}/widget.js`]);
+    // The stub leaves the placeholder in place so the normal boot fallback releases it.
+    await expect(page.locator(`div[id="${DOCK_KEY}"]`)).toHaveCount(0);
+    expect(await root.evaluate(el => el.style.getPropertyValue('--solv-chat-panel-width'))).toBe('');
+    expect(policyViolations).toEqual([]);
+  });
+
+  test('client-side navigation releases the boot dock while the widget is loading', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.addInitScript(([key, value]) => {
+      sessionStorage.setItem(key, value);
+      const schedule = window.setTimeout.bind(window);
+      // Hold the fallback so only route cleanup can remove the placeholder.
+      Object.defineProperty(window, 'setTimeout', {
+        value: (handler: TimerHandler, delay?: number, ...args: unknown[]) => schedule(handler, delay === 3000 ? 30_000 : delay, ...args),
+      });
+    }, [DOCK_KEY, DOCK_STATE]);
+    let releaseWidget!: () => void;
+    const widgetGate = new Promise<void>(resolve => { releaseWidget = resolve; });
+    await page.route(`${ENDPOINT}/widget.js`, async route => {
+      await widgetGate;
+      await route.fallback();
+    });
+
+    try {
+      const widgetRequest = page.waitForRequest(`${ENDPOINT}/widget.js`);
+      await page.goto('/submit', { waitUntil: 'domcontentloaded' });
+      await widgetRequest;
+      await expect.poll(() => page.evaluate(() => window.history.state?.idx)).toBe(0);
+      const placeholder = page.locator(`div[id="${DOCK_KEY}"]`);
+      await expect(placeholder).toBeVisible();
+      await page.evaluate(() => {
+        document.documentElement.style.setProperty('--test-layout-style', 'preserve');
+        window.history.pushState(null, '', '/space');
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      });
+      await expect(placeholder).toHaveCount(0, { timeout: 1000 });
+      expect(await page.evaluate(() => {
+        const style = document.documentElement.style;
+        return [style.marginRight, style.maxWidth, style.getPropertyValue('--solv-chat-panel-width'), style.getPropertyValue('--test-layout-style')];
+      })).toEqual(['', '', '', 'preserve']);
+
+      releaseWidget();
+      await expect.poll(() => page.evaluate(() => Boolean(customElements.get('solv-chat')))).toBe(true);
+      await expect(page.locator('solv-chat')).toHaveCount(0);
+      await expect(lazyLauncher(page)).toBeHidden();
+    } finally {
+      releaseWidget();
+    }
   });
 
   test('a fixed launcher appears after idle and loads the widget only when pressed', async ({ page }) => {

@@ -1,3 +1,4 @@
+import { MemoryRouter } from 'react-router-dom';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import Footer from '../components/Footer';
@@ -162,7 +163,7 @@ describe('keyword landing pages', () => {
 
   it('keep contextual home links while the compact footer focuses on tools and project links', () => {
     const footer = document.createElement('div');
-    footer.innerHTML = renderToStaticMarkup(createElement(Footer));
+    footer.innerHTML = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(Footer)));
     const footerLinks = Array.from(footer.querySelectorAll('footer a'), link => link.getAttribute('href'));
     expect(footer.querySelectorAll('.site-link-columns > section')).toHaveLength(5);
     expect(footerLinks).toEqual(expect.arrayContaining([

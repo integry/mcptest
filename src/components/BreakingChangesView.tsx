@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import React, { useId, useRef, useState } from 'react';
 import {
   BREAKING_CHANGES_GUIDE_PATH,
@@ -190,10 +191,10 @@ const BreakingChangesView: React.FC<BreakingChangesViewProps> = ({ initialEndpoi
           risky or safe for clients that cached the old listing, with the reason.
         </p>
         <p>
-          Pasted payloads never leave your browser. Read <a href={BREAKING_CHANGES_GUIDE_PATH}>which MCP tool changes break clients</a> for
+          Pasted payloads never leave your browser. Read <Link to={BREAKING_CHANGES_GUIDE_PATH}>which MCP tool changes break clients</Link> for
           the rules and how to ship changes safely.
         </p>
-      <p><a href="/learn/which-mcp-tool-changes-break-clients">How this check works →</a></p></header>
+      <p><Link to="/learn/which-mcp-tool-changes-break-clients">How this check works →</Link></p></header>
 
       <section className="breaking-changes-section" aria-labelledby={fieldId('compare')}>
         <h2 id={fieldId('compare')}>Compare</h2>
@@ -308,7 +309,7 @@ const BreakingChangesView: React.FC<BreakingChangesViewProps> = ({ initialEndpoi
         )}
       </section>
 
-      <p className="published-reports-note">Publish a report and enable Watch weekly to get free Slack, Discord, or HTTPS webhook alerts for breaking and risky changes. Configure one destination in Published history with your removal token. <a href="/learn/which-mcp-tool-changes-break-clients#weekly-push-alerts">Learn about weekly alerts</a>.</p>
+      <p className="published-reports-note">Publish a report and enable Watch weekly to get free Slack, Discord, or HTTPS webhook alerts for breaking and risky changes. Configure one destination in Published history with your removal token. <Link to="/learn/which-mcp-tool-changes-break-clients#weekly-push-alerts">Learn about weekly alerts</Link>.</p>
 
       {result && (
         <section

@@ -10,8 +10,7 @@
  *   - carry the config meta tag exactly once, naming the configured endpoint
  *     and assistant key (missing = no assistant on that page; twice = two);
  *   - have exactly one policy, whose script-src and connect-src list the
- *     endpoint, and whose script-src allows no inline or eval'd script and no
- *     wildcard or scheme-wide host;
+ *     endpoint, and whose script-src allows only the boot script inline;
  *   - let the widget frame the chat service's visitor check: from solv.chat
  *     0.1.8 the widget runs Cloudflare Turnstile in a frame served by the
  *     endpoint (`<endpoint>/v1/check/frame`, issue #699), so frame-src (or the
@@ -19,12 +18,14 @@
  *     layout's `frame-src https:` does; the build adds nothing for it;
  *   - not load the widget itself: no `<solv-chat>` element and no widget.js
  *     script in the static HTML. The launcher adds both, once, when a visitor
- *     opens the assistant, so nothing reaches solv.chat before that.
+ *     opens the assistant or the boot script restores a docked panel.
  */
 
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { loadSite } from './check-links.mjs';
+import { SITE_ASSISTANT_BOOT_HASH, SITE_ASSISTANT_BOOT_SOURCE } from '../src/siteAssistant/config.mts';
 
 const META_NAME = 'mcptest-site-assistant';
 const META_TAG = new RegExp(`<meta name="${META_NAME}"[^>]*>`, 'g');
@@ -39,7 +40,7 @@ const attribute = (tag, name) => tag.match(new RegExp(`\\s${name}="([^"]*)"`))?.
 
 /** The sources of one directive in a policy string, or null when it is absent. */
 export function cspDirective(policy, name) {
-  const part = policy.split(';').map(value => value.trim()).find(value => value.split(/\s+/)[0] === name);
+  const part = policy.split(';').map(value => value.trim()).find(value => value.split(/\s+/)[0].toLowerCase() === name);
   return part ? part.split(/\s+/).slice(1) : null;
 }
 
@@ -89,6 +90,27 @@ export function auditSiteAssistantPage(file, html, config) {
     if (assistant !== config.assistantKey) problems.push(`${file}: site assistant key ${assistant} is not ${config.assistantKey}`);
   }
 
+  const head = html.slice(0, html.indexOf('</head>'));
+  const bootScripts = [...head.matchAll(/<script data-key="([^"]*)">([\s\S]*?)<\/script>/g)];
+  if (bootScripts.length !== 1) problems.push(`${file}: ${bootScripts.length} site assistant boot scripts (expected 1)`);
+  for (const [tag, key, body] of bootScripts) {
+    if (key !== config.assistantKey) problems.push(`${file}: site assistant boot key does not match its config`);
+    if (createHash('sha256').update(body).digest('base64') !== SITE_ASSISTANT_BOOT_HASH) {
+      problems.push(`${file}: site assistant boot script does not match its CSP hash`);
+    }
+    const bootOffset = head.indexOf(tag);
+    const lastStylesheet = Math.max(head.lastIndexOf('rel="stylesheet"'), head.lastIndexOf('<style'));
+    if (bootOffset < Math.max(lastStylesheet, head.indexOf('<meta name="viewport"'))) {
+      problems.push(`${file}: site assistant boot script should follow the viewport and stylesheets`);
+    }
+  }
+
+  for (const [tag, attributes, body] of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)) {
+    const inert = /\stype="(?:application\/ld\+json|application\/json)"/i.test(attributes);
+    if (!body.trim() || inert || bootScripts.some(([bootTag]) => bootTag === tag)) continue;
+    problems.push(`${file}: unexpected inline script`);
+  }
+
   const policies = [...html.matchAll(CSP_TAG)].map(match => match[1]);
   if (policies.length !== 1) {
     problems.push(`${file}: ${policies.length} Content-Security-Policy tags (expected 1)`);
@@ -96,13 +118,24 @@ export function auditSiteAssistantPage(file, html, config) {
     const [policy] = policies;
     const scriptSrc = cspDirective(policy, 'script-src') ?? cspDirective(policy, 'default-src') ?? [];
     const connectSrc = cspDirective(policy, 'connect-src') ?? cspDirective(policy, 'default-src') ?? [];
+    if (!scriptSrc.includes(SITE_ASSISTANT_BOOT_SOURCE)) problems.push(`${file}: script-src does not allow the site assistant boot hash`);
     if (!scriptSrc.includes(config.endpoint)) problems.push(`${file}: script-src does not allow ${config.endpoint}`);
     if (!connectSrc.includes(config.endpoint)) problems.push(`${file}: connect-src does not allow ${config.endpoint}`);
     const checkFrame = `${config.endpoint}${CHECK_FRAME_PATH}`;
     const frameSrc = cspDirective(policy, 'frame-src') ?? cspDirective(policy, 'child-src') ?? cspDirective(policy, 'default-src') ?? ['*'];
     if (!cspSourcesAllow(frameSrc, checkFrame)) problems.push(`${file}: frame-src does not allow the visitor check frame ${checkFrame}`);
-    for (const source of scriptSrc) {
-      if (UNSAFE_SCRIPT_SOURCES.has(source) || source.includes('*')) problems.push(`${file}: script-src allows ${source}`);
+    for (const name of ['script-src', 'script-src-elem', 'script-src-attr']) {
+      const sources = name === 'script-src' ? scriptSrc : cspDirective(policy, name) ?? [];
+      for (const source of sources) {
+        if (source === SITE_ASSISTANT_BOOT_SOURCE && name !== 'script-src-attr') continue;
+        if (UNSAFE_SCRIPT_SOURCES.has(source.toLowerCase()) || source.includes('*') || /^'(?:nonce-|sha(?:256|384|512)-)/i.test(source)) {
+          problems.push(`${file}: ${name} allows ${source}`);
+        }
+      }
+    }
+    const elementSources = cspDirective(policy, 'script-src-elem');
+    if (elementSources && (!elementSources.includes(SITE_ASSISTANT_BOOT_SOURCE) || !elementSources.includes(config.endpoint))) {
+      problems.push(`${file}: script-src-elem must allow the boot hash and widget origin`);
     }
   }
 

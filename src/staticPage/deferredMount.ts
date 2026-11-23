@@ -8,8 +8,8 @@
  * The mount replaces the static DOM, so whatever the visitor started on it
  * carries over: scroll positions, the focused field with its text and caret,
  * a button click no static handler served, replayed on the app's matching
- * button, and the state the static handlers changed (staticPage.ts). Links
- * need nothing: they navigate natively.
+ * button, and the state the static handlers changed (staticPage.ts). Internal
+ * navigation waits for the router to take over.
  */
 
 /** Finds an element again after the mount: its id, or its position under the nearest ancestor with an id. */
@@ -128,7 +128,7 @@ const isFormField = (target: EventTarget | null): boolean => (
 export interface DeferredMountOptions {
   root: HTMLElement;
   /** Downloads what the mount needs; resolves to the function that renders the app and resolves after its first commit. */
-  prepare: () => Promise<() => Promise<void>>;
+  prepare: () => Promise<() => Promise<void | ((path: string) => void)>>;
   /** Clicks a static handler fully served; not replayed after the mount. */
   isHandled?: (element: Element) => boolean;
   /** Reads state the static handlers changed, just before the mount; the returned function applies it to the app. */
@@ -136,11 +136,12 @@ export interface DeferredMountOptions {
 }
 
 /** Waits for the first input, then mounts. Returns a function that starts the mount immediately. */
-export const deferMountUntilInput = ({ root, prepare, isHandled = () => false, snapshotState = () => () => {} }: DeferredMountOptions): (() => void) => {
+export const deferMountUntilInput = ({ root, prepare, isHandled = () => false, snapshotState = () => () => {} }: DeferredMountOptions): ((path?: string) => void) => {
   let started = false;
   let pressed = false;
   let clickedButton: Element | null = null;
-  let render: (() => Promise<void>) | null = null;
+  let render: Awaited<ReturnType<DeferredMountOptions['prepare']>> | null = null;
+  let destination: string | undefined;
   let mounted = false;
   let mountScheduled = false;
 
@@ -186,17 +187,19 @@ export const deferMountUntilInput = ({ root, prepare, isHandled = () => false, s
       document.addEventListener('click', recordLateClick, { capture: true, passive: true });
       const stopRecording = () => document.removeEventListener('click', recordLateClick, { capture: true });
       render!()
-        .then(() => {
+        .then(navigate => {
           stopRecording();
           if (lateClick && !isHandled(lateClick.button)) click = lateClick.locator;
           restoreScroll(root, scroll);
           restoreFocus(root, focus);
           restoreState();
-          if (click) resolveElement(root, click)?.click();
+          if (destination && navigate) navigate(destination);
+          else if (click) resolveElement(root, click)?.click();
         })
         .catch(error => {
           stopRecording();
           console.error('[Startup] The app failed to mount over the static page.', error);
+          if (destination) window.location.assign(destination);
         });
     }, 0);
   };
@@ -213,6 +216,7 @@ export const deferMountUntilInput = ({ root, prepare, isHandled = () => false, s
         // The static page keeps working; the next input tries again.
         started = false;
         console.warn('[Startup] Could not load the app.', error);
+        if (destination) window.location.assign(destination);
       });
   };
 
@@ -235,5 +239,8 @@ export const deferMountUntilInput = ({ root, prepare, isHandled = () => false, s
     if (button && root.contains(button)) clickedButton = button;
   });
 
-  return start;
+  return path => {
+    if (path) destination = path;
+    start();
+  };
 };

@@ -5,7 +5,8 @@ import fs from 'node:fs'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { applySiteAssistantToHtml, readSiteAssistantEnv } from './src/siteAssistant/config.mts'
+import { readSiteAssistantEnv } from './src/siteAssistant/config.mts'
+import { siteAssistantHtmlTransform } from './src/siteAssistant/html.mts'
 import { applyServicePageToHtml, normalizeServiceApi, resolveServicePageConfig } from './src/servicePage/config.mts'
 
 // The Node content loader, shared with scripts/generate-seo-pages.js.
@@ -31,10 +32,12 @@ const versionedThemeInit = () => ({
 /**
  * The solv.chat site assistant (src/siteAssistant/config.mts): with
  * VITE_SOLV_ENDPOINT and VITE_SOLV_ASSISTANT_KEY set, index.html's policy
- * allows that one origin and carries the config meta tag. Every prerendered
- * page is built from this index.html. Unset, the HTML is unchanged.
+ * allows the engine origin and the inline dock boot script. Every prerendered
+ * page inherits the script and config from this index.html.
  */
 const siteAssistant = () => {
+  // Vendored byte-for-byte from @solvchat/widget@0.1.12, dist/boot.js.
+  const applySiteAssistantToHtml = siteAssistantHtmlTransform(fs.readFileSync(path.join(rootDir, 'src/siteAssistant/boot.js')))
   let config = null
   return {
     name: 'site-assistant',
@@ -45,8 +48,10 @@ const siteAssistant = () => {
         resolved.logger.warn('[site-assistant] VITE_SOLV_ENDPOINT must be an https origin and VITE_SOLV_ASSISTANT_KEY a public key, and both must be set; the assistant is off.')
       }
     },
-    transformIndexHtml(html) {
-      return applySiteAssistantToHtml(html, config)
+    transformIndexHtml: {
+      // Insert after Vite has emitted the stylesheet tags and processed scripts.
+      order: 'post',
+      handler: html => applySiteAssistantToHtml(html, config),
     },
   }
 }
