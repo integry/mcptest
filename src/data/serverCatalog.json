@@ -13540,8 +13540,8 @@
       "outreach"
     ],
     "listingSource": {
-      "kind": "mcp-registry",
-      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/com.warmerly%2Fwarmerly/versions/1.0.0"
+      "kind": "publisher",
+      "url": "https://warmerly.com/docs/ai"
     },
     "transport": "streamable-http",
     "requiresOAuth": true,
@@ -13556,7 +13556,8 @@
     "registryName": "com.warmerly/warmerly",
     "registryVersion": "1.0.0",
     "registryUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/com.warmerly%2Fwarmerly/versions/1.0.0",
-    "sourceUrl": "https://github.com/WarmerlyApp/mcp"
+    "sourceUrl": "https://github.com/WarmerlyApp/mcp",
+    "relevance": 40
   },
   {
     "id": "webeyez",
@@ -14350,7 +14351,7 @@
       "oauth"
     ],
     "listingSource": {
-      "kind": "community-submission",
+      "kind": "publisher",
       "url": "https://portoperatingsystem.com/"
     },
     "transport": "streamable-http",
@@ -14458,7 +14459,7 @@
       "no-auth"
     ],
     "listingSource": {
-      "kind": "community-submission",
+      "kind": "publisher",
       "url": "https://alfie.family/agent-guide.html"
     },
     "transport": "streamable-http",
@@ -14483,7 +14484,7 @@
       "oauth"
     ],
     "listingSource": {
-      "kind": "community-submission",
+      "kind": "publisher",
       "url": "https://futureinfra.ai/docs/mcp/"
     },
     "transport": "streamable-http",
@@ -14634,7 +14635,7 @@
       "no-auth"
     ],
     "listingSource": {
-      "kind": "community-submission",
+      "kind": "publisher",
       "url": "https://agentweb.live/install.md"
     },
     "transport": "streamable-http",
@@ -14944,7 +14945,7 @@
       "no-auth"
     ],
     "listingSource": {
-      "kind": "community-submission",
+      "kind": "publisher",
       "url": "https://lianxiaozhi.com/agent"
     },
     "transport": "streamable-http",
@@ -15001,7 +15002,7 @@
       "no-auth"
     ],
     "listingSource": {
-      "kind": "community-submission",
+      "kind": "publisher",
       "url": "https://cookierisk.eu/developers/mcp"
     },
     "transport": "streamable-http",
@@ -15149,7 +15150,7 @@
       "oauth"
     ],
     "listingSource": {
-      "kind": "community-submission",
+      "kind": "publisher",
       "url": "https://omniakey.com/mcp"
     },
     "transport": "streamable-http",
@@ -15226,7 +15227,7 @@
       "no-auth"
     ],
     "listingSource": {
-      "kind": "community-submission",
+      "kind": "publisher",
       "url": "https://govisit.ai/en/docs/developers/mcp/overview"
     },
     "transport": "streamable-http",
@@ -19233,7 +19234,7 @@
       "no-auth"
     ],
     "listingSource": {
-      "kind": "community-submission",
+      "kind": "publisher",
       "url": "https://i-gaming.tools/"
     },
     "transport": "streamable-http",
@@ -32051,7 +32052,7 @@
       "no-auth"
     ],
     "listingSource": {
-      "kind": "community-submission",
+      "kind": "publisher",
       "url": "https://robodebut.com/submit-with-a-coding-agent"
     },
     "transport": "streamable-http",
@@ -34407,7 +34408,8 @@
     "logoSourceKind": "generated-fallback",
     "logoRetrievedAt": "2026-11-23",
     "logoLicenseNote": "Locally generated monogram. It is not an official Onlypult mark.",
-    "homepageUrl": "https://onlypult.com/dev/mcp.html"
+    "homepageUrl": "https://onlypult.com/dev/mcp.html",
+    "relevance": 50
   },
   {
     "id": "whatjobs",
@@ -36411,5 +36413,989 @@
     "logoRetrievedAt": "2026-11-23",
     "logoLicenseNote": "Locally generated monogram for ViewMax. This monogram is not an official mark.",
     "homepageUrl": "https://viewmax.studio"
+  },
+  {
+    "id": "reassurez-moi",
+    "name": "Réassurez-Moi",
+    "url": "https://mcp.reassurez-moi.fr/mcp",
+    "description": "Compare French mortgage borrower insurance and travel insurance quotes. The MCP endpoint connects without credentials.",
+    "category": "Finance",
+    "tags": [
+      "insurance",
+      "quotes",
+      "france"
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://reassurez-moi.fr/llms.txt"
+    },
+    "directoryListings": [
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_69e0ea302aac8191b85acaba38ecf92a",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_69e0ea302aac8191b85acaba38ecf92a"
+      }
+    ],
+    "relevance": 70,
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/reassurez-moi.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-23",
+    "logoLicenseNote": "Locally generated monogram for Réassurez-Moi. This monogram is not an official mark.",
+    "homepageUrl": "https://reassurez-moi.fr"
+  },
+  {
+    "id": "todaytix",
+    "name": "TodayTix",
+    "url": "https://www.todaytix.com/mcp",
+    "description": "Search theater and live shows, check performances and seat prices, and find booking links. The MCP endpoint connects without credentials.",
+    "category": "Marketplace",
+    "tags": [
+      "theater",
+      "tickets",
+      "events"
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://www.todaytix.com/developers/mcp"
+    },
+    "directoryListings": [
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6ad0ebb86178819197262b4c14437639",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6ad0ebb86178819197262b4c14437639"
+      }
+    ],
+    "relevance": 70,
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/todaytix.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-23",
+    "logoLicenseNote": "Locally generated monogram for TodayTix. This monogram is not an official mark.",
+    "homepageUrl": "https://www.todaytix.com"
+  },
+  {
+    "id": "hovercode",
+    "name": "Hovercode",
+    "url": "https://hovercode.com/mcp/",
+    "description": "Create and manage QR codes, short links, landing pages, and forms, and view scan analytics. Discovery is anonymous, while workspace operations require OAuth or a Hovercode API token.",
+    "category": "Developer Tools",
+    "tags": [
+      "qr-codes",
+      "links"
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://hovercode.com/mcp/docs"
+    },
+    "directoryListings": [
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6ada330818f88191a8227d0aff8414ad",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6ada330818f88191a8227d0aff8414ad"
+      }
+    ],
+    "relevance": 65,
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/hovercode.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-23",
+    "logoLicenseNote": "Locally generated monogram for Hovercode. This monogram is not an official mark.",
+    "homepageUrl": "https://hovercode.com"
+  },
+  {
+    "id": "schematik",
+    "name": "Schematik",
+    "url": "https://www.schematik.io/mcp",
+    "description": "Search the public electronics parts catalog and look up published hardware build guides. The MCP endpoint connects without credentials.",
+    "category": "Developer Tools",
+    "tags": [
+      "electronics",
+      "hardware",
+      "components"
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://www.schematik.io/mcp/docs"
+    },
+    "directoryListings": [
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6aecd4c2c50881919136f6ff7050eff6",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6aecd4c2c50881919136f6ff7050eff6"
+      }
+    ],
+    "relevance": 65,
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/schematik.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-23",
+    "logoLicenseNote": "Locally generated monogram for Schematik. This monogram is not an official mark.",
+    "homepageUrl": "https://www.schematik.io"
+  },
+  {
+    "id": "conductscience",
+    "name": "ConductScience",
+    "url": "https://conductscience.com/api/mcp/catalog",
+    "description": "Search laboratory equipment and research software, read published specifications, and look up publication counts for behavioral tests. The MCP endpoint connects without credentials.",
+    "category": "Marketplace",
+    "tags": [
+      "laboratory",
+      "equipment",
+      "research"
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://conductscience.com/ai-assistants"
+    },
+    "directoryListings": [
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6aca6f02a9f0819198ea6dabb6f07973",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6aca6f02a9f0819198ea6dabb6f07973"
+      }
+    ],
+    "relevance": 55,
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "exactEndpointOnly": true,
+    "alternativeEndpoints": [
+      {
+        "url": "https://conductscience.com/api/mcp",
+        "authType": "none",
+        "description": "Endpoint used by the ChatGPT release."
+      }
+    ],
+    "caveats": [
+      "The ChatGPT release URL is https://conductscience.com/api/mcp. Both endpoints list get_product, get_test_data, and search_products, with differences in the tool descriptions."
+    ],
+    "logoUrl": "/server-logos/conductscience.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-23",
+    "logoLicenseNote": "Locally generated monogram for ConductScience. This monogram is not an official mark.",
+    "homepageUrl": "https://conductscience.com"
+  },
+  {
+    "id": "ea-ecommerce-apps",
+    "name": "EA Ecommerce Apps",
+    "url": "https://mcp.easyappsecom.com/mcp",
+    "description": "Browse EA’s Shopify apps without signing in. Reading store analytics and staging changes to bundles, popups, and other campaigns requires a connected Shopify store.",
+    "category": "Marketplace",
+    "tags": [
+      "shopify",
+      "ecommerce",
+      "apps"
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://easyappsecom.com/llms.txt"
+    },
+    "directoryListings": [
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6aed11a798a481919303dce9e3af8a24",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6aed11a798a481919303dce9e3af8a24"
+      }
+    ],
+    "relevance": 55,
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/ea-ecommerce-apps.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-23",
+    "logoLicenseNote": "Locally generated monogram for EA Ecommerce Apps. This monogram is not an official mark.",
+    "homepageUrl": "https://easyappsecom.com"
+  },
+  {
+    "id": "about-my-sound",
+    "name": "About My Sound",
+    "url": "https://aboutmysound.com/mcp",
+    "description": "Draft a musician’s website, look up artist information and shows, and retrieve stage plots. The endpoint supports anonymous discovery and website drafts.",
+    "category": "Design",
+    "tags": [
+      "websites",
+      "music",
+      "press-kits"
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://aboutmysound.com/llms.txt"
+    },
+    "directoryListings": [
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6ac51d38a41881918613c612d0052cfa",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6ac51d38a41881918613c612d0052cfa"
+      }
+    ],
+    "relevance": 50,
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/about-my-sound.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-23",
+    "logoLicenseNote": "Locally generated monogram for About My Sound. This monogram is not an official mark.",
+    "homepageUrl": "https://aboutmysound.com"
+  },
+  {
+    "id": "aerocell",
+    "name": "AeroCell eSIM Plans",
+    "url": "https://aerocell.app/mcp",
+    "description": "Compare travel eSIM plans by destination, coverage, and data allowance, and get purchase links. The MCP endpoint connects without credentials.",
+    "category": "Marketplace",
+    "tags": [
+      "esim",
+      "travel",
+      "mobile-data"
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://aerocell.app/llms.txt"
+    },
+    "directoryListings": [
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6aeb802611f08191ae861b96ed196595",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6aeb802611f08191ae861b96ed196595"
+      }
+    ],
+    "relevance": 50,
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/aerocell.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-23",
+    "logoLicenseNote": "Locally generated monogram for AeroCell eSIM Plans. This monogram is not an official mark.",
+    "homepageUrl": "https://aerocell.app"
+  },
+  {
+    "id": "astralread",
+    "name": "AstralRead",
+    "url": "https://astralread.com/mcp",
+    "description": "Calculate natal charts and transits and look up astrology references without signing in. Personal charts and calendars require an AstralRead account.",
+    "category": "Reference",
+    "tags": [
+      "astrology",
+      "readings"
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://astralread.com/llms.txt"
+    },
+    "directoryListings": [
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6ac8a40953ec8191b839addd7cff2739",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6ac8a40953ec8191b839addd7cff2739"
+      }
+    ],
+    "relevance": 50,
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/astralread.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-23",
+    "logoLicenseNote": "Locally generated monogram for AstralRead. This monogram is not an official mark.",
+    "homepageUrl": "https://astralread.com"
+  },
+  {
+    "id": "atalaya",
+    "name": "Atalaya",
+    "url": "https://atalaya.city/mcp",
+    "description": "Look up current hazards and neighborhood-level risk profiles for locations in Colombia. The read-only MCP endpoint connects without credentials.",
+    "category": "Reference",
+    "tags": [
+      "hazards",
+      "weather",
+      "colombia"
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://atalaya.city/llms.txt"
+    },
+    "directoryListings": [
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6adf6a6a3fd4819195f1efc1c3839cdf",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6adf6a6a3fd4819195f1efc1c3839cdf"
+      }
+    ],
+    "relevance": 50,
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/atalaya.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-23",
+    "logoLicenseNote": "Locally generated monogram for Atalaya. This monogram is not an official mark.",
+    "homepageUrl": "https://atalaya.city"
+  },
+  {
+    "id": "atsprep",
+    "name": "ATSPrep",
+    "url": "https://atsprep.com/mcp",
+    "description": "Review resumes, compare them with job postings, and generate interview practice questions. The MCP endpoint connects without credentials.",
+    "category": "Productivity",
+    "tags": [
+      "resumes",
+      "job-search"
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://atsprep.com/llms.txt"
+    },
+    "directoryListings": [
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6ae9aa0ece5481919a97794a84241d50",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6ae9aa0ece5481919a97794a84241d50"
+      }
+    ],
+    "relevance": 50,
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/atsprep.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-23",
+    "logoLicenseNote": "Locally generated monogram for ATSPrep. This monogram is not an official mark.",
+    "homepageUrl": "https://atsprep.com"
+  },
+  {
+    "id": "axel",
+    "name": "Axel",
+    "url": "https://helloaxel.com/mcp",
+    "description": "Compare flight and hotel prices with published rates. Discovery is anonymous, while account and trip tools require sign-in.",
+    "category": "Marketplace",
+    "tags": [
+      "flights",
+      "hotels",
+      "travel"
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://helloaxel.com/llms.txt"
+    },
+    "directoryListings": [
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6ada6d6c09e08191a1122aecb080b18e",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6ada6d6c09e08191a1122aecb080b18e"
+      }
+    ],
+    "relevance": 50,
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/axel.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-23",
+    "logoLicenseNote": "Locally generated monogram for Axel. This monogram is not an official mark.",
+    "homepageUrl": "https://helloaxel.com"
+  },
+  {
+    "id": "barcelona-taxigo",
+    "name": "Barcelona TaxiGo",
+    "url": "https://mcp.barcelonataxigo.app/mcp",
+    "description": "Search Barcelona places and estimate taxi fares without signing in. Requesting, tracking, or canceling a ride requires an account.",
+    "category": "Marketplace",
+    "tags": [
+      "taxi",
+      "travel",
+      "barcelona"
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://barcelonataxigo.app/llms.txt"
+    },
+    "directoryListings": [
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6ade8045c88881919ebae265ec9a84b8",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6ade8045c88881919ebae265ec9a84b8"
+      }
+    ],
+    "relevance": 50,
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/barcelona-taxigo.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-23",
+    "logoLicenseNote": "Locally generated monogram for Barcelona TaxiGo. This monogram is not an official mark.",
+    "homepageUrl": "https://barcelonataxigo.app"
+  },
+  {
+    "id": "beyond-wine",
+    "name": "Beyond Wine",
+    "url": "https://beyond.wine/mcp",
+    "description": "Search published claims and profiles on low- and no-alcohol specialty beverages and their producers. The read-only MCP endpoint connects without credentials.",
+    "category": "Reference",
+    "tags": [
+      "wine",
+      "food"
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://beyond.wine/llms.txt"
+    },
+    "directoryListings": [
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6ac65d6e0af88191881a97d81aff5be5",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6ac65d6e0af88191881a97d81aff5be5"
+      }
+    ],
+    "relevance": 50,
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/beyond-wine.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-23",
+    "logoLicenseNote": "Locally generated monogram for Beyond Wine. This monogram is not an official mark.",
+    "homepageUrl": "https://beyond.wine"
+  },
+  {
+    "id": "boim",
+    "name": "BOIM 보임",
+    "url": "https://boim.io/api/mcp",
+    "description": "Search South Korean businesses, public procurement vendors, and bid notices. The read-only MCP endpoint connects without credentials.",
+    "category": "Search",
+    "tags": [
+      "korea",
+      "business",
+      "procurement"
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://boim.io/llms.txt"
+    },
+    "directoryListings": [
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6ac5b1cb4f808191a94c4e1ea49a9f2c",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6ac5b1cb4f808191a94c4e1ea49a9f2c"
+      }
+    ],
+    "relevance": 50,
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/boim.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-23",
+    "logoLicenseNote": "Locally generated monogram for BOIM 보임. This monogram is not an official mark.",
+    "homepageUrl": "https://boim.io"
+  },
+  {
+    "id": "boxerbook",
+    "name": "Boxerbook",
+    "url": "https://mcp.boxerbook.com/mcp",
+    "description": "Look up boxing schedules, results, rankings, fighter records, and viewing information. The MCP endpoint connects without credentials.",
+    "category": "Reference",
+    "tags": [
+      "boxing",
+      "sports"
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://boxerbook.com/llms.txt"
+    },
+    "directoryListings": [
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6ae8b4aba58481919a8606e886bdfd50",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6ae8b4aba58481919a8606e886bdfd50"
+      }
+    ],
+    "relevance": 50,
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/boxerbook.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-23",
+    "logoLicenseNote": "Locally generated monogram for Boxerbook. This monogram is not an official mark.",
+    "homepageUrl": "https://boxerbook.com"
+  },
+  {
+    "id": "citysignal",
+    "name": "CitySignal",
+    "url": "https://citysignalai.com/mcp",
+    "description": "Check local road, transit, weather, and utility updates without signing in. Saved routes, errands, and personal briefs require a connected CitySignal account.",
+    "category": "Reference",
+    "tags": [
+      "cities",
+      "local"
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://citysignalai.com/llms.txt"
+    },
+    "directoryListings": [
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6ae3c725be548191991565433f1515a3",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6ae3c725be548191991565433f1515a3"
+      }
+    ],
+    "relevance": 50,
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/citysignal.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-23",
+    "logoLicenseNote": "Locally generated monogram for CitySignal. This monogram is not an official mark.",
+    "homepageUrl": "https://citysignalai.com"
+  },
+  {
+    "id": "clef",
+    "name": "Clef",
+    "url": "https://clefdrills.com/mcp",
+    "description": "Find music guides, transpose chord symbols, spell piano chords, and convert guitar tablature to piano pitches. The read-only MCP endpoint connects without credentials.",
+    "category": "Reference",
+    "tags": [
+      "music",
+      "education"
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://clefdrills.com/llms.txt"
+    },
+    "directoryListings": [
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6ac6f6cbd418819195c7f8b043c5ad67",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6ac6f6cbd418819195c7f8b043c5ad67"
+      }
+    ],
+    "relevance": 50,
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/clef.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-23",
+    "logoLicenseNote": "Locally generated monogram for Clef. This monogram is not an official mark.",
+    "homepageUrl": "https://clefdrills.com"
+  },
+  {
+    "id": "doubletaxation",
+    "name": "DoubleTaxation",
+    "url": "https://doubletaxation.app/api/mcp",
+    "description": "Look up tax residency rules, treaty guidance, and cross-border tax estimates for individuals. The MCP endpoint connects without credentials.",
+    "category": "Finance",
+    "tags": [
+      "tax",
+      "treaties"
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://doubletaxation.app/llms.txt"
+    },
+    "directoryListings": [
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6aebceb2766c8191b09c7a39fe1d42fc",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6aebceb2766c8191b09c7a39fe1d42fc"
+      }
+    ],
+    "relevance": 50,
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/doubletaxation.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-23",
+    "logoLicenseNote": "Locally generated monogram for DoubleTaxation. This monogram is not an official mark.",
+    "homepageUrl": "https://doubletaxation.app"
+  },
+  {
+    "id": "dropzoom",
+    "name": "DropZoom",
+    "url": "https://mcp.dropzoom.link/mcp",
+    "description": "Preview and publish web pages and files, then inspect their versions and feedback. Discovery is anonymous, while publishing and account access require a connected DropZoom account.",
+    "category": "Cloud",
+    "tags": [
+      "hosting",
+      "files",
+      "publishing"
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://dropzoom.link/llms.txt"
+    },
+    "directoryListings": [
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6acc09950fbc8191a3bc1e7dcb6b9856",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6acc09950fbc8191a3bc1e7dcb6b9856"
+      }
+    ],
+    "relevance": 50,
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/dropzoom.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-23",
+    "logoLicenseNote": "Locally generated monogram for DropZoom. This monogram is not an official mark.",
+    "homepageUrl": "https://dropzoom.link"
+  },
+  {
+    "id": "electric-state",
+    "name": "Electric State",
+    "url": "https://api.electricstate.app/mcp",
+    "description": "Find electronic music festivals, set times, and scheduled artist appearances. The MCP endpoint connects without credentials.",
+    "category": "Reference",
+    "tags": [
+      "music",
+      "festivals",
+      "events"
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://electricstate.app/llms.txt"
+    },
+    "directoryListings": [
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6ad83be5d7988191a1c7ef35a6ebcfb8",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6ad83be5d7988191a1c7ef35a6ebcfb8"
+      }
+    ],
+    "relevance": 50,
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/electric-state.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-23",
+    "logoLicenseNote": "Locally generated monogram for Electric State. This monogram is not an official mark.",
+    "homepageUrl": "https://electricstate.app"
+  },
+  {
+    "id": "foto-foto",
+    "name": "foto foto",
+    "url": "https://fotofoto.app/mcp",
+    "description": "Compare photo book prices and create a draft from supplied photos without an account. Email verification is required to claim a book before editing or ordering it.",
+    "category": "Design",
+    "tags": [
+      "photography",
+      "images"
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://fotofoto.app/llms.txt"
+    },
+    "directoryListings": [
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6ae0eb7479048191a8d191a6c2ec9e9f",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6ae0eb7479048191a8d191a6c2ec9e9f"
+      }
+    ],
+    "relevance": 50,
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/foto-foto.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-23",
+    "logoLicenseNote": "Locally generated monogram for foto foto. This monogram is not an official mark.",
+    "homepageUrl": "https://fotofoto.app"
+  },
+  {
+    "id": "getsize",
+    "name": "GetSize",
+    "url": "https://www.getsize.shoes/mcp",
+    "description": "Compare shoe sizes using shoes that already fit and optional foot measurements. Tools use a GetSize session created without an account.",
+    "category": "Marketplace",
+    "tags": [
+      "shoes",
+      "sizing"
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://www.getsize.shoes/mcp-integration"
+    },
+    "directoryListings": [
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6af0e07b1878819192e0d282f7aa5a5a",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6af0e07b1878819192e0d282f7aa5a5a"
+      }
+    ],
+    "relevance": 50,
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/getsize.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-23",
+    "logoLicenseNote": "Locally generated monogram for GetSize. This monogram is not an official mark.",
+    "homepageUrl": "https://www.getsize.shoes"
+  },
+  {
+    "id": "houseloop",
+    "name": "HouseLoop",
+    "url": "https://houseloop.ai/api/mcp",
+    "description": "Search Kansas City area homes by features identified in listing photos and look up property and market details. The MCP endpoint connects without credentials.",
+    "category": "Marketplace",
+    "tags": [
+      "housing",
+      "real-estate"
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://houseloop.ai/llms.txt"
+    },
+    "directoryListings": [
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6ab1ce197468819197e9e65724c3a535",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6ab1ce197468819197e9e65724c3a535"
+      }
+    ],
+    "relevance": 50,
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/houseloop.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-23",
+    "logoLicenseNote": "Locally generated monogram for HouseLoop. This monogram is not an official mark.",
+    "homepageUrl": "https://houseloop.ai"
+  },
+  {
+    "id": "japanese-skills",
+    "name": "Japanese Skills · 言の葉",
+    "url": "https://japaneseskills.com/mcp",
+    "description": "Look up Japanese words, kanji, grammar, and course material. The MCP endpoint connects without credentials.",
+    "category": "Reference",
+    "tags": [
+      "japanese",
+      "language-learning"
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://japaneseskills.com/llms.txt"
+    },
+    "directoryListings": [
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6ae06eac37fc8191a575068eccd27a31",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6ae06eac37fc8191a575068eccd27a31"
+      }
+    ],
+    "relevance": 50,
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/japanese-skills.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-23",
+    "logoLicenseNote": "Locally generated monogram for Japanese Skills · 言の葉. This monogram is not an official mark.",
+    "homepageUrl": "https://japaneseskills.com"
+  },
+  {
+    "id": "kmarket",
+    "name": "Kmarket",
+    "url": "https://kmarket.tj/mcp",
+    "description": "Search a Tajikistan retailer’s appliance and electronics catalog and prepare a cart. The MCP endpoint connects without credentials.",
+    "category": "Marketplace",
+    "tags": [
+      "shopping",
+      "tajikistan"
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://kmarket.tj/llms.txt"
+    },
+    "directoryListings": [
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6af44390d5948191aaf9a5b78c295dbe",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6af44390d5948191aaf9a5b78c295dbe"
+      }
+    ],
+    "relevance": 50,
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/kmarket.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-23",
+    "logoLicenseNote": "Locally generated monogram for Kmarket. This monogram is not an official mark.",
+    "homepageUrl": "https://kmarket.tj"
+  },
+  {
+    "id": "kuotia",
+    "name": "Kuotia",
+    "url": "https://kuotia.com/mcp",
+    "description": "Look up Spanish self-employment tax deadlines and estimate contributions. Discovery is anonymous, while access to a client’s gestoría records requires a connected Kuotia account.",
+    "category": "Finance",
+    "tags": [
+      "tax",
+      "self-employment",
+      "spain"
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://kuotia.com/mcp.md"
+    },
+    "directoryListings": [
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6ada29896cec8191a8d8d1e396dde974",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6ada29896cec8191a8d8d1e396dde974"
+      }
+    ],
+    "relevance": 50,
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/kuotia.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-23",
+    "logoLicenseNote": "Locally generated monogram for Kuotia. This monogram is not an official mark.",
+    "homepageUrl": "https://kuotia.com"
+  },
+  {
+    "id": "listin3d",
+    "name": "Listin3D",
+    "url": "https://listin3d.com/mcp",
+    "description": "Explore public product listings and interactive 3D examples. Favorites and seller listing tools require a connected Listin3D account.",
+    "category": "Design",
+    "tags": [
+      "3d",
+      "images"
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://listin3d.com/llms.txt"
+    },
+    "directoryListings": [
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6ac6ce67e30c8191ac67b7bcee23158f",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6ac6ce67e30c8191ac67b7bcee23158f"
+      }
+    ],
+    "relevance": 50,
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/listin3d.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-23",
+    "logoLicenseNote": "Locally generated monogram for Listin3D. This monogram is not an official mark.",
+    "homepageUrl": "https://listin3d.com"
+  },
+  {
+    "id": "lucebra",
+    "name": "Lucebra",
+    "url": "https://api.lucebra.com/mcp",
+    "description": "Search and compare online courses, instructors, and previews. Discovery is anonymous, while enrollment, saved courses, and learning progress require a connected account.",
+    "category": "Reference",
+    "tags": [
+      "courses",
+      "education"
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://lucebra.com/llms.txt"
+    },
+    "directoryListings": [
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6a88003ba910819182942cf778180b52",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6a88003ba910819182942cf778180b52"
+      }
+    ],
+    "relevance": 50,
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/lucebra.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-23",
+    "logoLicenseNote": "Locally generated monogram for Lucebra. This monogram is not an official mark.",
+    "homepageUrl": "https://lucebra.com"
+  },
+  {
+    "id": "paper-plane-post",
+    "name": "Paper Plane Post",
+    "url": "https://api.paperplanepost.com/v1/mcp",
+    "description": "Create an unpaid postcard draft from a photo and get a link to finish it. The MCP endpoint connects without credentials.",
+    "category": "Communication",
+    "tags": [
+      "mail",
+      "letters"
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://paperplanepost.com/llms.txt"
+    },
+    "directoryListings": [
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6aee211ae4808191b72c0e5d9343df84",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6aee211ae4808191b72c0e5d9343df84"
+      }
+    ],
+    "relevance": 50,
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/paper-plane-post.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-23",
+    "logoLicenseNote": "Locally generated monogram for Paper Plane Post. This monogram is not an official mark.",
+    "homepageUrl": "https://paperplanepost.com"
   }
 ]
