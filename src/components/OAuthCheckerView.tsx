@@ -64,7 +64,7 @@ export default function OAuthCheckerView() {
       <h2>{report.verdict}</h2>
       <p>Classification: {report.classification}. Metadata readiness does not prove that registration, the login page, callbacks or token exchange will succeed.</p>
       {report.providerNote && <p className="alert alert-info">{report.providerNote}</p>}
-      <p><Link className="btn btn-outline-primary" to={getServerUrl(report.endpoint)}>Open in inspector</Link></p>
+      <p><a className="btn btn-outline-primary" href={getServerUrl(report.endpoint)}>Open in inspector</a></p>
       <ol className="discovery-rows">
         {report.rows.map(row => <li className={`discovery-row is-${styles[row.status]}`} key={row.id} data-testid={`oauth-${row.id}`}>
           <div className="discovery-row-head"><span className={`discovery-status is-${styles[row.status]}`}>{labels[row.status]}</span><div className="discovery-row-title"><h3>{row.title}</h3></div></div>

@@ -1,4 +1,3 @@
-import { MemoryRouter } from 'react-router-dom';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -26,14 +25,12 @@ const renderPanel = (prerequisite: OAuthPrerequisite): HTMLDivElement => {
   root = createRoot(container);
   act(() => {
     root?.render(
-      <MemoryRouter>
-        <OAuthConfig
-          serverUrl={prerequisite.serverUrl}
-          prerequisite={prerequisite}
-          onConfigured={vi.fn()}
-          onCancel={vi.fn()}
-        />
-      </MemoryRouter>
+      <OAuthConfig
+        serverUrl={prerequisite.serverUrl}
+        prerequisite={prerequisite}
+        onConfigured={vi.fn()}
+        onCancel={vi.fn()}
+      />
     );
   });
   return container;
@@ -234,14 +231,12 @@ describe('OAuth hardening prerequisites', () => {
     root = createRoot(container);
     act(() => {
       root?.render(
-        <MemoryRouter>
-          <OAuthConfig
-            serverUrl={prerequisite.serverUrl}
-            prerequisite={prerequisite}
-            onConfigured={onConfigured}
-            onCancel={vi.fn()}
-          />
-        </MemoryRouter>
+        <OAuthConfig
+          serverUrl={prerequisite.serverUrl}
+          prerequisite={prerequisite}
+          onConfigured={onConfigured}
+          onCancel={vi.fn()}
+        />
       );
     });
     return container;

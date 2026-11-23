@@ -1,4 +1,3 @@
-import { Link } from 'react-router-dom';
 import ActionIcon from './ActionIcon';
 import React, { useEffect, useId, useRef, useMemo, useState } from 'react';
 import { STAGE_ICONS } from './ConnectionProgress';
@@ -233,18 +232,18 @@ const ConnectedSummary: React.FC<ConnectedSummaryProps> = ({
         {nextAction === 'share-report' && (
           <div className="share-report-actions">
             <span className="share-report-help">
-              <Link className="btn btn-outline-secondary" to={reportHref} aria-describedby={`${headingId}-share-help`}>
+              <a className="btn btn-outline-secondary" href={reportHref} aria-describedby={`${headingId}-share-help`}>
                 <ActionIcon name="share" /> Share report
-              </Link>
+              </a>
               <span role="tooltip" id={`${headingId}-share-help`}>{SHARE_REPORT_EXPLANATION}</span>
             </span>
           </div>
         )}
         {nextAction === 'run-report' && (
           <>
-            <Link className="btn btn-primary" to={reportHref}>
+            <a className="btn btn-primary" href={reportHref}>
               <i className="bi bi-clipboard-check" aria-hidden="true"></i> Run the full report
-            </Link>
+            </a>
             <p>
               {listing
                 ? 'Capabilities are still loading.'

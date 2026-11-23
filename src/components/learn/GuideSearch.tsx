@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { searchGuides, type GuideSearchResult, type PreparedGuideSearch } from '../../content/guideSearch';
 import { highlightSegments, type MatchRange } from '../../utils/fuzzyMatch';
 import { loadGuideSearch, type GuideSearchLoader } from './guideSearchIndex';
@@ -138,15 +138,11 @@ const GuideSearch: React.FC<GuideSearchProps> = ({
     });
   }, [shortcutEnabled, shortcutPriority, collapsed, onExpandSidebar, railFallbackRef]);
 
-  const closeResults = () => {
+  const openResult = (result: GuideSearchResult) => {
+    navigate(result.href);
     setQuery('');
     inputRef.current?.blur();
     onNavigate?.();
-  };
-
-  const openResult = (result: GuideSearchResult) => {
-    navigate(result.href);
-    closeResults();
   };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
@@ -236,10 +232,10 @@ const GuideSearch: React.FC<GuideSearchProps> = ({
             {group.results.map(result => {
               const isActive = result === activeResult;
               return (
-                <Link
+                <a
                   key={result.key}
                   id={optionId(result)}
-                  to={result.href}
+                  href={result.href}
                   role="option"
                   aria-selected={isActive}
                   tabIndex={-1}
@@ -248,7 +244,9 @@ const GuideSearch: React.FC<GuideSearchProps> = ({
                   onMouseDown={event => event.preventDefault()}
                   onMouseMove={() => setActiveIndex(results.indexOf(result))}
                   onClick={event => {
-                    if (!event.defaultPrevented && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) closeResults();
+                    if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+                    event.preventDefault();
+                    openResult(result);
                   }}
                 >
                   <span className="guide-search-option-title">
@@ -265,7 +263,7 @@ const GuideSearch: React.FC<GuideSearchProps> = ({
                       <Highlighted value={result.snippet.text} ranges={result.snippet.ranges} />
                     </span>
                   )}
-                </Link>
+                </a>
               );
             })}
           </div>

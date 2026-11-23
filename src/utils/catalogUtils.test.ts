@@ -435,22 +435,13 @@ describe('catalog category facets', () => {
 });
 
 
-it.each(getCatalogServers())(
-  'keeps diagnostic transport observations separate from concrete connection hints for $id',
-  (server) => {
-    const endpoints = new Set([
-      server.url,
-      server.browserUrl,
-      server.validatedUrl,
-      ...(server.alternativeEndpoints ?? []).map(({ url }) => url),
-    ]);
-
-    for (const endpoint of endpoints) {
-      if (!endpoint) continue;
+it('keeps diagnostic transport observations separate from concrete connection hints', () => {
+  for (const server of getCatalogServers()) {
+    for (const endpoint of [server.url, server.browserUrl, server.validatedUrl, ...(server.alternativeEndpoints ?? []).map(({ url }) => url)].filter(Boolean)) {
       const evidence = getCatalogEndpointDiagnosticEvidence(endpoint);
       if (!evidence) continue;
-      expect(evidence.preferredTransport, endpoint).toBe(resolveCatalogEndpointTransport(server, endpoint));
-      expect([undefined, 'streamable-http', 'legacy-sse'], endpoint).toContain(evidence.preferredTransport);
+      expect(evidence.preferredTransport).toBe(resolveCatalogEndpointTransport(server, endpoint));
+      expect(evidence.preferredTransport === undefined || evidence.preferredTransport === 'streamable-http' || evidence.preferredTransport === 'legacy-sse').toBe(true);
     }
   }
-);
+});

@@ -92,11 +92,16 @@ function hostname(url) {
   }
 }
 
+// Keep the source link and its icon: its width affects the title row on mount.
+// Share the drawing across rows so catalog growth doesn't repeat the SVG paths.
+function renderListingSourceIconDefinition() {
+  return '<svg width="0" height="0" aria-hidden="true" focusable="false" style="position:absolute"><defs><symbol id="catalog-source-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6m-11 5 11-11M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></symbol></defs></svg>';
+}
+
 function renderListingSource(server) {
   const label = escapeHtml(LISTING_SOURCE_LABELS[server.listingSource?.kind] || 'Community');
   if (!server.listingSource?.url) return `<span class="catalog-listing-source">${label}</span>`;
-  // Match the mounted card's icon without creating an SVG <use> shadow tree for every row.
-  return `<a class="catalog-listing-source" href="${escapeHtml(server.listingSource.url)}" target="_blank" rel="noopener noreferrer">${label}<svg class="catalog-listing-source-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15 3h6v6M10 14l11-11M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg></a>`;
+  return `<a class="catalog-listing-source" href="${escapeHtml(server.listingSource.url)}" target="_blank" rel="noopener noreferrer">${label}<svg class="catalog-listing-source-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#catalog-source-icon"/></svg></a>`;
 }
 
 /** The unfiltered catalog's first frame. Controls become active when React mounts. */
@@ -110,6 +115,7 @@ function renderCatalogFallback({ servers: seedServers, summaries }) {
   const select = (field, label, options) => `<div class="catalog-${field}-field"><label class="visually-hidden" for="catalog-${field}">${label}</label><select id="catalog-${field}" class="form-select" inert>${options.map(([value, text], index) => `<option value="${escapeHtml(value)}"${index === 0 ? ' selected' : ''}>${escapeHtml(text)}</option>`).join('')}</select></div>`;
   return [
     '<div class="catalog-view"><div class="catalog-command-bar"><div class="catalog-command-copy">',
+    renderListingSourceIconDefinition(),
     '<h1 class="mb-1">Remote MCP server catalog</h1><p class="text-muted mb-0">Inspect transport, protocol era, and authentication before you connect.</p>',
     '<a href="/submit" class="btn btn-primary mt-3"><i class="bi bi-plus-lg" aria-hidden="true"></i> Submit server</a>',
     `<div class="catalog-results-bar" aria-live="polite"><p class="catalog-results-count">Showing <strong>${servers.length}</strong> of ${servers.length} servers</p></div>`,
@@ -232,6 +238,7 @@ function renderCategoryFallback({ summary, summaries, servers, articles }) {
   const members = orderByRelevance(servers).filter(server => server.category === summary.category);
   return [
     `<div class="catalog-view seo-catalog-category" data-category="${escapeHtml(summary.slug)}">`,
+    renderListingSourceIconDefinition(),
     '<div class="catalog-command-bar"><div class="catalog-command-copy">',
     `<nav aria-label="Breadcrumb" class="catalog-category-breadcrumb"><a href="${CATALOG_PATH}">Server catalog</a><span aria-hidden="true">/</span><span aria-current="page">${escapeHtml(summary.category)}</span></nav>`,
     `<h1 class="mb-1">${escapeHtml(summary.category)} MCP servers</h1>`,

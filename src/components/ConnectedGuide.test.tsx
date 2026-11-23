@@ -1,4 +1,3 @@
-import { MemoryRouter } from 'react-router-dom';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -31,7 +30,7 @@ const mount = (element: React.ReactElement) => {
   host = document.createElement('div');
   document.body.appendChild(host);
   root = createRoot(host);
-  act(() => root!.render(<MemoryRouter>{element}</MemoryRouter>));
+  act(() => root!.render(element));
   return host;
 };
 
@@ -145,7 +144,7 @@ describe('ConnectedSummary', () => {
     const other = document.createElement('button');
     document.body.appendChild(other);
     other.focus();
-    act(() => root!.render(<MemoryRouter><ConnectedSummary {...props} nextAction="share-report" /></MemoryRouter>));
+    act(() => root!.render(<ConnectedSummary {...props} nextAction="share-report" />));
     expect(document.activeElement).toBe(other);
   });
 
@@ -162,12 +161,12 @@ describe('ConnectedSummary', () => {
     const view = mount(<ConnectedSummary {...props} listStage={{ status: 'active', detail: '1 of 4 lists received' }} />);
     expect(view.textContent).toContain('Listing capabilities');
     const offeredPrompts = { ...props.counts, prompts: { count: 0, offered: true } };
-    act(() => root!.render(<MemoryRouter><ConnectedSummary {...props} counts={offeredPrompts} discovery={{ ...COMPLETE, prompts: 'failed' }} /></MemoryRouter>));
+    act(() => root!.render(<ConnectedSummary {...props} counts={offeredPrompts} discovery={{ ...COMPLETE, prompts: 'failed' }} />));
     expect(view.textContent).toContain('prompts list failed');
-    act(() => root!.render(<MemoryRouter><ConnectedSummary {...props} counts={offeredPrompts} discovery={{ ...COMPLETE, prompts: 'partial' }} /></MemoryRouter>));
+    act(() => root!.render(<ConnectedSummary {...props} counts={offeredPrompts} discovery={{ ...COMPLETE, prompts: 'partial' }} />));
     expect(view.textContent).toContain('prompts list incomplete');
     // A capability the server never advertised is absent, not a failed list.
-    act(() => root!.render(<MemoryRouter><ConnectedSummary {...props} discovery={{ ...COMPLETE, prompts: 'failed' }} /></MemoryRouter>));
+    act(() => root!.render(<ConnectedSummary {...props} discovery={{ ...COMPLETE, prompts: 'failed' }} />));
     expect(view.textContent).toContain('0 prompts');
     expect(view.textContent).not.toContain('list failed');
   });
@@ -180,10 +179,10 @@ describe('ConnectedSummary', () => {
     expect(stage().textContent).toContain('List tools, resources and prompts: in progress');
     expect(stage().textContent).toContain('1 of 4 lists received');
     expect(live()).toBe('List tools, resources and prompts: 1 of 4 lists received.');
-    act(() => root!.render(<MemoryRouter><ConnectedSummary {...props} listStage={{ status: 'active', detail: '3 of 4 lists received' }} /></MemoryRouter>));
+    act(() => root!.render(<ConnectedSummary {...props} listStage={{ status: 'active', detail: '3 of 4 lists received' }} />));
     expect(stage().textContent).toContain('3 of 4 lists received');
     expect(live()).toBe('List tools, resources and prompts: 3 of 4 lists received.');
-    act(() => root!.render(<MemoryRouter><ConnectedSummary {...props} /></MemoryRouter>));
+    act(() => root!.render(<ConnectedSummary {...props} />));
     expect(stage().dataset.status).toBe('done');
     expect(stage().textContent).toContain('2 tools, 1 resource, 0 prompts');
     expect(live()).toBe('Connected. 2 tools, 1 resource, 0 prompts.');
@@ -247,7 +246,7 @@ describe('UnifiedPanel guidance', () => {
     const view = mount(panel());
     const empty = [...view.querySelectorAll('.capability-empty-state')].map((item) => item.querySelector('.capability-empty-title')?.textContent);
     expect(empty).toEqual(['Resources (0)', 'Prompts (0)']);
-    act(() => root!.render(<MemoryRouter>{panel({ discovery: { ...COMPLETE, prompts: 'loading' } })}</MemoryRouter>));
+    act(() => root!.render(panel({ discovery: { ...COMPLETE, prompts: 'loading' } })));
     expect([...view.querySelectorAll('.capability-empty-title')].map((item) => item.textContent)).toEqual(['Resources (0)']);
   });
 

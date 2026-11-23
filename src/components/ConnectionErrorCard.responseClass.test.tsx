@@ -1,4 +1,3 @@
-import { MemoryRouter } from 'react-router-dom';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
@@ -45,7 +44,7 @@ const renderError = (overrides: Partial<ConnectionErrorDetails>): HTMLElement =>
   const container = document.createElement('div');
   root = createRoot(container);
   act(() => {
-    root?.render(<MemoryRouter><ConnectionErrorCard
+    root?.render(<ConnectionErrorCard
       errorDetails={{
         error: 'All connections failed: Error POSTing to endpoint',
         serverUrl: ENDPOINT,
@@ -64,7 +63,7 @@ const renderError = (overrides: Partial<ConnectionErrorDetails>): HTMLElement =>
         transportEvidence: 'streamable-http',
         ...overrides,
       }}
-    /></MemoryRouter>);
+    />);
   });
   return container;
 };

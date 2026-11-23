@@ -1,4 +1,3 @@
-import { MemoryRouter } from 'react-router-dom';
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, expect, it, vi } from 'vitest';
@@ -17,7 +16,7 @@ it('labels the destination, associates errors, detects kind, and shows the signi
   const container = document.createElement('div'); document.body.append(container);
   const root = createRoot(container);
   cleanup = () => { act(() => root.unmount()); container.remove(); vi.unstubAllEnvs(); };
-  await act(async () => root.render(<MemoryRouter><PublishedWatchAlerts id="owner" token="token" enabled /></MemoryRouter>));
+  await act(async () => root.render(<PublishedWatchAlerts id="owner" token="token" enabled />));
   const input = container.querySelector<HTMLInputElement>('input[type="url"]')!;
   expect(container.querySelector('label')?.htmlFor).toBe(input.id);
   const change = async (url: string) => act(async () => {

@@ -1,6 +1,5 @@
-import { MemoryRouter } from 'react-router-dom';
 import React from 'react';
-import { renderToStaticMarkup as renderMarkup } from 'react-dom/server';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { EvaluationReport } from '../utils/evaluation';
 import ReleaseReadinessReport from './ReleaseReadinessReport';
@@ -8,8 +7,6 @@ import { createCapabilityInventory } from '../utils/capabilityInventory';
 import { analyzeToolSurface } from '../utils/toolSurfaceAnalysis';
 import { HOST_IDS } from '../compatibility';
 import { getClientCompatibilityForHost } from '../data/clientCompatibility';
-
-const renderToStaticMarkup = (element: React.ReactElement) => renderMarkup(<MemoryRouter>{element}</MemoryRouter>);
 
 const authorizationReport: EvaluationReport = {
   serverUrl: 'https://oauth.example/mcp',

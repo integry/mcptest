@@ -1,4 +1,3 @@
-import { MemoryRouter } from 'react-router-dom';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -137,7 +136,7 @@ const render = async (element: React.ReactElement) => {
   document.body.appendChild(container);
   await act(async () => {
     root = createRoot(container);
-    root.render(<MemoryRouter>{element}</MemoryRouter>);
+    root.render(element);
   });
   // Let the index and artifact fetches settle.
   await act(async () => {
@@ -399,13 +398,11 @@ describe('PublishedReportHistory', () => {
     // The page moves to another endpoint while the publish is still in flight.
     await act(async () => {
       root?.render(
-        <MemoryRouter>
-          <PublishedReportHistory
-            endpoint={OTHER}
-            report={{ ...report('legacy-sse'), serverUrl: OTHER }}
-            onPublishedStateChange={onPublishedStateChange}
-          />
-        </MemoryRouter>
+        <PublishedReportHistory
+          endpoint={OTHER}
+          report={{ ...report('legacy-sse'), serverUrl: OTHER }}
+          onPublishedStateChange={onPublishedStateChange}
+        />
       );
     });
     await act(async () => {

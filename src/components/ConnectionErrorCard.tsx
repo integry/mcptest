@@ -1,4 +1,3 @@
-import { Link } from 'react-router-dom';
 import React, { useEffect, useId, useMemo, useState } from 'react';
 import {
   generateHttpCurlCommand,
@@ -433,7 +432,7 @@ const ConnectionErrorCard: React.FC<ConnectionErrorCardProps> = ({
               {classifiedContent && (
                 <li>
                   {classifiedContent.fix}{' '}
-                  <Link to={classifiedContent.learnMore.path}>{classifiedContent.learnMore.title}</Link>
+                  <a href={classifiedContent.learnMore.path}>{classifiedContent.learnMore.title}</a>
                 </li>
               )}
               {hasTransportFinding && (

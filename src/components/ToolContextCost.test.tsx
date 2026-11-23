@@ -1,4 +1,3 @@
-import { MemoryRouter } from 'react-router-dom';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
@@ -15,7 +14,7 @@ const tool = (name: string, description: string, properties: Record<string, unkn
 
 const render = (element: React.ReactElement) => {
   const container = document.createElement('div');
-  container.innerHTML = renderToStaticMarkup(<MemoryRouter>{element}</MemoryRouter>);
+  container.innerHTML = renderToStaticMarkup(element);
   return container;
 };
 

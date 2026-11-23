@@ -1,4 +1,3 @@
-import { Link } from 'react-router-dom';
 import React, { useEffect, useId, useState } from 'react';
 import { publishedReportAlerts, type PublishedAlertStatus } from '../utils/publishedReports';
 
@@ -58,7 +57,7 @@ export default function PublishedWatchAlerts({ id, token, enabled }: { id: strin
       {secret && <div className="published-token" role="status">
         <label htmlFor={`${fieldId}-secret`}>Webhook signing secret — save now; shown once</label>
         <input id={`${fieldId}-secret`} className="form-control" readOnly value={secret} />
-        <Link to="/learn/which-mcp-tool-changes-break-clients#verifying-webhook-alerts">How to verify signatures</Link>
+        <a href="/learn/which-mcp-tool-changes-break-clients#verifying-webhook-alerts">How to verify signatures</a>
       </div>}
     </div>
   );

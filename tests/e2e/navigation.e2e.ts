@@ -89,8 +89,6 @@ test.describe('mobile drawer', () => {
 
   test('opens with the primary action first, traps focus, closes on Escape and returns focus', async ({ page }) => {
     await page.goto('/tools/discovery');
-    // The prerendered shell has the same toggle, but React wires its click handler.
-    await expect(page.locator('.seo-shell-fallback')).toHaveCount(0);
     const hamburger = page.getByRole('button', { name: 'Toggle navigation menu' });
     await expect(hamburger).toHaveAttribute('aria-expanded', 'false');
     await hamburger.click();

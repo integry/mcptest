@@ -1,4 +1,3 @@
-import { Link } from 'react-router-dom';
 import React from 'react';
 import {
   explanationPathForRule,
@@ -73,7 +72,7 @@ const BreakingChangeFindings: React.FC<BreakingChangeFindingsProps> = ({
                     <p className="breaking-finding-title">{finding.title}</p>
                     <p className="breaking-finding-reason">
                       {finding.reason}{' '}
-                      <Link to={explanationPathForRule(finding.rule)} aria-label={`Why: ${finding.title}`}>Why</Link>
+                      <a href={explanationPathForRule(finding.rule)} aria-label={`Why: ${finding.title}`}>Why</a>
                     </p>
                   </div>
                 </li>

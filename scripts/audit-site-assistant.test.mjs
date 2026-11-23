@@ -5,8 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadEnv } from 'vite';
 import { afterAll, describe, expect, it } from 'vitest';
-import { readSiteAssistantEnv, SITE_ASSISTANT_BOOT_SOURCE } from '../src/siteAssistant/config.mts';
-import { siteAssistantHtmlTransform } from '../src/siteAssistant/html.mts';
+import { applySiteAssistantToHtml, readSiteAssistantEnv } from '../src/siteAssistant/config.mts';
 import { auditSiteAssistant, auditSiteAssistantPage, CHECK_FRAME_PATH, cspDirective, cspSourcesAllow } from './audit-site-assistant.mjs';
 
 const projectRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -18,7 +17,6 @@ afterAll(() => {
 /** The production config, read the way `vite build` reads it (.env.production, then the environment). */
 const productionConfig = () => readSiteAssistantEnv(loadEnv('production', projectRoot, 'VITE_'));
 
-const applySiteAssistantToHtml = siteAssistantHtmlTransform(fs.readFileSync(path.join(projectRoot, 'src/siteAssistant/boot.js')));
 const INDEX_HTML = fs.readFileSync(path.join(projectRoot, 'index.html'), 'utf8');
 const CONFIG = { endpoint: 'https://app.solv.chat', assistantKey: 'pk_yk0rwe2xop2ocmaj5bky' };
 /** index.html as a configured build writes it: the shared layout every prerendered page starts from. */
@@ -30,11 +28,12 @@ describe('the production site assistant config', () => {
     expect(productionConfig()).toEqual(CONFIG);
   });
 
-  it('allows the widget origin and the exact boot script', () => {
+  it('extends the policy by exactly the widget origin, for scripts and connections only', () => {
     const before = policyOf(INDEX_HTML);
     const after = policyOf(BUILT);
-    expect(cspDirective(after, 'script-src')).toEqual([...cspDirective(before, 'script-src'), CONFIG.endpoint, SITE_ASSISTANT_BOOT_SOURCE]);
-    expect(cspDirective(after, 'connect-src')).toEqual([...cspDirective(before, 'connect-src'), CONFIG.endpoint]);
+    for (const name of ['script-src', 'connect-src']) {
+      expect(cspDirective(after, name)).toEqual([...cspDirective(before, name), CONFIG.endpoint]);
+    }
     // Every other directive is untouched (style-src included: the widget's styles are constructed stylesheets).
     const others = policy => policy.split(';').map(part => part.trim()).filter(part => !/^(script|connect)-src\b/.test(part));
     expect(others(after)).toEqual(others(before));
@@ -104,13 +103,6 @@ describe('auditSiteAssistantPage on fixtures', () => {
       'index.html: frame-src does not allow the visitor check frame https://app.solv.chat/v1/check/frame'],
     ['a policy whose frame-src is \'none\'', BUILT.replace('frame-src https:', "frame-src 'none'"),
       'index.html: frame-src does not allow the visitor check frame https://app.solv.chat/v1/check/frame'],
-    ['another inline script', BUILT.replace('</head>', '<script>void 0;</script></head>'), 'index.html: unexpected inline script'],
-    ['a missing boot script', BUILT.replace(/<script data-key="[^"]*">[\s\S]*?<\/script>/, ''), 'index.html: 0 site assistant boot scripts (expected 1)'],
-    ['a changed boot script', BUILT.replace('<script data-key="' + CONFIG.assistantKey + '">', '<script data-key="' + CONFIG.assistantKey + '"> '), 'index.html: site assistant boot script does not match its CSP hash'],
-    ['a missing boot hash', BUILT.replace(SITE_ASSISTANT_BOOT_SOURCE, ''), 'index.html: script-src does not allow the site assistant boot hash'],
-    ['another script hash', BUILT.replace('script-src ', "script-src 'sha384-abc' "), "index.html: script-src allows 'sha384-abc'"],
-    ['a script nonce', BUILT.replace('script-src ', "script-src 'nonce-abc' "), "index.html: script-src allows 'nonce-abc'"],
-    ['unsafe-inline for scripts', BUILT.replace('script-src ', "script-src 'unsafe-inline' "), "index.html: script-src allows 'unsafe-inline'"],
     ['unsafe-eval for scripts', BUILT.replace('script-src ', "script-src 'unsafe-eval' "), "index.html: script-src allows 'unsafe-eval'"],
     ['a wildcard script host', BUILT.replace('script-src ', 'script-src https://*.solv.chat '), 'index.html: script-src allows https://*.solv.chat'],
     ['the snippet pasted into the page as well', BUILT.replace('</body>', '<script src="https://app.solv.chat/widget.js" defer></script>\n<solv-chat assistant="pk_yk0rwe2xop2ocmaj5bky"></solv-chat></body>'),

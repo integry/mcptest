@@ -1,4 +1,3 @@
-import { Link } from 'react-router-dom';
 import React from 'react';
 import { referencePathFor } from '../utils/referenceLinks';
 
@@ -20,10 +19,10 @@ const FindingReferenceLink: React.FC<FindingReferenceLinkProps> = ({ id, showId 
   return (
     // With the id shown, the visible text already names the link; a different
     // aria-label would hide what sighted and voice users read.
-    <Link to={href} className={className} {...(showId ? {} : { 'aria-label': `Learn more about ${id}` })}>
+    <a href={href} className={className} {...(showId ? {} : { 'aria-label': `Learn more about ${id}` })}>
       {showId && <><code>{id}</code>{' '}</>}
       <span className="small text-decoration-underline">Learn more</span>
-    </Link>
+    </a>
   );
 };
 

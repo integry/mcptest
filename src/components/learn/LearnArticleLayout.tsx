@@ -3,7 +3,7 @@ import InlineTestForm from './InlineTestForm';
 import { showInlineTest } from '../../utils/guideNextSteps';
 import { enhanceEngagement } from '../../utils/pageEngagement';
 import React, { useEffect, useRef, useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import type { LearnArticleSummary } from '../../content/learnRegistry';
 import {
   CONTENT_LEVEL_LABELS,
@@ -79,8 +79,7 @@ const LearnArticleLayout: React.FC<LearnArticleLayoutProps> = ({ article, outlin
       window.removeEventListener('resize', onScroll);
     };
   }, [article.slug, outline, bodyReady]);
-  const navigate = useNavigate();
-  useEffect(() => articleRef.current ? enhanceEngagement(articleRef.current, false, navigate) : undefined, [article.slug, navigate]);
+  useEffect(() => articleRef.current ? enhanceEngagement(articleRef.current) : undefined, [article.slug]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || window.location.hash) return;

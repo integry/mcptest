@@ -1,4 +1,3 @@
-import { MemoryRouter } from 'react-router-dom';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -47,7 +46,7 @@ const render = (
   const container = document.createElement('div');
   root = createRoot(container);
   act(() => {
-    root?.render(<MemoryRouter><ConnectionErrorCard
+    root?.render(<ConnectionErrorCard
       errorDetails={{
         error: 'All connections failed',
         serverUrl: ENDPOINT,
@@ -56,7 +55,7 @@ const render = (
         ...overrides,
       }}
       {...props}
-    /></MemoryRouter>);
+    />);
   });
   return container;
 };

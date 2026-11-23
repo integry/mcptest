@@ -1,4 +1,3 @@
-import { Link } from 'react-router-dom';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { EvaluationReport } from '../utils/evaluation';
 import type { OAuthTraceV1 } from '../utils/oauthTrace';
@@ -570,7 +569,7 @@ const PublishedReportHistory: React.FC<PublishedReportHistoryProps> = ({
           <h4 id="published-interface-changes-title">Changes since the previous snapshot</h4>
           <p className="published-reports-note">
             The tool interface of the newest run against the one before it, classified for clients that cached the
-            earlier tool list. <Link to={BREAKING_CHANGES_TOOL_PATH}>Check a change before you ship it</Link>.
+            earlier tool list. <a href={BREAKING_CHANGES_TOOL_PATH}>Check a change before you ship it</a>.
           </p>
           {latestPairError ? (
             <div className="alert alert-warning mb-0 mt-2" role="alert">{latestPairError}</div>

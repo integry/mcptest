@@ -2,7 +2,7 @@ import { trackEvent, type AnalyticsEventCatalog } from './analytics';
 import { getServerUrl } from './urlUtils';
 
 let handoff: { path: string; depths: Set<number> } | undefined;
-export const submitInlineTest = (form: HTMLFormElement, navigate: (path: string) => void): boolean => {
+export const submitInlineTest = (form: HTMLFormElement): boolean => {
   const input = form.elements.namedItem('endpoint') as HTMLInputElement;
   const error = form.querySelector<HTMLElement>('[data-inline-error]');
   let path: string;
@@ -20,12 +20,12 @@ export const submitInlineTest = (form: HTMLFormElement, navigate: (path: string)
   input.removeAttribute('aria-invalid');
   if (error) error.hidden = true;
   trackEvent('guide_inline_test', { outcome: 'submitted' });
-  navigate(path);
+  window.location.assign(path);
   return true;
 };
 
-/** Shared by static pages and React. Tracks anchor actions and validates inline test forms. */
-export const enhanceEngagement = (root: HTMLElement, staticPage = false, navigate?: (path: string) => void): (() => void) => {
+/** Shared by static pages and React. Anchors navigate natively and are never replayed. */
+export const enhanceEngagement = (root: HTMLElement, staticPage = false): (() => void) => {
   const click = (event: MouseEvent) => {
     const anchor = (event.target as Element | null)?.closest<HTMLElement>('[data-server-action]');
     if (anchor) trackEvent('server_page_action', { action: anchor.dataset.serverAction as AnalyticsEventCatalog['server_page_action']['action'] });
@@ -33,9 +33,8 @@ export const enhanceEngagement = (root: HTMLElement, staticPage = false, navigat
   const submit = (event: Event) => {
     const form = event.target;
     if (!(form instanceof HTMLFormElement) || !form.matches('[data-inline-test]')) return;
-    if (!navigate) return;
     event.preventDefault();
-    submitInlineTest(form, navigate);
+    submitInlineTest(form);
   };
   root.addEventListener('click', click);
   root.addEventListener('submit', submit);

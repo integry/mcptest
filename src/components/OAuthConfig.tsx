@@ -1,4 +1,3 @@
-import { Link } from 'react-router-dom';
 import React, { useState, useEffect } from 'react';
 import {
   getOAuthCallbackUrl,
@@ -292,9 +291,9 @@ const OAuthConfig: React.FC<OAuthConfigProps> = ({
         {!isProxyAuthenticationPrerequisite && (
           <div className="d-flex flex-wrap gap-2 mb-4">
             {prerequisite && (
-              <Link className="btn btn-outline-secondary" to="/learn/mcp-oauth-2-1-reference#pre-login-troubleshooting">
+              <a className="btn btn-outline-secondary" href="/learn/mcp-oauth-2-1-reference#pre-login-troubleshooting">
                 OAuth troubleshooting for server authors
-              </Link>
+              </a>
             )}
             {prerequisite?.registrationUrl && (
               <a className="btn btn-outline-primary" href={prerequisite.registrationUrl} target="_blank" rel="noreferrer">

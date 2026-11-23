@@ -1,4 +1,3 @@
-import { MemoryRouter } from 'react-router-dom';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -74,7 +73,7 @@ describe('ToolResultView', () => {
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false;
   });
 
-  const render = (entry: LogEntry) => act(() => root.render(<MemoryRouter><ToolResultView logEntry={entry} /></MemoryRouter>));
+  const render = (entry: LogEntry) => act(() => root.render(<ToolResultView logEntry={entry} />));
   const tab = (label: string) => [...container.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
     .find(button => button.textContent === label)!;
 

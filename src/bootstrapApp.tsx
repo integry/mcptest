@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react'
 import ReactDOM from 'react-dom/client'
-import { BrowserRouter, useNavigate } from 'react-router-dom'
+import { BrowserRouter } from 'react-router-dom'
 import App from './App'
 import { AuthProvider } from './context/AuthContext'
 import { capturePrerenderedArticle } from './content/prerenderedArticle'
@@ -12,11 +12,8 @@ import { preloadViewsForPath } from './views/deferredViews'
  */
 
 /** Resolves after the tree above it has committed and run its effects. */
-type NavigateFromStatic = (path: string) => void
-
-const OnCommit: React.FC<{ onCommit: (navigate: NavigateFromStatic) => void }> = ({ onCommit }) => {
-  const navigate = useNavigate()
-  useEffect(() => onCommit(navigate), [navigate, onCommit])
+const OnCommit: React.FC<{ onCommit: () => void }> = ({ onCommit }) => {
+  useEffect(() => onCommit(), [onCommit])
   return null
 }
 
@@ -62,7 +59,7 @@ const waitForDeferredStylesheets = (): Promise<void> => {
  * fallback. A failed preload still mounts; the lazy component retries the
  * download when it renders.
  */
-export const prepareApp = async (): Promise<() => Promise<NavigateFromStatic>> => {
+export const prepareApp = async (): Promise<() => Promise<void>> => {
   const rootElement = document.getElementById('root')!
   // The guide body the generator prerendered; LearnArticlePage keeps it rather than rendering the Markdown again.
   capturePrerenderedArticle(rootElement)
@@ -71,7 +68,7 @@ export const prepareApp = async (): Promise<() => Promise<NavigateFromStatic>> =
       .catch(error => console.warn('[Startup] View chunk preload failed; mounting anyway.', error)),
     waitForDeferredStylesheets(),
   ])
-  return () => new Promise<NavigateFromStatic>((resolve) => {
+  return () => new Promise<void>((resolve) => {
     ReactDOM.createRoot(rootElement).render(
       <React.StrictMode>
         <BrowserRouter>

@@ -1,4 +1,3 @@
-import { MemoryRouter } from 'react-router-dom';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -91,7 +90,7 @@ const render = async () => {
   container = document.createElement('div');
   await act(async () => {
     root = createRoot(container);
-    root.render(<MemoryRouter><ReportView /></MemoryRouter>);
+    root.render(<ReportView />);
   });
 };
 

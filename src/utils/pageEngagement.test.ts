@@ -10,7 +10,7 @@ it('reports static anchor actions once and shows an accessible invalid URL error
   article.querySelector('a')!.addEventListener('click', e => e.preventDefault());
   article.querySelector('a')!.click();
   expect(trackEvent).toHaveBeenCalledWith('server_page_action', { action: 'test_live' });
-  expect(submitInlineTest(article.querySelector('form')!, vi.fn())).toBe(false);
+  expect(submitInlineTest(article.querySelector('form')!)).toBe(false);
   expect(article.querySelector('input')!.getAttribute('aria-invalid')).toBe('true');
   expect(article.querySelector<HTMLElement>('[data-inline-error]')!.hidden).toBe(false);
   expect(trackEvent).toHaveBeenCalledWith('guide_inline_test', { outcome: 'invalid' });

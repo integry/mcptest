@@ -354,9 +354,9 @@ const DiscoveryCheckerView: React.FC<DiscoveryCheckerViewProps> = ({
                       </span>
                     </div>
                     {/* A document link: the router would collapse the endpoint's "//" in the path. */}
-                    <Link className="btn btn-sm btn-outline-primary" to={endpoint.inspectorPath}>
+                    <a className="btn btn-sm btn-outline-primary" href={endpoint.inspectorPath}>
                       <i className="bi bi-terminal" aria-hidden="true" /> Test in inspector
-                    </Link>
+                    </a>
                   </li>
                 ))}
               </ul>
