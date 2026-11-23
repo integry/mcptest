@@ -117,7 +117,28 @@ const restoreScroll = (root: HTMLElement, snapshot: ReturnType<typeof snapshotSc
     }
   }
   const [x, y] = snapshot.window;
-  if (window.scrollX !== x || window.scrollY !== y) window.scrollTo(x, y);
+  if (window.scrollX !== x || window.scrollY !== y) {
+    window.scrollTo({ left: x, top: y, behavior: 'instant' });
+  }
+};
+
+export const readRouteScroll = (panel: HTMLElement | null) => ({
+  windowX: window.scrollX,
+  windowY: window.scrollY,
+  panelX: panel?.scrollLeft ?? 0,
+  panelY: panel?.scrollTop ?? 0,
+});
+
+export const prerenderedScrollPositions = new Map<string, ReturnType<typeof readRouteScroll>>();
+
+// Give native fragment entries a key BrowserRouter will reuse after mounting.
+// Replacing state leaves the native link, URL and history entry intact.
+const keyStaticEntry = (index: number): string => {
+  const state = window.history.state;
+  if (state?.key) return state.key;
+  const key = `static-${Math.random().toString(36).slice(2)}`;
+  window.history.replaceState({ ...state, key, idx: state?.idx ?? index }, '');
+  return key;
 };
 
 const isFormField = (target: EventTarget | null): boolean => (
@@ -143,6 +164,20 @@ export const deferMountUntilInput = ({ root, prepare, isHandled = () => false, s
   let mounted = false;
   let mountScheduled = false;
 
+  const staticPage = root.firstElementChild;
+  let entryKey = keyStaticEntry(0);
+  let entryIndex = window.history.state?.idx ?? 0;
+  let navigationCount = 0;
+  const saveStaticPosition = () => {
+    if (!staticPage?.isConnected) return;
+    navigationCount += 1;
+    // popstate precedes the browser's scroll to the incoming entry.
+    prerenderedScrollPositions.set(entryKey, readRouteScroll(staticPage.querySelector('.main-content')));
+    entryKey = keyStaticEntry(entryIndex + 1);
+    entryIndex = window.history.state?.idx ?? entryIndex;
+  };
+  window.addEventListener('popstate', saveStaticPosition, { capture: true });
+
   const listeners: [string, EventListener][] = [];
   const listen = (type: string, listener: EventListener) => {
     document.addEventListener(type, listener, { capture: true, passive: true });
@@ -165,6 +200,8 @@ export const deferMountUntilInput = ({ root, prepare, isHandled = () => false, s
       mounted = true;
       // The mount replaces the scrolling panel too; a reader keeps their place.
       const scroll = snapshotScroll(root);
+      prerenderedScrollPositions.set(entryKey, readRouteScroll(staticPage?.querySelector('.main-content') ?? null));
+      const scrollNavigationCount = navigationCount;
       const focus = snapshotFocus(root);
       const restoreState = snapshotState(root);
       // Decided now: the static handlers run after this capture-phase listener saw the click.
@@ -175,7 +212,6 @@ export const deferMountUntilInput = ({ root, prepare, isHandled = () => false, s
       // otherwise land on a button the app never sees: the last one no static
       // handler served is replayed too.
       // Only clicks on the static page: one on the app's own DOM is the app's.
-      const staticPage = root.firstElementChild;
       let lateClick: { button: Element; locator: ElementLocator | null } | null = null;
       const recordLateClick = (event: Event) => {
         const button = (event.target as Element | null)?.closest?.('button');
@@ -183,12 +219,21 @@ export const deferMountUntilInput = ({ root, prepare, isHandled = () => false, s
         lateClick = { button, locator: locateElement(root, button) };
       };
       document.addEventListener('click', recordLateClick, { capture: true, passive: true });
-      const stopRecording = () => document.removeEventListener('click', recordLateClick, { capture: true });
+      const stopRecording = () => {
+        document.removeEventListener('click', recordLateClick, { capture: true });
+        window.removeEventListener('popstate', saveStaticPosition, { capture: true });
+      };
       render!()
         .then(() => {
           stopRecording();
           if (lateClick && !isHandled(lateClick.button)) click = lateClick.locator;
-          restoreScroll(root, scroll);
+          if (navigationCount !== scrollNavigationCount) {
+            // BrowserRouter may have read the previous entry before it subscribed
+            // to popstate at commit. Give it the latest entry after subscribing.
+            window.dispatchEvent(new PopStateEvent('popstate', { state: window.history.state }));
+          } else if (window.history.state?.key === entryKey) {
+            restoreScroll(root, scroll);
+          }
           restoreFocus(root, focus);
           restoreState();
           if (click) resolveElement(root, click)?.click();

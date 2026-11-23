@@ -1,13 +1,25 @@
 import { Component, type RefObject } from 'react';
 import { useLocation, useNavigationType } from 'react-router-dom';
+import { prerenderedScrollPositions, readRouteScroll } from '../staticPage/deferredMount';
 
-type ScrollPosition = { windowX: number; windowY: number; panelX: number; panelY: number };
+type ScrollPosition = ReturnType<typeof readRouteScroll>;
 
 interface Props {
   panel: RefObject<HTMLDivElement | null>;
   location: ReturnType<typeof useLocation>;
   navigationType: ReturnType<typeof useNavigationType>;
 }
+
+type Entry = Pick<Props['location'], 'key' | 'pathname' | 'search' | 'hash'>;
+
+const entryChanged = (previous: Entry, next: Entry) =>
+  previous.key !== next.key || previous.pathname !== next.pathname ||
+  previous.search !== next.search || previous.hash !== next.hash;
+
+const browserEntry = (): Entry => {
+  const { pathname, search, hash } = window.location;
+  return { pathname, search, hash, key: history.state?.key ?? 'default' };
+};
 
 /** BrowserRouter has no scroll restoration API, and the fixed shell scrolls
  * its main panel independently of the window. Save both before React changes
@@ -16,41 +28,68 @@ class RouteScroll extends Component<Props> {
   private positions = new Map<string, ScrollPosition>();
   private observer?: MutationObserver;
   private browserRestoration = history.scrollRestoration;
+  private beforePop?: { location: Props['location']; position: ScrollPosition };
+  private locationIsCurrent = false;
+
+  private savedPosition(key: string) {
+    return this.positions.get(key) ?? prerenderedScrollPositions.get(key);
+  }
+
+  private handlePop = () => {
+    const { location, panel } = this.props;
+    const entry = browserEntry();
+    if (!entryChanged(location, entry)) return;
+    // An entry created on the static page may still use native restoration.
+    // Capture the outgoing layout before the browser applies that scroll.
+    if (this.locationIsCurrent && this.beforePop?.location !== location) {
+      this.beforePop = { location, position: readRouteScroll(panel.current) };
+    }
+    if (entry.key !== 'default' && this.savedPosition(entry.key)) history.scrollRestoration = 'manual';
+  };
 
   render() {
     return null;
   }
 
   componentDidMount() {
+    window.addEventListener('popstate', this.handlePop, { capture: true });
+    this.locationIsCurrent = !entryChanged(this.props.location, browserEntry());
+    if (!this.locationIsCurrent) return;
     history.scrollRestoration = 'manual';
-    if (this.props.location.hash) this.restore(undefined, false);
+    const { key, hash } = this.props.location;
+    const saved = this.savedPosition(key);
+    if (saved || hash) this.restore(saved, false);
   }
 
   componentWillUnmount() {
+    window.removeEventListener('popstate', this.handlePop, { capture: true });
     this.observer?.disconnect();
     history.scrollRestoration = this.browserRestoration;
   }
 
   getSnapshotBeforeUpdate(previous: Props) {
-    const panel = previous.panel.current;
-    if (previous.location.key !== this.props.location.key) {
-      this.positions.set(previous.location.key, {
-        windowX: window.scrollX,
-        windowY: window.scrollY,
-        panelX: panel?.scrollLeft ?? 0,
-        panelY: panel?.scrollTop ?? 0,
-      });
+    if (this.locationIsCurrent && entryChanged(previous.location, this.props.location)) {
+      const position = this.props.navigationType === 'POP' && this.beforePop?.location === previous.location
+        ? this.beforePop.position : readRouteScroll(previous.panel.current);
+      this.positions.set(previous.location.key, position);
+      this.beforePop = undefined;
     }
     return null;
   }
 
   componentDidUpdate(previous: Props) {
     const { location, navigationType } = this.props;
-    if (previous.location.key === location.key) return;
+    if (!entryChanged(previous.location, location)) return;
     this.observer?.disconnect();
+    this.locationIsCurrent = !entryChanged(location, browserEntry());
+    if (!this.locationIsCurrent) return;
 
     const pageChanged = previous.location.pathname !== location.pathname;
-    const saved = navigationType === 'POP' ? this.positions.get(location.key) : undefined;
+    const saved = navigationType === 'POP' && previous.location.key !== location.key
+      ? this.savedPosition(location.key) : undefined;
+    // Leave native entries that predate the handoff to the browser.
+    if (navigationType === 'POP' && location.key === 'default' && history.state?.idx == null) return;
+    history.scrollRestoration = 'manual';
     if (saved || pageChanged || location.hash || previous.location.hash) {
       this.restore(saved, pageChanged);
     }
@@ -69,9 +108,11 @@ class RouteScroll extends Component<Props> {
       panel.scrollLeft = position?.panelX ?? 0;
       const x = position?.windowX ?? 0;
       const y = position?.windowY ?? 0;
-      if (window.scrollX !== x || window.scrollY !== y) window.scrollTo(x, y);
+      if (window.scrollX !== x || window.scrollY !== y) {
+        window.scrollTo({ left: x, top: y, behavior: 'instant' });
+      }
     };
-    if (focusPage || saved) setPosition();
+    if (focusPage || (!saved && !id)) setPosition();
 
     const visible = (element: HTMLElement) => element.getClientRects().length > 0;
     const finish = () => {
@@ -87,15 +128,20 @@ class RouteScroll extends Component<Props> {
         target.focus({ preventScroll: true });
       }
       if (saved) setPosition(saved);
-      else if (id) document.getElementById(id)?.scrollIntoView?.({ block: 'start' });
+      else if (id) document.getElementById(id)?.scrollIntoView?.({ block: 'start', behavior: 'instant' });
       return true;
     };
     if (finish()) return;
 
-    this.observer = new MutationObserver(() => {
-      if (finish()) this.observer?.disconnect();
+    const href = window.location.href;
+    const key = history.state?.key;
+    const observer = new MutationObserver(() => {
+      if (window.location.href !== href || history.state?.key !== key || finish()) {
+        observer.disconnect();
+      }
     });
-    this.observer.observe(panel, { childList: true, subtree: true });
+    observer.observe(panel, { childList: true, subtree: true });
+    this.observer = observer;
   }
 }
 

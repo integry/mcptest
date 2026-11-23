@@ -168,3 +168,95 @@ test('router restores both scroll containers and focuses the new page', async ({
   await page.goForward();
   await expect.poll(offsets).toEqual(hashPosition);
 });
+
+for (const { path, selector } of [
+  { path: '/learn', selector: '.learn-track-jumps a[href^="#track-"]' },
+  { path: '/learn/mcp-clients-compared', selector: '.reading-outline a[href^="#"]' },
+]) {
+  test(`restores native fragment history created on ${path} before the router mounts`, async ({ page }) => {
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    await page.route('**/assets/bootstrapApp-*.js', async route => {
+      await gate;
+      await route.continue();
+    });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(path);
+    const staticPage = page.locator('[data-deferred-mount]');
+    await expect(staticPage).toBeVisible();
+    const jump = page.locator(selector).last();
+    const hash = (await jump.getAttribute('href'))!;
+    const offset = () => page.evaluate(() => window.scrollY);
+    await jump.scrollIntoViewIfNeeded();
+    await page.evaluate(() => window.scrollBy({ top: 40, behavior: 'instant' }));
+    const readingPosition = await offset();
+    expect(readingPosition).toBeGreaterThan(0);
+
+    let fragmentPosition: number;
+    try {
+      await jump.click();
+      await expect(page).toHaveURL(new RegExp(`${hash}$`));
+      await expect(staticPage).toBeVisible();
+      await expect(page.locator(hash)).toBeInViewport();
+      await page.evaluate(() => window.scrollBy({ top: 75, behavior: 'instant' }));
+      fragmentPosition = await offset();
+    } finally {
+      release();
+    }
+    expect(fragmentPosition).toBeGreaterThan(readingPosition);
+    await expect(staticPage).toHaveCount(0);
+    await expect.poll(offset).toBe(fragmentPosition);
+
+    await page.goBack();
+    await expect(page).toHaveURL(url => url.pathname === path && !url.hash);
+    await expect.poll(offset).toBe(readingPosition);
+    await page.goForward();
+    await expect(page).toHaveURL(new RegExp(`${hash}$`));
+    await expect.poll(offset).toBe(fragmentPosition);
+  });
+}
+
+test('pushing the same route without the fragment resets scroll and retains link focus', async ({ page }) => {
+  await page.goto('/guides');
+  await page.keyboard.press('Shift');
+  await expect(page.locator('[data-deferred-mount]')).toHaveCount(0);
+  const panel = page.locator('.main-content');
+  const track = panel.locator('a[href^="#track-"]').last();
+  const hash = (await track.getAttribute('href'))!;
+  await track.click();
+  await expect(page.locator(hash)).toBeInViewport();
+  const offsets = () => panel.evaluate(element => [window.scrollY, element.scrollTop]);
+  const fragmentPosition = await offsets();
+  expect(fragmentPosition[0]).toBeGreaterThan(0);
+
+  const guides = page.locator(sidebar).getByRole('link', { name: 'Guides', exact: true });
+  await guides.click();
+  await expect(page).toHaveURL(/\/guides$/);
+  await expect.poll(offsets).toEqual([0, 0]);
+  await expect(guides).toBeFocused();
+
+  await page.goBack();
+  await expect(page).toHaveURL(new RegExp(`${hash}$`));
+  await expect.poll(offsets).toEqual(fragmentPosition);
+});
+
+test('removing a fragment resets the fixed-shell panel and preserves its Back position', async ({ page }) => {
+  await page.goto('/catalog#catalog-search');
+  await page.keyboard.press('Shift');
+  await expect(page.locator('[data-deferred-mount]')).toHaveCount(0);
+  const panel = page.locator('.main-content');
+  const position = await panel.evaluate(element => {
+    element.scrollTop = 350;
+    return element.scrollTop;
+  });
+  expect(position).toBeGreaterThan(0);
+
+  await page.locator(sidebar).getByRole('link', { name: 'Catalog', exact: true }).click();
+  await expect(page).toHaveURL(/\/catalog$/);
+  const offset = () => panel.evaluate(element => element.scrollTop);
+  await expect.poll(offset).toBe(0);
+
+  await page.goBack();
+  await expect(page).toHaveURL(/\/catalog#catalog-search$/);
+  await expect.poll(offset).toBe(position);
+});
