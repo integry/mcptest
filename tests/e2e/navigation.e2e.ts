@@ -3,6 +3,62 @@ import { expect, test } from './fixtures';
 
 const sidebar = '#app-sidenav-desktop';
 
+for (const entry of ['landing page', 'in-app navigation'] as const) {
+  test(`restores wheel scroll on Back and Forward after entering the catalog via ${entry}`, async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    if (entry === 'landing page') {
+      await page.goto('/catalog');
+    } else {
+      await page.goto('/');
+      await page.keyboard.press('Shift');
+      await expect(page.locator('[data-deferred-mount]')).toHaveCount(0);
+      await page.locator(sidebar).getByRole('link', { name: 'Catalog', exact: true }).click();
+      await expect(page).toHaveURL(/\/catalog$/);
+    }
+
+    const panel = page.locator('.main-content');
+    await expect(panel.getByRole('heading', { level: 1, name: 'Remote MCP server catalog' })).toBeVisible();
+    const offset = () => panel.evaluate(element => element.scrollTop);
+    await panel.hover();
+    await page.mouse.wheel(0, 4800);
+    await expect.poll(offset).toBeGreaterThan(4700);
+
+    // Click a link already visible after wheeling so the test runner does not
+    // scroll to a link and change the position we expect Back to restore.
+    const serverLink = await panel.evaluate(element => {
+      const panelBounds = element.getBoundingClientRect();
+      for (const link of element.querySelectorAll<HTMLAnchorElement>('a[href^="/servers/"]')) {
+        const bounds = link.getBoundingClientRect();
+        if (bounds.height === 0 || bounds.top < panelBounds.top + 80 || bounds.bottom > panelBounds.bottom) continue;
+        const x = bounds.left + bounds.width / 2;
+        const y = bounds.top + bounds.height / 2;
+        if (link.contains(document.elementFromPoint(x, y))) {
+          return { x, y, path: link.pathname, catalogPosition: element.scrollTop };
+        }
+      }
+    });
+    expect(serverLink).toBeDefined();
+    const { x, y, path: serverPath, catalogPosition } = serverLink!;
+    await page.mouse.click(x, y);
+    await expect(page).toHaveURL(url => url.pathname === serverPath);
+    await expect(panel.getByRole('heading', { level: 1 })).toBeVisible();
+    await expect.poll(offset).toBe(0);
+
+    await panel.hover();
+    await page.mouse.wheel(0, 400);
+    await expect.poll(offset).toBeGreaterThan(100);
+    const serverPosition = await offset();
+
+    await page.goBack();
+    await expect(page).toHaveURL(/\/catalog$/);
+    await expect(panel.getByRole('heading', { level: 1, name: 'Remote MCP server catalog' })).toBeVisible();
+    await expect.poll(async () => Math.abs(await offset() - catalogPosition)).toBeLessThanOrEqual(3);
+    await page.goForward();
+    await expect(page).toHaveURL(url => url.pathname === serverPath);
+    await expect.poll(async () => Math.abs(await offset() - serverPosition)).toBeLessThanOrEqual(3);
+  });
+}
+
 test.describe('sidebar navigation', () => {
   test('groups hub destinations and reaches every entry by keyboard', async ({ page }) => {
     // Wait for the app to replace the static shell, so the mount does not
@@ -160,10 +216,10 @@ test('router restores both scroll containers and focuses the new page', async ({
   expect(serverPosition[1]).toBeGreaterThan(0);
   await page.goBack();
   await expect(page.locator('h1')).toHaveText('Remote MCP server catalog');
-  expect(await offsets()).toEqual(catalogPosition);
+  await expect.poll(offsets).toEqual(catalogPosition);
   await page.goForward();
   await expect(page.locator('h1')).toBeFocused();
-  expect(await offsets()).toEqual(serverPosition);
+  await expect.poll(offsets).toEqual(serverPosition);
 
   await page.goto('/learn');
   await page.keyboard.press('Shift');

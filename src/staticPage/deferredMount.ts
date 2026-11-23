@@ -131,6 +131,15 @@ export const readRouteScroll = (panel: HTMLElement | null) => ({
 
 export const prerenderedScrollPositions = new Map<string, ReturnType<typeof readRouteScroll>>();
 
+// The prerendered page can follow a native link before the router mounts.
+// Keep scroll with the history entry so it survives a new document on Back or Forward.
+export const readHistoryScroll = (): ReturnType<typeof readRouteScroll> | undefined =>
+  window.history.state?.routeScroll;
+
+export const saveHistoryScroll = (panel: HTMLElement | null) => {
+  window.history.replaceState({ ...window.history.state, routeScroll: readRouteScroll(panel) }, '');
+};
+
 // Give native fragment entries a key BrowserRouter will reuse after mounting.
 // Replacing state leaves the native link, URL and history entry intact.
 const keyStaticEntry = (index: number): string => {
@@ -166,6 +175,34 @@ export const deferMountUntilInput = ({ root, prepare, isHandled = () => false, s
 
   const staticPage = root.firstElementChild;
   let entryKey = keyStaticEntry(0);
+  const panel = staticPage?.querySelector<HTMLElement>('.main-content') ?? null;
+  const saveOnPageHide = () => {
+    if (panel?.isConnected) saveHistoryScroll(panel);
+  };
+  let saved = readHistoryScroll();
+  const restoreEntryKey = entryKey;
+  const restoreSavedPanelScroll = () => {
+    if (!saved || !panel?.isConnected || window.history.state?.key !== restoreEntryKey) return;
+    // The catalog lays out its offscreen rows as they enter the viewport.
+    // Keep scroll anchoring from shifting the saved offset during that layout.
+    const overflowAnchor = panel.style.overflowAnchor;
+    panel.style.overflowAnchor = 'none';
+    panel.scrollTop = saved.panelY;
+    panel.scrollLeft = saved.panelX;
+    saved = undefined;
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => { panel.style.overflowAnchor = overflowAnchor; });
+    });
+  };
+  const restoreOnPageShow = () => {
+    window.requestAnimationFrame(restoreSavedPanelScroll);
+  };
+  window.addEventListener('pagehide', saveOnPageHide);
+  if (saved) {
+    // Wait for the static document and its styles to lay out before restoring.
+    if (document.readyState === 'complete') restoreOnPageShow();
+    else window.addEventListener('pageshow', restoreOnPageShow, { once: true });
+  }
   let entryIndex = window.history.state?.idx ?? 0;
   let navigationCount = 0;
   const saveStaticPosition = () => {
@@ -199,6 +236,7 @@ export const deferMountUntilInput = ({ root, prepare, isHandled = () => false, s
       if (pressed) return;
       mounted = true;
       // The mount replaces the scrolling panel too; a reader keeps their place.
+      restoreSavedPanelScroll();
       const scroll = snapshotScroll(root);
       prerenderedScrollPositions.set(entryKey, readRouteScroll(staticPage?.querySelector('.main-content') ?? null));
       const scrollNavigationCount = navigationCount;
@@ -226,6 +264,8 @@ export const deferMountUntilInput = ({ root, prepare, isHandled = () => false, s
       render!()
         .then(() => {
           stopRecording();
+          window.removeEventListener('pagehide', saveOnPageHide);
+          window.removeEventListener('pageshow', restoreOnPageShow);
           if (lateClick && !isHandled(lateClick.button)) click = lateClick.locator;
           if (navigationCount !== scrollNavigationCount) {
             // BrowserRouter may have read the previous entry before it subscribed
