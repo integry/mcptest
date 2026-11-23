@@ -57,6 +57,7 @@ export const getRecentServerLabel = (url: string): string => {
 };
 
 export interface LandingHeroProps {
+  isActive?: boolean;
   serverUrl: string;
   onServerUrlChange: (serverUrl: string) => void;
   /**
@@ -159,6 +160,7 @@ const HomeLandingContent: React.FC<{ catalogCount: number }> = ({ catalogCount }
 );
 
 export const LandingHero: React.FC<LandingHeroProps> = ({
+  isActive = true,
   serverUrl,
   onServerUrlChange,
   onConnect,
@@ -180,6 +182,7 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
   const showRecent = recent.length > 0 && Boolean(onConnectRecent);
   const advancedOpen = showAdvanced && Boolean(advancedOptions);
   // Ids stay unique when the playground's landing is mounted (hidden) beside a landing page.
+  const Heading = isActive ? 'h1' : 'h2';
   const idPrefix = page ? `${page.key}-landing` : 'landing';
   const inputId = page ? `${page.key}-server-url` : 'serverUrl';
   const pageProps = page ? { page: page.key } : {};
@@ -215,9 +218,9 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
     >
       <div className="landing-hero">
         <div className="landing-intro">
-          <h1 id={`${idPrefix}-title`} className="landing-title">
+          <Heading id={`${idPrefix}-title`} className="landing-title">
             {page ? page.h1 : LANDING_HEADLINE}
-          </h1>
+          </Heading>
           <p className="landing-lede">
             {page ? <LandingText value={page.intro} /> : LANDING_LEDE}
           </p>

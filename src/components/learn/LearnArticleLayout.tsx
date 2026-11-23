@@ -3,7 +3,7 @@ import InlineTestForm from './InlineTestForm';
 import { showInlineTest } from '../../utils/guideNextSteps';
 import { enhanceEngagement } from '../../utils/pageEngagement';
 import React, { useEffect, useRef, useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import type { LearnArticleSummary } from '../../content/learnRegistry';
 import {
   CONTENT_LEVEL_LABELS,
@@ -48,7 +48,6 @@ const LearnArticleLayout: React.FC<LearnArticleLayoutProps> = ({ article, outlin
   const { previous, next } = getLearnArticleNeighbors(article);
   const track = getTrack(article.track);
   const articleRef = useRef<HTMLElement>(null);
-  const location = useLocation();
   const [activeHeading, setActiveHeading] = useState(outline[0]?.id);
 
   useEffect(() => {
@@ -81,28 +80,6 @@ const LearnArticleLayout: React.FC<LearnArticleLayoutProps> = ({ article, outlin
   }, [article.slug, outline, bodyReady]);
   const navigate = useNavigate();
   useEffect(() => articleRef.current ? enhanceEngagement(articleRef.current, false, navigate) : undefined, [article.slug, navigate]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined' || window.location.hash) return;
-    const scroller = getArticleScroller(articleRef.current);
-    if (scroller) scroller.scrollTop = 0;
-    else window.scrollTo?.(0, 0);
-  }, [article.slug]);
-
-  // Client-side navigation to `#section` (guide search results) does not
-  // scroll by itself; every navigation has a new key, so repeats scroll too.
-  // A body that arrives after navigation scrolls to its section once rendered.
-  useEffect(() => {
-    const id = location.hash.slice(1);
-    if (!id) return;
-    let target: HTMLElement | null = null;
-    try {
-      target = document.getElementById(decodeURIComponent(id));
-    } catch {
-      return;
-    }
-    target?.scrollIntoView?.({ block: 'start' });
-  }, [article.slug, location.hash, location.key, bodyReady]);
 
   useEffect(() => {
     // The static page already reported the view it was loaded with.

@@ -7,6 +7,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { getAnalyticsHost, logPageView, trackEvent } from './utils/analytics';
 
 // Import Components
+import RouteScrollRestoration from './components/RouteScrollRestoration';
 import Header, { MOBILE_DRAWER_ID } from './components/Header';
 import DashboardsHome from './components/DashboardsHome';
 import NotificationPopup from './components/NotificationPopup';
@@ -78,6 +79,7 @@ import type {
 import { consumeOAuthReconnectRequest } from './utils/oauthReconnect';
 import { isLandingEligible, isReturningWorkspace, needsTabStrip } from './utils/landingEligibility';
 import { createDefaultSpaces, createDefaultTabs, createFirstDashboard, withoutUntouchedDefaultDashboard } from './utils/defaultWorkspace';
+import { internalLinkPath } from './utils/internalLink';
 import { syncSiteAssistantRoute } from './siteAssistant/siteAssistant';
 
 type SavedCardRuntime = typeof import('./utils/savedCardRuntime');
@@ -245,14 +247,15 @@ function App() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Reading pages and the home page scroll the window, so a new page starts
-  // at its top. The first render keeps any scroll made on the static page.
-  const scrolledPathnameRef = useRef(location.pathname);
-  useEffect(() => {
-    if (scrolledPathnameRef.current === location.pathname) return;
-    scrolledPathnameRef.current = location.pathname;
-    if (!location.hash) window.scrollTo(0, 0);
-  }, [location.pathname, location.hash]);
+  const mainPanel = useRef<HTMLDivElement>(null);
+  const handleFragmentClick = (event: React.MouseEvent) => {
+    const anchor = event.target instanceof Element ? event.target.closest('a[href]') : null;
+    if (!anchor?.getAttribute('href')?.startsWith('#')) return;
+    const path = internalLinkPath(event);
+    if (!path) return;
+    event.preventDefault();
+    navigate(path);
+  };
 
   // The site assistant stays off on auth flows and pages with a visitor's own data.
   useLayoutEffect(() => {
@@ -1976,7 +1979,7 @@ function App() {
 
       <Header theme={theme} onToggleTheme={toggleTheme} />
 
-      <main className="app-workspace flex-grow-1 d-flex overflow-hidden" role="main">
+      <main className="app-workspace flex-grow-1 d-flex overflow-hidden" role="main" onClick={handleFragmentClick}>
         {/* Desktop Side Navigation */}
         <div className="desktop-sidebar col-auto p-2 d-flex flex-column">
           <SideNav
@@ -1993,7 +1996,7 @@ function App() {
         </div>
 
         {/* Main Panel (Playground, Dashboards, or Docs) - All views kept in DOM */}
-        <div className="main-content col overflow-auto p-3 position-relative">
+        <div ref={mainPanel} className="main-content col overflow-auto p-3 position-relative">
           
           {/* Content View: documentation and Learn articles */}
           <div
@@ -2021,7 +2024,7 @@ function App() {
           {/* Catalog View */}
           {hasVisited('catalog') && (
             <div className={`view-panel ${activeView === 'catalog' ? '' : 'd-none'}`}>
-              <CatalogView onTestServer={handleCatalogTestServer} />
+              <CatalogView onTestServer={handleCatalogTestServer} isActive={activeView === 'catalog'} />
             </div>
           )}
 
@@ -2082,8 +2085,8 @@ function App() {
           )}
 
           {/* Server Profile View */}
-          {hasVisited('server-profile') && (
-            <div className={`view-panel ${activeView === 'server-profile' ? '' : 'd-none'}`}>
+          {activeView === 'server-profile' && (
+            <div className="view-panel">
               <ServerProfileView server={selectedCatalogServer} onTestServer={handleCatalogTestServer} />
             </div>
           )}
@@ -2129,6 +2132,7 @@ function App() {
             <div className={`view-panel ${activeView === 'dashboards' ? '' : 'd-none'}`} style={{ height: '100%' }}>
               {onDashboardsPage || !selectedSpace ? (
                 <DashboardsHome
+                  isActive={activeView === 'dashboards'}
                   spaces={spaces}
                   onCreate={handleCreateSpace}
                 />
@@ -2156,6 +2160,7 @@ function App() {
             ['catalog', 'server-profile', 'docs', 'learn', 'keyword-landing', 'mcp-test-servers', 'mcp-test-client', 'service-page', 'oauth-check', 'discovery', 'breaking-changes'].includes(activeView)) && <Footer />}
         </div>
       </main>
+      <RouteScrollRestoration panel={mainPanel} />
       <NotificationPopup message={notification.message} show={notification.show} />
       
       {/* OAuth authorization prerequisite */}

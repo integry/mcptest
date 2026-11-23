@@ -20,6 +20,7 @@ import { CatalogCategoryFooter, CatalogCategorySummaryList } from './CatalogCate
 import './CatalogCategory.css';
 
 interface CatalogViewProps {
+  isActive?: boolean;
   onTestServer: (server: CatalogServer) => void;
 }
 
@@ -39,7 +40,8 @@ const SORT_OPTIONS: Array<{ value: CatalogSortOrder; label: string }> = [
   { value: 'browser-ready', label: 'Browser ready' },
 ];
 
-const CatalogView: React.FC<CatalogViewProps> = ({ onTestServer }) => {
+const CatalogView: React.FC<CatalogViewProps> = ({ onTestServer, isActive = true }) => {
+  const Heading = isActive ? 'h1' : 'h2';
   const {
     allServers,
     filteredServers,
@@ -86,7 +88,7 @@ const CatalogView: React.FC<CatalogViewProps> = ({ onTestServer }) => {
     return (
       <div className="catalog-view">
         <section className="catalog-empty-state" aria-labelledby={`${idPrefix}-catalog-missing-title`}>
-          <h1 id={`${idPrefix}-catalog-missing-title`} className="h3">Catalog category not found</h1>
+          <Heading id={`${idPrefix}-catalog-missing-title`} className="h3">Catalog category not found</Heading>
           <p>No catalog category has this address. It may have been renamed, or its servers moved to another category.</p>
           <Link className="btn btn-outline-primary" to={CATALOG_PATH}>Browse every category</Link>
         </section>
@@ -107,7 +109,7 @@ const CatalogView: React.FC<CatalogViewProps> = ({ onTestServer }) => {
                 <span aria-hidden="true">/</span>
                 <span aria-current="page">{categorySummary.category}</span>
               </nav>
-              <h1 className="mb-1">{categorySummary.category} MCP servers</h1>
+              <Heading className="mb-1">{categorySummary.category} MCP servers</Heading>
               <p className="catalog-category-intro">
                 {getCatalogCategoryIntro(categorySummary).join(' ')}
               </p>
@@ -115,7 +117,7 @@ const CatalogView: React.FC<CatalogViewProps> = ({ onTestServer }) => {
             </>
           ) : (
             <>
-              <h1 className="mb-1">Remote MCP server catalog</h1>
+              <Heading className="mb-1">Remote MCP server catalog</Heading>
               <p className="text-muted mb-0">
                 Inspect transport, protocol era, and authentication before you connect.
               </p>

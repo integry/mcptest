@@ -120,3 +120,51 @@ test.describe('mobile drawer', () => {
     await expect(page.locator('.mobile-sidebar')).toBeHidden();
   });
 });
+
+test('router restores both scroll containers and focuses the new page', async ({ page }) => {
+  await page.goto('/catalog');
+  await page.keyboard.press('Shift');
+  await expect(page.locator('[data-deferred-mount]')).toHaveCount(0);
+
+  const panel = page.locator('.main-content');
+  const offsets = () => panel.evaluate(element => [window.scrollY, element.scrollTop]);
+  const server = panel.locator('a[href^="/servers/"]').nth(20);
+  await server.scrollIntoViewIfNeeded();
+  const catalogPosition = await offsets();
+  expect(catalogPosition[1]).toBeGreaterThan(0);
+  await server.click();
+
+  await expect(page).toHaveURL(/\/servers\//);
+  await expect(page.locator('h1')).toHaveCount(1);
+  await expect(page.locator('h1')).toBeFocused();
+  expect(await offsets()).toEqual([0, 0]);
+
+  const serverPosition = await panel.evaluate(element => {
+    element.scrollTop = 400;
+    return [window.scrollY, element.scrollTop];
+  });
+  expect(serverPosition[1]).toBeGreaterThan(0);
+  await page.goBack();
+  await expect(page.locator('h1')).toHaveText('Remote MCP server catalog');
+  expect(await offsets()).toEqual(catalogPosition);
+  await page.goForward();
+  await expect(page.locator('h1')).toBeFocused();
+  expect(await offsets()).toEqual(serverPosition);
+
+  await page.goto('/learn');
+  await page.keyboard.press('Shift');
+  await expect(page.locator('[data-deferred-mount]')).toHaveCount(0);
+  const track = panel.locator('a[href^="#track-"]').last();
+  const hash = (await track.getAttribute('href'))!;
+  await track.scrollIntoViewIfNeeded();
+  const readingPosition = await offsets();
+  await track.click();
+  await expect(page.locator(hash)).toBeInViewport();
+  const hashPosition = await offsets();
+  expect(hashPosition[0]).toBeGreaterThan(readingPosition[0]);
+  expect(hashPosition[1]).toBe(0);
+  await page.goBack();
+  await expect.poll(offsets).toEqual(readingPosition);
+  await page.goForward();
+  await expect.poll(offsets).toEqual(hashPosition);
+});

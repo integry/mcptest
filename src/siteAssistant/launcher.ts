@@ -34,7 +34,7 @@ const chatIcon = (): SVGSVGElement => {
   return svg;
 };
 
-export const mountSiteAssistantLauncher = (config: SiteAssistantConfig, restore = false): SiteAssistantLauncher => {
+export const mountSiteAssistantLauncher = (config: SiteAssistantConfig, restore?: Promise<void>): SiteAssistantLauncher => {
   const button = document.createElement('button');
   button.type = 'button';
   button.className = 'site-assistant-launcher';
@@ -79,7 +79,7 @@ export const mountSiteAssistantLauncher = (config: SiteAssistantConfig, restore 
     button.setAttribute('aria-busy', 'true');
     button.setAttribute('aria-label', LOADING_LABEL);
     button.dataset.state = 'loading';
-    loading = loadWidgetScript(config).then(() => {
+    loading = (trigger === 'restore' && restore ? restore : loadWidgetScript(config)).then(() => {
       trackEvent('assistant_widget_load', { outcome: 'loaded', trigger, duration_ms: Math.round(performance.now() - started) });
       button.removeAttribute('aria-busy');
       button.setAttribute('aria-label', LABEL);
@@ -120,7 +120,7 @@ export const mountSiteAssistantLauncher = (config: SiteAssistantConfig, restore 
     });
   });
 
-  let pendingRestore = restore;
+  let pendingRestore = Boolean(restore);
 
   return {
     setActive(next: boolean) {
