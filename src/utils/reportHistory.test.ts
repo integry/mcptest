@@ -25,6 +25,12 @@ class MemoryStorage implements Storage {
   setItem(key: string, value: string) { this.values.set(key, value); }
 }
 
+const readStoredSnapshots = (storage: Storage): ReportSnapshotV1[] =>
+  JSON.parse(storage.getItem(REPORT_HISTORY_STORAGE_KEY) ?? '[]');
+
+const readExportedSnapshots = (snapshots: ReportSnapshotV1[]): ReportSnapshotV1[] =>
+  (JSON.parse(serializeReportSnapshotHistory(snapshots)) as { snapshots: ReportSnapshotV1[] }).snapshots;
+
 const report = (serverUrl = 'https://history.example/mcp'): EvaluationReport => ({
   serverUrl,
   outcome: 'scored',
@@ -116,8 +122,9 @@ describe('report snapshot history', () => {
 
     storeReportSnapshot(snapshot, storage);
 
-    const stored = storage.getItem(REPORT_HISTORY_STORAGE_KEY) || '';
-    expect(stored).not.toContain(credential);
+    const [stored] = readStoredSnapshots(storage);
+    expect(stored.report.toolSurfaceAnalysis?.toolDefinitions.tools[0].inputSchema)
+      .toBe('[REDACTED]');
     expect(snapshot.report.toolSurfaceAnalysis?.toolDefinitions.status).toBe('partial');
     expect(snapshot.report.toolSurfaceAnalysis?.toolDefinitions.tools[0].inputSchema)
       .toBe('[REDACTED]');
@@ -145,20 +152,32 @@ describe('report snapshot history', () => {
 
     storeReportSnapshot(snapshot, storage);
 
-    expect(storage.getItem(REPORT_HISTORY_STORAGE_KEY)).not.toContain(credential);
-    expect(serializeReportSnapshotHistory([snapshot])).not.toContain(credential);
+    const [stored] = readStoredSnapshots(storage);
+    const [exported] = readExportedSnapshots([snapshot]);
+    expect(stored.report.toolSurfaceAnalysis?.toolDefinitions.tools[0].inputSchema)
+      .toBe('[REDACTED]');
+    expect(exported.report.toolSurfaceAnalysis?.toolDefinitions.tools[0].inputSchema)
+      .toBe('[REDACTED]');
     expect(snapshot.report.toolSurfaceAnalysis?.toolDefinitions.status).toBe('partial');
     expect(snapshot.report.toolSurfaceAnalysis?.toolDefinitions.tools[0].inputSchema)
       .toBe('[REDACTED]');
   });
 
   it.each([
-    ['exact numeric bounds', { type: 'integer', minimum: 1234, maximum: 1234 }, '1234'],
-    ['a regex pattern', { type: 'string', pattern: '^0000$' }, '0000'],
+    [
+      'exact numeric bounds',
+      { type: 'integer', minimum: 1234, maximum: 1234 },
+      { type: 'integer', minimum: '[REDACTED]', maximum: '[REDACTED]' },
+    ],
+    [
+      'a regex pattern',
+      { type: 'string', pattern: '^0000$' },
+      { type: 'string', pattern: '[REDACTED]' },
+    ],
   ] as const)('does not store low-entropy credentials encoded by %s', (
     _constraint,
     credentialSchema,
-    credential
+    redactedSchema
   ) => {
     const unsafeReport = report();
     unsafeReport.toolSurfaceAnalysis = analyzeToolSurface([{
@@ -182,8 +201,16 @@ describe('report snapshot history', () => {
 
     storeReportSnapshot(snapshot, storage);
 
-    expect(storage.getItem(REPORT_HISTORY_STORAGE_KEY)).not.toContain(credential);
-    expect(serializeReportSnapshotHistory([snapshot])).not.toContain(credential);
+    const [stored] = readStoredSnapshots(storage);
+    const [exported] = readExportedSnapshots([snapshot]);
+    const expectedSchema = {
+      type: 'object',
+      properties: { value: { ...redactedSchema, title: '[REDACTED]' } },
+    };
+    expect(stored.report.toolSurfaceAnalysis?.toolDefinitions.tools[0].inputSchema)
+      .toEqual(expectedSchema);
+    expect(exported.report.toolSurfaceAnalysis?.toolDefinitions.tools[0].inputSchema)
+      .toEqual(expectedSchema);
     expect(snapshot.report.toolSurfaceAnalysis?.toolDefinitions.status).toBe('partial');
   });
 
@@ -208,21 +235,18 @@ describe('report snapshot history', () => {
     const alternate = makeSnapshot(5678);
     const storage = new MemoryStorage();
 
-    const storedSnapshots = storeReportSnapshot(snapshot, storage);
+    storeReportSnapshot(snapshot, storage);
     const alternateStoredSnapshots = storeReportSnapshot(alternate, new MemoryStorage());
 
-    const stored = storage.getItem(REPORT_HISTORY_STORAGE_KEY) || '';
-    const exported = serializeReportSnapshotHistory([snapshot]);
-    const exportedSnapshots = (JSON.parse(exported) as { snapshots: ReportSnapshotV1[] }).snapshots;
-    expect(stored).not.toContain('1234');
-    expect(stored).not.toContain('x-validation-value');
-    expect(exported).not.toContain('1234');
-    expect(exported).not.toContain('x-validation-value');
-    expect(storedSnapshots[0].report.toolSurfaceAnalysis?.toolDefinitions.status).toBe('partial');
-    expect(storedSnapshots[0].report.toolSurfaceAnalysis?.toolDefinitions.tools[0].inputSchema)
+    const [stored] = readStoredSnapshots(storage);
+    const [exported] = readExportedSnapshots([snapshot]);
+    expect(stored.report.toolSurfaceAnalysis?.toolDefinitions.status).toBe('partial');
+    expect(stored.report.toolSurfaceAnalysis?.toolDefinitions.tools[0].inputSchema)
       .toEqual({ type: 'object' });
-    expect(exportedSnapshots[0].report.toolSurfaceAnalysis?.toolDefinitions.status).toBe('partial');
-    expect(storedSnapshots[0].report.toolSurfaceAnalysis?.fingerprint)
+    expect(exported.report.toolSurfaceAnalysis?.toolDefinitions.status).toBe('partial');
+    expect(exported.report.toolSurfaceAnalysis?.toolDefinitions.tools[0].inputSchema)
+      .toEqual({ type: 'object' });
+    expect(stored.report.toolSurfaceAnalysis?.fingerprint)
       .toEqual(alternateStoredSnapshots[0].report.toolSurfaceAnalysis?.fingerprint);
   });
 

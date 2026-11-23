@@ -8,33 +8,41 @@ import {
   renderCompatMatrixMarkdown,
 } from './compatMatrix';
 
-const tableRows = (markdown: string) => markdown.split('\n').filter((line) => line.startsWith('| ') && !line.startsWith('| ---'));
+const tableRows = (markdown: string) => markdown.split('\n\n')
+  .filter(block => block.startsWith('| '))
+  .map(block => block.split('\n').filter(line => !line.startsWith('| ---')));
 
 describe('compat-matrix directive', () => {
-  it('renders one row per client with its version and verified date', () => {
+  it('groups compatibility details into narrow tables with a row for each client', () => {
     const markdown = renderCompatMatrixMarkdown(['claude-code', 'cursor']);
-    const rows = tableRows(markdown);
+    const tables = tableRows(markdown);
     const claudeCode = getClientCompatibility('claude-code');
     const cursor = getClientCompatibility('cursor');
 
-    expect(rows).toHaveLength(3);
-    expect(rows[0]).toContain('| Client | Version | Streamable HTTP | Legacy SSE | stdio |');
-    expect(rows[0]).toContain('| Verified |');
-    expect(rows[1]).toContain(`[Claude Code](${claudeCode?.documentationUrl})`);
-    expect(rows[1]).toContain('| 2.1.304 |');
-    expect(rows[1]).toContain(`| ${claudeCode?.verifiedOn} |`);
-    expect(rows[2]).toContain(`[Cursor](${cursor?.documentationUrl})`);
-    expect(rows[2]).toContain('DCR, pre-registered client; CIMD unknown');
+    expect(tables.map(([header]) => header)).toEqual([
+      '| Client | Streamable HTTP | Legacy SSE |',
+      '| Client | stdio | Private hosts |',
+      '| Client | OAuth client setup | Other credentials |',
+      '| Client | Configuration |',
+      '| Client | Versions | Verified |',
+    ]);
+    for (const rows of tables) {
+      expect(rows).toHaveLength(3);
+      expect(rows[1]).toContain(`[Claude Code](${claudeCode?.documentationUrl})`);
+      expect(rows[2]).toContain(`[Cursor](${cursor?.documentationUrl})`);
+    }
+    expect(tables[2][2]).toContain('DCR, pre-registered client; CIMD unknown');
+    expect(tables[4][1]).toContain('Client: 2.1.304.');
+    expect(tables[4][1]).toContain(`| ${claudeCode?.verifiedOn} |`);
     expect(markdown).toContain(CLIENT_COMPATIBILITY_DATA_URL);
   });
 
   it('prints unknown and limited cells instead of guessing', () => {
-    const [, row] = tableRows(renderCompatMatrixMarkdown(['claude-ai']));
-    const cells = row.split(' | ');
+    const [, localAccess, credentials, , versions] = tableRows(renderCompatMatrixMarkdown(['claude-ai']));
 
-    expect(cells[1]).toBe('unknown');
-    expect(cells[5]).toBe('unknown');
-    expect(row).toContain('custom headers, bearer token, API key header limited');
+    expect(localAccess[1]).toContain('| No | No |');
+    expect(versions[1]).toContain('Client: unknown. Protocol: unknown.');
+    expect(credentials[1]).toContain('custom headers, bearer token, API key header limited');
   });
 
   it('lists sourced limitations only when asked', () => {
@@ -65,10 +73,10 @@ describe('compat-matrix directive', () => {
 
     expect(expanded).not.toContain('compat-matrix');
     expect(expanded).toContain('<!-- component -->');
-    expect(tableRows(expanded)).toHaveLength(2);
+    expect(tableRows(expanded).map(rows => rows.length)).toEqual([2, 2, 2, 2, 2]);
   });
 
-  it('puts the table in the article body used for HTML and the .md export', () => {
+  it('puts the tables in the article body used for HTML and the .md export', () => {
     const article = createArticle({
       title: 'Matrix',
       summary: 'Summary',

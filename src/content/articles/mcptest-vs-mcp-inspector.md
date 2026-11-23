@@ -66,19 +66,31 @@ Five tools are commonly used to test MCP servers: the official **MCP Inspector**
 
 Every row was checked against each product's own documentation on November 11, 2026; links are listed under sources. Tools change quickly, so confirm anything critical against the current docs. mcptest.io is our product; the other tools are described as their own documentation describes them.
 
-## Comparison table
+## Comparison tables {#comparison-table}
 
-| | MCP Inspector | MCPJam | Glama inspector | Postman | mcptest.io |
-| --- | --- | --- | --- | --- | --- |
-| **Install** | `npx` with a recent Node.js (2.14.0 recommends 22.23.4, 24.22.1 or 26.12.1 and later); web UI served from a local backend | Hosted web app with no install (HTTPS servers only), or `npx`, desktop app (macOS, Windows), Docker | None, runs in the browser | Postman app and a Postman account | None, runs in the browser |
-| **Local stdio servers** | Yes | Yes, except in the hosted web app | No direct support; the tunnel recipe on its page relies on an `mcp-proxy` option removed in 6.10.0 | Yes | No, remote servers only |
-| **Protocol 2026-07-28** | Yes, opt-in (`auto` or `modern` mode); the default is the 2025 `initialize` flow | Yes; probes `server/discover`, then falls back | Not documented | Yes, negotiates stateless or legacy automatically | Yes, probes `server/discover`, then falls back |
-| **Remote OAuth** | Full flow: dynamic registration, pre-registered client, Client ID Metadata Document, enterprise IdP; step-up scopes | Guided OAuth debugger for 2025-03-26, 2025-06-18, 2025-11-25 and 2026-07-28 flows; DCR, pre-registration, CIMD | OAuth 2.1 authorization code with PKCE, dynamic registration, refresh tokens | OAuth via the Authorization tab; step-by-step OAuth 2.1 debugger | OAuth 2.1 with PKCE: pre-registered client, CIMD, DCR; bearer token and API key |
-| **Browser CORS evidence** | No: connections are made by the local Node backend | No: hosted app connects from MCPJam's servers | Partial: connects directly when a server allows browser requests, otherwise through its proxy | No: requests are sent by Postman, not a browser page | Yes: tries a direct browser connection first, records readable headers and cross-origin failures, and falls back to a proxy |
-| **Shareable results** | Protocol and network logs can be exported | Share servers with a team through Projects; eval results in a dashboard | Server configuration saved in the page URL | Requests saved and shared in collections and workspaces | Reports you can publish at a public URL, JSON and Markdown export, README badges |
-| **Server catalog** | No | No | Glama runs a separate server directory | Postman's public network has an MCP server listing | Yes, more than 300 public remote servers with periodic validation |
-| **CI usage** | CLI with JSON output, stable exit codes and `--stored-auth-only` | CLI health checks, conformance suites with JUnit output, hosted evals, GitHub Action | Not documented | Postman CLI skips MCP requests | GitHub Action, or headless CLI from a repository checkout, with JSON/Markdown reports and gate exit codes |
-| **Price** | Free, open source | Free plan with 200 credits a day; paid Pro and Team plans; inspector Apache-2.0, eval code under a separate enterprise license | Free; chat with Glama's model needs sign-in and uses Glama tokens | Free plan for one user; Solo (one user) $9 a month, Team $19 per user a month, both billed annually | Free, MIT licensed |
+| Feature | MCP Inspector | MCPJam |
+| --- | --- | --- |
+| **Install** | `npx` with a recent Node.js (2.14.0 recommends 22.23.4, 24.22.1 or 26.12.1 and later); web UI served from a local backend | Hosted web app with no install (HTTPS servers only), or `npx`, desktop app (macOS, Windows), Docker |
+| **Local stdio servers** | Yes | Yes, except in the hosted web app |
+| **Protocol 2026-07-28** | Yes, opt-in (`auto` or `modern` mode); the default is the 2025 `initialize` flow | Yes; probes `server/discover`, then falls back |
+| **Remote OAuth** | Full flow: dynamic registration, pre-registered client, Client ID Metadata Document, enterprise IdP; step-up scopes | Guided OAuth debugger for 2025-03-26, 2025-06-18, 2025-11-25 and 2026-07-28 flows; DCR, pre-registration, CIMD |
+| **Browser CORS evidence** | No: connections are made by the local Node backend | No: hosted app connects from MCPJam's servers |
+| **Shareable results** | Protocol and network logs can be exported | Share servers with a team through Projects; eval results in a dashboard |
+| **Server catalog** | No | No |
+| **CI usage** | CLI with JSON output, stable exit codes and `--stored-auth-only` | CLI health checks, conformance suites with JUnit output, hosted evals, GitHub Action |
+| **Price** | Free, open source | Free plan with 200 credits a day; paid Pro and Team plans; inspector Apache-2.0, eval code under a separate enterprise license |
+
+| Feature | Glama inspector | Postman | mcptest.io |
+| --- | --- | --- | --- |
+| **Install** | None, runs in the browser | Postman app and a Postman account | None, runs in the browser |
+| **Local stdio servers** | No direct support; the tunnel recipe on its page relies on an `mcp-proxy` option removed in 6.10.0 | Yes | No, remote servers only |
+| **Protocol 2026-07-28** | Not documented | Yes, negotiates stateless or legacy automatically | Yes, probes `server/discover`, then falls back |
+| **Remote OAuth** | OAuth 2.1 authorization code with PKCE, dynamic registration, refresh tokens | OAuth via the Authorization tab; step-by-step OAuth 2.1 debugger | OAuth 2.1 with PKCE: pre-registered client, CIMD, DCR; bearer token and API key |
+| **Browser CORS evidence** | Partial: connects directly when a server allows browser requests, otherwise through its proxy | No: requests are sent by Postman, not a browser page | Yes: tries a direct browser connection first, records readable headers and cross-origin failures, and falls back to a proxy |
+| **Shareable results** | Server configuration saved in the page URL | Requests saved and shared in collections and workspaces | Reports you can publish at a public URL, JSON and Markdown export, README badges |
+| **Server catalog** | Glama runs a separate server directory | Postman's public network has an MCP server listing | Yes, more than 300 public remote servers with periodic validation |
+| **CI usage** | Not documented | Postman CLI skips MCP requests | GitHub Action, or headless CLI from a repository checkout, with JSON/Markdown reports and gate exit codes |
+| **Price** | Free; chat with Glama's model needs sign-in and uses Glama tokens | Free plan for one user; Solo (one user) $9 a month, Team $19 per user a month, both billed annually | Free, MIT licensed |
 
 ## MCP Inspector
 

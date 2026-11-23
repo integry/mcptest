@@ -9,7 +9,7 @@ category: Protocol reference
 readingTimeMinutes: 7
 lastReviewed: "2026-11-11"
 metaTitle: MCP protocol version differences, 2024-11-05 to 2026-07-28 | mcptest.io
-metaDescription: MCP protocol version differences in one table. Transport, authorization, headers, lifecycle and capability changes per revision, plus negotiation and fallback rules.
+metaDescription: MCP protocol version comparison tables. Transport, authorization, headers, lifecycle and capability changes per revision, plus negotiation and fallback rules.
 relatedSlugs:
   - mcp-http-headers-reference
   - mcp-json-rpc-error-codes
@@ -44,21 +44,35 @@ sourceLinks:
 
 An MCP version is a date string, `YYYY-MM-DD`, naming the last day backwards-incompatible changes were made. The [versioning page](https://modelcontextprotocol.io/specification/versioning) lists `2026-07-28` as current. This page covers the five revisions a remote server can meet today.
 
-## Comparison table
+## Comparison tables {#comparison-table}
 
-| | 2024-11-05 | 2025-03-26 | 2025-06-18 | 2025-11-25 | 2026-07-28 |
-| --- | --- | --- | --- | --- | --- |
-| Remote transport | HTTP+SSE (two endpoints) | Streamable HTTP | Streamable HTTP | Streamable HTTP | Streamable HTTP, POST only |
-| Handshake | `initialize` | `initialize` | `initialize` | `initialize` | None; per-request `_meta` |
-| Version negotiation | In `initialize` | In `initialize` | In `initialize` | In `initialize` | Per request; `server/discover` advertises versions |
-| Session header | None | `Mcp-Session-Id` | `Mcp-Session-Id` | `MCP-Session-Id` | Removed |
-| `MCP-Protocol-Version` header | No | No | Required after init | Required after init | Required on every POST |
-| `Mcp-Method` / `Mcp-Name` | No | No | No | No | Required |
-| JSON-RPC batching | No | Yes | Removed | No | No |
-| GET stream | SSE endpoint | Optional | Optional | Optional | Removed |
-| `Last-Event-ID` resumption | No | Yes | Yes | Yes (always via GET) | Removed |
-| Authorization spec | None | OAuth 2.1 | Server is an OAuth resource server; RFC 9728, RFC 8707 | Adds OIDC discovery, CIMD, scope step-up | DCR deprecated; RFC 9207 `iss`; issuer-bound credentials |
-| Invalid `Origin` | Validate | Validate | Validate | Validate; `403` | Validate; `403` |
+| Feature | 2024-11-05 | 2025-03-26 |
+| --- | --- | --- |
+| Remote transport | HTTP+SSE (two endpoints) | Streamable HTTP |
+| Handshake | `initialize` | `initialize` |
+| Version negotiation | In `initialize` | In `initialize` |
+| Session header | None | `Mcp-Session-Id` |
+| `MCP-Protocol-Version` header | No | No |
+| `Mcp-Method` / `Mcp-Name` | No | No |
+| JSON-RPC batching | No | Yes |
+| GET stream | SSE endpoint | Optional |
+| `Last-Event-ID` resumption | No | Yes |
+| Authorization spec | None | OAuth 2.1 |
+| Invalid `Origin` | Validate | Validate |
+
+| Feature | 2025-06-18 | 2025-11-25 | 2026-07-28 |
+| --- | --- | --- | --- |
+| Remote transport | Streamable HTTP | Streamable HTTP | Streamable HTTP, POST only |
+| Handshake | `initialize` | `initialize` | None; per-request `_meta` |
+| Version negotiation | In `initialize` | In `initialize` | Per request; `server/discover` advertises versions |
+| Session header | `Mcp-Session-Id` | `MCP-Session-Id` | Removed |
+| `MCP-Protocol-Version` header | Required after init | Required after init | Required on every POST |
+| `Mcp-Method` / `Mcp-Name` | No | No | Required |
+| JSON-RPC batching | Removed | No | No |
+| GET stream | Optional | Optional | Removed |
+| `Last-Event-ID` resumption | Yes | Yes (always via GET) | Removed |
+| Authorization spec | Server is an OAuth resource server; RFC 9728, RFC 8707 | Adds OIDC discovery, CIMD, scope step-up | DCR deprecated; RFC 9207 `iss`; issuer-bound credentials |
+| Invalid `Origin` | Validate | Validate; `403` | Validate; `403` |
 
 Header names are case-insensitive, so the `Mcp-Session-Id`/`MCP-Session-Id` spelling change is cosmetic. See the [HTTP headers reference](/learn/mcp-http-headers-reference) for each header.
 

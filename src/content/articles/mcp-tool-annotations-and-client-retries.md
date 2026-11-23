@@ -81,14 +81,23 @@ Answer these in order and set every hint explicitly, even when the answer matche
 
 Some combinations to check against:
 
-| Tool | `readOnlyHint` | `destructiveHint` | `idempotentHint` | `openWorldHint` |
-| --- | --- | --- | --- | --- |
-| `get_invoice` | `true` | — | — | `false` |
-| `search_web` | `true` | — | — | `true` |
-| `create_comment` | `false` | `false` | `false` | `false` |
-| `set_issue_status` | `false` | `true` | `true` | `false` |
-| `delete_file` | `false` | `true` | `true` | `false` |
-| `send_email` | `false` | `false` | `false` | `true` |
+| Tool | `readOnlyHint` | `destructiveHint` |
+| --- | --- | --- |
+| `get_invoice` | `true` | — |
+| `search_web` | `true` | — |
+| `create_comment` | `false` | `false` |
+| `set_issue_status` | `false` | `true` |
+| `delete_file` | `false` | `true` |
+| `send_email` | `false` | `false` |
+
+| Tool | `idempotentHint` | `openWorldHint` |
+| --- | --- | --- |
+| `get_invoice` | — | `false` |
+| `search_web` | — | `true` |
+| `create_comment` | `false` | `false` |
+| `set_issue_status` | `true` | `false` |
+| `delete_file` | `true` | `false` |
+| `send_email` | `false` | `true` |
 
 `set_issue_status` and `delete_file` are destructive and idempotent at once: a retry is safe, but a confirmation is still appropriate.
 

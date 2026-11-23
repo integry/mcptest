@@ -130,13 +130,21 @@ mcptest.io is our product; it is listed with the others, limits included. Every 
 
 These need no install. All of them reach remote servers only; none can start a stdio process.
 
-| Tool | What it tests | Remote vs local | Install | Open source | Price |
-| --- | --- | --- | --- | --- | --- |
-| **mcptest.io** | Protocol, auth, contract (output schemas), browser CORS | Remote HTTP; localhost only over a direct browser connection | None | Yes, MIT | Free |
-| **MCP Playground Online** | Protocol, evals, security scan | Remote in the browser; stdio and localhost in its desktop app | None; optional desktop app | No source published | Browser tools free; desktop app needs a paid plan after a 7-day trial |
-| **Glama inspector** | Protocol, auth | Remote Streamable HTTP and SSE | None, no account | No source published | Free; chat needs sign-in and uses Glama tokens |
-| **MCPJam hosted app** | Protocol, auth, evals | HTTPS servers only | None | Yes, Apache-2.0 | Free daily allowance; paid credits beyond it |
-| **Cloudflare Workers AI Playground** | Model chat with your tools | Remote by URL | None | Not documented | Not documented |
+| Tool | What it tests | Remote vs local |
+| --- | --- | --- |
+| **mcptest.io** | Protocol, auth, contract (output schemas), browser CORS | Remote HTTP; localhost only over a direct browser connection |
+| **MCP Playground Online** | Protocol, evals, security scan | Remote in the browser; stdio and localhost in its desktop app |
+| **Glama inspector** | Protocol, auth | Remote Streamable HTTP and SSE |
+| **MCPJam hosted app** | Protocol, auth, evals | HTTPS servers only |
+| **Cloudflare Workers AI Playground** | Model chat with your tools | Remote by URL |
+
+| Tool | Install | Open source | Price |
+| --- | --- | --- | --- |
+| **mcptest.io** | None | Yes, MIT | Free |
+| **MCP Playground Online** | None; optional desktop app | No source published | Browser tools free; desktop app needs a paid plan after a 7-day trial |
+| **Glama inspector** | None, no account | No source published | Free; chat needs sign-in and uses Glama tokens |
+| **MCPJam hosted app** | None | Yes, Apache-2.0 | Free daily allowance; paid credits beyond it |
+| **Cloudflare Workers AI Playground** | None | Not documented | Not documented |
 
 ### mcptest.io
 
@@ -168,12 +176,19 @@ MCPJam's hosted app is covered with its desktop and CLI versions [below](#mcpjam
 
 These run on your machine, so most can launch a stdio server as well as reach remote ones.
 
-| Tool | What it tests | Remote vs local | Install | Open source | Price |
-| --- | --- | --- | --- | --- | --- |
-| **MCP Inspector** | Protocol, auth, contract (output schemas, in source) | stdio, Streamable HTTP and SSE | `npx`, Node 22.19 or newer | Yes, Apache-2.0 (older contributions MIT during relicensing) | Free |
-| **MCPJam** | Protocol, auth, evals, client emulation | Desktop and terminal: stdio, HTTP and HTTPS | Desktop app (macOS, Windows), `npx`, Docker, or hosted | Yes, Apache-2.0 | Free to start; model usage has a daily allowance and paid credits |
-| **Postman** | Protocol, auth | stdio and Streamable HTTP | Postman app and account | No | Free plan; Solo $9 per month, Team $19 per user per month, billed annually |
-| **Insomnia** | Protocol, auth | Remote URLs documented; stdio not documented | Insomnia desktop app | Yes, Apache-2.0 | Free plan; paid plans per user |
+| Tool | What it tests | Remote vs local |
+| --- | --- | --- |
+| **MCP Inspector** | Protocol, auth, contract (output schemas, in source) | stdio, Streamable HTTP and SSE |
+| **MCPJam** | Protocol, auth, evals, client emulation | Desktop and terminal: stdio, HTTP and HTTPS |
+| **Postman** | Protocol, auth | stdio and Streamable HTTP |
+| **Insomnia** | Protocol, auth | Remote URLs documented; stdio not documented |
+
+| Tool | Install | Open source | Price |
+| --- | --- | --- | --- |
+| **MCP Inspector** | `npx`, Node 22.19 or newer | Yes, Apache-2.0 (older contributions MIT during relicensing) | Free |
+| **MCPJam** | Desktop app (macOS, Windows), `npx`, Docker, or hosted | Yes, Apache-2.0 | Free to start; model usage has a daily allowance and paid credits |
+| **Postman** | Postman app and account | No | Free plan; Solo $9 per month, Team $19 per user per month, billed annually |
+| **Insomnia** | Insomnia desktop app | Yes, Apache-2.0 | Free plan; paid plans per user |
 
 ### MCP Inspector
 
@@ -203,15 +218,25 @@ Kong's open-source API client has **MCP Clients**: enter a server URL, connect, 
 
 These are command-line tools and libraries you run in a pipeline. They check behaviour against the specification, against the server's own schemas, or against tests you write.
 
-| Tool | What it tests | Remote vs local | Install | Open source | Price |
-| --- | --- | --- | --- | --- | --- |
-| **Conformance suite** | Protocol and auth scenarios; client mode tests clients | A running server by URL, or your client against its test server | `npx @modelcontextprotocol/conformance` | Yes, MIT | Free |
-| **mcp-compliance** | Protocol: 88 tests for 2025-11-25, 103 for 2026-07-28, graded A to F | stdio and HTTP | `npx @yawlabs/mcp-compliance`, Node 20 or newer; Docker | Yes, MIT | Free |
-| **PMCP mcp-tester** | Protocol, conformance, schema warnings, MCP Apps, scenarios | HTTP, HTTPS, WebSocket and stdio | `cargo install mcp-tester` or a prebuilt binary | Yes, MIT | Free |
-| **Specmatic MCP Auto-Test** | Contract: generated calls from input schemas, output schema checks, negative tests | Streamable HTTP by URL | Docker image or Specmatic CLI | Yes, MIT | Free |
-| **steviec/mcp-server-tester** | Protocol (YAML tool tests), evals | stdio only | `npx mcp-server-tester`, Node 18 or newer | Yes, MIT | Free; evals need an Anthropic API key |
-| **r-huijts/mcp-server-tester** | Protocol: Claude-generated tool tests with response rules | stdio only | Clone and build, Node 18 or newer | Yes, MIT | Free; needs an Anthropic API key |
-| **FastMCP in-memory client** | Unit tests of tools, resources and prompts | Same Python process, no transport | `pip install fastmcp` | Yes, Apache-2.0 | Free |
+| Tool | What it tests | Remote vs local |
+| --- | --- | --- |
+| **Conformance suite** | Protocol and auth scenarios; client mode tests clients | A running server by URL, or your client against its test server |
+| **mcp-compliance** | Protocol: 88 tests for 2025-11-25, 103 for 2026-07-28, graded A to F | stdio and HTTP |
+| **PMCP mcp-tester** | Protocol, conformance, schema warnings, MCP Apps, scenarios | HTTP, HTTPS, WebSocket and stdio |
+| **Specmatic MCP Auto-Test** | Contract: generated calls from input schemas, output schema checks, negative tests | Streamable HTTP by URL |
+| **steviec/mcp-server-tester** | Protocol (YAML tool tests), evals | stdio only |
+| **r-huijts/mcp-server-tester** | Protocol: Claude-generated tool tests with response rules | stdio only |
+| **FastMCP in-memory client** | Unit tests of tools, resources and prompts | Same Python process, no transport |
+
+| Tool | Install | Open source | Price |
+| --- | --- | --- | --- |
+| **Conformance suite** | `npx @modelcontextprotocol/conformance` | Yes, MIT | Free |
+| **mcp-compliance** | `npx @yawlabs/mcp-compliance`, Node 20 or newer; Docker | Yes, MIT | Free |
+| **PMCP mcp-tester** | `cargo install mcp-tester` or a prebuilt binary | Yes, MIT | Free |
+| **Specmatic MCP Auto-Test** | Docker image or Specmatic CLI | Yes, MIT | Free |
+| **steviec/mcp-server-tester** | `npx mcp-server-tester`, Node 18 or newer | Yes, MIT | Free; evals need an Anthropic API key |
+| **r-huijts/mcp-server-tester** | Clone and build, Node 18 or newer | Yes, MIT | Free; needs an Anthropic API key |
+| **FastMCP in-memory client** | `pip install fastmcp` | Yes, Apache-2.0 | Free |
 
 ### Official conformance suite
 
@@ -261,10 +286,15 @@ The MCP Inspector CLI, MCPJam's CLI and the mcptest.io GitHub Action also run in
 
 Evals ask a different question: given your tools, does a model choose the right one with sensible arguments and finish the task? They need a model, so they cost model usage.
 
-| Tool | What it tests | Remote vs local | Install | Open source | Price |
-| --- | --- | --- | --- | --- | --- |
-| **MCPJam evals** | Tool choice across models; deterministic assertions plus optional LLM-as-judge | Any server MCPJam can reach | App, CLI (`mcpjam test`), SDK, GitHub Checks | Yes, Apache-2.0 | Free daily allowance; paid credits |
-| **DeepEval** | MCP-Use, Multi-Turn MCP-Use and MCP Task Completion metrics | Any: you pass in the calls your app made | `pip install deepeval` | Yes, Apache-2.0 | Free library; the default LLM-as-a-judge mode calls a model |
+| Tool | What it tests | Remote vs local |
+| --- | --- | --- |
+| **MCPJam evals** | Tool choice across models; deterministic assertions plus optional LLM-as-judge | Any server MCPJam can reach |
+| **DeepEval** | MCP-Use, Multi-Turn MCP-Use and MCP Task Completion metrics | Any: you pass in the calls your app made |
+
+| Tool | Install | Open source | Price |
+| --- | --- | --- | --- |
+| **MCPJam evals** | App, CLI (`mcpjam test`), SDK, GitHub Checks | Yes, Apache-2.0 | Free daily allowance; paid credits |
+| **DeepEval** | `pip install deepeval` | Yes, Apache-2.0 | Free library; the default LLM-as-a-judge mode calls a model |
 
 ### MCPJam evals
 
@@ -282,10 +312,15 @@ steviec's `evals` command and MCP Playground's evals also cover this job.
 
 Most tools on this page send one request at a time. For concurrency and latency under load there is less choice.
 
-| Tool | What it tests | Remote vs local | Install | Open source | Price |
-| --- | --- | --- | --- | --- | --- |
-| **cargo pmcp loadtest** | Load: virtual users, staged ramps, latency percentiles, throughput, error rates | Server URL | `cargo install cargo-pmcp` | Yes, MIT | Free |
-| **mcp-compliance benchmark** | Latency over a set number of requests and concurrency | stdio command in the documented example | `npx @yawlabs/mcp-compliance` | Yes, MIT | Free |
+| Tool | What it tests | Remote vs local |
+| --- | --- | --- |
+| **cargo pmcp loadtest** | Load: virtual users, staged ramps, latency percentiles, throughput, error rates | Server URL |
+| **mcp-compliance benchmark** | Latency over a set number of requests and concurrency | stdio command in the documented example |
+
+| Tool | Install | Open source | Price |
+| --- | --- | --- | --- |
+| **cargo pmcp loadtest** | `cargo install cargo-pmcp` | Yes, MIT | Free |
+| **mcp-compliance benchmark** | `npx @yawlabs/mcp-compliance` | Yes, MIT | Free |
 
 ### cargo pmcp loadtest
 
@@ -297,12 +332,19 @@ Run it against a staging deployment: a load test with `tools/call` executes your
 
 If you build an MCP client, a gateway or a security product, you need a server to point it at. [Mock MCP servers for testing clients](/learn/mock-mcp-servers-for-testing-clients) covers what to simulate and includes a minimal mock you own.
 
-| Server | What it is for | Where it runs | Auth | Open source |
-| --- | --- | --- | --- | --- |
-| **Everything server** | Every protocol feature, for client builders | Local: stdio or Streamable HTTP (`npx @modelcontextprotocol/server-everything`) | None | Yes |
-| **MCP Playground mock servers** | Six hosted mocks: echo, bearer auth, configurable errors, complex schemas, MCP Apps, 2026 stateless | Hosted | Bearer token on the auth mock | No source published |
-| **DLP Test** | Fake PII, PCI and PHI generators for testing data-loss-prevention products | Hosted at `https://mcp.dlptest.com/api/mcp/` | None | Not documented |
-| **plexara/mcp-test** | Twelve deterministic tools (echo, headers, sized responses, errors, slow and flaky calls, progress) for testing gateways | Self-hosted Go binary or container | API keys or OIDC, with protected resource metadata | Yes, Apache-2.0 |
+| Server | What it is for | Where it runs |
+| --- | --- | --- |
+| **Everything server** | Every protocol feature, for client builders | Local: stdio or Streamable HTTP (`npx @modelcontextprotocol/server-everything`) |
+| **MCP Playground mock servers** | Six hosted mocks: echo, bearer auth, configurable errors, complex schemas, MCP Apps, 2026 stateless | Hosted |
+| **DLP Test** | Fake PII, PCI and PHI generators for testing data-loss-prevention products | Hosted at `https://mcp.dlptest.com/api/mcp/` |
+| **plexara/mcp-test** | Twelve deterministic tools (echo, headers, sized responses, errors, slow and flaky calls, progress) for testing gateways | Self-hosted Go binary or container |
+
+| Server | Auth | Open source |
+| --- | --- | --- |
+| **Everything server** | None | Yes |
+| **MCP Playground mock servers** | Bearer token on the auth mock | No source published |
+| **DLP Test** | None | Not documented |
+| **plexara/mcp-test** | API keys or OIDC, with protected resource metadata | Yes, Apache-2.0 |
 
 DLP Test answered an `initialize` request on the review date with protocol version 2025-06-18 and `Access-Control-Allow-Origin: *`, and its page says nothing sent to it is stored or logged. All of its data is fake, but treat any hosted mock as someone else's service: for CI, run one you control. plexara/mcp-test records every call in a Postgres audit log with a web portal for inspecting and comparing calls; it speaks Streamable HTTP only.
 
