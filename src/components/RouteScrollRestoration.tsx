@@ -114,27 +114,33 @@ class RouteScroll extends Component<Props> {
     };
     if (focusPage || (!saved && !id)) setPosition();
 
+    const href = window.location.href;
+    const key = history.state?.key;
     const visible = (element: HTMLElement) => element.getClientRects().length > 0;
+    let needsFocus = focusPage;
     const finish = () => {
-      if (Array.from(panel.querySelectorAll<HTMLElement>('.view-loading')).some(visible)) return false;
-
-      // The body placeholder also covers errors that can be retried.
-      if ((saved || id) && panel.querySelector('.reading-body-status')) return false;
-
-      if (focusPage) {
+      const viewLoading = Array.from(panel.querySelectorAll<HTMLElement>('.view-loading')).some(visible);
+      if (needsFocus) {
         const heading = Array.from(panel.querySelectorAll<HTMLElement>('h1')).find(visible);
-        const target = heading ?? panel.closest('main') ?? panel;
-        if (!target.hasAttribute('tabindex')) target.tabIndex = -1;
-        target.focus({ preventScroll: true });
+        // A nested loading section can coexist with the destination heading.
+        if (heading || !viewLoading) {
+          const target = heading ?? panel.closest('main') ?? panel;
+          needsFocus = false;
+          if (!target.hasAttribute('tabindex')) target.tabIndex = -1;
+          target.focus({ preventScroll: true });
+        }
       }
+
+      if (!saved && !id) return !needsFocus;
+      // Keep the scroll pending while loading and through retryable body errors.
+      if (viewLoading || panel.querySelector('.reading-body-status')) return false;
+
       if (saved) setPosition(saved);
-      else if (id) document.getElementById(id)?.scrollIntoView?.({ block: 'start', behavior: 'instant' });
+      else document.getElementById(id)?.scrollIntoView?.({ block: 'start', behavior: 'instant' });
       return true;
     };
     if (finish()) return;
 
-    const href = window.location.href;
-    const key = history.state?.key;
     const observer = new MutationObserver(() => {
       if (window.location.href !== href || history.state?.key !== key || finish()) {
         observer.disconnect();

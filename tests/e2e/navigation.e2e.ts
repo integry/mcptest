@@ -133,11 +133,24 @@ test('router restores both scroll containers and focuses the new page', async ({
   await server.scrollIntoViewIfNeeded();
   const catalogPosition = await offsets();
   expect(catalogPosition[1]).toBeGreaterThan(0);
-  await server.click();
 
-  await expect(page).toHaveURL(/\/servers\//);
-  await expect(page.locator('h1')).toHaveCount(1);
-  await expect(page.locator('h1')).toBeFocused();
+  let releaseClientSetup!: () => void;
+  const pendingClientSetup = new Promise<void>(resolve => { releaseClientSetup = resolve; });
+  await page.route('**/assets/ServerConnect-*.js', async route => {
+    await pendingClientSetup;
+    await route.continue();
+  });
+  const loading = panel.getByText('Loading client setup…', { exact: true });
+  try {
+    await server.click();
+    await expect(page).toHaveURL(/\/servers\//);
+    await expect(loading).toBeVisible();
+    await expect(page.locator('h1')).toHaveCount(1);
+    await expect(page.locator('h1')).toBeFocused();
+  } finally {
+    releaseClientSetup();
+  }
+  await expect(loading).toBeHidden();
   expect(await offsets()).toEqual([0, 0]);
 
   const serverPosition = await panel.evaluate(element => {
@@ -241,53 +254,80 @@ test('pushing the same route without the fragment resets scroll and retains link
   await expect.poll(offsets).toEqual(fragmentPosition);
 });
 
-const glossaryFragment = '/learn/mcp-glossary#streamable-http';
+const glossaryPath = '/learn/mcp-glossary';
+const glossaryFragment = `${glossaryPath}#streamable-http`;
 const glossaryBody = '**/assets/mcp-glossary-*.js';
+const glossaryHeading = (page: Page) => page.getByRole('heading', { level: 1, name: 'MCP glossary' });
 
-async function openGlossaryWithBodyFailure(page: Page) {
-  await page.route(glossaryBody, route => route.abort());
-  await page.goto('/learn/connect-remote-mcp-server');
+async function followGlossaryLink(page: Page, from: string, destination: string) {
+  await page.goto(from);
   await page.keyboard.press('Shift');
   await expect(page.locator('[data-deferred-mount]')).toHaveCount(0);
-  await page.locator(`.reading-prose a[href="${glossaryFragment}"]`).click();
+  await page.locator(`.reading-prose a[href="${destination}"]`).press('Enter');
+  await expect(page).toHaveURL(url => `${url.pathname}${url.hash}` === destination);
+}
 
-  await expect(page).toHaveURL(url => `${url.pathname}${url.hash}` === glossaryFragment);
+async function expectGlossaryBodyError(page: Page) {
   const error = page.locator('.reading-prose').getByRole('alert');
   await expect(error).toContainText('This guide could not be loaded.');
   return error;
 }
 
-test('scrolls to an article fragment after retrying the body load', async ({ page }) => {
-  const error = await openGlossaryWithBodyFailure(page);
+test('focuses the guide before its body loads and scrolls to the fragment after retry', async ({ page }) => {
+  let failBody!: () => void;
+  const pendingBody = new Promise<void>(resolve => { failBody = resolve; });
+  await page.route(glossaryBody, async route => {
+    await pendingBody;
+    await route.abort();
+  });
+  const heading = glossaryHeading(page);
+  try {
+    await followGlossaryLink(page, '/learn/connect-remote-mcp-server', glossaryFragment);
+    await expect(page.locator('.reading-prose').getByRole('status')).toHaveText('Loading guide…');
+    await expect(heading).toBeFocused();
+  } finally {
+    failBody();
+  }
+  const error = await expectGlossaryBodyError(page);
+  await expect(heading).toBeFocused();
   const target = page.locator('#streamable-http');
   await expect(target).toHaveCount(0);
 
   await page.unroute(glossaryBody);
   await error.getByRole('button', { name: 'Try again' }).click();
   await expect(target).toBeInViewport();
+  await expect(heading).not.toBeFocused();
 });
 
-test('restores saved scroll for a fragment entry after retrying the body load', async ({ page }) => {
-  const error = await openGlossaryWithBodyFailure(page);
-  const offset = () => page.evaluate(() => window.scrollY);
-  await page.evaluate(() => window.scrollTo({ top: 100, behavior: 'instant' }));
-  await expect.poll(offset).toBe(100);
+for (const { from, destination, label } of [
+  { from: '/learn/connect-remote-mcp-server', destination: glossaryFragment, label: 'with a fragment' },
+  { from: '/learn/mcp-explained-for-everyone', destination: glossaryPath, label: 'without a fragment' },
+]) {
+  test(`focuses the guide on Back ${label} and restores saved scroll after retry`, async ({ page }) => {
+    await page.route(glossaryBody, route => route.abort());
+    await followGlossaryLink(page, from, destination);
+    const error = await expectGlossaryBodyError(page);
+    const offset = () => page.evaluate(() => window.scrollY);
+    await page.evaluate(() => window.scrollTo({ top: 100, behavior: 'instant' }));
+    await expect.poll(offset).toBe(100);
 
-  await page.locator(sidebar).getByRole('link', { name: 'Catalog', exact: true }).click();
-  await expect(page).toHaveURL(/\/catalog$/);
-  await expect(page.getByRole('heading', { level: 1, name: 'Remote MCP server catalog' })).toBeFocused();
-  await page.goBack();
-  await expect(page).toHaveURL(url => `${url.pathname}${url.hash}` === glossaryFragment);
-  await expect(error).toBeVisible();
-  // Move away from the saved position while the body is still unavailable.
-  await page.evaluate(() => window.scrollTo({ top: 40, behavior: 'instant' }));
-  await expect.poll(offset).toBe(40);
+    await page.locator(sidebar).getByRole('link', { name: 'Catalog', exact: true }).click();
+    await expect(page).toHaveURL(/\/catalog$/);
+    await expect(page.getByRole('heading', { level: 1, name: 'Remote MCP server catalog' })).toBeFocused();
+    await page.goBack();
+    await expect(page).toHaveURL(url => `${url.pathname}${url.hash}` === destination);
+    await expect(error).toBeVisible();
+    await expect(glossaryHeading(page)).toBeFocused();
+    // Move away from the saved position while the body is still unavailable.
+    await page.evaluate(() => window.scrollTo({ top: 40, behavior: 'instant' }));
+    await expect.poll(offset).toBe(40);
 
-  await page.unroute(glossaryBody);
-  await error.getByRole('button', { name: 'Try again' }).click();
-  await expect(page.locator('#streamable-http')).toBeAttached();
-  await expect.poll(offset).toBe(100);
-});
+    await page.unroute(glossaryBody);
+    await error.getByRole('button', { name: 'Try again' }).click();
+    await expect(page.locator('#streamable-http')).toBeAttached();
+    await expect.poll(offset).toBe(100);
+  });
+}
 
 test('removing a fragment resets the fixed-shell panel and preserves its Back position', async ({ page }) => {
   await page.goto('/catalog#catalog-search');
