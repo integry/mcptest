@@ -275,6 +275,7 @@ describe('catalog authentication metadata', () => {
     const publisherSources = new Map([
       ['basedash', 'https://www.basedash.com/features/mcp-server'],
       ['dart', 'https://help.dartai.com/en/articles/10733406-dart-mcp'],
+      ['datocapital', 'https://api.datocapital.com/docs/mcp'],
       ['elfsight', 'https://github.com/elfsight/ai-chatbot-mcp'],
       ['ffmpeg-api', 'https://mcp.ffmpeg-api.com/'],
       ['gameanalytics', 'https://docs.gameanalytics.com/ai-tools/documentation-mcp/'],
