@@ -39,11 +39,11 @@ sourceLinks:
   - title: "MCP TypeScript SDK: Connect a client"
     url: "https://ts.sdk.modelcontextprotocol.io/v2/clients/connect"
 ---
-Every client below can connect to a remote MCP server over Streamable HTTP. Where they differ is how they register with your OAuth server, whether you can send a fixed token or API key instead, whether they reach private hosts, and which limits apply once connected. This page is generated from the same data that drives mcptest's compatibility checks, so the table, the per-client notes and the report agree.
+Every client below can connect to a remote MCP server over Streamable HTTP. Where they differ is how they register with your OAuth server, whether you can send a fixed token or API key instead, whether they reach private hosts, and which limits apply once connected. This page is generated from the same data that drives mcptest's compatibility checks, so the tables, the per-client notes and the report agree.
 
 ## The full matrix {#matrix}
 
-Each row carries the date its cells were last checked against the vendor's documentation. "Bridge required" means the client needs a tunnel or a stdio bridge to reach that kind of server.
+The final table shows when each client was last checked against the vendor's documentation. "Bridge required" means the client needs a tunnel or a stdio bridge to reach that kind of server.
 
 <!-- compat-matrix clients="all" limitations="true" -->
 

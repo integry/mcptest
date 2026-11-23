@@ -1,5 +1,4 @@
 import { enhanceEngagement } from '../utils/pageEngagement';
-import { observeArticleTableOverflow } from '../utils/articleTableOverflow';
 /**
  * Prerendered content pages (guides, docs articles, the Learn index, server
  * profiles) are complete in their static HTML: the generator renders the app
@@ -221,7 +220,6 @@ export const enhanceStaticPage = (shell: HTMLElement): void => {
   };
   document.addEventListener('keydown', onDocumentKeydown);
 
-  observeArticleTableOverflow(shell);
   enhanceEngagement(shell, true);
   reportPageView(shell);
 };

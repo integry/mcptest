@@ -75,42 +75,34 @@ test('guide: renders a Learn article', async ({ page }) => {
   await expect(page).toHaveTitle(/MCP HTTP headers reference/);
 });
 
-for (const width of [1440, 390]) {
-  test(`guide: wide tables scroll inside the article at ${width}px`, async ({ page }) => {
+for (const width of [1440, 390, 320]) {
+  test(`guide: comparison tables fit in the article at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
-    await page.goto('/learn/add-remote-mcp-server-to-claude');
-    const matrix = page.locator('#compatibility-at-a-glance + .reading-table');
-    await expect(matrix.getByRole('columnheader', { name: 'Verified' })).toBeVisible();
-    await page.evaluate(() => document.fonts.ready);
 
-    const narrowTable = page.locator('.reading-prose .reading-table').first();
-    await narrowTable.scrollIntoViewIfNeeded();
-    expect(await narrowTable.evaluate(wrapper => wrapper.scrollWidth - wrapper.clientWidth)).toBe(0);
-    await expect(narrowTable.getByText('Scroll to see all columns')).toBeHidden();
-    await matrix.scrollIntoViewIfNeeded();
-    await expect(matrix.getByText('Scroll to see all columns')).toBeVisible();
-
-    const dimensions = await matrix.evaluate(wrapper => {
-      const table = wrapper.querySelector('table')!;
-      const headers = [...table.querySelectorAll('th')];
-      return {
-        viewport: wrapper.clientWidth,
-        content: wrapper.scrollWidth,
-        table: table.offsetWidth,
-        transport: headers.find(cell => cell.textContent === 'stdio')!.offsetWidth,
-        configuration: headers.find(cell => cell.textContent === 'Configuration')!.offsetWidth,
-      };
-    });
-    expect(dimensions.content).toBeGreaterThan(dimensions.viewport);
-    expect(dimensions.table).toBe(dimensions.content);
-    expect(dimensions.configuration).toBeGreaterThan(dimensions.transport * 2);
-    expect(await hasHorizontalScroll(page)).toBe(false);
-
-    await matrix.focus();
-    await page.keyboard.press('ArrowRight');
-    await expect.poll(() => matrix.evaluate(wrapper => wrapper.scrollLeft)).toBeGreaterThan(0);
-    await matrix.evaluate(wrapper => { wrapper.scrollLeft = wrapper.scrollWidth; });
-    await expect(matrix.getByRole('columnheader', { name: 'Verified' })).toBeInViewport();
+    for (const { path, tableStart, tableCount, finalColumn } of [
+      { path: 'add-remote-mcp-server-to-claude', tableStart: '#compatibility-at-a-glance', tableCount: 5, finalColumn: 'Verified' },
+      { path: 'mcp-inspector-alternatives', tableStart: '#comparison-table', tableCount: 3, finalColumn: 'Cost' },
+      { path: 'best-remote-mcp-testing-tools', tableStart: '#test-and-mock-servers + p', tableCount: 2, finalColumn: 'Where it runs' },
+    ]) {
+      await page.goto(`/learn/${path}`);
+      await page.evaluate(() => document.fonts.ready);
+      const tables = page.locator('.reading-prose .reading-table');
+      const comparison = page.locator(`${tableStart} + .reading-table + .reading-table`);
+      await expect(comparison).toBeVisible();
+      const finalHeader = page.getByRole('columnheader', { name: finalColumn, exact: true });
+      await finalHeader.scrollIntoViewIfNeeded();
+      await expect(finalHeader).toBeInViewport();
+      const widths = await tables.evaluateAll(wrappers => wrappers.map(wrapper => {
+        const table = wrapper.querySelector('table')!;
+        return {
+          columns: table.rows[0].cells.length,
+          overflow: Math.max(wrapper.scrollWidth - wrapper.clientWidth, table.scrollWidth - table.clientWidth),
+        };
+      }));
+      expect(widths.length).toBeGreaterThanOrEqual(tableCount);
+      expect(widths.filter(({ columns, overflow }) => columns > 4 || overflow > 0), path).toEqual([]);
+      expect(await hasHorizontalScroll(page)).toBe(false);
+    }
   });
 }
 

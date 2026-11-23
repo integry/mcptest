@@ -42,11 +42,17 @@ sourceLinks:
 
 All three clients connect to remote Streamable HTTP servers directly. None of them is limited to stdio. They differ in how the config selects the transport and in legacy SSE support:
 
-| Client | Streamable HTTP | Legacy SSE | Config file | Version reflected |
-| --- | --- | --- | --- | --- |
-| Windsurf / Devin Desktop (Devin Local) | Yes, `url` | Yes, automatic fallback or `"transport": "sse"` | `~/.config/devin/mcp_config.json` or `.devin/mcp_config.json` | v3.12.43 (9 November 2026) |
-| Gemini CLI | Yes, `url` with `"type": "http"` | Yes, `url` with `"type": "sse"` | `~/.gemini/settings.json` or `.gemini/settings.json` | v0.68.0 (10 November 2026) |
-| Codex | Yes, `url` | Not documented; use a bridge | `~/.codex/config.toml` | rust-v0.167.1 (10 November 2026) |
+| Client | Streamable HTTP | Legacy SSE |
+| --- | --- | --- |
+| Windsurf / Devin Desktop (Devin Local) | Yes, `url` | Yes, automatic fallback or `"transport": "sse"` |
+| Gemini CLI | Yes, `url` with `"type": "http"` | Yes, `url` with `"type": "sse"` |
+| Codex | Yes, `url` | Not documented; use a bridge |
+
+| Client | Config file | Version reflected |
+| --- | --- | --- |
+| Windsurf / Devin Desktop (Devin Local) | `~/.config/devin/mcp_config.json` or `.devin/mcp_config.json` | v3.12.43 (9 November 2026) |
+| Gemini CLI | `~/.gemini/settings.json` or `.gemini/settings.json` | v0.68.0 (10 November 2026) |
+| Codex | `~/.codex/config.toml` | rust-v0.167.1 (10 November 2026) |
 
 This guide was reviewed against each vendor's documentation on 11 November 2026.
 
@@ -62,7 +68,7 @@ For the checks to run on an endpoint before you configure any client, see [How t
 
 <!-- compat-matrix clients="windsurf,gemini-cli,codex-cli" limitations="true" -->
 
-The compatibility table above still describes Windsurf's former Cascade agent in places; the steps below follow the current Devin Local documentation.
+The verified compatibility tables above still describe Windsurf's former Cascade agent in places; the steps below follow the current Devin Local documentation.
 
 ## Windsurf (Devin Desktop)
 

@@ -2,7 +2,6 @@ import GuideServers from './GuideServers';
 import InlineTestForm from './InlineTestForm';
 import { showInlineTest } from '../../utils/guideNextSteps';
 import { enhanceEngagement } from '../../utils/pageEngagement';
-import { observeArticleTableOverflow } from '../../utils/articleTableOverflow';
 import React, { useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import type { LearnArticleSummary } from '../../content/learnRegistry';
@@ -81,10 +80,6 @@ const LearnArticleLayout: React.FC<LearnArticleLayoutProps> = ({ article, outlin
     };
   }, [article.slug, outline, bodyReady]);
   useEffect(() => articleRef.current ? enhanceEngagement(articleRef.current) : undefined, [article.slug]);
-
-  useEffect(() => {
-    if (bodyReady && articleRef.current) return observeArticleTableOverflow(articleRef.current);
-  }, [article.slug, bodyReady]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || window.location.hash) return;

@@ -229,30 +229,10 @@
 /* Tables */
 
 .reading-table {
-  overflow-x: auto;
   margin: 1.25rem 0 1.75rem;
 }
 
-.reading-table:focus-visible {
-  outline: 2px solid var(--primary-color);
-  outline-offset: 2px;
-}
-
-.reading-table-hint {
-  display: none;
-  position: sticky;
-  inset-inline-start: 0;
-  margin-bottom: 0.4rem;
-  color: var(--text-muted);
-  font-size: 0.8125rem;
-}
-
-.reading-table[data-overflowing] > .reading-table-hint {
-  display: block;
-}
-
 .reading-table table {
-  /* The wrapper handles scrolling, including on mobile. */
   display: table;
   overflow: visible;
   width: 100%;
@@ -268,19 +248,16 @@
   text-align: left;
   vertical-align: top;
   color: var(--text-accent);
+  overflow-wrap: anywhere;
+  hyphens: auto;
+}
+
+.reading-table td:first-child:has(a, strong):not(:has(code)) {
   overflow-wrap: break-word;
 }
 
-/* Give prose cells in dense comparison tables room to wrap while short
-   values take up only the space they need. */
-.reading-table table:has(> thead > tr > th:nth-child(6)) {
-  width: max-content;
-  min-width: 100%;
-  max-width: max(100%, 80rem);
-}
-
-.reading-table table:has(> thead > tr > th:nth-child(6)) :is(th, td) {
-  max-width: 20rem;
+.reading-table code {
+  hyphens: none;
 }
 
 /* Table heads match the app's tables: a raised band with mono labels. */
@@ -709,7 +686,12 @@
 
   .reading-table th,
   .reading-table td {
-    padding: 0.5rem;
+    padding: 0.5rem 0.375rem;
+  }
+
+  /* Give short headers more space as the mobile viewport grows. */
+  .reading-table table:has(> thead > tr > th:nth-child(3):last-child) th {
+    min-width: clamp(0px, calc(40vw - 3.75rem), 6rem);
   }
 
   .reading-code pre {
