@@ -5,6 +5,7 @@ import { FIRST_DASHBOARD_NAME } from '../utils/defaultWorkspace';
 import { getSpaceUrl } from '../utils/urlUtils';
 
 interface DashboardsHomeProps {
+  isActive?: boolean;
   spaces: Space[];
   onCreate: (name: string) => void;
 }
@@ -16,7 +17,8 @@ const cardCount = (count: number) => `${count} ${count === 1 ? 'card' : 'cards'}
  * the visitor's dashboards when there are any. A visitor who has never
  * created one reaches it from the single "Dashboards" sidebar entry.
  */
-const DashboardsHome: React.FC<DashboardsHomeProps> = ({ spaces, onCreate }) => {
+const DashboardsHome: React.FC<DashboardsHomeProps> = ({ spaces, onCreate, isActive = true }) => {
+  const Heading = isActive ? 'h1' : 'h2';
   const [name, setName] = useState(spaces.length === 0 ? FIRST_DASHBOARD_NAME : '');
   const inputId = useId();
   const helpId = `${inputId}-help`;
@@ -31,7 +33,7 @@ const DashboardsHome: React.FC<DashboardsHomeProps> = ({ spaces, onCreate }) => 
 
   return (
     <section className="dashboards-home" aria-labelledby="dashboards-home-title">
-      <h1 id="dashboards-home-title" className="dashboards-home-title">Dashboards</h1>
+      <Heading id="dashboards-home-title" className="dashboards-home-title">Dashboards</Heading>
       <p className="dashboards-home-lede">
         A dashboard keeps tool calls and resource reads you want to repeat. Each card re-runs its
         call against the server and shows whether it still works, so you can check several

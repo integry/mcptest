@@ -1219,6 +1219,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     >
       {showLanding ? (
         <LandingHero
+          isActive={isActive}
           serverUrl={serverUrl}
           onServerUrlChange={handleServerUrlChange}
           onConnect={handleLandingConnect}

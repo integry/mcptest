@@ -35,13 +35,14 @@ if (canonicalPath) {
   window.history.replaceState(window.history.state, '', `${canonicalPath}${window.location.search}${window.location.hash}`)
 }
 
+// Restore a docked assistant at startup, or offer its launcher after idle.
+startSiteAssistant()
+
 // A returning signed-in user: fetch Firebase now, alongside the app.
 const restoringSession = shouldRestoreAuthSession()
 if (restoringSession) loadFirebase().catch(() => {})
 // Analytics loads once the page is idle; earlier events are queued.
 scheduleAnalyticsLoad()
-// Restore a docked assistant at startup, or offer its launcher after idle.
-startSiteAssistant()
 
 const root = document.getElementById('root')!
 const deferredPage = getDeferredStaticPage(root)
@@ -66,7 +67,7 @@ if (staticPage) {
     isHandled: isHandledByStaticPage,
     snapshotState: snapshotStaticPageState,
   })
-  enhanceStaticPage(staticPage, mountNow)
+  enhanceStaticPage(staticPage)
   // The header shows the signed-in user, which only the app knows.
   // Returning workspaces and connection deep links still restore immediately.
   const restoringWorkspace = window.location.pathname === '/'
