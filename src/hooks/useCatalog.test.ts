@@ -184,6 +184,7 @@ describe('catalog query params', () => {
       'CoinGecko',
       'CoinGecko (MCP app)',
       'EOR Scope',
+      'ExpenseOS',
       'Gemini',
       'Hookr',
       'QuarterWise 1099 Tax Planner',
