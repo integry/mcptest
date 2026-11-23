@@ -231,23 +231,56 @@
 .reading-table {
   overflow-x: auto;
   margin: 1.25rem 0 1.75rem;
-  -webkit-overflow-scrolling: touch;
+}
+
+.reading-table:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+
+.reading-table-hint {
+  display: none;
+  position: sticky;
+  inset-inline-start: 0;
+  margin-bottom: 0.4rem;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+.reading-table[data-overflowing] > .reading-table-hint {
+  display: block;
 }
 
 .reading-table table {
+  /* The wrapper handles scrolling, including on mobile. */
+  display: table;
+  overflow: visible;
   width: 100%;
   border-collapse: collapse;
   font-size: 0.95rem;
+  line-height: 1.5;
 }
 
 .reading-table th,
 .reading-table td {
-  min-width: 8rem;
   padding: 0.6rem 0.75rem;
   border: 1px solid var(--reading-rule);
   text-align: left;
   vertical-align: top;
   color: var(--text-accent);
+  overflow-wrap: break-word;
+}
+
+/* Give prose cells in dense comparison tables room to wrap while short
+   values take up only the space they need. */
+.reading-table table:has(> thead > tr > th:nth-child(6)) {
+  width: max-content;
+  min-width: 100%;
+  max-width: max(100%, 80rem);
+}
+
+.reading-table table:has(> thead > tr > th:nth-child(6)) :is(th, td) {
+  max-width: 20rem;
 }
 
 /* Table heads match the app's tables: a raised band with mono labels. */
@@ -676,7 +709,6 @@
 
   .reading-table th,
   .reading-table td {
-    min-width: 7rem;
     padding: 0.5rem;
   }
 

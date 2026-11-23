@@ -807,11 +807,11 @@ function renderMarkdown(markdown, context = undefined) {
         index += 1;
       }
       html.push([
-        '<table><thead><tr>',
+        '<div class="reading-table" tabindex="0"><table><thead><tr>',
         ...headerCells.map(cell => `<th>${renderInlineMarkdown(cell.trim())}</th>`),
         '</tr></thead><tbody>',
         ...rows.map(cells => `<tr>${cells.map(cell => `<td>${renderInlineMarkdown(cell.trim())}</td>`).join('')}</tr>`),
-        '</tbody></table>',
+        '</tbody></table></div>',
       ].join(''));
       continue;
     }

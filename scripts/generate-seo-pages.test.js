@@ -761,7 +761,7 @@ describe('generated page metadata', () => {
     expect(html).toContain(`"dateModified":"${article.lastReviewed}"`);
     expect(html).toContain(`data-article-slug="${article.slug}"`);
     expect(html).toContain('<h2 id="coverage-and-how-to-read-this-comparison">Coverage and how to read this comparison</h2>');
-    expect(html).toContain('<table><thead><tr>');
+    expect(html).toContain('<div class="reading-table" tabindex="0"><table><thead><tr>');
     expect(html).toContain('Sources</h2>');
     expect(html).toContain('rel="prev" href="/learn/connect-remote-mcp-server"');
     expect(html).toContain('rel="next" href="/learn/oauth-for-mcp-explained"');

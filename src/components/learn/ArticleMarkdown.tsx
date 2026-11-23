@@ -26,7 +26,8 @@ const markdownComponents: Components = {
   },
   pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
   table: ({ children, node: _node, ...props }) => (
-    <div className="reading-table">
+    <div className="reading-table" tabIndex={0}>
+      <span className="reading-table-hint" aria-hidden="true">↔ Scroll to see all columns</span>
       <table {...props}>{children}</table>
     </div>
   ),
