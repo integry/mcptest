@@ -1,3 +1,4 @@
+import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures';
 
 const sidebar = '#app-sidenav-desktop';
@@ -238,6 +239,54 @@ test('pushing the same route without the fragment resets scroll and retains link
   await page.goBack();
   await expect(page).toHaveURL(new RegExp(`${hash}$`));
   await expect.poll(offsets).toEqual(fragmentPosition);
+});
+
+const glossaryFragment = '/learn/mcp-glossary#streamable-http';
+const glossaryBody = '**/assets/mcp-glossary-*.js';
+
+async function openGlossaryWithBodyFailure(page: Page) {
+  await page.route(glossaryBody, route => route.abort());
+  await page.goto('/learn/connect-remote-mcp-server');
+  await page.keyboard.press('Shift');
+  await expect(page.locator('[data-deferred-mount]')).toHaveCount(0);
+  await page.locator(`.reading-prose a[href="${glossaryFragment}"]`).click();
+
+  await expect(page).toHaveURL(url => `${url.pathname}${url.hash}` === glossaryFragment);
+  const error = page.locator('.reading-prose').getByRole('alert');
+  await expect(error).toContainText('This guide could not be loaded.');
+  return error;
+}
+
+test('scrolls to an article fragment after retrying the body load', async ({ page }) => {
+  const error = await openGlossaryWithBodyFailure(page);
+  const target = page.locator('#streamable-http');
+  await expect(target).toHaveCount(0);
+
+  await page.unroute(glossaryBody);
+  await error.getByRole('button', { name: 'Try again' }).click();
+  await expect(target).toBeInViewport();
+});
+
+test('restores saved scroll for a fragment entry after retrying the body load', async ({ page }) => {
+  const error = await openGlossaryWithBodyFailure(page);
+  const offset = () => page.evaluate(() => window.scrollY);
+  await page.evaluate(() => window.scrollTo({ top: 100, behavior: 'instant' }));
+  await expect.poll(offset).toBe(100);
+
+  await page.locator(sidebar).getByRole('link', { name: 'Catalog', exact: true }).click();
+  await expect(page).toHaveURL(/\/catalog$/);
+  await expect(page.getByRole('heading', { level: 1, name: 'Remote MCP server catalog' })).toBeFocused();
+  await page.goBack();
+  await expect(page).toHaveURL(url => `${url.pathname}${url.hash}` === glossaryFragment);
+  await expect(error).toBeVisible();
+  // Move away from the saved position while the body is still unavailable.
+  await page.evaluate(() => window.scrollTo({ top: 40, behavior: 'instant' }));
+  await expect.poll(offset).toBe(40);
+
+  await page.unroute(glossaryBody);
+  await error.getByRole('button', { name: 'Try again' }).click();
+  await expect(page.locator('#streamable-http')).toBeAttached();
+  await expect.poll(offset).toBe(100);
 });
 
 test('removing a fragment resets the fixed-shell panel and preserves its Back position', async ({ page }) => {

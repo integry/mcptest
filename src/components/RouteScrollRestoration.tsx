@@ -118,8 +118,8 @@ class RouteScroll extends Component<Props> {
     const finish = () => {
       if (Array.from(panel.querySelectorAll<HTMLElement>('.view-loading')).some(visible)) return false;
 
-      const bodyLoading = panel.querySelector('.reading-body-status[role="status"]');
-      if (bodyLoading && (saved || id)) return false;
+      // The body placeholder also covers errors that can be retried.
+      if ((saved || id) && panel.querySelector('.reading-body-status')) return false;
 
       if (focusPage) {
         const heading = Array.from(panel.querySelectorAll<HTMLElement>('h1')).find(visible);
