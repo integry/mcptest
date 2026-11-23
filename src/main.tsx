@@ -34,7 +34,7 @@ const restoringSession = shouldRestoreAuthSession()
 if (restoringSession) loadFirebase().catch(() => {})
 // Analytics loads once the page is idle; earlier events are queued.
 scheduleAnalyticsLoad()
-// The solv.chat assistant, when this build configures one: a launcher after load and idle.
+// Restore a docked assistant at startup, or offer its launcher after idle.
 startSiteAssistant()
 
 const root = document.getElementById('root')!
@@ -54,13 +54,13 @@ const hasCatalogFilters = window.location.pathname.startsWith('/catalog')
       return Boolean(value) && value !== defaultValue
     }))
 if (staticPage) {
-  enhanceStaticPage(staticPage)
   const mountNow = deferMountUntilInput({
     root,
     prepare: prepareApp,
     isHandled: isHandledByStaticPage,
     snapshotState: snapshotStaticPageState,
   })
+  enhanceStaticPage(staticPage, mountNow)
   // The header shows the signed-in user, which only the app knows.
   // Returning workspaces and connection deep links still restore immediately.
   const restoringWorkspace = window.location.pathname === '/'

@@ -82,7 +82,6 @@ describe('site assistant launcher', () => {
     expect(opened).toBe(1);
     // The widget's own launcher takes over.
     expect(launcherButton()!.hidden).toBe(true);
-    expect(sessionStorage.getItem('mcptest.siteAssistant.opened')).toBe('1');
     expect(trackEvent).toHaveBeenCalledWith('assistant_widget_load', expect.objectContaining({ outcome: 'loaded', trigger: 'launcher' }));
 
     // An excluded page removes the widget; an allowed one brings it back.
@@ -114,10 +113,9 @@ describe('site assistant launcher', () => {
     expect(launcherButton()!.hidden).toBe(true);
   });
 
-  it('restores the widget without opening it in a tab that already used it', async () => {
+  it('lets the widget restore the docked panel without toggling it', async () => {
     defineStubWidget(() => { opened += 1; });
-    sessionStorage.setItem('mcptest.siteAssistant.opened', '1');
-    mountSiteAssistantLauncher(CONFIG).setActive(true);
+    mountSiteAssistantLauncher(CONFIG, true).setActive(true);
     await flush();
     expect(document.querySelector('solv-chat')).not.toBeNull();
     expect(opened).toBe(0);

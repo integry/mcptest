@@ -1,16 +1,19 @@
+// @vitest-environment node
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   applySiteAssistantCsp,
-  applySiteAssistantToHtml,
+  SITE_ASSISTANT_BOOT_SOURCE,
   isSiteAssistantPath,
   normalizeSolvEndpoint,
   readSiteAssistantEnv,
   SITE_ASSISTANT_META_NAME,
   widgetScriptUrl,
 } from './config.mts';
+import { siteAssistantHtmlTransform } from './html.mts';
 
+const applySiteAssistantToHtml = siteAssistantHtmlTransform(readFileSync(resolve('src/siteAssistant/boot.js')));
 const INDEX_HTML = readFileSync(resolve('index.html'), 'utf8');
 const policyOf = (html: string) => html.match(/http-equiv="Content-Security-Policy" content="([^"]+)"/)?.[1] ?? '';
 const directive = (policy: string, name: string) =>
@@ -95,7 +98,7 @@ describe('site assistant Content-Security-Policy', () => {
   it('allows exactly the configured origin for the script and its connections', () => {
     const before = policyOf(INDEX_HTML);
     const after = policyOf(applySiteAssistantToHtml(INDEX_HTML, config));
-    expect(directive(after, 'script-src')).toEqual([...directive(before, 'script-src'), 'https://chat.example.com']);
+    expect(directive(after, 'script-src')).toEqual([...directive(before, 'script-src'), 'https://chat.example.com', SITE_ASSISTANT_BOOT_SOURCE]);
     expect(directive(after, 'connect-src')).toEqual([...directive(before, 'connect-src'), 'https://chat.example.com']);
     // Nothing else moves, and no wildcard appears.
     for (const name of ['default-src', 'style-src', 'img-src', 'font-src', 'frame-src', 'form-action', 'object-src', 'base-uri']) {
@@ -109,13 +112,13 @@ describe('site assistant Content-Security-Policy', () => {
     const head = html.slice(0, html.indexOf('</head>'));
     expect(head).toContain(`<meta name="${SITE_ASSISTANT_META_NAME}" data-endpoint="https://chat.example.com" data-assistant="pk_live_abc123" />`);
     expect(html.slice(html.indexOf('<body>'))).toBe(INDEX_HTML.slice(INDEX_HTML.indexOf('<body>')));
-    expect(html).not.toContain('solv-chat');
+    expect(head.indexOf('<script data-key="pk_live_abc123">')).toBeGreaterThan(head.indexOf('<meta name="viewport"'));
     expect(html).not.toContain('widget.js');
   });
 
   it('does not add the origin twice and starts a missing directive from default-src', () => {
     const once = applySiteAssistantCsp("default-src 'self'; script-src 'self' https://chat.example.com", config);
-    expect(directive(once, 'script-src')).toEqual(["'self'", 'https://chat.example.com']);
+    expect(directive(once, 'script-src')).toEqual(["'self'", 'https://chat.example.com', SITE_ASSISTANT_BOOT_SOURCE]);
     expect(directive(once, 'connect-src')).toEqual(["'self'", 'https://chat.example.com']);
   });
 

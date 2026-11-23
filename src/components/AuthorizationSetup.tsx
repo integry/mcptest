@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import React, { useState } from 'react';
 import type { AuthorizationGuidanceViewModel } from '../utils/authorizationGuidance';
 
@@ -122,9 +123,9 @@ const AuthorizationSetup: React.FC<AuthorizationSetupProps> = ({
           </a>
         )}
         {guidance.catalogId && currentCatalogContext && (
-          <a href={`/servers/${encodeURIComponent(guidance.catalogId)}`}>
+          <Link to={`/servers/${encodeURIComponent(guidance.catalogId)}`}>
             View report-card setup explanation
-          </a>
+          </Link>
         )}
       </div>
       <span className="visually-hidden" role="status" aria-live="polite">{copyStatus}</span>

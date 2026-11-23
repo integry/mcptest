@@ -5,42 +5,16 @@ import { createWidgetElement, loadWidgetScript, openWidgetPanel } from './widget
 import type { SiteAssistantLauncher } from './siteAssistant';
 
 /*
- * The launcher chunk (issue #637), imported by ./siteAssistant.ts once the
- * page has loaded and gone idle on a page that may show the assistant.
- *
- * It adds one fixed-position button (no layout shift) and requests nothing
- * from solv.chat until that button is pressed. Pressing it loads
- * `<endpoint>/widget.js` and adds `<solv-chat assistant endpoint>` per the
- * solv.chat install snippet; the widget then brings its own launcher and
- * panel, so this button steps aside. After that, later pages in the same tab
- * load the widget as soon as the launcher is up, so its conversation (which
- * solv.chat keeps in sessionStorage) is restored. No page actions are
- * registered (`solv.actions`).
+ * The launcher adds a fixed button after idle, or loads the widget immediately
+ * to take over the pre-paint placeholder when a docked panel is being restored.
  */
 
-const OPENED_KEY = 'mcptest.siteAssistant.opened';
 const LABEL = 'Ask MCP Test AI';
 const LOADING_LABEL = 'Loading the mcptest assistant';
 const FAILED_LABEL = 'The mcptest assistant could not load. Try again';
 const FAILED_TEXT = 'Retry';
 
 export type WidgetLoadTrigger = 'launcher' | 'restore';
-
-const readOpened = (): boolean => {
-  try {
-    return window.sessionStorage.getItem(OPENED_KEY) === '1';
-  } catch {
-    return false;
-  }
-};
-
-const rememberOpened = (): void => {
-  try {
-    window.sessionStorage.setItem(OPENED_KEY, '1');
-  } catch {
-    // Storage off: the next page shows the launcher again, which is fine.
-  }
-};
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -60,7 +34,7 @@ const chatIcon = (): SVGSVGElement => {
   return svg;
 };
 
-export const mountSiteAssistantLauncher = (config: SiteAssistantConfig): SiteAssistantLauncher => {
+export const mountSiteAssistantLauncher = (config: SiteAssistantConfig, restore = false): SiteAssistantLauncher => {
   const button = document.createElement('button');
   button.type = 'button';
   button.className = 'site-assistant-launcher';
@@ -104,7 +78,6 @@ export const mountSiteAssistantLauncher = (config: SiteAssistantConfig): SiteAss
     button.dataset.state = 'loading';
     loading = loadWidgetScript(config).then(() => {
       trackEvent('assistant_widget_load', { outcome: 'loaded', trigger, duration_ms: Math.round(performance.now() - started) });
-      rememberOpened();
       button.removeAttribute('aria-busy');
       button.setAttribute('aria-label', LABEL);
       button.title = LABEL;
@@ -144,13 +117,16 @@ export const mountSiteAssistantLauncher = (config: SiteAssistantConfig): SiteAss
     });
   });
 
-  const restore = readOpened();
+  let pendingRestore = restore;
 
   return {
     setActive(next: boolean) {
       active = next;
       render();
-      if (active && restore) void load('restore');
+      if (active && pendingRestore) {
+        pendingRestore = false;
+        void load('restore');
+      }
     },
   };
 };

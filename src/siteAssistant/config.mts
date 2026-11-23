@@ -9,9 +9,8 @@
  *
  * This module is pure (no DOM) and is the one place the build and the browser
  * derive anything from those variables: vite.config.mjs uses it to extend the
- * Content-Security-Policy in index.html and to write the config meta tag, and
- * every prerendered page (scripts/generate-seo-pages.js, scripts/critical-css.js)
- * is built from that index.html, so they inherit both. The Worker's own
+ * Content-Security-Policy and write the config meta tag and dock boot script.
+ * Every prerendered page inherits them from the built index.html. The Worker's own
  * policies (badges) are for SVGs that never show the widget, and published
  * report permalinks (/r/*) are JSON served by the Worker, so neither changes.
  */
@@ -30,6 +29,8 @@ export type SiteAssistantEnv = Partial<Record<'VITE_SOLV_ENDPOINT' | 'VITE_SOLV_
 
 /** `name` of the meta tag that carries the config into the page. */
 export const SITE_ASSISTANT_META_NAME = 'mcptest-site-assistant';
+export const SITE_ASSISTANT_BOOT_HASH = 'wKNxb9ISGk0wGMPONDaS6EQcivqaehUe6YFzRCFv+KI=';
+export const SITE_ASSISTANT_BOOT_SOURCE = `'sha256-${SITE_ASSISTANT_BOOT_HASH}'`;
 
 /** Public keys are opaque ids; anything else is a misconfiguration, not markup to inject. */
 const ASSISTANT_KEY = /^[A-Za-z0-9_-]{1,128}$/;
@@ -77,11 +78,11 @@ export const readSiteAssistantEnv = (env: SiteAssistantEnv): SiteAssistantConfig
 export const widgetScriptUrl = (config: SiteAssistantConfig): string => `${config.endpoint}/widget.js`;
 
 /**
- * The CSP additions: the widget script, and its config, chat (server-sent
- * events over fetch) and feedback requests. Exactly the configured origin.
+ * Allows the boot script by hash and the configured widget origin for scripts
+ * and connections.
  */
 export const siteAssistantCspSources = (config: SiteAssistantConfig | null): Record<string, string[]> =>
-  config ? { 'script-src': [config.endpoint], 'connect-src': [config.endpoint] } : {};
+  config ? { 'script-src': [config.endpoint, SITE_ASSISTANT_BOOT_SOURCE], 'connect-src': [config.endpoint] } : {};
 
 /**
  * `policy` with `additions` (directive name to sources) merged in, without
@@ -119,16 +120,6 @@ export const transformCspMeta = (html: string, transform: (policy: string) => st
   if (!CSP_META.test(html)) throw new Error(`index.html has no Content-Security-Policy meta tag to extend for ${feature}.`);
   return html.replace(CSP_META, (_match, start: string, policy: string, end: string) =>
     `${start}${transform(policy)}${end}${extraHead ? `\n    ${extraHead}` : ''}`);
-};
-
-/**
- * index.html for this build: the policy extended and the config meta tag
- * added after it. With the assistant off the HTML is returned unchanged.
- */
-export const applySiteAssistantToHtml = (html: string, config: SiteAssistantConfig | null): string => {
-  if (!config) return html;
-  const meta = `<meta name="${SITE_ASSISTANT_META_NAME}" data-endpoint="${config.endpoint}" data-assistant="${config.assistantKey}" />`;
-  return transformCspMeta(html, policy => applySiteAssistantCsp(policy, config), meta);
 };
 
 /**

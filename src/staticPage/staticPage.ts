@@ -16,6 +16,7 @@ import { enhanceEngagement } from '../utils/pageEngagement';
 import { MENU_OPEN_CLASS } from '../utils/layoutState';
 import { logPageView, recordStaticPageEvent, trackEvent, trackGuideLinkClick } from '../utils/analytics';
 import { handleCodeCopyClick, handleCopyFromClick } from '../utils/codeCopy';
+import { internalLinkPath } from '../utils/internalLink';
 import { setFieldValue } from './deferredMount';
 
 /** Set by scripts/generate-seo-pages.js on the shell of pages that mount on first input. */
@@ -148,7 +149,7 @@ const focusGuideSearch = (shell: HTMLElement, event: KeyboardEvent): void => {
 };
 
 /** Sends the page view (and guide view) the app would send on its first render. */
-const reportPageView = (shell: HTMLElement): void => {
+const reportPageView = (shell: HTMLElement, navigate?: (path: string) => void): void => {
   const path = window.location.pathname;
   const title = shell.dataset.pageViewTitle;
   if (title) {
@@ -164,7 +165,7 @@ const reportPageView = (shell: HTMLElement): void => {
 };
 
 /** Wires the static page's controls. */
-export const enhanceStaticPage = (shell: HTMLElement): void => {
+export const enhanceStaticPage = (shell: HTMLElement, navigate?: (path: string) => void): void => {
 
   const endpoint = shell.querySelector<HTMLInputElement>('.seo-landing-fallback #serverUrl');
   const connect = shell.querySelector<HTMLButtonElement>('#connectBtn');
@@ -196,6 +197,13 @@ export const enhanceStaticPage = (shell: HTMLElement): void => {
     }
     if (trackGuideLinks && target.closest('article.reading-article')) trackGuideLinks(event);
 
+    const path = navigate && internalLinkPath(event);
+    if (path) {
+      event.preventDefault();
+      navigate(path);
+      return;
+    }
+
     const button = target.closest('button');
     if (!button) return;
     if (button.closest('[data-inline-test]')) { handledClicks.add(button); return; }
@@ -220,6 +228,6 @@ export const enhanceStaticPage = (shell: HTMLElement): void => {
   };
   document.addEventListener('keydown', onDocumentKeydown);
 
-  enhanceEngagement(shell, true);
+  enhanceEngagement(shell, true, navigate);
   reportPageView(shell);
 };

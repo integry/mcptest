@@ -1,9 +1,12 @@
+import { MemoryRouter } from 'react-router-dom';
 import React from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
+import { renderToStaticMarkup as renderMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import ConnectorDirectoryPreflight from './ConnectorDirectoryPreflight';
 import { evaluateConnectorDirectoryPreflight } from '../utils/connectorDirectoryPreflight';
 import { analyzeToolSurface } from '../utils/toolSurfaceAnalysis';
+
+const renderToStaticMarkup = (element: React.ReactElement) => renderMarkup(<MemoryRouter>{element}</MemoryRouter>);
 
 const preflight = (inputSchema: Record<string, unknown> = { type: 'object', properties: { action: { enum: ['list', 'create', 'delete'] } } }) => {
   const analysis = analyzeToolSurface({

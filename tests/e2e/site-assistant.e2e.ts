@@ -1,6 +1,9 @@
 import type { Locator, Page } from '@playwright/test';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { APP_PORT } from '../../playwright.config';
-import { applySiteAssistantToHtml, readSiteAssistantEnv, SITE_ASSISTANT_META_NAME } from '../../src/siteAssistant/config.mts';
+import { readSiteAssistantEnv, SITE_ASSISTANT_BOOT_SOURCE, SITE_ASSISTANT_META_NAME } from '../../src/siteAssistant/config.mts';
+import { siteAssistantHtmlTransform } from '../../src/siteAssistant/html.mts';
 import { expect, hasHorizontalScroll, mockUrl, test } from './fixtures';
 
 /**
@@ -19,6 +22,7 @@ import { expect, hasHorizontalScroll, mockUrl, test } from './fixtures';
  * load.
  */
 
+const applySiteAssistantToHtml = siteAssistantHtmlTransform(readFileSync(resolve('src/siteAssistant/boot.js')));
 const ENDPOINT = 'https://solv.example.test';
 const CONFIG = readSiteAssistantEnv({ VITE_SOLV_ENDPOINT: ENDPOINT, VITE_SOLV_ASSISTANT_KEY: 'pk_e2e_test' })!;
 
@@ -104,10 +108,10 @@ const CSP_CONTENT = /(<meta http-equiv="Content-Security-Policy" content=")([^"]
 const withoutBuildAssistant = (html: string): string => {
   const endpoint = CONFIG_META.exec(html)?.[1];
   if (!endpoint) return html;
-  return html.replace(CONFIG_META, '').replace(CSP_CONTENT, (_match, start: string, policy: string, end: string) => {
+  return html.replace(CONFIG_META, '').replace(/<script data-key="[^"]*">[\s\S]*?<\/script>/, '').replace(CSP_CONTENT, (_match, start: string, policy: string, end: string) => {
     const directives = policy.split(';').map(part => {
       const [name, ...sources] = part.trim().split(/\s+/);
-      return name === 'script-src' || name === 'connect-src' ? [name, ...sources.filter(source => source !== endpoint)].join(' ') : part.trim();
+      return name === 'script-src' || name === 'connect-src' ? [name, ...sources.filter(source => source !== endpoint && source !== SITE_ASSISTANT_BOOT_SOURCE)].join(' ') : part.trim();
     });
     return `${start}${directives.filter(Boolean).join('; ')}${end}`;
   });

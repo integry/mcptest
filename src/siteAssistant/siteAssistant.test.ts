@@ -59,8 +59,24 @@ describe('startSiteAssistant', () => {
     expect(load).not.toHaveBeenCalled();
     ready();
     await flush();
-    expect(load).toHaveBeenCalledWith({ endpoint: 'https://chat.example.com', assistantKey: 'pk_test_1' });
+    expect(load).toHaveBeenCalledWith({ endpoint: 'https://chat.example.com', assistantKey: 'pk_test_1' }, false);
     expect(launcher.states).toEqual([true]);
+  });
+
+  it('starts the dock restore without waiting for load or idle', async () => {
+    addMeta();
+    const placeholder = document.createElement('div');
+    placeholder.id = 'solv-dock:1:pk_test_1';
+    document.body.append(placeholder);
+    const { launcher, load } = fakeLauncher();
+    try {
+      startSiteAssistant({ ready: new Promise(() => {}), loadLauncher: load });
+      expect(load).toHaveBeenCalledWith({ endpoint: 'https://chat.example.com', assistantKey: 'pk_test_1' }, true);
+      await flush();
+      expect(launcher.states).toEqual([true]);
+    } finally {
+      placeholder.remove();
+    }
   });
 
   it('never imports the launcher on an excluded page', async () => {

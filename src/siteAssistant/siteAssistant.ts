@@ -7,24 +7,23 @@ import {
 
 /*
  * The entry's half of the site assistant: a few hundred bytes that read the
- * build's config meta tag and, only when it is there, wait for the page to
- * finish loading and go idle before importing the launcher chunk
- * (./launcher.ts). Nothing is requested from solv.chat until the visitor
- * presses the launcher, or, in a tab where they already opened the
- * assistant, once the launcher is up (so the conversation carries across pages).
+ * build's config meta tag and import the launcher on idle or when there is
+ * a docked panel to restore. The launcher requests widget.js only on restore
+ * or after the visitor presses it.
  */
 
 export interface SiteAssistantLauncher {
   setActive(active: boolean): void;
 }
 
-export type LoadLauncher = (config: SiteAssistantConfig) => Promise<SiteAssistantLauncher>;
+export type LoadLauncher = (config: SiteAssistantConfig, restore: boolean) => Promise<SiteAssistantLauncher>;
 
 interface SiteAssistantState {
   config: SiteAssistantConfig;
   pathname: string;
-  /** The page has loaded and gone idle. */
+  /** The page is idle or has a docked panel waiting to be restored. */
   ready: boolean;
+  restore: boolean;
   loadLauncher: LoadLauncher;
   launcher: Promise<SiteAssistantLauncher | null> | null;
 }
@@ -48,7 +47,7 @@ export const whenLoadedAndIdle = (win: Window = window): Promise<void> => new Pr
   else win.addEventListener('load', idle, { once: true });
 });
 
-const importLauncher: LoadLauncher = config => import('./launcher').then(module => module.mountSiteAssistantLauncher(config));
+const importLauncher: LoadLauncher = (config, restore) => import('./launcher').then(module => module.mountSiteAssistantLauncher(config, restore));
 
 /** Shows or hides the launcher for the current path; the chunk is imported the first time it may show. */
 const apply = (current: SiteAssistantState): void => {
@@ -57,7 +56,7 @@ const apply = (current: SiteAssistantState): void => {
   if (!current.launcher) {
     // Excluded pages never fetch the launcher chunk.
     if (!active) return;
-    current.launcher = current.loadLauncher(current.config).catch(error => {
+    current.launcher = current.loadLauncher(current.config, current.restore).catch(error => {
       console.warn('[Site assistant] The launcher could not load.', error);
       return null;
     });
@@ -82,18 +81,25 @@ export const startSiteAssistant = (options: {
   if (state) return true;
   const config = readSiteAssistantConfig(doc);
   if (!config) return false;
+  const pathname = win.location.pathname;
+  const restore = isSiteAssistantPath(pathname)
+    && doc.getElementById(`solv-dock:1:${config.assistantKey}`) !== null;
   const current: SiteAssistantState = {
     config,
-    pathname: win.location.pathname,
-    ready: false,
+    pathname,
+    ready: restore,
+    restore,
     loadLauncher: options.loadLauncher ?? importLauncher,
     launcher: null,
   };
   state = current;
-  void (options.ready ?? whenLoadedAndIdle(win)).then(() => {
-    current.ready = true;
-    if (state === current) apply(current);
-  });
+  if (restore) apply(current);
+  else {
+    void (options.ready ?? whenLoadedAndIdle(win)).then(() => {
+      current.ready = true;
+      if (state === current) apply(current);
+    });
+  }
   return true;
 };
 

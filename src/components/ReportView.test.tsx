@@ -1,3 +1,4 @@
+import { MemoryRouter } from 'react-router-dom';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -231,7 +232,7 @@ describe('ReportView OAuth discovery', () => {
     const container = document.createElement('div');
     await act(async () => {
       root = createRoot(container);
-      root.render(<ReportView />);
+      root.render(<MemoryRouter><ReportView /></MemoryRouter>);
     });
     expect(container.querySelector('input')?.value).toBe(original);
     expect(container.textContent).toContain(`Report for: ${original}`);
@@ -290,7 +291,7 @@ describe('ReportView OAuth discovery', () => {
     const container = document.createElement('div');
     await act(async () => {
       root = createRoot(container);
-      root.render(<ReportView />);
+      root.render(<MemoryRouter><ReportView /></MemoryRouter>);
     });
     expect(evaluationMocks.evaluate).toHaveBeenCalledTimes(1);
     expect(evaluationMocks.evaluate).toHaveBeenCalledWith(
@@ -361,7 +362,7 @@ describe('ReportView OAuth discovery', () => {
     const container = document.createElement('div');
     root = createRoot(container);
     act(() => {
-      root?.render(<ReportView />);
+      root?.render(<MemoryRouter><ReportView /></MemoryRouter>);
     });
 
     const runButton = Array.from(container.querySelectorAll('button')).find(
@@ -409,7 +410,7 @@ describe('ReportView OAuth discovery', () => {
     const container = document.createElement('div');
     root = createRoot(container);
     act(() => {
-      root?.render(<ReportView />);
+      root?.render(<MemoryRouter><ReportView /></MemoryRouter>);
     });
 
     const runButton = Array.from(container.querySelectorAll('button')).find(
@@ -495,7 +496,7 @@ describe('ReportView OAuth discovery', () => {
     const container = document.createElement('div');
     root = createRoot(container);
     act(() => {
-      root?.render(<ReportView />);
+      root?.render(<MemoryRouter><ReportView /></MemoryRouter>);
     });
 
     const runButton = Array.from(container.querySelectorAll('button')).find(
@@ -606,7 +607,7 @@ describe('ReportView OAuth discovery', () => {
     const container = document.createElement('div');
     root = createRoot(container);
     act(() => {
-      root?.render(<ReportView />);
+      root?.render(<MemoryRouter><ReportView /></MemoryRouter>);
     });
 
     const runButton = Array.from(container.querySelectorAll('button')).find(
@@ -635,7 +636,7 @@ describe('ReportView OAuth discovery', () => {
     const container = document.createElement('div');
     await act(async () => {
       root = createRoot(container);
-      root.render(<ReportView />);
+      root.render(<MemoryRouter><ReportView /></MemoryRouter>);
     });
 
     const section = container.querySelector('section[aria-labelledby="report-badge-embed-title"]');
@@ -691,7 +692,7 @@ describe('ReportView OAuth discovery', () => {
     const container = document.createElement('div');
     await act(async () => {
       root = createRoot(container);
-      root.render(<ReportView />);
+      root.render(<MemoryRouter><ReportView /></MemoryRouter>);
     });
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
@@ -740,7 +741,7 @@ describe('ReportView OAuth discovery', () => {
     const container = document.createElement('div');
     await act(async () => {
       root = createRoot(container);
-      root.render(<ReportView />);
+      root.render(<MemoryRouter><ReportView /></MemoryRouter>);
     });
     expect(container.querySelector('#report-badge-embed-title')).not.toBeNull();
     expect(container.querySelector('.badge-embed-preview img')?.getAttribute('src')).toBe('/badge/blocked.svg');
@@ -766,7 +767,7 @@ describe('ReportView OAuth discovery', () => {
     const container = document.createElement('div');
     root = createRoot(container);
     act(() => {
-      root?.render(<ReportView />);
+      root?.render(<MemoryRouter><ReportView /></MemoryRouter>);
     });
 
     const runButton = Array.from(container.querySelectorAll('button')).find(
@@ -795,7 +796,7 @@ describe('ReportView OAuth discovery', () => {
     expect(() => {
       act(() => {
         root = createRoot(container);
-        root.render(<ReportView />);
+        root.render(<MemoryRouter><ReportView /></MemoryRouter>);
       });
     }).not.toThrow();
     expect(container.textContent).toContain(
@@ -816,7 +817,7 @@ describe('ReportView OAuth discovery', () => {
 
     await act(async () => {
       root = createRoot(container);
-      root.render(<ReportView />);
+      root.render(<MemoryRouter><ReportView /></MemoryRouter>);
     });
 
     expect(container.textContent).toContain('Building release-readiness report');
@@ -838,7 +839,7 @@ describe('ReportView OAuth discovery', () => {
     expect(() => {
       act(() => {
         root = createRoot(container);
-        root.render(<ReportView />);
+        root.render(<MemoryRouter><ReportView /></MemoryRouter>);
       });
     }).not.toThrow();
     expect(container.textContent).toContain(
@@ -850,7 +851,7 @@ describe('ReportView OAuth discovery', () => {
     const container = document.createElement('div');
     root = createRoot(container);
     act(() => {
-      root?.render(<ReportView />);
+      root?.render(<MemoryRouter><ReportView /></MemoryRouter>);
     });
 
     const runButton = Array.from(container.querySelectorAll('button')).find(
@@ -882,7 +883,7 @@ describe('ReportView OAuth discovery', () => {
     const container = document.createElement('div');
     root = createRoot(container);
     act(() => {
-      root?.render(<ReportView />);
+      root?.render(<MemoryRouter><ReportView /></MemoryRouter>);
     });
 
     const runButton = Array.from(container.querySelectorAll('button')).find(
