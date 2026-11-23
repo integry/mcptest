@@ -10769,5 +10769,398 @@
     "authorizationServers": [
       "https://viewmax.studio/api/auth"
     ]
+  },
+  {
+    "serverId": "reassurez-moi",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateful",
+    "checkedAt": "2026-11-23T15:14:04.703Z",
+    "message": "Negotiated stateful MCP 2025-11-25 at https://mcp.reassurez-moi.fr/mcp; detected transport streamable-http; authentication none",
+    "validatedUrl": "https://mcp.reassurez-moi.fr/mcp",
+    "protocolVersion": "2025-11-25"
+  },
+  {
+    "serverId": "todaytix",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateful",
+    "checkedAt": "2026-11-23T15:14:05.775Z",
+    "message": "Negotiated stateful MCP 2025-11-25 at https://www.todaytix.com/mcp; detected transport streamable-http; authentication none",
+    "validatedUrl": "https://www.todaytix.com/mcp",
+    "protocolVersion": "2025-11-25"
+  },
+  {
+    "serverId": "hovercode",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateless",
+    "checkedAt": "2026-11-23T15:14:04.125Z",
+    "message": "Negotiated stateless MCP 2026-07-28 at https://hovercode.com/mcp/; detected transport streamable-http; authentication none; WARNING: OAuth authorization servers advertised; an anonymous MCP handshake does not establish anonymous tool access",
+    "validatedUrl": "https://hovercode.com/mcp/",
+    "protocolVersion": "2026-07-28",
+    "authorizationServers": [
+      "https://hovercode.com"
+    ]
+  },
+  {
+    "serverId": "schematik",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateful",
+    "checkedAt": "2026-11-23T15:14:04.748Z",
+    "message": "Negotiated stateful MCP 2025-11-25 at https://www.schematik.io/mcp; detected transport streamable-http; authentication none",
+    "validatedUrl": "https://www.schematik.io/mcp",
+    "protocolVersion": "2025-11-25"
+  },
+  {
+    "serverId": "conductscience",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateful",
+    "checkedAt": "2026-11-23T15:15:51.351Z",
+    "message": "Negotiated stateful MCP 2025-11-25 at https://conductscience.com/api/mcp/catalog; detected transport streamable-http; authentication none",
+    "validatedUrl": "https://conductscience.com/api/mcp/catalog",
+    "protocolVersion": "2025-11-25"
+  },
+  {
+    "serverId": "ea-ecommerce-apps",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateless",
+    "checkedAt": "2026-11-23T15:14:04.846Z",
+    "message": "Negotiated stateless MCP 2026-07-28 at https://mcp.easyappsecom.com/mcp; detected transport streamable-http; authentication none; WARNING: OAuth authorization servers advertised; an anonymous MCP handshake does not establish anonymous tool access",
+    "validatedUrl": "https://mcp.easyappsecom.com/mcp",
+    "protocolVersion": "2026-07-28",
+    "authorizationServers": [
+      "https://mcp.easyappsecom.com"
+    ]
+  },
+  {
+    "serverId": "about-my-sound",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateless",
+    "checkedAt": "2026-11-23T15:14:04.134Z",
+    "message": "Negotiated stateless MCP 2026-07-28 at https://aboutmysound.com/mcp; detected transport streamable-http; authentication none; WARNING: OAuth authorization servers advertised; an anonymous MCP handshake does not establish anonymous tool access",
+    "validatedUrl": "https://aboutmysound.com/mcp",
+    "protocolVersion": "2026-07-28",
+    "authorizationServers": [
+      "https://aboutmysound.com"
+    ]
+  },
+  {
+    "serverId": "aerocell",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateful",
+    "checkedAt": "2026-11-23T15:14:05.266Z",
+    "message": "Negotiated stateful MCP 2025-11-25 at https://aerocell.app/mcp; detected transport streamable-http; authentication none",
+    "validatedUrl": "https://aerocell.app/mcp",
+    "protocolVersion": "2025-11-25"
+  },
+  {
+    "serverId": "astralread",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateless",
+    "checkedAt": "2026-11-23T15:14:04.867Z",
+    "message": "Negotiated stateless MCP 2026-07-28 at https://astralread.com/mcp; detected transport streamable-http; authentication none; WARNING: OAuth authorization servers advertised; an anonymous MCP handshake does not establish anonymous tool access",
+    "validatedUrl": "https://astralread.com/mcp",
+    "protocolVersion": "2026-07-28",
+    "authorizationServers": [
+      "https://astralread.com"
+    ]
+  },
+  {
+    "serverId": "atalaya",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateful",
+    "checkedAt": "2026-11-23T15:14:06.900Z",
+    "message": "Negotiated stateful MCP 2025-06-18 at https://atalaya.city/mcp; detected transport streamable-http; authentication none",
+    "validatedUrl": "https://atalaya.city/mcp",
+    "protocolVersion": "2025-06-18"
+  },
+  {
+    "serverId": "atsprep",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateful",
+    "checkedAt": "2026-11-23T15:14:06.662Z",
+    "message": "Negotiated stateful MCP 2025-11-25 at https://atsprep.com/mcp; detected transport streamable-http; authentication none",
+    "validatedUrl": "https://atsprep.com/mcp",
+    "protocolVersion": "2025-11-25"
+  },
+  {
+    "serverId": "axel",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateless",
+    "checkedAt": "2026-11-23T15:14:06.444Z",
+    "message": "Negotiated stateless MCP 2026-07-28 at https://helloaxel.com/mcp; detected transport streamable-http; authentication none; WARNING: OAuth authorization servers advertised; an anonymous MCP handshake does not establish anonymous tool access",
+    "validatedUrl": "https://helloaxel.com/mcp",
+    "protocolVersion": "2026-07-28",
+    "authorizationServers": [
+      "https://api.helloaxel.com"
+    ]
+  },
+  {
+    "serverId": "barcelona-taxigo",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateless",
+    "checkedAt": "2026-11-23T15:14:05.655Z",
+    "message": "Negotiated stateless MCP 2026-07-28 at https://mcp.barcelonataxigo.app/mcp; detected transport streamable-http; authentication none; WARNING: OAuth authorization servers advertised; an anonymous MCP handshake does not establish anonymous tool access",
+    "validatedUrl": "https://mcp.barcelonataxigo.app/mcp",
+    "protocolVersion": "2026-07-28",
+    "authorizationServers": [
+      "https://mcp.barcelonataxigo.app"
+    ]
+  },
+  {
+    "serverId": "beyond-wine",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateful",
+    "checkedAt": "2026-11-23T15:14:07.358Z",
+    "message": "Negotiated stateful MCP 2025-11-25 at https://beyond.wine/mcp; detected transport streamable-http; authentication none",
+    "validatedUrl": "https://beyond.wine/mcp",
+    "protocolVersion": "2025-11-25"
+  },
+  {
+    "serverId": "boim",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateless",
+    "checkedAt": "2026-11-23T15:14:07.559Z",
+    "message": "Negotiated stateless MCP 2026-07-28 at https://boim.io/api/mcp; detected transport streamable-http; authentication none",
+    "validatedUrl": "https://boim.io/api/mcp",
+    "protocolVersion": "2026-07-28"
+  },
+  {
+    "serverId": "boxerbook",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateless",
+    "checkedAt": "2026-11-23T15:14:06.533Z",
+    "message": "Negotiated stateless MCP 2026-07-28 at https://mcp.boxerbook.com/mcp; detected transport streamable-http; authentication none",
+    "validatedUrl": "https://mcp.boxerbook.com/mcp",
+    "protocolVersion": "2026-07-28"
+  },
+  {
+    "serverId": "citysignal",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateless",
+    "checkedAt": "2026-11-23T15:14:07.205Z",
+    "message": "Negotiated stateless MCP 2026-07-28 at https://citysignalai.com/mcp; detected transport streamable-http; authentication none; WARNING: OAuth authorization servers advertised; an anonymous MCP handshake does not establish anonymous tool access",
+    "validatedUrl": "https://citysignalai.com/mcp",
+    "protocolVersion": "2026-07-28",
+    "authorizationServers": [
+      "https://citysignalai.com"
+    ]
+  },
+  {
+    "serverId": "clef",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateful",
+    "checkedAt": "2026-11-23T15:14:08.475Z",
+    "message": "Negotiated stateful MCP 2025-11-25 at https://clefdrills.com/mcp; detected transport streamable-http; authentication none",
+    "validatedUrl": "https://clefdrills.com/mcp",
+    "protocolVersion": "2025-11-25"
+  },
+  {
+    "serverId": "doubletaxation",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateful",
+    "checkedAt": "2026-11-23T15:14:07.259Z",
+    "message": "Negotiated stateful MCP 2025-11-25 at https://doubletaxation.app/api/mcp; detected transport streamable-http; authentication none",
+    "validatedUrl": "https://doubletaxation.app/api/mcp",
+    "protocolVersion": "2025-11-25"
+  },
+  {
+    "serverId": "dropzoom",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateless",
+    "checkedAt": "2026-11-23T15:14:07.318Z",
+    "message": "Negotiated stateless MCP 2026-07-28 at https://mcp.dropzoom.link/mcp; detected transport streamable-http; authentication none; WARNING: OAuth authorization servers advertised; an anonymous MCP handshake does not establish anonymous tool access",
+    "validatedUrl": "https://mcp.dropzoom.link/mcp",
+    "protocolVersion": "2026-07-28",
+    "authorizationServers": [
+      "https://mcp.dropzoom.link"
+    ]
+  },
+  {
+    "serverId": "electric-state",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateful",
+    "checkedAt": "2026-11-23T15:14:08.512Z",
+    "message": "Negotiated stateful MCP 2025-06-18 at https://api.electricstate.app/mcp; detected transport streamable-http; authentication none",
+    "validatedUrl": "https://api.electricstate.app/mcp",
+    "protocolVersion": "2025-06-18"
+  },
+  {
+    "serverId": "foto-foto",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateful",
+    "checkedAt": "2026-11-23T15:14:11.240Z",
+    "message": "Negotiated stateful MCP 2025-11-25 at https://fotofoto.app/mcp; detected transport streamable-http; authentication none",
+    "validatedUrl": "https://fotofoto.app/mcp",
+    "protocolVersion": "2025-11-25"
+  },
+  {
+    "serverId": "getsize",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateful",
+    "checkedAt": "2026-11-23T15:14:08.121Z",
+    "message": "Negotiated stateful MCP 2025-06-18 at https://www.getsize.shoes/mcp; detected transport streamable-http; authentication none",
+    "validatedUrl": "https://www.getsize.shoes/mcp",
+    "protocolVersion": "2025-06-18"
+  },
+  {
+    "serverId": "houseloop",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateful",
+    "checkedAt": "2026-11-23T15:14:09.322Z",
+    "message": "Negotiated stateful MCP 2025-11-25 at https://houseloop.ai/api/mcp; detected transport streamable-http; authentication none",
+    "validatedUrl": "https://houseloop.ai/api/mcp",
+    "protocolVersion": "2025-11-25"
+  },
+  {
+    "serverId": "japanese-skills",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateless",
+    "checkedAt": "2026-11-23T15:14:08.386Z",
+    "message": "Negotiated stateless MCP 2026-07-28 at https://japaneseskills.com/mcp; detected transport streamable-http; authentication none",
+    "validatedUrl": "https://japaneseskills.com/mcp",
+    "protocolVersion": "2026-07-28"
+  },
+  {
+    "serverId": "kmarket",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateful",
+    "checkedAt": "2026-11-23T15:14:07.871Z",
+    "message": "Negotiated stateful MCP 2025-11-25 at https://kmarket.tj/mcp; detected transport streamable-http; authentication none",
+    "validatedUrl": "https://kmarket.tj/mcp",
+    "protocolVersion": "2025-11-25"
+  },
+  {
+    "serverId": "kuotia",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateful",
+    "checkedAt": "2026-11-23T15:14:08.859Z",
+    "message": "Negotiated stateful MCP 2025-11-25 at https://kuotia.com/mcp; detected transport streamable-http; authentication none; WARNING: OAuth authorization servers advertised; an anonymous MCP handshake does not establish anonymous tool access",
+    "validatedUrl": "https://kuotia.com/mcp",
+    "protocolVersion": "2025-11-25",
+    "authorizationServers": [
+      "https://kuotia.com"
+    ]
+  },
+  {
+    "serverId": "listin3d",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateless",
+    "checkedAt": "2026-11-23T15:14:09.168Z",
+    "message": "Negotiated stateless MCP 2026-07-28 at https://listin3d.com/mcp; detected transport streamable-http; authentication none; WARNING: OAuth authorization servers advertised; an anonymous MCP handshake does not establish anonymous tool access",
+    "validatedUrl": "https://listin3d.com/mcp",
+    "protocolVersion": "2026-07-28",
+    "authorizationServers": [
+      "https://listin3d.com"
+    ]
+  },
+  {
+    "serverId": "lucebra",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateless",
+    "checkedAt": "2026-11-23T15:14:09.421Z",
+    "message": "Negotiated stateless MCP 2026-07-28 at https://api.lucebra.com/mcp; detected transport streamable-http; authentication none; WARNING: OAuth authorization servers advertised; an anonymous MCP handshake does not establish anonymous tool access",
+    "validatedUrl": "https://api.lucebra.com/mcp",
+    "protocolVersion": "2026-07-28",
+    "authorizationServers": [
+      "https://api.lucebra.com"
+    ]
+  },
+  {
+    "serverId": "paper-plane-post",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateless",
+    "checkedAt": "2026-11-23T15:14:09.506Z",
+    "message": "Negotiated stateless MCP 2026-07-28 at https://api.paperplanepost.com/v1/mcp; detected transport streamable-http; authentication none",
+    "validatedUrl": "https://api.paperplanepost.com/v1/mcp",
+    "protocolVersion": "2026-07-28"
   }
 ]
