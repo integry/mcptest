@@ -9986,6 +9986,20 @@
     "protocolVersion": "2026-07-28"
   },
   {
+    "serverId": "onlypult",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-23T11:30:01.428Z",
+    "message": "Authentication challenge at https://mcp.onlypult.com/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://mcp.onlypult.com/mcp",
+    "authorizationServers": [
+      "https://mcp.onlypult.com"
+    ]
+  },
+  {
     "serverId": "whatjobs",
     "status": "online",
     "transport": "streamable-http",

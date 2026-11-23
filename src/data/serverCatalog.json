@@ -34259,6 +34259,51 @@
     "homepageUrl": "https://supplemental.pl/en/tools/mcp-server/"
   },
   {
+    "id": "onlypult",
+    "name": "Onlypult",
+    "url": "https://mcp.onlypult.com/mcp",
+    "description": "Draft, schedule, and publish social media posts, attach media, and read performance analytics for connected Onlypult profiles. Authenticate with Onlypult OAuth or a bearer API key.",
+    "category": "Automation",
+    "tags": [
+      "social-media",
+      "publishing",
+      "scheduling",
+      "analytics"
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://onlypult.com/dev/mcp.html"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": true,
+    "authType": "oauth",
+    "alternativeAuthTypes": [
+      "bearer-token"
+    ],
+    "oauthRegistration": {
+      "mode": "unknown",
+      "evidenceUrl": "https://onlypult.com/dev/mcp.html",
+      "reviewedAt": "2026-11-23",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false,
+        "redirectUrls": {}
+      },
+      "setupSteps": [],
+      "settings": []
+    },
+    "logoUrl": "/server-logos/onlypult.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-23",
+    "logoLicenseNote": "Locally generated monogram. It is not an official Onlypult mark.",
+    "homepageUrl": "https://onlypult.com/dev/mcp.html"
+  },
+  {
     "id": "whatjobs",
     "name": "Whatjobs",
     "url": "https://mcp.whatjobs.com/mcp",
