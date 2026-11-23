@@ -65,6 +65,7 @@ describe('site assistant page exclusions', () => {
     '/call/mcp.example.com/mcp/tool/x',
     '/r',
     '/r/abc123',
+    '/mcp-server-development///',
   ])('is off on %s', pathname => {
     expect(isSiteAssistantPath(pathname)).toBe(false);
   });
@@ -80,6 +81,8 @@ describe('site assistant page exclusions', () => {
     '/tools/oauth-check',
     '/mcp-test-servers',
     '/reports-guide',
+    '/mcp-server-development/guide',
+    '/server',
     '/spaces',
     '/submit',
   ])('may show on %s', pathname => {

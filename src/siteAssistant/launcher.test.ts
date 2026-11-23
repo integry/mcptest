@@ -122,6 +122,23 @@ describe('site assistant launcher', () => {
     expect(trackEvent).toHaveBeenCalledWith('assistant_widget_load', expect.objectContaining({ outcome: 'loaded', trigger: 'restore' }));
   });
 
+  it('keeps a pending restore detached if the URL changes before the router updates the launcher', async () => {
+    defineStubWidget(() => { opened += 1; });
+    const launcher = mountSiteAssistantLauncher(CONFIG, true);
+    launcher.setActive(true);
+    const originalPath = window.location.pathname;
+    try {
+      window.history.replaceState(null, '', '/space');
+      await flush();
+      expect(document.querySelector('solv-chat')).toBeNull();
+      window.history.replaceState(null, '', originalPath);
+      launcher.setActive(true);
+      expect(document.querySelector('solv-chat')).not.toBeNull();
+    } finally {
+      window.history.replaceState(null, '', originalPath);
+    }
+  });
+
   it('says so and can retry when the script fails to load', async () => {
     // Undefined element name for this case: make the custom element lookup fail.
     const get = vi.spyOn(customElements, 'get').mockReturnValue(undefined);

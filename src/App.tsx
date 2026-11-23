@@ -1,5 +1,5 @@
 import Footer from './components/Footer';
-import React, { Suspense, useCallback, useEffect, useRef, useState, useMemo } from 'react';
+import React, { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState, useMemo } from 'react';
 import type { CatalogTransport } from './types/catalog';
 import { useLocation, useNavigate } from 'react-router-dom';
 
@@ -255,7 +255,7 @@ function App() {
   }, [location.pathname, location.hash]);
 
   // The site assistant stays off on auth flows and pages with a visitor's own data.
-  useEffect(() => {
+  useLayoutEffect(() => {
     syncSiteAssistantRoute(location.pathname);
   }, [location.pathname]);
   

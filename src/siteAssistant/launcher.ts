@@ -1,6 +1,6 @@
 import './launcher.css';
 import { trackEvent } from '../utils/analytics';
-import type { SiteAssistantConfig } from './config.mts';
+import { isSiteAssistantPath, type SiteAssistantConfig } from './config.mts';
 import { createWidgetElement, loadWidgetScript, openWidgetPanel } from './widgetScript';
 import type { SiteAssistantLauncher } from './siteAssistant';
 
@@ -51,6 +51,9 @@ export const mountSiteAssistantLauncher = (config: SiteAssistantConfig, restore 
   let widget: HTMLElement | null = null;
   let loading: Promise<boolean> | null = null;
 
+  // History can change before the router commits and calls setActive.
+  const canShow = () => active && isSiteAssistantPath(window.location.pathname);
+
   const attachWidget = () => {
     if (!widget) {
       widget = createWidgetElement(config);
@@ -61,7 +64,7 @@ export const mountSiteAssistantLauncher = (config: SiteAssistantConfig, restore 
       widget.setAttribute('launcher-position', 'right');
       widget.setAttribute('opens-as', 'side');
     }
-    if (active && !widget.isConnected) document.body.append(widget);
+    if (canShow() && !widget.isConnected) document.body.append(widget);
   };
 
   const render = () => {
@@ -123,7 +126,7 @@ export const mountSiteAssistantLauncher = (config: SiteAssistantConfig, restore 
     setActive(next: boolean) {
       active = next;
       render();
-      if (active && pendingRestore) {
+      if (pendingRestore && canShow()) {
         pendingRestore = false;
         void load('restore');
       }

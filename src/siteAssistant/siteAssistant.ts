@@ -1,6 +1,7 @@
 import {
   isSiteAssistantPath,
   resolveSiteAssistantConfig,
+  SITE_ASSISTANT_CANCEL_DOCK_EVENT,
   SITE_ASSISTANT_META_NAME,
   type SiteAssistantConfig,
 } from './config.mts';
@@ -20,6 +21,7 @@ export type LoadLauncher = (config: SiteAssistantConfig, restore: boolean) => Pr
 
 interface SiteAssistantState {
   config: SiteAssistantConfig;
+  doc: Document;
   pathname: string;
   /** The page is idle or has a docked panel waiting to be restored. */
   ready: boolean;
@@ -86,6 +88,7 @@ export const startSiteAssistant = (options: {
     && doc.getElementById(`solv-dock:1:${config.assistantKey}`) !== null;
   const current: SiteAssistantState = {
     config,
+    doc,
     pathname,
     ready: restore,
     restore,
@@ -107,6 +110,9 @@ export const startSiteAssistant = (options: {
 export const syncSiteAssistantRoute = (pathname: string): void => {
   if (!state) return;
   state.pathname = pathname;
+  if (!isSiteAssistantPath(pathname)) {
+    state.doc.dispatchEvent(new Event(SITE_ASSISTANT_CANCEL_DOCK_EVENT));
+  }
   apply(state);
 };
 

@@ -15,9 +15,6 @@
  * report permalinks (/r/*) are JSON served by the Worker, so neither changes.
  */
 
-/** The service page's path (src/servicePage/config.mts); spelled out so this module stays import-free. */
-const SERVICE_PAGE_PATH = '/mcp-server-development';
-
 export interface SiteAssistantConfig {
   /** The solv.chat Worker origin, e.g. `https://chat.example.com`. Never a path. */
   endpoint: string;
@@ -29,8 +26,9 @@ export type SiteAssistantEnv = Partial<Record<'VITE_SOLV_ENDPOINT' | 'VITE_SOLV_
 
 /** `name` of the meta tag that carries the config into the page. */
 export const SITE_ASSISTANT_META_NAME = 'mcptest-site-assistant';
-export const SITE_ASSISTANT_BOOT_HASH = 'wKNxb9ISGk0wGMPONDaS6EQcivqaehUe6YFzRCFv+KI=';
+export const SITE_ASSISTANT_BOOT_HASH = 'rajJTGkmDqnHHZdRc/T5s30fwpgQyhbtd1KM/hiBEmI=';
 export const SITE_ASSISTANT_BOOT_SOURCE = `'sha256-${SITE_ASSISTANT_BOOT_HASH}'`;
+export const SITE_ASSISTANT_CANCEL_DOCK_EVENT = 'mcptest:cancel-site-assistant-dock';
 
 /** Public keys are opaque ids; anything else is a misconfiguration, not markup to inject. */
 const ASSISTANT_KEY = /^[A-Za-z0-9_-]{1,128}$/;
@@ -135,11 +133,6 @@ export const transformCspMeta = (html: string, transform: (policy: string) => st
  * - `/mcp-server-development`: the service page shows its own quote
  *   assistant instead (src/servicePage/).
  */
-const EXCLUDED_EXACT = new Set(['/oauth/callback', '/install-integration', '/space', '/report', '/r', SERVICE_PAGE_PATH]);
-const EXCLUDED_PREFIXES = ['/oauth/callback/', '/install-integration/', '/space/', '/report/', '/server/', '/call/', '/r/'];
+export const SITE_ASSISTANT_EXCLUDED_PATH = /^\/(?:(?:oauth\/callback|install-integration|space|report|r)(?:\/|$)|(?:server|call)\/|mcp-server-development\/*$)/;
 
-export const isSiteAssistantPath = (pathname: string): boolean => {
-  const path = pathname.length > 1 ? pathname.replace(/\/+$/, '') || '/' : pathname;
-  if (EXCLUDED_EXACT.has(path)) return false;
-  return !EXCLUDED_PREFIXES.some(prefix => pathname.startsWith(prefix));
-};
+export const isSiteAssistantPath = (pathname: string): boolean => !SITE_ASSISTANT_EXCLUDED_PATH.test(pathname);
