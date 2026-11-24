@@ -428,13 +428,14 @@
   {
     "serverId": "hugging-face",
     "status": "online",
-    "transport": "unknown",
-    "authType": "oauth",
-    "requiresOAuth": true,
-    "protocolEra": "unknown",
-    "checkedAt": "2026-11-23T18:14:46.934Z",
-    "message": "Authentication challenge at https://huggingface.co/mcp?login returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
-    "validatedUrl": "https://huggingface.co/mcp?login",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateless",
+    "checkedAt": "2026-11-24T20:11:59.687Z",
+    "message": "Negotiated stateless MCP 2026-07-28 at https://huggingface.co/mcp; detected transport streamable-http; authentication none; WARNING: OAuth authorization servers advertised; an anonymous MCP handshake does not establish anonymous tool access",
+    "validatedUrl": "https://huggingface.co/mcp",
+    "protocolVersion": "2026-07-28",
     "authorizationServers": [
       "https://huggingface.co"
     ]
@@ -11785,7 +11786,7 @@
     "authType": "oauth",
     "requiresOAuth": true,
     "protocolEra": "unknown",
-    "checkedAt": "2026-11-24T18:11:59.265Z",
+    "checkedAt": "2026-11-24T20:12:04.664Z",
     "message": "Authentication challenge at https://mcp.quo.com/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
     "validatedUrl": "https://mcp.quo.com/mcp",
     "authorizationServers": [

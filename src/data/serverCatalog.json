@@ -888,6 +888,11 @@
         "directory": "chatgpt",
         "id": "plugin_asdk_app_69e0086d87088191a3edc052fa50c29f",
         "url": "https://chatgpt.com/plugins/plugin_asdk_app_69e0086d87088191a3edc052fa50c29f"
+      },
+      {
+        "directory": "claude",
+        "id": "directoryPlugin.f204c8c5-e0ff-4c8d-a81d-d14ea6a4e154",
+        "url": "https://claude.com/marketplace/plugins/neon"
       }
     ],
     "relevance": 80,
@@ -1880,7 +1885,7 @@
   {
     "id": "hugging-face",
     "name": "Hugging Face",
-    "url": "https://huggingface.co/mcp?login",
+    "url": "https://huggingface.co/mcp",
     "description": "Hugging Face's hosted MCP server explores models, datasets, Spaces, papers, jobs, and community AI tools.",
     "category": "AI Infrastructure",
     "tags": [
@@ -1912,32 +1917,16 @@
     ],
     "relevance": 94,
     "transport": "streamable-http",
-    "requiresOAuth": true,
-    "authType": "oauth",
-    "oauthRegistration": {
-      "mode": "unknown",
-      "clientId": {
-        "required": false
-      },
-      "clientSecret": {
-        "required": false
-      },
-      "callback": {
-        "required": false,
-        "redirectUrls": {}
-      },
-      "setupSteps": [],
-      "settings": [],
-      "reviewedAt": "2026-08-24",
-      "evidenceUrl": "https://huggingface.co/docs/hub/en/agents-mcp"
-    },
+    "requiresOAuth": false,
+    "authType": "none",
     "alternativeAuthTypes": [
-      "bearer-token"
+      "bearer-token",
+      "oauth"
     ],
     "requiredHeaders": [
       {
         "name": "Authorization",
-        "description": "For the bare /mcp endpoint only: Bearer <HF_TOKEN>",
+        "description": "Optional Hugging Face token for authenticated access to the primary endpoint",
         "valueTemplate": "Bearer <HF_TOKEN>",
         "required": false,
         "secret": true
@@ -1945,9 +1934,9 @@
     ],
     "alternativeEndpoints": [
       {
-        "url": "https://huggingface.co/mcp",
-        "authType": "bearer-token",
-        "description": "Use when supplying a Hugging Face token directly"
+        "url": "https://huggingface.co/mcp?login",
+        "authType": "oauth",
+        "description": "Sign in with Hugging Face via OAuth. Anonymous initialization returned HTTP 401."
       },
       {
         "url": "https://huggingface.co/mcp?login&gradio=none",
@@ -1968,7 +1957,7 @@
     "homepageUrl": "https://huggingface.co",
     "sourceUrl": "https://github.com/huggingface/hf-mcp-server",
     "caveats": [
-      "The ?login endpoint initiates OAuth. Use the bare /mcp endpoint only when supplying a bearer token."
+      "The primary endpoint initialized without credentials and listed four tools. A Hugging Face token can be supplied for authenticated access. The ?login OAuth endpoint returned HTTP 401 with a Bearer challenge."
     ]
   },
   {
@@ -3306,6 +3295,11 @@
         "directory": "chatgpt",
         "id": "plugin_asdk_app_6a502589384081919c5decf93496c9d1",
         "url": "https://chatgpt.com/plugins/plugin_asdk_app_6a502589384081919c5decf93496c9d1"
+      },
+      {
+        "directory": "claude",
+        "id": "directoryPlugin.db04e594-b3b0-4640-8650-2836212fc16e",
+        "url": "https://claude.com/marketplace/plugins/railway"
       }
     ],
     "relevance": 87,
@@ -39341,6 +39335,11 @@
         "directory": "claude",
         "id": "connector.5b1d1665-4793-4a8c-98cf-909e00e97a29",
         "url": "https://claude.com/marketplace/connectors/quo"
+      },
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_69e6af3297d88191b4925772c50df286",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_69e6af3297d88191b4925772c50df286"
       }
     ],
     "relevance": 74,
@@ -39369,7 +39368,14 @@
     "logoSourceKind": "generated-fallback",
     "logoRetrievedAt": "2026-11-24",
     "logoLicenseNote": "Locally generated monogram for Quo. This monogram is not an official mark.",
-    "homepageUrl": "https://quo.com/"
+    "homepageUrl": "https://quo.com/",
+    "alternativeEndpoints": [
+      {
+        "url": "https://mcp.quo.com/sse",
+        "authType": "oauth",
+        "description": "Legacy SSE endpoint. An unauthenticated SSE request returned HTTP 401 with an OAuth Bearer challenge."
+      }
+    ]
   },
   {
     "id": "cdata-connect-ai",
