@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { SITE_ASSISTANT_META_NAME } from '../../src/siteAssistant/config.mts';
 
 // Opt in because the live engine is outside CI's control. Use app-staging.solv.chat
-// while production is older than 0.1.12. Only local HTML can be rewritten.
+// while production is older than 0.1.13. Only local HTML can be rewritten.
 const endpoint = process.env.E2E_SOLV_DOCK_ENDPOINT;
 const guide = '/learn/oauth-for-mcp-explained';
 const content = '.main-content';
@@ -52,7 +52,7 @@ async function useLiveEndpoint(page: Page, baseURL: string, configured = true) {
 }
 
 test.use({ viewport: { width: 1440, height: 1000 }, ignoreHTTPSErrors: true });
-test.skip(!endpoint, 'Set E2E_SOLV_DOCK_ENDPOINT to a live solv.chat engine serving widget 0.1.12.');
+test.skip(!endpoint, 'Set E2E_SOLV_DOCK_ENDPOINT to a live solv.chat engine serving widget 0.1.13.');
 
 test('a live docked panel preserves content width on route changes and from the first reload frame', async ({ page, context, baseURL }) => {
   if (process.env.VITE_SOLV_ENDPOINT !== endpoint) await useLiveEndpoint(page, baseURL!);

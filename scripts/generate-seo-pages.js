@@ -1772,15 +1772,18 @@ function writeCategoryPages(indexHtml, servers, articles, shell) {
   return summaries.length;
 }
 
-/** React-only documentation pages (privacy, terms, contact) keep their metadata in pageMetadata.json. */
-function writeStaticPages(indexHtml, docsMetadata) {
+/** Documentation pages keep their metadata in pageMetadata.json. */
+function writeStaticPages(indexHtml, docsMetadata, { shell, prerender }) {
   for (const [slug, metadata] of Object.entries(docsMetadata)) {
     const pathname = `/docs/${slug}`;
     const outputDirectory = path.join(distRoot, 'docs', slug);
+    const fallbackHtml = slug === 'privacy-policy'
+      ? renderContentShell(prerender.renderPrivacyPolicyPage(), { view: 'docs', pathname, pageViewTitle: 'Docs: privacy policy', shell })
+      : undefined;
     fs.mkdirSync(outputDirectory, { recursive: true });
     fs.writeFileSync(
       path.join(outputDirectory, 'index.html'),
-      renderStaticPageHtml(indexHtml, pathname, metadata),
+      renderStaticPageHtml(indexHtml, pathname, metadata, { fallbackHtml }),
       'utf8'
     );
   }
@@ -2408,7 +2411,7 @@ async function main() {
 
   writeServerPages(indexHtml, servers, contentShell);
   const categoryCount = writeCategoryPages(indexHtml, servers, articles, contentShell);
-  writeStaticPages(indexHtml, pageMetadata.docs);
+  writeStaticPages(indexHtml, pageMetadata.docs, { shell: contentShell, prerender });
   writeCiPage(indexHtml);
   writeToolPages(indexHtml, pageMetadata.tools, { shell: contentShell, prerender });
   fs.writeFileSync(`${distPathFor('/tools/oauth-check')}.html`, renderStaticPageHtml(indexHtml, '/tools/oauth-check', pageMetadata.tools['oauth-check'], {
