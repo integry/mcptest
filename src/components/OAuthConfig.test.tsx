@@ -178,14 +178,16 @@ describe('OAuth authorization prerequisite panel', () => {
     root = createRoot(container);
     act(() => {
       root?.render(
-        <OAuthConfig
-          serverUrl={prerequisite.serverUrl}
-          prerequisite={prerequisite}
-          currentUser={{ getIdToken: vi.fn().mockResolvedValue('firebase-token') }}
-          onBeforeHostedAuthorization={onBeforeHostedAuthorization}
-          onConfigured={onConfigured}
-          onCancel={vi.fn()}
-        />
+        <MemoryRouter>
+          <OAuthConfig
+            serverUrl={prerequisite.serverUrl}
+            prerequisite={prerequisite}
+            currentUser={{ getIdToken: vi.fn().mockResolvedValue('firebase-token') }}
+            onBeforeHostedAuthorization={onBeforeHostedAuthorization}
+            onConfigured={onConfigured}
+            onCancel={vi.fn()}
+          />
+        </MemoryRouter>
       );
     });
 

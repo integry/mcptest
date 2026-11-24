@@ -439,7 +439,7 @@ describe('ReportView OAuth discovery', () => {
     const container = document.createElement('div');
     root = createRoot(container);
     act(() => {
-      root?.render(<ReportView />);
+      root?.render(<MemoryRouter><ReportView /></MemoryRouter>);
     });
 
     const runButton = Array.from(container.querySelectorAll('button')).find(
