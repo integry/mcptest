@@ -38496,5 +38496,36 @@
     "logoRetrievedAt": "2026-11-24",
     "logoLicenseNote": "Locally generated monogram for Mail by Pony. This monogram is not an official mark.",
     "homepageUrl": "https://www.mailbypony.com/"
+  },
+  {
+    "id": "aiprocurement",
+    "name": "AIProcurement.club Procurement Agents",
+    "url": "https://mcp.aiprocurement.club/mcp",
+    "browserAccess": "proxy-required",
+    "description": "Anonymous discovery lists 47 procurement tools, including 28 specialists plus workflow, evidence, and run controls. The catalog snapshot retains 28 of the 47 discovered tools.",
+    "category": "Productivity",
+    "tags": [
+      "productivity",
+      "community-submission",
+      "no-auth"
+    ],
+    "listingSource": {
+      "kind": "community-submission",
+      "url": "https://aiprocurement.club/agent-services/for-agents"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "alternativeAuthTypes": [
+      "bearer-token"
+    ],
+    "caveats": [
+      "Protected tool calls require a scoped AIProcurement.club bearer token. Paid specialist execution requires confirmed credits for the selected specialist. See the publisher integration guide linked on this page."
+    ],
+    "logoUrl": "/server-logos/aiprocurement.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-24",
+    "logoLicenseNote": "Locally generated AC monogram for a community submission; it is not an official AIProcurement.club Procurement Agents mark.",
+    "homepageUrl": "https://aiprocurement.club/agent-services/for-agents"
   }
 ]
