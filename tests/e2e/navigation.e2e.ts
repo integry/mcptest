@@ -178,7 +178,7 @@ test.describe('mobile drawer', () => {
   });
 });
 
-test('router restores both scroll containers and focuses the new page', async ({ page }) => {
+test('router restores the content column and focuses the new page', async ({ page }) => {
   await page.goto('/catalog');
   await page.keyboard.press('Shift');
   await expect(page.locator('[data-deferred-mount]')).toHaveCount(0);
@@ -231,8 +231,8 @@ test('router restores both scroll containers and focuses the new page', async ({
   await track.click();
   await expect(page.locator(hash)).toBeInViewport();
   const hashPosition = await offsets();
-  expect(hashPosition[0]).toBeGreaterThan(readingPosition[0]);
-  expect(hashPosition[1]).toBe(0);
+  expect(hashPosition[0]).toBe(0);
+  expect(hashPosition[1]).toBeGreaterThan(readingPosition[1]);
   await page.goBack();
   await expect.poll(offsets).toEqual(readingPosition);
   await page.goForward();
@@ -256,9 +256,10 @@ for (const { path, selector } of [
     await expect(staticPage).toBeVisible();
     const jump = page.locator(selector).last();
     const hash = (await jump.getAttribute('href'))!;
-    const offset = () => page.evaluate(() => window.scrollY);
+    const panel = page.locator('.main-content');
+    const offset = () => panel.evaluate(element => element.scrollTop);
     await jump.scrollIntoViewIfNeeded();
-    await page.evaluate(() => window.scrollBy({ top: 40, behavior: 'instant' }));
+    await panel.evaluate(element => element.scrollBy({ top: 40, behavior: 'instant' }));
     const readingPosition = await offset();
     expect(readingPosition).toBeGreaterThan(0);
 
@@ -267,8 +268,12 @@ for (const { path, selector } of [
       await jump.click();
       await expect(page).toHaveURL(new RegExp(`${hash}$`));
       await expect(staticPage).toBeVisible();
-      await expect(page.locator(hash)).toBeInViewport();
-      await page.evaluate(() => window.scrollBy({ top: 75, behavior: 'instant' }));
+      const target = page.locator(hash);
+      await expect(target).toBeInViewport();
+      const inset = await target.evaluate(element =>
+        element.getBoundingClientRect().top - element.closest('.main-content')!.getBoundingClientRect().top);
+      expect(inset).toBeCloseTo(16, 0);
+      await panel.evaluate(element => element.scrollBy({ top: 75, behavior: 'instant' }));
       fragmentPosition = await offset();
     } finally {
       release();
@@ -297,7 +302,8 @@ test('pushing the same route without the fragment resets scroll and retains link
   await expect(page.locator(hash)).toBeInViewport();
   const offsets = () => panel.evaluate(element => [window.scrollY, element.scrollTop]);
   const fragmentPosition = await offsets();
-  expect(fragmentPosition[0]).toBeGreaterThan(0);
+  expect(fragmentPosition[0]).toBe(0);
+  expect(fragmentPosition[1]).toBeGreaterThan(0);
 
   const guides = page.locator(sidebar).getByRole('link', { name: 'Guides', exact: true });
   await guides.click();
@@ -363,8 +369,9 @@ for (const { from, destination, label } of [
     await page.route(glossaryBody, route => route.abort());
     await followGlossaryLink(page, from, destination);
     const error = await expectGlossaryBodyError(page);
-    const offset = () => page.evaluate(() => window.scrollY);
-    await page.evaluate(() => window.scrollTo({ top: 100, behavior: 'instant' }));
+    const panel = page.locator('.main-content');
+    const offset = () => panel.evaluate(element => element.scrollTop);
+    await panel.evaluate(element => element.scrollTo({ top: 100, behavior: 'instant' }));
     await expect.poll(offset).toBe(100);
 
     await page.locator(sidebar).getByRole('link', { name: 'Catalog', exact: true }).click();
@@ -375,7 +382,7 @@ for (const { from, destination, label } of [
     await expect(error).toBeVisible();
     await expect(glossaryHeading(page)).toBeFocused();
     // Move away from the saved position while the body is still unavailable.
-    await page.evaluate(() => window.scrollTo({ top: 40, behavior: 'instant' }));
+    await panel.evaluate(element => element.scrollTo({ top: 40, behavior: 'instant' }));
     await expect.poll(offset).toBe(40);
 
     await page.unroute(glossaryBody);
@@ -406,3 +413,30 @@ test('removing a fragment resets the fixed-shell panel and preserves its Back po
   await expect(page).toHaveURL(/\/catalog#catalog-search$/);
   await expect.poll(offset).toBe(position);
 });
+
+for (const viewport of [{ width: 1440, height: 900 }, { width: 380, height: 800 }]) {
+  test(`the content column handles the first scroll key at ${viewport.width}px`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await page.goto('/learn/oauth-for-mcp-explained');
+    await expect(page.locator('[data-deferred-mount]')).toBeVisible();
+
+    const panel = page.locator('.main-content');
+    const offset = () => panel.evaluate(element => element.scrollTop);
+    expect(await offset()).toBe(0);
+    await page.keyboard.press('Space');
+    await expect.poll(offset).toBeGreaterThan(0);
+    await page.keyboard.press('End');
+    await expect.poll(() => panel.evaluate(element =>
+      Math.abs(element.scrollHeight - element.clientHeight - element.scrollTop))).toBeLessThan(1);
+    await page.keyboard.press('Home');
+    await expect.poll(offset).toBe(0);
+    await page.keyboard.press('ArrowDown');
+    await expect.poll(offset).toBeGreaterThan(0);
+    await page.keyboard.press('PageDown');
+    await expect.poll(offset).toBeGreaterThan(100);
+    expect(await panel.evaluate(element => element.getBoundingClientRect().right)).toBe(viewport.width);
+    expect(await page.evaluate(() => document.scrollingElement!.scrollHeight)).toBe(viewport.height);
+    await expect(page.locator('[data-deferred-mount]')).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
+  });
+}

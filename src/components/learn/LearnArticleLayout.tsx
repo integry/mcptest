@@ -27,22 +27,6 @@ interface LearnArticleLayoutProps {
   bodyReady?: boolean;
 }
 
-/**
- * A guide page around its body: breadcrumb, header, outline, pager, related
- * guides and sources. LearnArticlePage supplies the body, either the
- * prerendered HTML or ArticleMarkdown (MarkdownLearnArticle).
- */
-/**
- * The element the article scrolls in: .main-content in the fixed app shell,
- * or null when the page scrolls the window (the reading shell).
- */
-const getArticleScroller = (article: HTMLElement | null): HTMLElement | null => {
-  const content = article?.closest<HTMLElement>('.main-content');
-  if (!content) return null;
-  const overflow = window.getComputedStyle(content).overflowY;
-  return overflow === 'auto' || overflow === 'scroll' ? content : null;
-};
-
 const LearnArticleLayout: React.FC<LearnArticleLayoutProps> = ({ article, outline, prose, bodyReady = true }) => {
   const related = getRelatedLearnArticles(article);
   const { previous, next } = getLearnArticleNeighbors(article);
@@ -52,11 +36,12 @@ const LearnArticleLayout: React.FC<LearnArticleLayoutProps> = ({ article, outlin
 
   useEffect(() => {
     if (!bodyReady) return;
-    const scroller = getArticleScroller(articleRef.current);
+    const scroller = articleRef.current?.closest<HTMLElement>('.main-content');
+    if (!scroller) return;
     const headings = outline.map(({ id }) => document.getElementById(id)).filter((heading): heading is HTMLElement => Boolean(heading));
     let frame = 0;
     const update = () => {
-      const top = (scroller?.getBoundingClientRect().top ?? 0) + 48;
+      const top = scroller.getBoundingClientRect().top + 48;
       let current = headings[0]?.id;
       for (const heading of headings) {
         if (heading.getBoundingClientRect().top > top) break;
@@ -68,13 +53,12 @@ const LearnArticleLayout: React.FC<LearnArticleLayoutProps> = ({ article, outlin
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(update);
     };
-    const scrollTarget = scroller ?? window;
     update();
-    scrollTarget.addEventListener('scroll', onScroll, { passive: true });
+    scroller.addEventListener('scroll', onScroll, { passive: true });
     window.addEventListener('resize', onScroll);
     return () => {
       cancelAnimationFrame(frame);
-      scrollTarget.removeEventListener('scroll', onScroll);
+      scroller.removeEventListener('scroll', onScroll);
       window.removeEventListener('resize', onScroll);
     };
   }, [article.slug, outline, bodyReady]);

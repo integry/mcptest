@@ -98,33 +98,25 @@ const restoreFocus = (root: HTMLElement, snapshot: FocusSnapshot | null): void =
 };
 
 /** Scroll offsets of the page and the containers that actually scrolled. */
-const snapshotScroll = (root: HTMLElement, scrollers: Set<HTMLElement>) => ({
-  window: [window.scrollX, window.scrollY] as const,
-  elements: Array.from(scrollers)
+const snapshotScroll = (root: HTMLElement, scrollers: Set<HTMLElement>) =>
+  Array.from(scrollers)
     .filter(element => element.scrollTop !== 0 || element.scrollLeft !== 0)
     .flatMap(element => {
       const locator = locateElement(root, element);
       return locator ? [{ locator, top: element.scrollTop, left: element.scrollLeft }] : [];
-    }),
-});
+    });
 
 const restoreScroll = (root: HTMLElement, snapshot: ReturnType<typeof snapshotScroll>): void => {
-  for (const { locator, top, left } of snapshot.elements) {
+  for (const { locator, top, left } of snapshot) {
     const element = resolveElement(root, locator);
     if (element) {
       element.scrollTop = top;
       element.scrollLeft = left;
     }
   }
-  const [x, y] = snapshot.window;
-  if (window.scrollX !== x || window.scrollY !== y) {
-    window.scrollTo({ left: x, top: y, behavior: 'instant' });
-  }
 };
 
 export const readRouteScroll = (panel: HTMLElement | null) => ({
-  windowX: window.scrollX,
-  windowY: window.scrollY,
   panelX: panel?.scrollLeft ?? 0,
   panelY: panel?.scrollTop ?? 0,
 });
@@ -133,8 +125,12 @@ export const prerenderedScrollPositions = new Map<string, ReturnType<typeof read
 
 // The prerendered page can follow a native link before the router mounts.
 // Keep scroll with the history entry so it survives a new document on Back or Forward.
-export const readHistoryScroll = (): ReturnType<typeof readRouteScroll> | undefined =>
-  window.history.state?.routeScroll;
+export const readHistoryScroll = (): ReturnType<typeof readRouteScroll> | undefined => {
+  const saved = window.history.state?.routeScroll;
+  if (!saved) return undefined;
+  // Older reading pages saved their offset on the document.
+  return { panelX: saved.panelX, panelY: saved.panelY || saved.windowY || 0 };
+};
 
 export const saveHistoryScroll = (panel: HTMLElement | null) => {
   window.history.replaceState({ ...window.history.state, routeScroll: readRouteScroll(panel) }, '');
@@ -220,7 +216,7 @@ export const deferMountUntilInput = ({
     if (!staticPage?.isConnected) return;
     navigationCount += 1;
     // popstate precedes the browser's scroll to the incoming entry.
-    prerenderedScrollPositions.set(entryKey, readRouteScroll(staticPage.querySelector('.main-content')));
+    prerenderedScrollPositions.set(entryKey, readRouteScroll(panel));
     entryKey = keyStaticEntry(entryIndex + 1);
     entryIndex = window.history.state?.idx ?? entryIndex;
   };
@@ -250,7 +246,7 @@ export const deferMountUntilInput = ({
       restoreSavedPanelScroll();
       const scroll = snapshotScroll(root, scrollers);
       root.removeEventListener('scroll', recordScroller, { capture: true });
-      prerenderedScrollPositions.set(entryKey, readRouteScroll(staticPage?.querySelector('.main-content') ?? null));
+      prerenderedScrollPositions.set(entryKey, readRouteScroll(panel));
       const scrollNavigationCount = navigationCount;
       const focus = snapshotFocus(root);
       const restoreState = snapshotState(root);

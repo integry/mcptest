@@ -65,7 +65,7 @@ import { formatErrorForDisplay } from './utils/errorHandling';
 import { getCatalogServerById } from './utils/catalogUtils';
 import { getCatalogServerIdFromPath } from './utils/catalogSeo';
 import { getPreferredCatalogEndpoint } from './utils/clientSetup';
-import { OAUTH_CHECKER_PATH, DISCOVERY_CHECKER_PATH, DASHBOARDS_PATH, MCP_TEST_SERVERS_PATH, MCP_TEST_CLIENT_PATH, SERVICE_PAGE_PATH, READING_SHELL_CLASS, isKnownAppPath } from './utils/appRoutes';
+import { OAUTH_CHECKER_PATH, DISCOVERY_CHECKER_PATH, DASHBOARDS_PATH, MCP_TEST_SERVERS_PATH, MCP_TEST_CLIENT_PATH, SERVICE_PAGE_PATH, isKnownAppPath } from './utils/appRoutes';
 import { APP_ROUTE_OPTIONS } from './servicePage/buildFlag';
 import { SERVICE_PAGE_COPY } from './content/servicePageCopy';
 import { getKeywordLandingPage } from './content/keywordLandingPages';
@@ -120,9 +120,6 @@ const getInitialTheme = (): 'light' | 'dark' => {
 };
 
 // Helper to determine initial view from URL
-/** Views that scroll with the window and let the header scroll away (appRoutes.isReadingShellPath). */
-const READING_SHELL_VIEWS: readonly string[] = ['docs', 'learn'];
-
 const getInitialView = (): 'playground' | 'dashboards' | 'docs' | 'learn' | 'report' | 'catalog' | 'server-profile' | 'submit' | 'discovery' => {
   const path = window.location.pathname;
   if (path === '/submit') {
@@ -1944,7 +1941,7 @@ function App() {
   }
 
   return (
-    <div className={`app-shell container-fluid vh-100 d-flex flex-column p-0${activeView === 'playground' && !connectedTab ? ' app-shell--home' : ''}${READING_SHELL_VIEWS.includes(activeView) ? ` ${READING_SHELL_CLASS}` : ''}`}>
+    <div className={`app-shell container-fluid p-0${activeView === 'playground' && !connectedTab ? ' app-shell--home' : ''}`}>
 
       {/* Mobile Sidebar Overlay */}
       <div 
@@ -1996,7 +1993,7 @@ function App() {
         </div>
 
         {/* Main Panel (Playground, Dashboards, or Docs) - All views kept in DOM */}
-        <div ref={mainPanel} className="main-content col overflow-auto p-3 position-relative">
+        <div ref={mainPanel} className="main-content col p-3 position-relative" tabIndex={-1}>
           
           {/* Content View: documentation and Learn articles */}
           <div

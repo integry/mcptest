@@ -21,9 +21,8 @@ const browserEntry = (): Entry => {
   return { pathname, search, hash, key: history.state?.key ?? 'default' };
 };
 
-/** BrowserRouter has no scroll restoration API, and the fixed shell scrolls
- * its main panel independently of the window. Save both before React changes
- * the outgoing layout, which can clamp either offset. */
+/** Save the main panel position before React changes the outgoing layout,
+ * which can clamp its scroll offsets. */
 class RouteScroll extends Component<Props> {
   private positions = new Map<string, ScrollPosition>();
   private observer?: MutationObserver;
@@ -119,11 +118,6 @@ class RouteScroll extends Component<Props> {
     const setPosition = (position?: ScrollPosition) => {
       panel.scrollTop = position?.panelY ?? 0;
       panel.scrollLeft = position?.panelX ?? 0;
-      const x = position?.windowX ?? 0;
-      const y = position?.windowY ?? 0;
-      if (window.scrollX !== x || window.scrollY !== y) {
-        window.scrollTo({ left: x, top: y, behavior: 'instant' });
-      }
     };
     if (focusPage || (!saved && !id)) setPosition();
 
@@ -137,7 +131,7 @@ class RouteScroll extends Component<Props> {
         const heading = Array.from(panel.querySelectorAll<HTMLElement>('h1')).find(visible);
         // A nested loading section can coexist with the destination heading.
         if (heading || !viewLoading) {
-          const target = heading ?? panel.closest('main') ?? panel;
+          const target = heading ?? panel;
           needsFocus = false;
           if (!target.hasAttribute('tabindex')) target.tabIndex = -1;
           target.focus({ preventScroll: true });

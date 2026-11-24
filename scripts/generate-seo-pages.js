@@ -85,14 +85,13 @@ const {
   NOT_FOUND_LINKS,
   NOT_FOUND_SUMMARY,
   NOT_FOUND_TITLE,
-  READING_SHELL_CLASS,
   SERVICE_PAGE_PATH,
   getExactAppRoutes,
-  isReadingShellPath,
 } = require('../src/utils/appRoutes.ts');
 const { KEYWORD_LANDING_PAGES, getKeywordLandingFaqStructuredData } = require('../src/content/keywordLandingPages.ts');
 const { writeOgImages } = require('./og/ogImages.js');
 const { inlineCriticalCss, restoreStylesheetLinks } = require('./critical-css.js');
+const { SITE_ASSISTANT_META_NAME } = require('../src/siteAssistant/config.mts');
 const { downscalePng, readPngSize } = require('./raster-images.js');
 const { orderByRelevance, renderCatalogFallback, renderCategoryFallback, renderServerConnect, renderToolInventory } = require('./content/catalogPages.js');
 const { getServerUrl } = require('../src/utils/urlUtils.ts');
@@ -1226,7 +1225,7 @@ function renderAppShell({
     .map(([name, value]) => (value === true ? ` ${name}` : ` ${name}="${escapeHtml(value)}"`))
     .join('');
   return [
-    `<div class="app-shell container-fluid vh-100 d-flex flex-column p-0 seo-shell-fallback${pathname === '/' ? ' app-shell--home' : ''}${isReadingShellPath(pathname) ? ` ${READING_SHELL_CLASS}` : ''}"${attributeHtml}>`,
+    `<div class="app-shell container-fluid p-0 seo-shell-fallback${pathname === '/' ? ' app-shell--home' : ''}"${attributeHtml}>`,
     '<style>',
     ":root[data-theme='dark'] .seo-shell-fallback .theme-toggle-icon.bi-moon-stars-fill,",
     ":root:not([data-theme='dark']) .seo-shell-fallback .theme-toggle-icon.bi-sun-fill { display: none; }",
@@ -1236,7 +1235,7 @@ function renderAppShell({
     '<div class="desktop-sidebar col-auto p-2 d-flex flex-column">',
     renderSideNavFallback({ learnTracks, versionInfo, year, view, pathname }),
     '</div>',
-    '<div class="main-content col overflow-auto p-3 position-relative">',
+    '<div class="main-content col p-3 position-relative" tabindex="-1">',
     panelStyle ? `<div class="view-panel" style="${escapeHtml(panelStyle)}">` : '<div class="view-panel">',
     content,
     '</div>',
@@ -1465,7 +1464,7 @@ function addAppPreloads(html, hrefs) {
  * on <html> (public/theme-init.js), outside the page body the CSS is matched against.
  */
 const RUNTIME_STATE_CLASSES = ['menu-open', 'sidenav-collapsed', 'app-sidenav--collapsed'];
-const RUNTIME_STATE_ATTRIBUTES = ['data-theme', 'data-returning-visitor'];
+const RUNTIME_STATE_ATTRIBUTES = ['data-theme', 'data-returning-visitor', 'data-scrolled'];
 
 function listHtmlFiles(directory) {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
@@ -1495,16 +1494,17 @@ function finalizeHtmlPages() {
     const html = fs.readFileSync(file, 'utf8');
     if (!html.includes('<div id="root"')) continue;
     const isCatalog = file === path.join(distRoot, 'catalog.html');
+    const hasAssistant = html.includes(`name="${SITE_ASSISTANT_META_NAME}"`);
     const withSearchPreload = isCatalog
       ? html.replace(/\s*<link[^>]* data-catalog-search-preload>/g, '')
         .replace('</head>', `  <link rel="modulepreload" crossorigin href="/${escapeHtml(catalogSearch)}" data-catalog-search-preload>\n</head>`)
       : html;
     const next = inlineCriticalCss(addAppPreloads(withSearchPreload, appPreloads), readStylesheet, {
-      // The idle assistant launcher can render before the catalog mounts.
-      extraClasses: isCatalog
+      // The idle launcher can render before the full stylesheet applies.
+      extraClasses: hasAssistant
         ? [...RUNTIME_STATE_CLASSES, 'site-assistant-launcher', 'site-assistant-launcher-icon']
         : RUNTIME_STATE_CLASSES,
-      extraAttributes: isCatalog ? [...RUNTIME_STATE_ATTRIBUTES, 'hidden', 'data-state'] : RUNTIME_STATE_ATTRIBUTES,
+      extraAttributes: hasAssistant ? [...RUNTIME_STATE_ATTRIBUTES, 'hidden', 'data-state'] : RUNTIME_STATE_ATTRIBUTES,
       // The inline rules cover the catalog fallback. Applying the full CSS
       // before mount makes the browser restyle hundreds of static rows.
       deferStylesheetUntilMount: isCatalog,
