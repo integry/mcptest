@@ -87702,6 +87702,96 @@
       "items": []
     }
   },
+  "legalzoom": {
+    "version": 1,
+    "observedAt": "2026-11-24T22:16:18.117Z",
+    "provenance": {
+      "testedEndpoint": "https://www.legalzoom.com/mcp",
+      "route": "direct"
+    },
+    "authentication": "unauthenticated",
+    "tools": {
+      "status": "partial",
+      "observedCount": 4,
+      "retainedCount": 4,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "get_help",
+          "description": "Call this when you encounter an error, are unsure how to proceed, the user asks for help, or the user asks about the server version or build. Returns support contact info and build details for troubleshooting.",
+          "outputSchema": false
+        },
+        {
+          "name": "legalzoom-all-product-descriptions",
+          "description": "Use this tool to return comprehensive information about nearly all LegalZoom products and services, including LLCs, corporations, nonprofits, DBAs, trademarks, and other legal services. Provides detailed descriptions, example use cases, and common product synergies. Use this when the user needs to understand what LegalZoom offers or compare different products. For in-depth LLC formation guidance, use the specialized LLC tools.",
+          "outputSchema": false
+        },
+        {
+          "name": "search-legalzoom-articles",
+          "description": "Use this tool to search the LegalZoom knowledge base for ANY legal question, educational topic, or to find relevant resources after a document risk assessment. After analyzing a document for risk, always call this tool to find LegalZoom help center articles relevant to the document type or identified risk areas — include the links in your response. IMPORTANT: If the user is asking to talk to an attorney, get a legal review, or wants LegalZoom to help with attorney services, call check_attorney_consultation_entitlements INSTEAD of this tool. This tool is for informational content, not for conne",
+          "input": [
+            {
+              "name": "query",
+              "type": "string",
+              "description": "The query to search the LegalZoom articles for.",
+              "required": false
+            },
+            {
+              "name": "topK",
+              "type": "number",
+              "description": "The number of results to return.",
+              "required": false
+            }
+          ],
+          "outputSchema": false
+        },
+        {
+          "name": "search-legalzoom-product-urls",
+          "description": "Searches the LegalZoom Product URL database to find relevant product page links based on the query. Strictly returns URLs to product pages. ALWAYS provide the URL in markdown format with UTM parameters. Example: [Product Name]([REDACTED URI] Remember not to give legal advice or provide specific legal recommendations. Always refer to a legal professional when necessary (something LegalZoom can help with).",
+          "input": [
+            {
+              "name": "query",
+              "type": "string",
+              "description": "The query to search the product URL vault for.",
+              "required": true
+            },
+            {
+              "name": "topK",
+              "type": "number",
+              "description": "The number of results to return.",
+              "required": false
+            }
+          ],
+          "outputSchema": false
+        }
+      ]
+    },
+    "resources": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "resourceTemplates": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "prompts": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    }
+  },
   "lemon-io": {
     "version": 1,
     "observedAt": "2026-11-24T00:12:39.840Z",
