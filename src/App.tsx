@@ -2026,9 +2026,11 @@ function App() {
             </div>
           )}
 
-          <div className={`view-panel ${activeView === 'evals' ? '' : 'd-none'}`} style={{ height: '100%' }}>
-            <ToolSelectionEvalsView />
-          </div>
+          {hasVisited('evals') && (
+            <div className={`view-panel ${activeView === 'evals' ? '' : 'd-none'}`} style={{ height: '100%' }}>
+              <ToolSelectionEvalsView isActive={activeView === 'evals'} />
+            </div>
+          )}
 
           {/* Catalog View */}
           {hasVisited('catalog') && (

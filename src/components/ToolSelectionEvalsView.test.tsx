@@ -16,10 +16,10 @@ describe('ToolSelectionEvalsView local workflow', () => {
     root = undefined;
   });
 
-  const renderView = () => {
+  const renderView = (isActive = true) => {
     container = document.createElement('div');
     root = createRoot(container);
-    act(() => root?.render(<ToolSelectionEvalsView />));
+    act(() => root?.render(<ToolSelectionEvalsView isActive={isActive} />));
   };
 
   const button = (text: string) => Array.from(container.querySelectorAll('button')).find(item => item.textContent?.includes(text));
@@ -30,6 +30,12 @@ describe('ToolSelectionEvalsView local workflow', () => {
     setter?.call(textarea, value);
     textarea.dispatchEvent(new Event('input', { bubbles: true }));
   };
+
+  it('only exposes its title as the page heading while active', () => {
+    renderView(false);
+    expect(container.querySelector('h1')).toBeNull();
+    expect(container.querySelector('h2')?.textContent).toBe('Tool-selection evaluations');
+  });
 
   it('runs the complete fixture flow without a paid provider', async () => {
     renderView();

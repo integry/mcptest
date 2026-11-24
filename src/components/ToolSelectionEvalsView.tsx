@@ -76,7 +76,12 @@ const MetricsTable: React.FC<{ metrics: EvalMetrics }> = ({ metrics }) => (
   </div>
 );
 
-const ToolSelectionEvalsView: React.FC = () => {
+interface ToolSelectionEvalsViewProps {
+  isActive?: boolean;
+}
+
+const ToolSelectionEvalsView: React.FC<ToolSelectionEvalsViewProps> = ({ isActive = true }) => {
+  const Heading = isActive ? 'h1' : 'h2';
   const [dataset, setDataset] = useState<ToolSelectionDatasetV1>(LOCAL_TOOL_SELECTION_FIXTURE);
   const [datasetText, setDatasetText] = useState(LOCAL_TOOL_SELECTION_FIXTURE_JSON);
   const [datasetError, setDatasetError] = useState('');
@@ -175,7 +180,7 @@ const ToolSelectionEvalsView: React.FC = () => {
     <div className="tool-evals container-xl pb-5">
       <div className="tool-evals-hero">
         <div>
-          <h1>Tool-selection evaluations</h1>
+          <Heading>Tool-selection evaluations</Heading>
           <p>Measure tool choice, arguments, and grounded answers with a local fixture or your own model provider.</p>
         </div>
         <span className="badge rounded-pill text-bg-success">Opt in</span>
