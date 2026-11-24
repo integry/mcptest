@@ -1483,6 +1483,7 @@ function listHtmlFiles(directory) {
 function finalizeHtmlPages() {
   const manifest = JSON.parse(fs.readFileSync(path.join(distRoot, '.vite', 'manifest.json'), 'utf8'));
   const appPreloads = findAppPreloadHrefs(manifest);
+  const catalogSearch = manifest['src/staticPage/catalogSearch.ts'].file;
   const stylesheets = new Map();
   const readStylesheet = (href) => {
     const file = href.split(/[?#]/)[0].replace(/^\//, '');
@@ -1494,7 +1495,11 @@ function finalizeHtmlPages() {
     const html = fs.readFileSync(file, 'utf8');
     if (!html.includes('<div id="root"')) continue;
     const isCatalog = file === path.join(distRoot, 'catalog.html');
-    const next = inlineCriticalCss(addAppPreloads(html, appPreloads), readStylesheet, {
+    const withSearchPreload = isCatalog
+      ? html.replace(/\s*<link[^>]* data-catalog-search-preload>/g, '')
+        .replace('</head>', `  <link rel="modulepreload" crossorigin href="/${escapeHtml(catalogSearch)}" data-catalog-search-preload>\n</head>`)
+      : html;
+    const next = inlineCriticalCss(addAppPreloads(withSearchPreload, appPreloads), readStylesheet, {
       // The idle assistant launcher can render before the catalog mounts.
       extraClasses: isCatalog
         ? [...RUNTIME_STATE_CLASSES, 'site-assistant-launcher', 'site-assistant-launcher-icon']

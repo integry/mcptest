@@ -37,6 +37,11 @@ async function sampleFrames(page: Page) {
 }
 
 async function useLiveEndpoint(page: Page, baseURL: string, configured = true) {
+  if (configured && endpoint?.startsWith('http://')) {
+    // Chromium treats the intercepted site document as a synthetic response.
+    // Allow it to connect to a loopback test endpoint.
+    await page.context().grantPermissions(['local-network-access'], { origin: baseURL });
+  }
   await page.route(`${baseURL}/**`, async route => {
     if (route.request().resourceType() !== 'document') return route.fallback();
     const response = await route.fetch();
@@ -53,6 +58,49 @@ async function useLiveEndpoint(page: Page, baseURL: string, configured = true) {
 
 test.use({ viewport: { width: 1440, height: 1000 }, ignoreHTTPSErrors: true });
 test.skip(!endpoint, 'Set E2E_SOLV_DOCK_ENDPOINT to a live solv.chat engine serving widget 0.1.13.');
+
+test('the first catalog launcher press opens a docked side panel', async ({ page, baseURL }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  if (process.env.VITE_SOLV_ENDPOINT !== endpoint) await useLiveEndpoint(page, baseURL!);
+  const requests: string[] = [];
+  page.on('request', request => {
+    if (new URL(request.url()).origin === endpoint) requests.push(request.url());
+  });
+
+  await page.goto('/catalog', { waitUntil: 'load' });
+  await expect(page.locator(launcher)).toBeVisible();
+  await expect(page.locator('[data-deferred-mount]')).toBeVisible();
+  expect(requests).toEqual([]);
+
+  await page.evaluate(() => {
+    const sample = () => {
+      const widget = document.querySelector('solv-chat');
+      const panel = widget?.shadowRoot?.querySelector('.solv-panel');
+      if (panel?.getBoundingClientRect().width && !panel.hasAttribute('data-layout-pending')) {
+        document.documentElement.dataset.firstAssistantLayout = widget!.getAttribute('data-layout') ?? '';
+      } else {
+        requestAnimationFrame(sample);
+      }
+    };
+    requestAnimationFrame(sample);
+  });
+  const [settings] = await Promise.all([
+    page.waitForResponse(response => response.url().startsWith(`${endpoint}/v1/assistants/`)),
+    page.locator(launcher).click(),
+  ]);
+  expect(settings.ok()).toBe(true);
+  const panel = page.locator(widget).getByRole('dialog');
+  // The side-only control is present on the initial open. No expand or retry.
+  await expect(panel.getByRole('button', { name: 'Collapse to a small window' })).toBeVisible();
+  await expect(page.locator(widget)).toHaveAttribute('data-layout', 'side');
+  await expect(page.locator('html')).toHaveAttribute('data-first-assistant-layout', 'side');
+  const panelBounds = await panel.boundingBox();
+  const mainBounds = await page.locator(content).boundingBox();
+  expect(panelBounds!.x + panelBounds!.width).toBe(1440);
+  expect(mainBounds!.x + mainBounds!.width).toBeLessThanOrEqual(panelBounds!.x);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
+  await expect(page.locator('[data-deferred-mount]')).toBeVisible();
+});
 
 test('a live docked panel preserves content width on route changes and from the first reload frame', async ({ page, context, baseURL }) => {
   if (process.env.VITE_SOLV_ENDPOINT !== endpoint) await useLiveEndpoint(page, baseURL!);

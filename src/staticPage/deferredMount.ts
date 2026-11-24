@@ -1,9 +1,9 @@
 /**
  * Mounts the app over a prerendered page on the first input instead of at
  * load (issue #405). A reader who only reads never pays for React, the router,
- * the catalog data or the guide registry; the first pointer, key or form-field
- * focus starts the download, and the app mounts as soon as it is ready and no
- * press is in progress.
+ * the catalog data or the guide registry. The first input that needs the app
+ * starts the download. The app mounts when it is ready and no press is in
+ * progress.
  *
  * The mount replaces the static DOM, so whatever the visitor started on it
  * carries over: scroll positions, the focused field with its text and caret,
@@ -97,10 +97,10 @@ const restoreFocus = (root: HTMLElement, snapshot: FocusSnapshot | null): void =
   }
 };
 
-/** Scroll offsets of the page and of every scrolled element under `root` (the main panel, the sidebar). */
-const snapshotScroll = (root: HTMLElement) => ({
+/** Scroll offsets of the page and the containers that actually scrolled. */
+const snapshotScroll = (root: HTMLElement, scrollers: Set<HTMLElement>) => ({
   window: [window.scrollX, window.scrollY] as const,
-  elements: Array.from(root.querySelectorAll<HTMLElement>('*'))
+  elements: Array.from(scrollers)
     .filter(element => element.scrollTop !== 0 || element.scrollLeft !== 0)
     .flatMap(element => {
       const locator = locateElement(root, element);
@@ -162,10 +162,14 @@ export interface DeferredMountOptions {
   isHandled?: (element: Element) => boolean;
   /** Reads state the static handlers changed, just before the mount; the returned function applies it to the app. */
   snapshotState?: (root: HTMLElement) => () => void;
+  /** Whether this input needs the app. */
+  shouldStartOnInput?: (event: Event) => boolean;
 }
 
 /** Waits for the first input, then mounts. Returns a function that starts the mount immediately. */
-export const deferMountUntilInput = ({ root, prepare, isHandled = () => false, snapshotState = () => () => {} }: DeferredMountOptions): (() => void) => {
+export const deferMountUntilInput = ({
+  root, prepare, isHandled = () => false, snapshotState = () => () => {}, shouldStartOnInput = () => true,
+}: DeferredMountOptions): (() => void) => {
   let started = false;
   let pressed = false;
   let clickedButton: Element | null = null;
@@ -176,6 +180,13 @@ export const deferMountUntilInput = ({ root, prepare, isHandled = () => false, s
   const staticPage = root.firstElementChild;
   let entryKey = keyStaticEntry(0);
   const panel = staticPage?.querySelector<HTMLElement>('.main-content') ?? null;
+  // Reading scrollTop on every catalog descendant forces layout for rows
+  // whose contents the browser would otherwise skip (content-visibility).
+  const scrollers = new Set(root.querySelectorAll<HTMLElement>('.main-content, .desktop-sidebar, .mobile-sidebar'));
+  const recordScroller = (event: Event) => {
+    if (event.target instanceof HTMLElement) scrollers.add(event.target);
+  };
+  root.addEventListener('scroll', recordScroller, { capture: true, passive: true });
   const saveOnPageHide = () => {
     if (panel?.isConnected) saveHistoryScroll(panel);
   };
@@ -237,7 +248,8 @@ export const deferMountUntilInput = ({ root, prepare, isHandled = () => false, s
       mounted = true;
       // The mount replaces the scrolling panel too; a reader keeps their place.
       restoreSavedPanelScroll();
-      const scroll = snapshotScroll(root);
+      const scroll = snapshotScroll(root, scrollers);
+      root.removeEventListener('scroll', recordScroller, { capture: true });
       prerenderedScrollPositions.set(entryKey, readRouteScroll(staticPage?.querySelector('.main-content') ?? null));
       const scrollNavigationCount = navigationCount;
       const focus = snapshotFocus(root);
@@ -300,9 +312,9 @@ export const deferMountUntilInput = ({ root, prepare, isHandled = () => false, s
       });
   };
 
-  listen('pointerdown', () => {
+  listen('pointerdown', event => {
     pressed = true;
-    start();
+    if (shouldStartOnInput(event)) start();
   });
   const release = () => {
     pressed = false;
@@ -310,9 +322,9 @@ export const deferMountUntilInput = ({ root, prepare, isHandled = () => false, s
   };
   listen('pointerup', release);
   listen('pointercancel', release);
-  listen('keydown', start);
+  listen('keydown', event => { if (shouldStartOnInput(event)) start(); });
   listen('focusin', (event) => {
-    if (isFormField(event.target)) start();
+    if (isFormField(event.target) && shouldStartOnInput(event)) start();
   });
   listen('click', (event) => {
     const button = (event.target as Element | null)?.closest?.('button');
