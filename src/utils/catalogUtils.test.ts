@@ -301,6 +301,7 @@ describe('catalog authentication metadata', () => {
       ['zarla', 'https://www.zarla.com/features/mcp-website-builder'],
       ['zeroheight', 'https://help.zeroheight.com/hc/en-us/articles/48004395674011-zeroheight-MCP-overview'],
       ['zip-codes', 'https://www.zip-codes.com/search.asp'],
+      ['zippendo', 'https://www.zippendo.com/docs/mcp/overview'],
       ['zylalabs', 'https://mcp.zylalabs.com/'],
     ]);
     const catalog = getCatalogServers();
