@@ -8,6 +8,9 @@ vi.mock('./utils/analytics', async (importOriginal) => {
   return { ...actual, trackEvent: vi.fn(), logPageView: vi.fn() };
 });
 
+// Keep the real App sidebar on /catalog without mounting the full server list.
+vi.mock('./components/CatalogView', () => ({ default: () => null }));
+
 import App from './App';
 import { AuthProvider } from './context/AuthContext';
 
