@@ -29500,6 +29500,304 @@
       "items": []
     }
   },
+  "community-funding-nz": {
+    "version": 1,
+    "observedAt": "2026-11-24T18:12:01.625Z",
+    "provenance": {
+      "testedEndpoint": "https://funding.alltoohuman.nz/mcp",
+      "route": "direct"
+    },
+    "authentication": "unauthenticated",
+    "tools": {
+      "status": "partial",
+      "observedCount": 8,
+      "retainedCount": 8,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "flag_funder_detail",
+          "description": "Report that a field on a funder profile is wrong or out of date, with the correction. Reviewed by All Too Human before any change is applied.",
+          "input": [
+            {
+              "name": "correction",
+              "type": "string",
+              "description": "What the correct value is, and where you saw it if possible",
+              "required": true
+            },
+            {
+              "name": "field",
+              "type": "string",
+              "required": true
+            },
+            {
+              "name": "funder_slug",
+              "type": "string",
+              "required": true
+            }
+          ],
+          "outputSchema": false
+        },
+        {
+          "name": "get_funder",
+          "description": "Full profile for one funder by slug: what they prioritise, language tips, common mistakes, success factors, required documents, application sections, the extracted application form questions, and upcoming funding rounds. Use this before preparing or drafting an application.",
+          "input": [
+            {
+              "name": "slug",
+              "type": "string",
+              "description": "Funder slug from search_funders",
+              "required": true
+            }
+          ],
+          "outputSchema": false
+        },
+        {
+          "name": "list_filters",
+          "description": "Returns the exact region slugs, organisation type values and difficulty levels accepted by search_funders. Call this first if you are unsure which value to use.",
+          "outputSchema": false
+        },
+        {
+          "name": "report_outcome",
+          "description": "Tell us how an application to a funder went. Outcomes are stored for All Too Human to analyse which funders say yes and are never published as-is.",
+          "input": [
+            {
+              "name": "amount_received",
+              "type": "integer",
+              "description": "Whole NZ dollars received, if funded",
+              "required": false
+            },
+            {
+              "name": "funder_slug",
+              "type": "string",
+              "required": true
+            },
+            {
+              "name": "notes",
+              "type": "string",
+              "description": "Anything useful: what they asked for, timing, feedback received",
+              "required": false
+            },
+            {
+              "name": "outcome",
+              "type": "string",
+              "description": "approved = funded in full, partial = funded less than asked, declined, waiting = no decision yet",
+              "required": true
+            }
+          ],
+          "outputSchema": false
+        },
+        {
+          "name": "rounds_closing_soon",
+          "description": "Funding rounds whose closing date falls within the next N days (default 30, max 180), soonest first. Optional region filter (slug from list_filters). Dates are New Zealand dates. Always confirm the date on the funder's own site before relying on it.",
+          "input": [
+            {
+              "name": "days",
+              "type": "integer",
+              "required": false
+            },
+            {
+              "name": "limit",
+              "type": "integer",
+              "required": false
+            },
+            {
+              "name": "region",
+              "type": "string",
+              "required": false
+            }
+          ],
+          "outputSchema": false
+        },
+        {
+          "name": "rounds_opening_soon",
+          "description": "Funding rounds whose opening date falls within the next N days (default 60, max 180), soonest first. Optional region filter (slug from list_filters). Useful for planning applications ahead of time. Dates are New Zealand dates. Always confirm the date on the funder's own site before relying on it.",
+          "input": [
+            {
+              "name": "days",
+              "type": "integer",
+              "required": false
+            },
+            {
+              "name": "limit",
+              "type": "integer",
+              "required": false
+            },
+            {
+              "name": "region",
+              "type": "string",
+              "required": false
+            }
+          ],
+          "outputSchema": false
+        },
+        {
+          "name": "search_funders",
+          "description": "Search New Zealand community grant funders. Returns up to 25 compact rows per call with a total count; use offset to page. Combine filters: region (slug from list_filters), org_type, purpose keywords, max_amount in NZD, difficulty. Use get_funder for the full profile of a result.",
+          "input": [
+            {
+              "name": "difficulty",
+              "type": "string",
+              "required": false
+            },
+            {
+              "name": "limit",
+              "type": "integer",
+              "required": false
+            },
+            {
+              "name": "max_amount",
+              "type": "integer",
+              "description": "Only funders whose minimum grant is at or below this NZD amount",
+              "required": false
+            },
+            {
+              "name": "offset",
+              "type": "integer",
+              "required": false
+            },
+            {
+              "name": "org_type",
+              "type": "string",
+              "description": "Applicant organisation type, e.g. charitable_trust",
+              "required": false
+            },
+            {
+              "name": "purpose",
+              "type": "string",
+              "description": "Keyword matched against eligible purposes and priorities, e.g. youth, environment, marae",
+              "required": false
+            },
+            {
+              "name": "query",
+              "type": "string",
+              "description": "Free text matched against funder name and description",
+              "required": false
+            },
+            {
+              "name": "region",
+              "type": "string",
+              "description": "Region slug, e.g. tasman. Funders tagged national always match.",
+              "required": false
+            }
+          ],
+          "outputSchema": false
+        },
+        {
+          "name": "suggest_funder",
+          "description": "Suggest a New Zealand grant funder that is not in the database. All Too Human researches and reviews suggestions before adding them. Check search_funders first to avoid duplicates. Documentation: [REDACTED URI]",
+          "input": [
+            {
+              "name": "name",
+              "type": "string",
+              "required": true
+            },
+            {
+              "name": "notes",
+              "type": "string",
+              "description": "What they fund, who is eligible, deadlines, anything you know",
+              "required": false
+            },
+            {
+              "name": "region",
+              "type": "string",
+              "description": "Region slug if the funder is regional",
+              "required": false
+            },
+            {
+              "name": "url",
+              "type": "string",
+              "description": "The funder's website or funding page",
+              "required": false
+            }
+          ],
+          "outputSchema": false
+        }
+      ]
+    },
+    "resources": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "resourceTemplates": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "prompts": {
+      "status": "complete",
+      "observedCount": 3,
+      "retainedCount": 3,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "draft_application",
+          "description": "Write a grant application in the funder's own priorities and language, using the answers gathered.",
+          "arguments": [
+            {
+              "name": "answers",
+              "description": "Answers gathered so far, if prepare_application was run",
+              "required": false
+            },
+            {
+              "name": "funder_slug",
+              "description": "Funder slug from search_funders",
+              "required": true
+            },
+            {
+              "name": "project",
+              "description": "Short description of the project",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "find_funders_for_project",
+          "description": "Match a community project to the New Zealand funders most likely to support it.",
+          "arguments": [
+            {
+              "name": "org_type",
+              "description": "Who is applying, e.g. an incorporated society",
+              "required": false
+            },
+            {
+              "name": "project",
+              "description": "What the project is, who it helps, roughly how much it needs",
+              "required": true
+            },
+            {
+              "name": "region",
+              "description": "Where the project happens, e.g. Tasman",
+              "required": false
+            }
+          ]
+        },
+        {
+          "name": "prepare_application",
+          "description": "Interview the user through a funder's actual application questions and required documents.",
+          "arguments": [
+            {
+              "name": "funder_slug",
+              "description": "Funder slug from search_funders",
+              "required": true
+            },
+            {
+              "name": "project",
+              "description": "Short description of the project",
+              "required": true
+            }
+          ]
+        }
+      ]
+    }
+  },
   "compute-screener": {
     "version": 1,
     "observedAt": "2026-11-23T18:19:50.828Z",
@@ -73835,6 +74133,580 @@
       "items": []
     }
   },
+  "hugging-face": {
+    "version": 1,
+    "observedAt": "2026-11-24T20:10:09.972Z",
+    "provenance": {
+      "testedEndpoint": "https://huggingface.co/mcp",
+      "route": "direct"
+    },
+    "authentication": "unauthenticated",
+    "tools": {
+      "status": "partial",
+      "observedCount": 4,
+      "retainedCount": 4,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "hf_fs",
+          "description": "When to use: Hugging Face Hub models, datasets, Spaces, collections, papers, daily papers, today's trending models, current paper leaderboard, docs; list and read repository files, model and dataset cards (README, license). Examples: {\"operations\":[{\"cmd\":\"ls\",\"args\":[\"[REDACTED URI] {\"operations\":[{\"cmd\":\"ls\",\"args\":[\"[REDACTED URI] {\"operations\":[{\"cmd\":\"ls\",\"args\":[\"[REDACTED URI] {\"operations\":[{\"cmd\":\"cat\",\"args\":[\"[REDACTED URI] {\"operations\":[{\"cmd\":\"search\",\"args\":[\"[REDACTED URI]",
+          "input": [
+            {
+              "name": "operations",
+              "type": "array",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "hf_whoami",
+          "description": "Inspect the current Hugging Face authentication context, including the account, visible organization memberships, and credential access details. Read-only and never returns credential values.",
+          "outputSchema": true
+        },
+        {
+          "name": "hub_repo_details",
+          "description": "Get details for one or more Hugging Face repos (model, dataset, or space): card metadata, license, downloads, files, Space hardware/status, dataset configs, splits, columns and preview rows. Auto-detects type unless specified. For datasets, use operations: overview, dataset_structure, dataset_preview. Use dataset_structure first to discover configs, splits, sizes, and schema. Use dataset_preview only when config and split are known, unless the dataset has a single config/split.",
+          "input": [
+            {
+              "name": "config",
+              "type": "string",
+              "description": "Dataset Viewer config. Required for dataset_preview when the dataset has multiple config/split options. Discover via dataset_structure.",
+              "required": false
+            },
+            {
+              "name": "limit",
+              "type": "integer",
+              "description": "Row count for dataset_preview. Defaults to 5 and is clamped to 1-100.",
+              "required": false
+            },
+            {
+              "name": "offset",
+              "type": "integer",
+              "description": "Row offset for dataset_preview. Defaults to 0.",
+              "required": false
+            },
+            {
+              "name": "operations",
+              "type": "array",
+              "description": "Details to return. Defaults to [\"overview\"]. For datasets, prefer [\"overview\", \"dataset_structure\"] first; then call [\"dataset_preview\"] with config and split.",
+              "required": false
+            },
+            {
+              "name": "repo_ids",
+              "type": "array",
+              "description": "Repo IDs for (models|dataset/space) - usually in author/name format (e.g. openai/gpt-oss-120b)",
+              "required": true
+            },
+            {
+              "name": "repo_type",
+              "type": "string",
+              "description": "Specify lookup type; otherwise auto-detects",
+              "required": false
+            },
+            {
+              "name": "split",
+              "type": "string",
+              "description": "Dataset Viewer split. Required for dataset_preview when the dataset has multiple config/split options. Discover via dataset_structure.",
+              "required": false
+            }
+          ],
+          "outputSchema": false
+        },
+        {
+          "name": "hub_repo_search",
+          "description": "Search and list Hugging Face models, datasets and Spaces (sort by downloads, likes, trending) with a shared query interface. You can target models, datasets, spaces, or aggregate across multiple repo types in one call. Include links to repositories in your response.",
+          "input": [
+            {
+              "name": "author",
+              "type": "string",
+              "description": "Organization or user namespace to filter by (e.g. 'google', 'meta-llama', 'huggingface').",
+              "required": false
+            },
+            {
+              "name": "filters",
+              "type": "array",
+              "description": "Optional hub filter tags. Applied to each selected repo type (e.g. [\"text-generation\"], [\"language:en\"], [\"mcp-server\"]).",
+              "required": false
+            },
+            {
+              "name": "limit",
+              "type": "number",
+              "description": "Maximum number of results to return per selected repo type",
+              "required": false
+            },
+            {
+              "name": "query",
+              "type": "string",
+              "description": "Search term. Leave blank and specify sort + limit to browse trending or recent repositories.",
+              "required": false
+            },
+            {
+              "name": "repo_types",
+              "type": "array",
+              "description": "Repository types to search. Defaults to [\"model\", \"dataset\"]. space uses keyword search via /api/spaces.",
+              "required": false
+            },
+            {
+              "name": "sort",
+              "type": "string",
+              "description": "Sort order (descending): trendingScore, downloads, likes, createdAt, lastModified",
+              "required": false
+            }
+          ],
+          "outputSchema": false
+        }
+      ]
+    },
+    "resources": {
+      "status": "partial",
+      "observedCount": 160,
+      "retainedCount": 100,
+      "omittedCount": 60,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "_common.py",
+          "mimeType": "text/x-python"
+        },
+        {
+          "name": ".env.example",
+          "mimeType": "application/octet-stream"
+        },
+        {
+          "name": "3d-cuda-extensions.md",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "3d-generation.md",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "3d-gsplat.md",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "3d-models.md",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "3d-outputs.md",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "adapting-to-the-lora.md",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "alerts.md",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "api-signatures.md",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "arxiv.md",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "base_model_selection.md",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "baseline_hf_api.py",
+          "mimeType": "text/x-python"
+        },
+        {
+          "name": "baseline_hf_api.sh",
+          "mimeType": "application/x-sh"
+        },
+        {
+          "name": "baseline_hf_api.tsx",
+          "mimeType": "text/x-typescript"
+        },
+        {
+          "name": "buckets.md",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "CACHE.md",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "check_role.py",
+          "mimeType": "text/x-python"
+        },
+        {
+          "name": "check_versions.py",
+          "mimeType": "text/x-python"
+        },
+        {
+          "name": "concurrency.md",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "CONFIGURATION.md",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "convert_to_gguf.py",
+          "mimeType": "text/x-python"
+        },
+        {
+          "name": "create_role.py",
+          "mimeType": "text/x-python"
+        },
+        {
+          "name": "creative-mode.md",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "cuda-and-deps.md",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "dataset_formats.md",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "dataset_inspector.py",
+          "mimeType": "text/x-python"
+        },
+        {
+          "name": "debugging.md",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "deploy_async.py",
+          "mimeType": "text/x-python"
+        },
+        {
+          "name": "deploy_ic.py",
+          "mimeType": "text/x-python"
+        },
+        {
+          "name": "deploy.py",
+          "mimeType": "text/x-python"
+        },
+        {
+          "name": "deployment-template.md",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "estimate_cost.py",
+          "mimeType": "text/x-python"
+        },
+        {
+          "name": "evaluators_cross_encoder.md",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "evaluators_multi_vector_encoder.md",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "evaluators_sentence_transformer.md",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "evaluators_sparse_encoder.md",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "event-listeners.md",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "example_usage.md",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "examples.md",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "find_models_by_paper.sh",
+          "mimeType": "application/x-sh"
+        },
+        {
+          "name": "finetune_sam2_trainer.md",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "gguf_conversion.md",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "gradio.md",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "grants.md",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "hardware_guide.md",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "hardware.md",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "hf_benchmarks.py",
+          "mimeType": "text/x-python"
+        },
+        {
+          "name": "hf_enrich_models.sh",
+          "mimeType": "application/x-sh"
+        },
+        {
+          "name": "hf_jobs_execution.md",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "hf_model_card_frontmatter.sh",
+          "mimeType": "application/x-sh"
+        },
+        {
+          "name": "hf_model_papers_auth.sh",
+          "mimeType": "application/x-sh"
+        },
+        {
+          "name": "hf-cli",
+          "description": "Hugging Face Hub CLI (`hf`) for downloading, uploading, and managing models, datasets, spaces, buckets, repos, papers, jobs, and more on the Hugging Face Hub. Use when: handling authentication; managing local cache; managing Hugging Face Buckets; running or scheduling jobs on Hugging Face infrastructure; managing Hugging Face repos; discussions and pull requests; browsing models, datasets and spaces; reading, searching, or browsing academic papers; managing collections; querying datasets; configuring spaces; setting up webhooks; or deploying and managing HF Inference Endpoints. Make sure to us",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "hf-cloud-aws-context-discovery",
+          "description": "Discover the user's local AWS context (active profile, region, account ID, caller identity) at the start of any AWS task. Use this skill before any other AWS work — deploying to SageMaker, creating resources, calling AWS APIs, or anything that touches an AWS account. Use it especially when the user has not specified a region or profile explicitly, when they say things like \"use my AWS account\", \"deploy to AWS\", \"use my profile\", or when about to make any AWS CLI or SDK call. Never guess the region or account ID — always use this skill to read it from the local configuration first.",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "hf-cloud-python-env-setup",
+          "description": "Set up an isolated Python environment for SageMaker / AWS work, with the right Python version and current boto3. Use this skill whenever Python code will be executed for a SageMaker deployment, training job, or any AWS automation — including when about to run `pip install`, when about to invoke `boto3`, when creating or activating a virtualenv, or when the user asks to \"set up the environment\". Never use system Python and never `pip install` into it. Always isolate. This skill prevents the most common failure modes: wrong Python version, dependency conflicts, and stale SDKs.",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "hf-cloud-sagemaker-deployment-planner",
+          "description": "Plan and coordinate the deployment of a model to Amazon SageMaker AI. Use this skill whenever the user wants to deploy, host, serve, or expose a model on SageMaker or AWS — including phrases like \"deploy a model\", \"host this LLM on AWS\", \"serve this embedding model\", \"deploy a reranker\", \"deploy a text-to-image / diffusion model\", \"host this for async inference\", \"create an endpoint\", \"serve my fine-tuned model\", or any request that involves making a model available for inference on AWS. Use this even when the user is vague (e.g. \"I just want to get this running on AWS, you figure it out\"). Wo",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "hf-cloud-sagemaker-iam-preflight",
+          "description": "Ensure a usable SageMaker execution role exists before deploying or training. Use this skill whenever about to create a SageMaker endpoint, model, training job, or any resource that requires an execution role. Use it especially when the user has not provided a role ARN explicitly, when scripts are about to call `iam:CreateRole`, or when an AccessDenied error mentions an IAM action. Never blindly call `iam:CreateRole` — always check for existing roles first. This skill prevents the most common SageMaker deployment failure: trying to create IAM resources from an SSO principal that has no IAM wri",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "hf-cloud-sagemaker-production-defaults",
+          "description": "Create a SageMaker endpoint (real-time, real-time scale-to-zero, or async) with autoscaling, CloudWatch alarms, and tagging enabled by default. Use this skill whenever about to create a SageMaker endpoint, write deployment code that calls `create_endpoint`, or finalize a deployment after the image URI and IAM role are known. Provides deploy.py for real-time endpoints, deploy_ic.py for real-time endpoints that scale to zero instances via inference components, and deploy_async.py for async endpoints (also scale-to-zero). This is the last step in the SageMaker deployment workflow. Never generate",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "hf-cloud-serving-image-selection",
+          "description": "Pick the right serving container for a SageMaker model deployment and find its current image URI. Use this skill whenever about to deploy a model to a SageMaker endpoint and an image URI needs to be chosen — including when the user says \"deploy this LLM\", \"host this HuggingFace model\", \"serve this fine-tuned model\", \"deploy this embedding model\", \"host a reranker\", \"serve a sentence-transformers model\", or when about to hardcode any container URI in deployment code. HuggingFace-curated Deep Learning Containers are ALWAYS preferred: HuggingFace vLLM (LLMs and generative rerankers), HuggingFace",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "hf-mem",
+          "description": "Estimate the GPU memory needed to run a Hugging Face model (weights, KV cache and inference overhead) and whether it fits on given GPUs, without downloading it. Use when asked how much VRAM a model needs, whether it fits on a GPU, the longest context that fits, or which GGUF quantization to pick.",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "how-quota-works.md",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "how-zerogpu-works.md",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "hub_saving.md",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "hub-discovery.md",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "huggingface-best",
+          "description": "Use when the user asks about finding the best, top, or recommended model for a task, wants to know what AI model to use, or wants to compare models by benchmark scores. Triggers on: \"best model for X\", \"what model should I use for\", \"top models for [task]\", \"which model runs on my laptop/machine/device\", \"recommend a model for\", \"what LLM should I use for\", \"compare models for\", \"what's state of the art for\", or any question about choosing an AI model for a specific use case. Always use this skill when the user wants model recommendations or comparisons, even if they don't explicitly mention H",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "huggingface-community-evals",
+          "description": "Run evaluations for Hugging Face Hub models using inspect-ai and lighteval on local hardware. Use for backend selection, local GPU evals, and choosing between vLLM / Transformers / accelerate. Not for HF Jobs orchestration, model-card PRs, .eval_results publication, or community-evals automation.",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "huggingface-datasets",
+          "description": "Use this skill for Hugging Face Dataset Viewer API workflows that fetch subset/split metadata, paginate rows, search text, apply filters, download parquet URLs, and read size or statistics.",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "huggingface-gradio",
+          "description": "Build Gradio web UIs and demos in Python. Use when creating, modifying, debugging, or answering questions about Gradio and its capabilities, components, event listeners, or layouts.",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "huggingface-llm-trainer",
+          "description": "Train or fine-tune language and vision models using TRL (Transformer Reinforcement Learning) or Unsloth with Hugging Face Jobs infrastructure. Covers SFT, DPO, GRPO and reward modeling training methods, plus GGUF conversion for local deployment. Includes guidance on the TRL Jobs package, UV scripts with PEP 723 format, dataset preparation and validation, hardware selection, cost estimation, Trackio monitoring, Hub authentication, model selection/leaderboards and model persistence. Use for tasks involving cloud GPU training, GGUF conversion, or when users mention training on Hugging Face Jobs w",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "huggingface-local-models",
+          "description": "Use to select models to run locally with llama.cpp and GGUF on CPU, Mac Metal, CUDA, or ROCm. Covers finding GGUFs, quant selection, running servers, exact GGUF file lookup, conversion, and OpenAI-compatible local serving.",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "huggingface-lora-space-builder",
+          "description": "Build and publish a Gradio demo on Hugging Face Spaces for a user-provided LoRA. Use when someone asks to create, generate, ship, or publish a Space, demo, Gradio app, or playground for a LoRA — including LoRAs for Qwen-Image, Qwen-Image-Edit, LTX-Video, Wan, FLUX, SDXL, or other diffusion base models. Also triggers when someone describes a LoRA they trained or hosts on the Hub and wants to share it. Covers picking the right base pipeline and `diffusers` inference recipe, designing a UI tailored to the LoRA's task and inputs (Union/multi-task control, edit, video, image, etc.), respecting mode",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "huggingface-paper-publisher",
+          "description": "Publish and manage research papers on Hugging Face Hub. Supports creating paper pages, linking papers to models/datasets, claiming authorship, and generating professional markdown-based research articles.",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "huggingface-papers",
+          "description": "Look up and read Hugging Face paper pages in markdown, and use the papers API for structured metadata such as authors, linked models/datasets/spaces, Github repo and project page. Use when the user shares a Hugging Face paper page URL, an arXiv URL or ID, or asks to summarize, explain, or analyze an AI research paper.",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "huggingface-spaces",
+          "description": "Build, deploy, and maintain applications on Hugging Face Spaces — Gradio / Docker / Static SDKs, ZeroGPU and dedicated hardware, model loading, debugging, buckets, inference providers, community grants. Use whenever the user asks to create or host an app on Hugging Face, port code onto ZeroGPU, fix a Space that won't build or run, or otherwise work with `hf spaces …`, `@spaces.GPU`, Space README frontmatter, or the `spaces` Python package.",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "huggingface-tool-builder",
+          "description": "Use this skill when the user wants to build tool/scripts or achieve a task where using data from the Hugging Face API would help. This is especially useful when chaining or combining API calls or the task will be repeated/automated. This Skill creates a reusable script to fetch, enrich or process data.",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "huggingface-trackio",
+          "description": "Track and visualize ML training experiments with Trackio. Use when logging metrics during training (Python API), firing alerts for training diagnostics, or retrieving/analyzing logged metrics (CLI). Supports real-time dashboard visualization, alerts with webhooks, HF Space syncing, and JSON output for automation.",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "huggingface-vision-trainer",
+          "description": "Trains and fine-tunes vision models for object detection (D-FINE, RT-DETR v2, DETR, YOLOS), image classification (timm models — MobileNetV3, MobileViT, ResNet, ViT/DINOv3 — plus any Transformers classifier), and SAM/SAM2 segmentation using Hugging Face Transformers on Hugging Face Jobs cloud GPUs. Covers COCO-format dataset preparation, Albumentations augmentation, mAP/mAR evaluation, accuracy metrics, SAM segmentation with bbox/point prompts, DiceCE loss, hardware selection, cost estimation, Trackio monitoring, and Hub persistence. Use when users mention training object detection, image class",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "huggingface-zerogpu",
+          "description": "AI demos and GPU compute with Gradio Spaces and Hugging Face Spaces ZeroGPU. Use when writing or reviewing code that uses `@spaces.GPU`, configuring `python_version` or `requirements.txt` for a ZeroGPU Space, or handling ZeroGPU-specific code constraints — pickle-based process isolation, `gr.State` semantics across the worker boundary, no `torch.compile` (use AoTI instead), CUDA wheel-only builds (no `nvcc` at build or runtime), large vs xlarge sizing, and dynamic duration callables. Make sure to use this skill whenever the user mentions ZeroGPU, `@spaces.GPU`, or the `spaces` Python package,",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "image_classification_training_notebook.md",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "image_classification_training.py",
+          "mimeType": "text/x-python"
+        },
+        {
+          "name": "inference-providers.md",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "inspect_eval_uv.py",
+          "mimeType": "text/x-python"
+        },
+        {
+          "name": "inspect_vllm_uv.py",
+          "mimeType": "text/x-python"
+        },
+        {
+          "name": "invoke_endpoint.py",
+          "mimeType": "text/x-python"
+        },
+        {
+          "name": "known-errors.md",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "krea-2.md",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "lighteval_vllm_uv.py",
+          "mimeType": "text/x-python"
+        },
+        {
+          "name": "local_training_macos.md",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "logging_metrics.md",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "losses_cross_encoder.md",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "losses_multi_vector_encoder.md",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "losses_sentence_transformer.md",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "losses_sparse_encoder.md",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "ltx.md",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "mine_hard_negatives.py",
+          "mimeType": "text/x-python"
+        },
+        {
+          "name": "minimum-permissions.json",
+          "mimeType": "application/json"
+        },
+        {
+          "name": "mirror_image.py",
+          "mimeType": "text/x-python"
+        },
+        {
+          "name": "ml-report.md",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "model_architectures.md",
+          "mimeType": "text/markdown"
+        },
+        {
+          "name": "MODEL_REGISTRY.md",
+          "mimeType": "text/markdown"
+        }
+      ]
+    },
+    "resourceTemplates": {
+      "status": "complete",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "prompts": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    }
+  },
   "i-gaming": {
     "version": 1,
     "observedAt": "2026-11-23T18:17:01.242Z",
@@ -97210,6 +98082,105 @@
     },
     "resourceTemplates": {
       "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "prompts": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    }
+  },
+  "mintlify-search": {
+    "version": 1,
+    "observedAt": "2026-11-24T18:11:58.886Z",
+    "provenance": {
+      "testedEndpoint": "https://www.mintlify.com/docs/mcp",
+      "route": "direct"
+    },
+    "authentication": "unauthenticated",
+    "tools": {
+      "status": "partial",
+      "observedCount": 3,
+      "retainedCount": 3,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "query_docs_filesystem_mintlify",
+          "description": "Run a read-only shell-like query against a virtualized, in-memory filesystem rooted at `/` that contains ONLY the Mintlify documentation pages and OpenAPI specs. This is NOT a shell on any real machine — nothing runs on the user's computer, the server host, or any network. The filesystem is a sandbox backed by documentation chunks. This is how you read documentation pages: there is no separate \"get page\" tool. To read a page, pass its `.mdx` path to `head` or `cat` — a page at the URL path `/some/page` lives at `/some/page.mdx`. To search the docs with exact keyword or regex matches, use `rg`.",
+          "input": [
+            {
+              "name": "command",
+              "type": "string",
+              "description": "A shell command to run against the virtualized documentation filesystem (e.g., `rg -il \"keyword\" /`, `tree / -L 2`, `head -80 /path/file.mdx`).",
+              "required": true
+            }
+          ],
+          "outputSchema": false
+        },
+        {
+          "name": "search_mintlify",
+          "description": "Search across the Mintlify knowledge base to find relevant information, code examples, API references, and guides. Use this tool when you need to answer questions about Mintlify, find specific documentation, understand how features work, or locate implementation details. The search returns contextual content with titles and direct links to the documentation pages. If you need the full content of a specific page, use the query_docs_filesystem tool to `head` or `cat` the page path (append `.mdx` to the path returned from search — e.g. a result at `/some/page` is read with `head -200 /some/page.m",
+          "input": [
+            {
+              "name": "language",
+              "type": "string",
+              "description": "Filter to specific language code (e.g., 'zh', 'es'). Defaults to 'en'",
+              "required": false
+            },
+            {
+              "name": "query",
+              "type": "string",
+              "description": "Search query",
+              "required": true
+            }
+          ],
+          "outputSchema": false
+        },
+        {
+          "name": "submit_feedback",
+          "description": "Report a problem with this documentation site so the docs team can fix it. Use when a documentation page is incorrect, outdated, confusing, incomplete, or has a broken example. This is for feedback about the documentation content itself — not for product support requests or feedback about this tool or assistant.",
+          "input": [
+            {
+              "name": "feedback",
+              "type": "string",
+              "description": "A clear description of the documentation issue or suggestion — what is incorrect, outdated, missing, or confusing.",
+              "required": true
+            },
+            {
+              "name": "path",
+              "type": "string",
+              "description": "The URL path of the documentation page the feedback is about (the page you were reading, without the `.mdx` extension).",
+              "required": true
+            }
+          ],
+          "outputSchema": false
+        }
+      ]
+    },
+    "resources": {
+      "status": "complete",
+      "observedCount": 1,
+      "retainedCount": 1,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "mintlify",
+          "description": "Set up, write, and publish documentation sites with Mintlify, and work on existing Mintlify projects. Use when the user wants to create a docs site for a repo or product, turn a docs/ folder or README into a hosted docs site, document an API from an OpenAPI spec, migrate docs from Docusaurus, GitBook, ReadMe, Fern, or another platform, preview docs locally, or publish docs to a shareable URL. Also use when editing a project with docs.json, including pages, navigation, components, API references, and customizing appearance or browser behavior with CSS, JavaScript, React, and snippets.",
+          "mimeType": "text/markdown"
+        }
+      ]
+    },
+    "resourceTemplates": {
+      "status": "complete",
       "observedCount": 0,
       "retainedCount": 0,
       "omittedCount": 0,
@@ -129109,6 +130080,142 @@
       "items": []
     }
   },
+  "spotify-confidence-docs": {
+    "version": 1,
+    "observedAt": "2026-11-24T18:11:58.346Z",
+    "provenance": {
+      "testedEndpoint": "https://mcp.confidence.dev/mcp/docs",
+      "route": "direct"
+    },
+    "authentication": "unauthenticated",
+    "tools": {
+      "status": "partial",
+      "observedCount": 6,
+      "retainedCount": 6,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "getCloudflareDeployerGuide",
+          "description": "Get the Cloudflare deployer guide for deploying the Confidence resolver as a Cloudflare Worker. This provides instructions for setting up flag evaluation at the edge using Cloudflare Workers.",
+          "outputSchema": false
+        },
+        {
+          "name": "getCodeSnippetAndSdkIntegrationTips",
+          "description": "Get complete integration guides with code examples and README documentation for integrating Confidence feature flags. integrate Confidence with OpenFeature best practices Returns full integration examples including OpenFeature provider setup, best practices, and configuration for the specified SDK Unlike searchDocumentation which searches general docs, this returns ready-to-use integration code for specific SDKs Use this tool explicitly when the user wants code snippets or integration guides for a particular programming language or SDK.",
+          "input": [
+            {
+              "name": "sdk",
+              "type": "string",
+              "description": "The SDK or programming language to get code snippets for. Supported values: 'java', 'kotlin', 'javascript', 'typescript', 'python', 'swift', 'go', 'react'. If not specified, the tool will attempt to infer from the project.",
+              "required": true
+            }
+          ],
+          "outputSchema": false
+        },
+        {
+          "name": "getFullSource",
+          "description": "Retrieve the full text content from a specific Confidence documentation source URL",
+          "input": [
+            {
+              "name": "maxChars",
+              "type": "integer",
+              "description": "Maximum number of characters to return (default: 10000)",
+              "required": false
+            },
+            {
+              "name": "source",
+              "type": "string",
+              "description": "The source URL of the documentation page to retrieve",
+              "required": true
+            },
+            {
+              "name": "startChar",
+              "type": "integer",
+              "description": "Starting character position for text extraction (default: 0)",
+              "required": false
+            }
+          ],
+          "outputSchema": false
+        },
+        {
+          "name": "getLocalResolveIntegrationGuide",
+          "description": "Get complete integration guides with code examples and the documentation for local resolve (also called as local evaluation).",
+          "input": [
+            {
+              "name": "sdk",
+              "type": "string",
+              "description": "the local resolve sdks are available in backend environment and for Go, Java, Js or Rust.",
+              "required": true
+            }
+          ],
+          "outputSchema": false
+        },
+        {
+          "name": "grepDocumentation",
+          "description": "Search the Confidence documentation content using regular expressions. Returns a list of documentation pages that contain matches for the given regex pattern.",
+          "input": [
+            {
+              "name": "caseInsensitive",
+              "type": "boolean",
+              "description": "Whether to perform case-insensitive matching (default: false)",
+              "required": false
+            },
+            {
+              "name": "maxResults",
+              "type": "integer",
+              "description": "Maximum number of matching pages to return (default: 20)",
+              "required": false
+            },
+            {
+              "name": "pattern",
+              "type": "string",
+              "description": "Regular expression pattern to search for in documentation content. Supports Java regex syntax (e.g., '\\berror\\b' for whole word 'error', 'flag.*schema' for 'flag' followed by 'schema')",
+              "required": true
+            }
+          ],
+          "outputSchema": false
+        },
+        {
+          "name": "searchDocumentation",
+          "description": "Search the Confidence documentation using semantic search to learn about experiments, A/B tests, rollouts, feature flags, metrics, surfaces, insights, and other experiment-related topics. Returns the 10 most relevant chunks from the documentation.",
+          "input": [
+            {
+              "name": "query",
+              "type": "string",
+              "description": "Natural language question or topic to search for in documentation. This uses semantic similarity, so describe what you're looking for in plain language rather than using exact keywords",
+              "required": true
+            }
+          ],
+          "outputSchema": false
+        }
+      ]
+    },
+    "resources": {
+      "status": "complete",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "resourceTemplates": {
+      "status": "complete",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "prompts": {
+      "status": "complete",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    }
+  },
   "squarespace": {
     "version": 1,
     "observedAt": "2026-11-23T18:16:25.261Z",
@@ -133751,6 +134858,67 @@
           ]
         }
       ]
+    }
+  },
+  "synthflow-docs": {
+    "version": 1,
+    "observedAt": "2026-11-24T18:12:00.494Z",
+    "provenance": {
+      "testedEndpoint": "https://docs.synthflow.ai/_mcp/server",
+      "route": "direct"
+    },
+    "authentication": "unauthenticated",
+    "tools": {
+      "status": "partial",
+      "observedCount": 1,
+      "retainedCount": 1,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "searchDocs",
+          "description": "Search the documentation at [REDACTED URI] Returns relevant doc passages with source URLs.",
+          "input": [
+            {
+              "name": "query",
+              "type": "string",
+              "description": "The search query to run against the docs",
+              "required": true
+            },
+            {
+              "name": "topK",
+              "type": "integer",
+              "description": "How many results to return (default 8, max 20)",
+              "required": false
+            }
+          ],
+          "outputSchema": false
+        }
+      ]
+    },
+    "resources": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "resourceTemplates": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "prompts": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
     }
   },
   "tasarim": {

@@ -428,13 +428,14 @@
   {
     "serverId": "hugging-face",
     "status": "online",
-    "transport": "unknown",
-    "authType": "oauth",
-    "requiresOAuth": true,
-    "protocolEra": "unknown",
-    "checkedAt": "2026-11-23T18:14:46.934Z",
-    "message": "Authentication challenge at https://huggingface.co/mcp?login returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
-    "validatedUrl": "https://huggingface.co/mcp?login",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateless",
+    "checkedAt": "2026-11-24T20:11:59.687Z",
+    "message": "Negotiated stateless MCP 2026-07-28 at https://huggingface.co/mcp; detected transport streamable-http; authentication none; WARNING: OAuth authorization servers advertised; an anonymous MCP handshake does not establish anonymous tool access",
+    "validatedUrl": "https://huggingface.co/mcp",
+    "protocolVersion": "2026-07-28",
     "authorizationServers": [
       "https://huggingface.co"
     ]
@@ -11551,6 +11552,455 @@
     "protocolVersion": "2026-07-28",
     "authorizationServers": [
       "https://xzwoqetdbqaejrnqpeok.supabase.co/auth/v1"
+    ]
+  },
+  {
+    "serverId": "community-funding-nz",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateful",
+    "checkedAt": "2026-11-24T18:12:02.220Z",
+    "message": "Negotiated stateful MCP 2025-11-25 at https://funding.alltoohuman.nz/mcp; detected transport streamable-http; authentication none",
+    "validatedUrl": "https://funding.alltoohuman.nz/mcp",
+    "protocolVersion": "2025-11-25"
+  },
+  {
+    "serverId": "mintlify-search",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateless",
+    "checkedAt": "2026-11-24T18:11:59.324Z",
+    "message": "Negotiated stateless MCP 2026-07-28 at https://www.mintlify.com/docs/mcp; detected transport streamable-http; authentication none; WARNING: OAuth authorization servers advertised; an anonymous MCP handshake does not establish anonymous tool access",
+    "validatedUrl": "https://www.mintlify.com/docs/mcp",
+    "protocolVersion": "2026-07-28",
+    "authorizationServers": [
+      "https://mcp.mintlify.com"
+    ]
+  },
+  {
+    "serverId": "spotify-confidence-docs",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateful",
+    "checkedAt": "2026-11-24T18:11:58.464Z",
+    "message": "Negotiated stateful MCP 2025-06-18 at https://mcp.confidence.dev/mcp/docs; detected transport streamable-http; authentication none; WARNING: OAuth authorization servers advertised; an anonymous MCP handshake does not establish anonymous tool access",
+    "validatedUrl": "https://mcp.confidence.dev/mcp/docs",
+    "protocolVersion": "2025-06-18",
+    "authorizationServers": [
+      "https://mcp.confidence.dev"
+    ]
+  },
+  {
+    "serverId": "synthflow-docs",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateful",
+    "checkedAt": "2026-11-24T18:12:00.692Z",
+    "message": "Negotiated stateful MCP 2025-11-25 at https://docs.synthflow.ai/_mcp/server; detected transport streamable-http; authentication none; WARNING: OAuth authorization servers advertised; an anonymous MCP handshake does not establish anonymous tool access",
+    "validatedUrl": "https://docs.synthflow.ai/_mcp/server",
+    "protocolVersion": "2025-11-25",
+    "authorizationServers": [
+      "https://docs.synthflow.ai/_mcp/oauth"
+    ]
+  },
+  {
+    "serverId": "buffer",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-24T18:11:58.017Z",
+    "message": "Authentication challenge at https://mcp.buffer.com/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://mcp.buffer.com/mcp",
+    "authorizationServers": [
+      "https://auth.buffer.com"
+    ]
+  },
+  {
+    "serverId": "tella",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-24T18:11:58.529Z",
+    "message": "Authentication challenge at https://api.tella.com/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://api.tella.com/mcp",
+    "authorizationServers": [
+      "https://authkit.tella.tv"
+    ]
+  },
+  {
+    "serverId": "third-bridge",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-24T18:11:57.931Z",
+    "message": "Authentication challenge at https://ai.thirdbridge.com/mcp/sse returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://ai.thirdbridge.com/mcp/sse",
+    "authorizationServers": [
+      "https://sso-mcp-auth.thirdbridge.com/"
+    ]
+  },
+  {
+    "serverId": "msci-connector",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-24T18:11:58.402Z",
+    "message": "Authentication challenge at https://mcp.msci.com/mcp/v1.0/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://mcp.msci.com/mcp/v1.0/mcp",
+    "authorizationServers": [
+      "https://mcp.msci.com"
+    ]
+  },
+  {
+    "serverId": "pylon",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-24T18:11:59.398Z",
+    "message": "Authentication challenge at https://mcp.usepylon.com/ returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://mcp.usepylon.com/",
+    "authorizationServers": [
+      "https://o.auth.usepylon.com"
+    ]
+  },
+  {
+    "serverId": "graphify",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-24T18:11:59.163Z",
+    "message": "Authentication challenge at https://api.graphify.com/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://api.graphify.com/mcp",
+    "authorizationServers": [
+      "https://api.graphify.com"
+    ]
+  },
+  {
+    "serverId": "adwhispr-ads",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-24T18:11:59.067Z",
+    "message": "Authentication challenge at https://adwhispr.com/api/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://adwhispr.com/api/mcp",
+    "authorizationServers": [
+      "https://adwhispr.com"
+    ]
+  },
+  {
+    "serverId": "nooks",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-24T18:11:58.912Z",
+    "message": "Authentication challenge at https://mcp.nooks.in/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://mcp.nooks.in/mcp",
+    "authorizationServers": [
+      "https://oauth.nooks.in"
+    ]
+  },
+  {
+    "serverId": "anythingmcp",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-24T18:11:58.900Z",
+    "message": "Authentication challenge at https://cloud.anythingmcp.com/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://cloud.anythingmcp.com/mcp",
+    "authorizationServers": [
+      "https://cloud.anythingmcp.com"
+    ]
+  },
+  {
+    "serverId": "krisp",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-24T18:11:59.283Z",
+    "message": "Authentication challenge at https://mcp.krisp.ai/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://mcp.krisp.ai/mcp",
+    "authorizationServers": [
+      "https://mcp.krisp.ai"
+    ]
+  },
+  {
+    "serverId": "tomtom-maps",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-24T18:11:59.402Z",
+    "message": "Authentication challenge at https://mcp.tomtom.com/maps returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://mcp.tomtom.com/maps",
+    "authorizationServers": [
+      "https://oauth.my.tomtom.com"
+    ]
+  },
+  {
+    "serverId": "amass-connector",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-24T18:11:59.685Z",
+    "message": "Authentication challenge at https://mcp.amass.tech/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://mcp.amass.tech/mcp",
+    "authorizationServers": [
+      "https://mcp.amass.tech"
+    ]
+  },
+  {
+    "serverId": "quo",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-24T20:12:04.664Z",
+    "message": "Authentication challenge at https://mcp.quo.com/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://mcp.quo.com/mcp",
+    "authorizationServers": [
+      "https://mcp.quo.com"
+    ]
+  },
+  {
+    "serverId": "cdata-connect-ai",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-24T18:12:00.708Z",
+    "message": "Authentication challenge at https://mcp.cloud.cdata.com/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://mcp.cloud.cdata.com/mcp",
+    "authorizationServers": [
+      "https://mcp.cloud.cdata.com"
+    ]
+  },
+  {
+    "serverId": "mintlify-admin",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-24T18:11:59.798Z",
+    "message": "Authentication challenge at https://mcp.mintlify.com/ returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://mcp.mintlify.com/",
+    "authorizationServers": [
+      "https://mcp.mintlify.com"
+    ]
+  },
+  {
+    "serverId": "stewdio",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-24T18:11:59.927Z",
+    "message": "Authentication challenge at https://mcp.stewdio.ai/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://mcp.stewdio.ai/mcp",
+    "authorizationServers": [
+      "https://signin.stewdio.ai"
+    ]
+  },
+  {
+    "serverId": "turkish-airlines",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-24T18:11:59.796Z",
+    "message": "Authentication challenge at https://mcp-app.turkishtechlab.com/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://mcp-app.turkishtechlab.com/mcp",
+    "authorizationServers": [
+      "https://mcp-app.turkishtechlab.com/"
+    ]
+  },
+  {
+    "serverId": "orshot",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-24T18:11:59.717Z",
+    "message": "Authentication challenge at https://mcp.orshot.com/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://mcp.orshot.com/mcp",
+    "authorizationServers": [
+      "https://api.orshot.com"
+    ]
+  },
+  {
+    "serverId": "taplio",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-24T18:12:00.359Z",
+    "message": "Authentication challenge at https://mcp.taplio.com/ returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://mcp.taplio.com/",
+    "authorizationServers": [
+      "https://mcp.taplio.com/"
+    ]
+  },
+  {
+    "serverId": "contentsquare",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-24T18:12:00.096Z",
+    "message": "Authentication challenge at https://api.contentsquare.com/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://api.contentsquare.com/mcp",
+    "authorizationServers": [
+      "https://api.contentsquare.com"
+    ]
+  },
+  {
+    "serverId": "otto-travel",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-24T18:12:00.761Z",
+    "message": "Authentication challenge at https://api.ottotheagent.com/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://api.ottotheagent.com/mcp",
+    "authorizationServers": [
+      "https://api.ottotheagent.com"
+    ]
+  },
+  {
+    "serverId": "juicebox",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-24T18:12:00.516Z",
+    "message": "Authentication challenge at https://mcp.juicebox.ai/v1 returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://mcp.juicebox.ai/v1",
+    "authorizationServers": [
+      "https://mcp.juicebox.ai"
+    ]
+  },
+  {
+    "serverId": "highspot",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-24T18:12:00.713Z",
+    "message": "Authentication challenge at https://mcp.highspot.com/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://mcp.highspot.com/mcp",
+    "authorizationServers": [
+      "https://app.highspot.com/auth/"
+    ]
+  },
+  {
+    "serverId": "v0",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-24T18:12:00.834Z",
+    "message": "Authentication challenge at https://v0.app/api/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://v0.app/api/mcp",
+    "authorizationServers": [
+      "https://v0.app"
+    ]
+  },
+  {
+    "serverId": "qonto",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-24T18:12:00.706Z",
+    "message": "Authentication challenge at https://mcp.qonto.com/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://mcp.qonto.com/mcp",
+    "authorizationServers": [
+      "https://mcp.qonto.com"
+    ]
+  },
+  {
+    "serverId": "coindesk",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-24T18:12:00.725Z",
+    "message": "Authentication challenge at https://mcp.coindesk.com/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://mcp.coindesk.com/mcp",
+    "authorizationServers": [
+      "https://mcp.coindesk.com"
+    ]
+  },
+  {
+    "serverId": "webex-meetings",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-24T18:12:01.311Z",
+    "message": "Authentication challenge at https://mcp.webexapis.com/mcp/webex-meeting returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://mcp.webexapis.com/mcp/webex-meeting",
+    "authorizationServers": [
+      "https://mcp.webexapis.com"
+    ]
+  },
+  {
+    "serverId": "retell-ai-chatgpt-app",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-24T18:12:01.364Z",
+    "message": "Authentication challenge at https://chatgpt-app.retellai.com/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://chatgpt-app.retellai.com/mcp",
+    "authorizationServers": [
+      "https://auth.retellai.com/"
     ]
   },
   {
