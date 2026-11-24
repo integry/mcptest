@@ -265,3 +265,46 @@ for (const { path, heading } of [
     expect(configured).toBeLessThanOrEqual(baseline * 1.5);
   });
 }
+
+test('prerendered and mounted pages scroll beside the live docked panel', async ({ page, baseURL }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  if (process.env.VITE_SOLV_ENDPOINT !== endpoint) await useLiveEndpoint(page, baseURL!);
+  await page.goto(guide);
+  await page.locator(launcher).evaluate((button: HTMLButtonElement) => button.click());
+  const panel = page.locator(widget).getByRole('dialog');
+  const expand = panel.getByRole('button', { name: 'Expand to a side panel' });
+  const collapse = panel.getByRole('button', { name: 'Collapse to a small window' });
+  await expect(expand.or(collapse)).toBeVisible();
+  if (await expand.isVisible()) await expand.evaluate((button: HTMLButtonElement) => button.click());
+
+  const verifyScroller = async () => {
+    const bounds = await panel.boundingBox();
+    expect(bounds?.x).toBe(980);
+    const column = page.locator(content);
+    const offsets = () => column.evaluate(element => ({
+      right: element.getBoundingClientRect().right,
+      top: element.scrollTop,
+      documentY: window.scrollY,
+      documentHeight: document.scrollingElement!.scrollHeight,
+    }));
+    await column.hover();
+    const start = (await offsets()).top;
+    await page.mouse.wheel(0, 240);
+    await expect.poll(async () => (await offsets()).top).toBeGreaterThan(start);
+    expect(await offsets()).toMatchObject({ right: bounds!.x, documentY: 0, documentHeight: 900 });
+    await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
+  };
+
+  for (const path of [guide, '/servers/context7/', '/catalog']) {
+    await page.goto(path);
+    await expect(page.locator('[data-deferred-mount]')).toBeVisible();
+    await expect(collapse).toBeVisible();
+    await verifyScroller();
+
+    const top = await page.locator(content).evaluate(element => element.scrollTop);
+    await page.locator(content).press('Shift');
+    await expect(page.locator('[data-deferred-mount]')).toHaveCount(0);
+    await expect.poll(() => page.locator(content).evaluate(element => element.scrollTop)).toBe(top);
+    await verifyScroller();
+  }
+});
