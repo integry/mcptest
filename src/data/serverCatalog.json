@@ -38502,7 +38502,7 @@
     "name": "AIProcurement.club Procurement Agents",
     "url": "https://mcp.aiprocurement.club/mcp",
     "browserAccess": "proxy-required",
-    "description": "47 procurement tools: 28 specialists, seven workflows, seven evidence tools and five run controls. Discovery is public. Protected calls use a scoped AIProcurement.club bearer key. Paid jobs use direct AIP checkout.",
+    "description": "Anonymous discovery lists 47 procurement tools, including 28 specialists plus workflow, evidence, and run controls. The catalog snapshot retains 28 of the 47 discovered tools.",
     "category": "Productivity",
     "tags": [
       "productivity",
@@ -38516,6 +38516,12 @@
     "transport": "streamable-http",
     "requiresOAuth": false,
     "authType": "none",
+    "alternativeAuthTypes": [
+      "bearer-token"
+    ],
+    "caveats": [
+      "Protected tool calls require a scoped AIProcurement.club bearer token. Paid specialist execution requires confirmed credits for the selected specialist. See the publisher integration guide linked on this page."
+    ],
     "logoUrl": "/server-logos/aiprocurement.svg",
     "logoSourceKind": "generated-fallback",
     "logoRetrievedAt": "2026-11-24",

@@ -5700,7 +5700,7 @@
   },
   "aiprocurement": {
     "version": 1,
-    "observedAt": "2026-11-24T16:42:49.663Z",
+    "observedAt": "2026-11-24T18:07:28.855Z",
     "provenance": {
       "testedEndpoint": "https://mcp.aiprocurement.club/mcp",
       "route": "direct"
