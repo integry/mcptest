@@ -215,3 +215,28 @@ Each entry needs a local logo file, a provenance record, and a license note. `np
 - [ ] The description is factual and names the authentication method.
 - [ ] The logo provenance and license note are complete.
 - [ ] `npm test`, `npm run typecheck`, `npm run validate-catalog-assets`, and `npm run build` pass.
+
+## Batch 19 import
+
+GitHub issue [#755](https://github.com/integry/mcptest/issues/755) tracks this import under TODO `ff14e799-4a20-42ec-9345-51b2c726d117`. The catalog grew from 856 to 888 entries after matching the new records against the existing catalog.
+
+The validator reached all 32 primary URLs. It stored anonymous, partial tool inventories for Community Funding NZ (eight tools), Mintlify Search (three), Spotify Confidence Docs (six) and Synthflow Docs (one). The other 28 primary URLs returned OAuth challenges. Retell's direct anonymous initialization and the validator's OAuth challenge are both recorded in the app entry's caveat.
+
+The 38 supplied relevance updates were applied, and the 23 previously unscored records still have no score. Spotify Confidence Flags and the Synthflow account server are queued outside this batch. Make's `/v2` endpoint is recorded as an alternative. Its `/claude` plugin attribution is pending endpoint identity evidence.
+
+### Directory attribution follow-up
+
+The five plugin mappings in issue #755 and the publisher-verified Exa and Firecrawl Search plugin mappings are already present. The follow-up verified the two later Claude plugin additions against Anthropic's marketplace records and the publisher manifests. It also verified Quo's ChatGPT listing against the public release, which names the legacy SSE endpoint. The existing Claude connector and publisher source remain on each record.
+
+| Catalog entry | Verified listing | Endpoint evidence |
+|---|---|---|
+| `railway` | [`directoryPlugin.db04e594-b3b0-4640-8650-2836212fc16e`](https://claude.com/marketplace/plugins/railway) | [Railway plugin manifest](https://github.com/railwayapp/railway-skills/blob/950acebcef3445f3915ea0709876c3ba9c237a7f/plugins/railway/.mcp.json) declares `https://mcp.railway.com`. |
+| `neon` | [`directoryPlugin.f204c8c5-e0ff-4c8d-a81d-d14ea6a4e154`](https://claude.com/marketplace/plugins/neon) | [Neon plugin manifest](https://github.com/neondatabase/agent-skills/blob/bfd013c352ed31b57a573e4f60263afc5fdd7f7a/plugins/neon-postgres/mcp.json) declares `https://mcp.neon.tech/mcp`. |
+| `quo` | [`plugin_asdk_app_69e6af3297d88191b4925772c50df286`](https://chatgpt.com/plugins/plugin_asdk_app_69e6af3297d88191b4925772c50df286) | The [ChatGPT release](https://chatgpt.com/backend-anon/ps/plugins/plugin_asdk_app_69e6af3297d88191b4925772c50df286) declares `https://mcp.quo.com/sse`. The [Claude marketplace](https://claude.com/marketplace/connectors/quo) confirms the existing connector `connector.5b1d1665-4793-4a8c-98cf-909e00e97a29` at `https://mcp.quo.com/mcp`. |
+
+**Pending reconciliation.** ProPR returned HTTP 401 for the import TODO and requires sign-in for the amendment runs linked from issue #755. The issue does not enumerate the remaining 51 Claude mappings. Public marketplace and publisher records can confirm listing identities and endpoint matches, but the amendment table is needed to establish which 51 mappings are in this batch.
+
+### Endpoint evidence
+
+- **Hugging Face.** The primary `https://huggingface.co/mcp` passed anonymous Streamable HTTP validation with MCP `2026-07-28`. A separate anonymous discovery session using MCP `2025-11-25` listed `hf_fs`, `hf_whoami`, `hub_repo_details`, and `hub_repo_search`. The catalog sanitizer marked the tool inventory `partial` and retained all four tools. The snapshot also retained 100 of 160 resources and recorded an empty template list and an unsupported `prompts/list` response (`-32601`). Anonymous initialization at `https://huggingface.co/mcp?login` returned HTTP 401 with a Bearer challenge pointing to `https://huggingface.co/.well-known/oauth-protected-resource/mcp?login`.
+- **Quo.** The primary `https://mcp.quo.com/mcp` and the [documented legacy SSE alternative](https://mcp.openphonelabs.com/) both returned HTTP 401 without credentials. The SSE response advertised a Bearer challenge with `error="invalid_token"` and resource metadata at `https://mcp.quo.com/.well-known/oauth-protected-resource/sse`. The primary validator recorded the OAuth challenge and obtained no anonymous inventory.

@@ -1180,8 +1180,9 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
   useEffect(() => {
     const workbench = workbenchRef.current;
     if (!workbench || !isConnected || !isActive) return;
+    const scroller = workbench.closest('.main-content');
     const updateHeight = () => {
-      const top = workbench.getBoundingClientRect().top + window.scrollY;
+      const top = workbench.getBoundingClientRect().top + (scroller?.scrollTop ?? 0);
       workbench.style.setProperty('--workbench-top', `${top}px`);
     };
     updateHeight();
@@ -1219,6 +1220,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     >
       {showLanding ? (
         <LandingHero
+          isActive={isActive}
           serverUrl={serverUrl}
           onServerUrlChange={handleServerUrlChange}
           onConnect={handleLandingConnect}

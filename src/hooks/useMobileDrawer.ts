@@ -43,8 +43,9 @@ export const useMobileDrawer = (enabled: boolean, navRef: RefObject<HTMLElement 
       if (open) {
         opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
         focusableWithin(drawer)[0]?.focus();
-      } else if (opener && document.contains(opener)) {
-        opener.focus();
+      } else {
+        const active = document.activeElement;
+        if (opener?.isConnected && (active === body || drawer.contains(active))) opener.focus();
         opener = null;
       }
     };

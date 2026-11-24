@@ -1,15 +1,14 @@
 /**
  * Mounts the app over a prerendered page on the first input instead of at
  * load (issue #405). A reader who only reads never pays for React, the router,
- * the catalog data or the guide registry; the first pointer, key or form-field
- * focus starts the download, and the app mounts as soon as it is ready and no
- * press is in progress.
+ * the catalog data or the guide registry. The first input that needs the app
+ * starts the download. The app mounts when it is ready and no press is in
+ * progress.
  *
  * The mount replaces the static DOM, so whatever the visitor started on it
  * carries over: scroll positions, the focused field with its text and caret,
  * a button click no static handler served, replayed on the app's matching
- * button, and the state the static handlers changed (staticPage.ts). Internal
- * navigation waits for the router to take over.
+ * button, and the state the static handlers changed (staticPage.ts).
  */
 
 /** Finds an element again after the mount: its id, or its position under the nearest ancestor with an id. */
@@ -98,27 +97,53 @@ const restoreFocus = (root: HTMLElement, snapshot: FocusSnapshot | null): void =
   }
 };
 
-/** Scroll offsets of the page and of every scrolled element under `root` (the main panel, the sidebar). */
-const snapshotScroll = (root: HTMLElement) => ({
-  window: [window.scrollX, window.scrollY] as const,
-  elements: Array.from(root.querySelectorAll<HTMLElement>('*'))
+/** Scroll offsets of the page and the containers that actually scrolled. */
+const snapshotScroll = (root: HTMLElement, scrollers: Set<HTMLElement>) =>
+  Array.from(scrollers)
     .filter(element => element.scrollTop !== 0 || element.scrollLeft !== 0)
     .flatMap(element => {
       const locator = locateElement(root, element);
       return locator ? [{ locator, top: element.scrollTop, left: element.scrollLeft }] : [];
-    }),
-});
+    });
 
 const restoreScroll = (root: HTMLElement, snapshot: ReturnType<typeof snapshotScroll>): void => {
-  for (const { locator, top, left } of snapshot.elements) {
+  for (const { locator, top, left } of snapshot) {
     const element = resolveElement(root, locator);
     if (element) {
       element.scrollTop = top;
       element.scrollLeft = left;
     }
   }
-  const [x, y] = snapshot.window;
-  if (window.scrollX !== x || window.scrollY !== y) window.scrollTo(x, y);
+};
+
+export const readRouteScroll = (panel: HTMLElement | null) => ({
+  panelX: panel?.scrollLeft ?? 0,
+  panelY: panel?.scrollTop ?? 0,
+});
+
+export const prerenderedScrollPositions = new Map<string, ReturnType<typeof readRouteScroll>>();
+
+// The prerendered page can follow a native link before the router mounts.
+// Keep scroll with the history entry so it survives a new document on Back or Forward.
+export const readHistoryScroll = (): ReturnType<typeof readRouteScroll> | undefined => {
+  const saved = window.history.state?.routeScroll;
+  if (!saved) return undefined;
+  // Older reading pages saved their offset on the document.
+  return { panelX: saved.panelX, panelY: saved.panelY || saved.windowY || 0 };
+};
+
+export const saveHistoryScroll = (panel: HTMLElement | null) => {
+  window.history.replaceState({ ...window.history.state, routeScroll: readRouteScroll(panel) }, '');
+};
+
+// Give native fragment entries a key BrowserRouter will reuse after mounting.
+// Replacing state leaves the native link, URL and history entry intact.
+const keyStaticEntry = (index: number): string => {
+  const state = window.history.state;
+  if (state?.key) return state.key;
+  const key = `static-${Math.random().toString(36).slice(2)}`;
+  window.history.replaceState({ ...state, key, idx: state?.idx ?? index }, '');
+  return key;
 };
 
 const isFormField = (target: EventTarget | null): boolean => (
@@ -128,22 +153,74 @@ const isFormField = (target: EventTarget | null): boolean => (
 export interface DeferredMountOptions {
   root: HTMLElement;
   /** Downloads what the mount needs; resolves to the function that renders the app and resolves after its first commit. */
-  prepare: () => Promise<() => Promise<void | ((path: string) => void)>>;
+  prepare: () => Promise<() => Promise<void>>;
   /** Clicks a static handler fully served; not replayed after the mount. */
   isHandled?: (element: Element) => boolean;
   /** Reads state the static handlers changed, just before the mount; the returned function applies it to the app. */
   snapshotState?: (root: HTMLElement) => () => void;
+  /** Whether this input needs the app. */
+  shouldStartOnInput?: (event: Event) => boolean;
 }
 
 /** Waits for the first input, then mounts. Returns a function that starts the mount immediately. */
-export const deferMountUntilInput = ({ root, prepare, isHandled = () => false, snapshotState = () => () => {} }: DeferredMountOptions): ((path?: string) => void) => {
+export const deferMountUntilInput = ({
+  root, prepare, isHandled = () => false, snapshotState = () => () => {}, shouldStartOnInput = () => true,
+}: DeferredMountOptions): (() => void) => {
   let started = false;
   let pressed = false;
   let clickedButton: Element | null = null;
   let render: Awaited<ReturnType<DeferredMountOptions['prepare']>> | null = null;
-  let destination: string | undefined;
   let mounted = false;
   let mountScheduled = false;
+
+  const staticPage = root.firstElementChild;
+  let entryKey = keyStaticEntry(0);
+  const panel = staticPage?.querySelector<HTMLElement>('.main-content') ?? null;
+  // Reading scrollTop on every catalog descendant forces layout for rows
+  // whose contents the browser would otherwise skip (content-visibility).
+  const scrollers = new Set(root.querySelectorAll<HTMLElement>('.main-content, .desktop-sidebar, .mobile-sidebar'));
+  const recordScroller = (event: Event) => {
+    if (event.target instanceof HTMLElement) scrollers.add(event.target);
+  };
+  root.addEventListener('scroll', recordScroller, { capture: true, passive: true });
+  const saveOnPageHide = () => {
+    if (panel?.isConnected) saveHistoryScroll(panel);
+  };
+  let saved = readHistoryScroll();
+  const restoreEntryKey = entryKey;
+  const restoreSavedPanelScroll = () => {
+    if (!saved || !panel?.isConnected || window.history.state?.key !== restoreEntryKey) return;
+    // The catalog lays out its offscreen rows as they enter the viewport.
+    // Keep scroll anchoring from shifting the saved offset during that layout.
+    const overflowAnchor = panel.style.overflowAnchor;
+    panel.style.overflowAnchor = 'none';
+    panel.scrollTop = saved.panelY;
+    panel.scrollLeft = saved.panelX;
+    saved = undefined;
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => { panel.style.overflowAnchor = overflowAnchor; });
+    });
+  };
+  const restoreOnPageShow = () => {
+    window.requestAnimationFrame(restoreSavedPanelScroll);
+  };
+  window.addEventListener('pagehide', saveOnPageHide);
+  if (saved) {
+    // Wait for the static document and its styles to lay out before restoring.
+    if (document.readyState === 'complete') restoreOnPageShow();
+    else window.addEventListener('pageshow', restoreOnPageShow, { once: true });
+  }
+  let entryIndex = window.history.state?.idx ?? 0;
+  let navigationCount = 0;
+  const saveStaticPosition = () => {
+    if (!staticPage?.isConnected) return;
+    navigationCount += 1;
+    // popstate precedes the browser's scroll to the incoming entry.
+    prerenderedScrollPositions.set(entryKey, readRouteScroll(panel));
+    entryKey = keyStaticEntry(entryIndex + 1);
+    entryIndex = window.history.state?.idx ?? entryIndex;
+  };
+  window.addEventListener('popstate', saveStaticPosition, { capture: true });
 
   const listeners: [string, EventListener][] = [];
   const listen = (type: string, listener: EventListener) => {
@@ -166,7 +243,11 @@ export const deferMountUntilInput = ({ root, prepare, isHandled = () => false, s
       if (pressed) return;
       mounted = true;
       // The mount replaces the scrolling panel too; a reader keeps their place.
-      const scroll = snapshotScroll(root);
+      restoreSavedPanelScroll();
+      const scroll = snapshotScroll(root, scrollers);
+      root.removeEventListener('scroll', recordScroller, { capture: true });
+      prerenderedScrollPositions.set(entryKey, readRouteScroll(panel));
+      const scrollNavigationCount = navigationCount;
       const focus = snapshotFocus(root);
       const restoreState = snapshotState(root);
       // Decided now: the static handlers run after this capture-phase listener saw the click.
@@ -177,7 +258,6 @@ export const deferMountUntilInput = ({ root, prepare, isHandled = () => false, s
       // otherwise land on a button the app never sees: the last one no static
       // handler served is replayed too.
       // Only clicks on the static page: one on the app's own DOM is the app's.
-      const staticPage = root.firstElementChild;
       let lateClick: { button: Element; locator: ElementLocator | null } | null = null;
       const recordLateClick = (event: Event) => {
         const button = (event.target as Element | null)?.closest?.('button');
@@ -185,21 +265,30 @@ export const deferMountUntilInput = ({ root, prepare, isHandled = () => false, s
         lateClick = { button, locator: locateElement(root, button) };
       };
       document.addEventListener('click', recordLateClick, { capture: true, passive: true });
-      const stopRecording = () => document.removeEventListener('click', recordLateClick, { capture: true });
+      const stopRecording = () => {
+        document.removeEventListener('click', recordLateClick, { capture: true });
+        window.removeEventListener('popstate', saveStaticPosition, { capture: true });
+      };
       render!()
-        .then(navigate => {
+        .then(() => {
           stopRecording();
+          window.removeEventListener('pagehide', saveOnPageHide);
+          window.removeEventListener('pageshow', restoreOnPageShow);
           if (lateClick && !isHandled(lateClick.button)) click = lateClick.locator;
-          restoreScroll(root, scroll);
+          if (navigationCount !== scrollNavigationCount) {
+            // BrowserRouter may have read the previous entry before it subscribed
+            // to popstate at commit. Give it the latest entry after subscribing.
+            window.dispatchEvent(new PopStateEvent('popstate', { state: window.history.state }));
+          } else if (window.history.state?.key === entryKey) {
+            restoreScroll(root, scroll);
+          }
           restoreFocus(root, focus);
           restoreState();
-          if (destination && navigate) navigate(destination);
-          else if (click) resolveElement(root, click)?.click();
+          if (click) resolveElement(root, click)?.click();
         })
         .catch(error => {
           stopRecording();
           console.error('[Startup] The app failed to mount over the static page.', error);
-          if (destination) window.location.assign(destination);
         });
     }, 0);
   };
@@ -216,13 +305,12 @@ export const deferMountUntilInput = ({ root, prepare, isHandled = () => false, s
         // The static page keeps working; the next input tries again.
         started = false;
         console.warn('[Startup] Could not load the app.', error);
-        if (destination) window.location.assign(destination);
       });
   };
 
-  listen('pointerdown', () => {
+  listen('pointerdown', event => {
     pressed = true;
-    start();
+    if (shouldStartOnInput(event)) start();
   });
   const release = () => {
     pressed = false;
@@ -230,17 +318,14 @@ export const deferMountUntilInput = ({ root, prepare, isHandled = () => false, s
   };
   listen('pointerup', release);
   listen('pointercancel', release);
-  listen('keydown', start);
+  listen('keydown', event => { if (shouldStartOnInput(event)) start(); });
   listen('focusin', (event) => {
-    if (isFormField(event.target)) start();
+    if (isFormField(event.target) && shouldStartOnInput(event)) start();
   });
   listen('click', (event) => {
     const button = (event.target as Element | null)?.closest?.('button');
     if (button && root.contains(button)) clickedButton = button;
   });
 
-  return path => {
-    if (path) destination = path;
-    start();
-  };
+  return start;
 };

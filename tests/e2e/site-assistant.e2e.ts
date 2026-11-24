@@ -186,6 +186,7 @@ test.describe('with VITE_SOLV_* set', () => {
 
   test('full navigation with a saved dock skips boot on excluded routes', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.clock.install();
     await page.addInitScript(key => {
       // Record parser-time mutations even if the callback redirects or the boot times out.
       new MutationObserver(records => {
@@ -217,8 +218,12 @@ test.describe('with VITE_SOLV_* set', () => {
     await expect(root).toHaveAttribute('data-saw-dock-placeholder', 'true');
     await expect(root).toHaveAttribute('data-saw-dock-reservation', 'true');
     await expect.poll(() => widgetRequests).toEqual([`${ENDPOINT}/widget.js`]);
-    // The stub leaves the placeholder in place so the normal boot fallback releases it.
-    await expect(page.locator(`div[id="${DOCK_KEY}"]`)).toHaveCount(0);
+    // The stub leaves the placeholder in place past the old three-second limit.
+    const placeholder = page.locator(`div[id="${DOCK_KEY}"]`);
+    await page.clock.fastForward(3_100);
+    await expect(placeholder).toBeVisible();
+    await page.clock.fastForward(7_000);
+    await expect(placeholder).toHaveCount(0);
     expect(await root.evaluate(el => el.style.getPropertyValue('--solv-chat-panel-width'))).toBe('');
     expect(policyViolations).toEqual([]);
   });
@@ -230,7 +235,7 @@ test.describe('with VITE_SOLV_* set', () => {
       const schedule = window.setTimeout.bind(window);
       // Hold the fallback so only route cleanup can remove the placeholder.
       Object.defineProperty(window, 'setTimeout', {
-        value: (handler: TimerHandler, delay?: number, ...args: unknown[]) => schedule(handler, delay === 3000 ? 30_000 : delay, ...args),
+        value: (handler: TimerHandler, delay?: number, ...args: unknown[]) => schedule(handler, delay === 10_000 ? 30_000 : delay, ...args),
       });
     }, [DOCK_KEY, DOCK_STATE]);
     let releaseWidget!: () => void;

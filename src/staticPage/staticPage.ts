@@ -16,8 +16,8 @@ import { enhanceEngagement } from '../utils/pageEngagement';
 import { MENU_OPEN_CLASS } from '../utils/layoutState';
 import { logPageView, recordStaticPageEvent, trackEvent, trackGuideLinkClick } from '../utils/analytics';
 import { handleCodeCopyClick, handleCopyFromClick } from '../utils/codeCopy';
-import { internalLinkPath } from '../utils/internalLink';
 import { setFieldValue } from './deferredMount';
+import { getPrerenderedCatalog, STATIC_CATALOG_SEARCH_ATTRIBUTE, STATIC_SEARCH_EDITED_ATTRIBUTE } from './prerenderedCatalog';
 
 /** Set by scripts/generate-seo-pages.js on the shell of pages that mount on first input. */
 export const DEFERRED_MOUNT_ATTRIBUTE = 'data-deferred-mount';
@@ -45,7 +45,6 @@ const toggleTheme = (): void => {
 
 /** Marks a sidebar group the visitor opened or closed on the static page. */
 const TOGGLED_GROUP_ATTRIBUTE = 'data-static-toggled';
-const SEARCH_EDITED_ATTRIBUTE = 'data-static-search-edited';
 
 const toggleGroup = (button: Element): void => {
   const body = document.getElementById(button.getAttribute('aria-controls') || '');
@@ -113,7 +112,7 @@ export const snapshotStaticPageState = (root: HTMLElement): (() => void) => {
     const appSearch = root.querySelector<HTMLInputElement>('#catalog-search');
     // An untouched fallback is empty even for a filtered URL; React's URL
     // state wins unless the visitor actually edited the static search.
-    if (!search?.hasAttribute(SEARCH_EDITED_ATTRIBUTE) || !appSearch) return;
+    if (!search?.hasAttribute(STATIC_SEARCH_EDITED_ATTRIBUTE) || !appSearch) return;
     if (appSearch.value !== search.value) setFieldValue(appSearch, search.value);
     if (searchFocused) {
       appSearch.setSelectionRange(search.selectionStart, search.selectionEnd);
@@ -149,7 +148,7 @@ const focusGuideSearch = (shell: HTMLElement, event: KeyboardEvent): void => {
 };
 
 /** Sends the page view (and guide view) the app would send on its first render. */
-const reportPageView = (shell: HTMLElement, navigate?: (path: string) => void): void => {
+const reportPageView = (shell: HTMLElement): void => {
   const path = window.location.pathname;
   const title = shell.dataset.pageViewTitle;
   if (title) {
@@ -165,7 +164,7 @@ const reportPageView = (shell: HTMLElement, navigate?: (path: string) => void): 
 };
 
 /** Wires the static page's controls. */
-export const enhanceStaticPage = (shell: HTMLElement, navigate?: (path: string) => void): void => {
+export const enhanceStaticPage = (shell: HTMLElement): void => {
 
   const endpoint = shell.querySelector<HTMLInputElement>('.seo-landing-fallback #serverUrl');
   const connect = shell.querySelector<HTMLButtonElement>('#connectBtn');
@@ -179,7 +178,18 @@ export const enhanceStaticPage = (shell: HTMLElement, navigate?: (path: string) 
   });
 
   const search = shell.querySelector<HTMLInputElement>('#catalog-search');
-  search?.addEventListener('input', () => search.setAttribute(SEARCH_EDITED_ATTRIBUTE, ''));
+  if (search) {
+    search.addEventListener('input', () => search.setAttribute(STATIC_SEARCH_EDITED_ATTRIBUTE, ''));
+    const field = search.closest(`[${STATIC_CATALOG_SEARCH_ATTRIBUTE}]`);
+    const catalog = getPrerenderedCatalog(window.location.pathname);
+    if (field && catalog) {
+      void import('./catalogSearch').then(({ enhanceCatalogSearch }) => {
+        if (shell.isConnected) enhanceCatalogSearch(shell, search, catalog, element => handledClicks.add(element));
+      }).catch(() => field.removeAttribute(STATIC_CATALOG_SEARCH_ATTRIBUTE));
+    } else {
+      field?.removeAttribute(STATIC_CATALOG_SEARCH_ATTRIBUTE);
+    }
+  }
 
   const guideSlug = shell.dataset.guideSlug;
   const trackGuideLinks = guideSlug ? trackGuideLinkClick(guideSlug) : undefined;
@@ -196,13 +206,6 @@ export const enhanceStaticPage = (shell: HTMLElement, navigate?: (path: string) 
       return;
     }
     if (trackGuideLinks && target.closest('article.reading-article')) trackGuideLinks(event);
-
-    const path = navigate && internalLinkPath(event);
-    if (path) {
-      event.preventDefault();
-      navigate(path);
-      return;
-    }
 
     const button = target.closest('button');
     if (!button) return;
@@ -228,6 +231,6 @@ export const enhanceStaticPage = (shell: HTMLElement, navigate?: (path: string) 
   };
   document.addEventListener('keydown', onDocumentKeydown);
 
-  enhanceEngagement(shell, true, navigate);
+  enhanceEngagement(shell, true, path => { window.location.href = path; });
   reportPageView(shell);
 };

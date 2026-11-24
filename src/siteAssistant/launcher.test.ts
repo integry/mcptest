@@ -4,6 +4,7 @@ const trackEvent = vi.hoisted(() => vi.fn());
 vi.mock('../utils/analytics', () => ({ trackEvent }));
 
 import { mountSiteAssistantLauncher } from './launcher';
+import { loadWidgetScript } from './widgetScript';
 
 const CONFIG = { endpoint: 'https://chat.example.com', assistantKey: 'pk_test_1' };
 const flush = () => new Promise(resolve => setTimeout(resolve, 0));
@@ -115,7 +116,7 @@ describe('site assistant launcher', () => {
 
   it('lets the widget restore the docked panel without toggling it', async () => {
     defineStubWidget(() => { opened += 1; });
-    mountSiteAssistantLauncher(CONFIG, true).setActive(true);
+    mountSiteAssistantLauncher(CONFIG, loadWidgetScript(CONFIG)).setActive(true);
     await flush();
     expect(document.querySelector('solv-chat')).not.toBeNull();
     expect(opened).toBe(0);
@@ -124,7 +125,7 @@ describe('site assistant launcher', () => {
 
   it('keeps a pending restore detached if the URL changes before the router updates the launcher', async () => {
     defineStubWidget(() => { opened += 1; });
-    const launcher = mountSiteAssistantLauncher(CONFIG, true);
+    const launcher = mountSiteAssistantLauncher(CONFIG, loadWidgetScript(CONFIG));
     launcher.setActive(true);
     const originalPath = window.location.pathname;
     try {

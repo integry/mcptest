@@ -7,6 +7,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { getAnalyticsHost, logPageView, trackEvent } from './utils/analytics';
 
 // Import Components
+import RouteScrollRestoration from './components/RouteScrollRestoration';
 import Header, { MOBILE_DRAWER_ID } from './components/Header';
 import DashboardsHome from './components/DashboardsHome';
 import NotificationPopup from './components/NotificationPopup';
@@ -64,7 +65,7 @@ import { formatErrorForDisplay } from './utils/errorHandling';
 import { getCatalogServerById } from './utils/catalogUtils';
 import { getCatalogServerIdFromPath } from './utils/catalogSeo';
 import { getPreferredCatalogEndpoint } from './utils/clientSetup';
-import { OAUTH_CHECKER_PATH, DISCOVERY_CHECKER_PATH, DASHBOARDS_PATH, MCP_TEST_SERVERS_PATH, MCP_TEST_CLIENT_PATH, SERVICE_PAGE_PATH, READING_SHELL_CLASS, isKnownAppPath } from './utils/appRoutes';
+import { OAUTH_CHECKER_PATH, DISCOVERY_CHECKER_PATH, DASHBOARDS_PATH, MCP_TEST_SERVERS_PATH, MCP_TEST_CLIENT_PATH, SERVICE_PAGE_PATH, isKnownAppPath } from './utils/appRoutes';
 import { APP_ROUTE_OPTIONS } from './servicePage/buildFlag';
 import { SERVICE_PAGE_COPY } from './content/servicePageCopy';
 import { getKeywordLandingPage } from './content/keywordLandingPages';
@@ -78,6 +79,7 @@ import type {
 import { consumeOAuthReconnectRequest } from './utils/oauthReconnect';
 import { isLandingEligible, isReturningWorkspace, needsTabStrip } from './utils/landingEligibility';
 import { createDefaultSpaces, createDefaultTabs, createFirstDashboard, withoutUntouchedDefaultDashboard } from './utils/defaultWorkspace';
+import { internalLinkPath } from './utils/internalLink';
 import { syncSiteAssistantRoute } from './siteAssistant/siteAssistant';
 
 type SavedCardRuntime = typeof import('./utils/savedCardRuntime');
@@ -118,9 +120,6 @@ const getInitialTheme = (): 'light' | 'dark' => {
 };
 
 // Helper to determine initial view from URL
-/** Views that scroll with the window and let the header scroll away (appRoutes.isReadingShellPath). */
-const READING_SHELL_VIEWS: readonly string[] = ['docs', 'learn'];
-
 const getInitialView = (): 'playground' | 'dashboards' | 'docs' | 'learn' | 'report' | 'catalog' | 'server-profile' | 'submit' | 'discovery' => {
   const path = window.location.pathname;
   if (path === '/submit') {
@@ -245,14 +244,15 @@ function App() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Reading pages and the home page scroll the window, so a new page starts
-  // at its top. The first render keeps any scroll made on the static page.
-  const scrolledPathnameRef = useRef(location.pathname);
-  useEffect(() => {
-    if (scrolledPathnameRef.current === location.pathname) return;
-    scrolledPathnameRef.current = location.pathname;
-    if (!location.hash) window.scrollTo(0, 0);
-  }, [location.pathname, location.hash]);
+  const mainPanel = useRef<HTMLDivElement>(null);
+  const handleFragmentClick = (event: React.MouseEvent) => {
+    const anchor = event.target instanceof Element ? event.target.closest('a[href]') : null;
+    if (!anchor?.getAttribute('href')?.startsWith('#')) return;
+    const path = internalLinkPath(event);
+    if (!path) return;
+    event.preventDefault();
+    navigate(path);
+  };
 
   // The site assistant stays off on auth flows and pages with a visitor's own data.
   useLayoutEffect(() => {
@@ -1941,7 +1941,7 @@ function App() {
   }
 
   return (
-    <div className={`app-shell container-fluid vh-100 d-flex flex-column p-0${activeView === 'playground' && !connectedTab ? ' app-shell--home' : ''}${READING_SHELL_VIEWS.includes(activeView) ? ` ${READING_SHELL_CLASS}` : ''}`}>
+    <div className={`app-shell container-fluid p-0${activeView === 'playground' && !connectedTab ? ' app-shell--home' : ''}`}>
 
       {/* Mobile Sidebar Overlay */}
       <div 
@@ -1976,7 +1976,7 @@ function App() {
 
       <Header theme={theme} onToggleTheme={toggleTheme} />
 
-      <main className="app-workspace flex-grow-1 d-flex overflow-hidden" role="main">
+      <main className="app-workspace flex-grow-1 d-flex overflow-hidden" role="main" onClick={handleFragmentClick}>
         {/* Desktop Side Navigation */}
         <div className="desktop-sidebar col-auto p-2 d-flex flex-column">
           <SideNav
@@ -1993,7 +1993,7 @@ function App() {
         </div>
 
         {/* Main Panel (Playground, Dashboards, or Docs) - All views kept in DOM */}
-        <div className="main-content col overflow-auto p-3 position-relative">
+        <div ref={mainPanel} className="main-content col p-3 position-relative" tabIndex={-1}>
           
           {/* Content View: documentation and Learn articles */}
           <div
@@ -2021,7 +2021,7 @@ function App() {
           {/* Catalog View */}
           {hasVisited('catalog') && (
             <div className={`view-panel ${activeView === 'catalog' ? '' : 'd-none'}`}>
-              <CatalogView onTestServer={handleCatalogTestServer} />
+              <CatalogView onTestServer={handleCatalogTestServer} isActive={activeView === 'catalog'} />
             </div>
           )}
 
@@ -2082,8 +2082,8 @@ function App() {
           )}
 
           {/* Server Profile View */}
-          {hasVisited('server-profile') && (
-            <div className={`view-panel ${activeView === 'server-profile' ? '' : 'd-none'}`}>
+          {activeView === 'server-profile' && (
+            <div className="view-panel">
               <ServerProfileView server={selectedCatalogServer} onTestServer={handleCatalogTestServer} />
             </div>
           )}
@@ -2129,6 +2129,7 @@ function App() {
             <div className={`view-panel ${activeView === 'dashboards' ? '' : 'd-none'}`} style={{ height: '100%' }}>
               {onDashboardsPage || !selectedSpace ? (
                 <DashboardsHome
+                  isActive={activeView === 'dashboards'}
                   spaces={spaces}
                   onCreate={handleCreateSpace}
                 />
@@ -2156,6 +2157,7 @@ function App() {
             ['catalog', 'server-profile', 'docs', 'learn', 'keyword-landing', 'mcp-test-servers', 'mcp-test-client', 'service-page', 'oauth-check', 'discovery', 'breaking-changes'].includes(activeView)) && <Footer />}
         </div>
       </main>
+      <RouteScrollRestoration panel={mainPanel} />
       <NotificationPopup message={notification.message} show={notification.show} />
       
       {/* OAuth authorization prerequisite */}

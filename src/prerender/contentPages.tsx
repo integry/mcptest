@@ -15,6 +15,7 @@ import McpTestClientView from '../components/McpTestClientView';
 import ServicePageView from '../components/ServicePageView';
 import type { ServicePageConfig } from '../servicePage/config.mts';
 import KeywordLandingView from '../components/KeywordLandingView';
+import PrivacyPolicy from '../components/docs/PrivacyPolicy';
 import { getKeywordLandingPage } from '../content/keywordLandingPages';
 import LearnIndex from '../components/learn/LearnIndex';
 import MarkdownLearnArticle from '../components/learn/MarkdownLearnArticle';
@@ -54,6 +55,8 @@ export const renderArticlePage = (pathname: string): string | null => {
 
 /** The Learn index as /learn renders it. */
 export const renderLearnIndexPage = (): string => renderAt('/learn', <LearnIndex />);
+
+export const renderPrivacyPolicyPage = (): string => renderAt('/docs/privacy-policy', <PrivacyPolicy />);
 
 /** The breaking-change check as /tools/breaking-changes first renders it. */
 export const renderBreakingChangesPage = (): string => renderAt('/tools/breaking-changes', <BreakingChangesView />);

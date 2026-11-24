@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { HEADER_COPY, SIGN_IN_HINT_ID } from '../content/navigationLinks';
@@ -10,18 +10,6 @@ interface HeaderProps {
   onToggleTheme: () => void;
 }
 
-/** Whether the window has scrolled; the sticky header lifts off the page only then. */
-const useWindowScrolled = (): boolean => {
-  const [scrolled, setScrolled] = useState(false);
-  useEffect(() => {
-    const update = () => setScrolled(window.scrollY > 0);
-    update();
-    window.addEventListener('scroll', update, { passive: true });
-    return () => window.removeEventListener('scroll', update);
-  }, []);
-  return scrolled;
-};
-
 /** The mobile drawer App renders; the hamburger controls it. */
 export const MOBILE_DRAWER_ID = 'mobile-sidebar';
 
@@ -29,10 +17,9 @@ const Header: React.FC<HeaderProps> = ({ theme, onToggleTheme }) => {
   const { currentUser, loading, loginWithGoogle, logout } = useAuth();
   const authEnabled = import.meta.env.VITE_FIREBASE_AUTH_ENABLED === 'true';
   const menuOpen = useMobileMenuOpen();
-  const scrolled = useWindowScrolled();
 
   return (
-    <header className="app-header" data-scrolled={scrolled ? 'true' : undefined}>
+    <header className="app-header">
       <div className="app-header-brand">
         {/* Mobile Menu Toggle */}
         <button

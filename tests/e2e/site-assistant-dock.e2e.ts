@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { SITE_ASSISTANT_META_NAME } from '../../src/siteAssistant/config.mts';
 
 // Opt in because the live engine is outside CI's control. Use app-staging.solv.chat
-// while production is older than 0.1.12. Only local HTML can be rewritten.
+// while production is older than 0.1.13. Only local HTML can be rewritten.
 const endpoint = process.env.E2E_SOLV_DOCK_ENDPOINT;
 const guide = '/learn/oauth-for-mcp-explained';
 const content = '.main-content';
@@ -36,22 +36,74 @@ async function sampleFrames(page: Page) {
   }, { content, widget });
 }
 
-async function useLiveEndpoint(page: Page, baseURL: string) {
+async function useLiveEndpoint(page: Page, baseURL: string, configured = true) {
+  if (configured && endpoint?.startsWith('http://')) {
+    // Chromium treats the intercepted site document as a synthetic response.
+    // Allow it to connect to a loopback test endpoint.
+    await page.context().grantPermissions(['local-network-access'], { origin: baseURL });
+  }
   await page.route(`${baseURL}/**`, async route => {
     if (route.request().resourceType() !== 'document') return route.fallback();
     const response = await route.fetch();
     const html = await response.text();
     const original = html.match(new RegExp(`<meta name="${SITE_ASSISTANT_META_NAME}" data-endpoint="([^"]+)"`))?.[1];
     if (!original) throw new Error('Build the site with its assistant config before running the live dock test.');
-    await route.fulfill({ response, body: html.split(original).join(endpoint!) });
+    const body = configured
+      ? html.split(original).join(endpoint!)
+      : html.replace(new RegExp(`<meta name="${SITE_ASSISTANT_META_NAME}"[^>]*>`), '')
+        .replace(/<script data-key="[^"]*">[\s\S]*?<\/script>/, '');
+    await route.fulfill({ response, body });
   });
 }
 
 test.use({ viewport: { width: 1440, height: 1000 }, ignoreHTTPSErrors: true });
-test.skip(!endpoint, 'Set E2E_SOLV_DOCK_ENDPOINT to a live solv.chat engine serving widget 0.1.12.');
+test.skip(!endpoint, 'Set E2E_SOLV_DOCK_ENDPOINT to a live solv.chat engine serving widget 0.1.13.');
+
+test('the first catalog launcher press opens a docked side panel', async ({ page, baseURL }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  if (process.env.VITE_SOLV_ENDPOINT !== endpoint) await useLiveEndpoint(page, baseURL!);
+  const requests: string[] = [];
+  page.on('request', request => {
+    if (new URL(request.url()).origin === endpoint) requests.push(request.url());
+  });
+
+  await page.goto('/catalog', { waitUntil: 'load' });
+  await expect(page.locator(launcher)).toBeVisible();
+  await expect(page.locator('[data-deferred-mount]')).toBeVisible();
+  expect(requests).toEqual([]);
+
+  await page.evaluate(() => {
+    const sample = () => {
+      const widget = document.querySelector('solv-chat');
+      const panel = widget?.shadowRoot?.querySelector('.solv-panel');
+      if (panel?.getBoundingClientRect().width && !panel.hasAttribute('data-layout-pending')) {
+        document.documentElement.dataset.firstAssistantLayout = widget!.getAttribute('data-layout') ?? '';
+      } else {
+        requestAnimationFrame(sample);
+      }
+    };
+    requestAnimationFrame(sample);
+  });
+  const [settings] = await Promise.all([
+    page.waitForResponse(response => response.url().startsWith(`${endpoint}/v1/assistants/`)),
+    page.locator(launcher).click(),
+  ]);
+  expect(settings.ok()).toBe(true);
+  const panel = page.locator(widget).getByRole('dialog');
+  // The side-only control is present on the initial open. No expand or retry.
+  await expect(panel.getByRole('button', { name: 'Collapse to a small window' })).toBeVisible();
+  await expect(page.locator(widget)).toHaveAttribute('data-layout', 'side');
+  await expect(page.locator('html')).toHaveAttribute('data-first-assistant-layout', 'side');
+  const panelBounds = await panel.boundingBox();
+  const mainBounds = await page.locator(content).boundingBox();
+  expect(panelBounds!.x + panelBounds!.width).toBe(1440);
+  expect(mainBounds!.x + mainBounds!.width).toBeLessThanOrEqual(panelBounds!.x);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
+  await expect(page.locator('[data-deferred-mount]')).toBeVisible();
+});
 
 test('a live docked panel preserves content width on route changes and from the first reload frame', async ({ page, context, baseURL }) => {
-  await useLiveEndpoint(page, baseURL!);
+  if (process.env.VITE_SOLV_ENDPOINT !== endpoint) await useLiveEndpoint(page, baseURL!);
   await sampleFrames(page);
   const requests: string[] = [];
   page.on('request', request => {
@@ -65,8 +117,7 @@ test('a live docked panel preserves content width on route changes and from the 
   expect(requests).toEqual([]);
   await expect(page.locator('div[id^="solv-dock:1:"]')).toHaveCount(0);
 
-  // Open the widget without pointer or keyboard input so the static shell
-  // remains in place until the first navigation click.
+  // Open the widget and then mount the app before testing router navigation.
   await page.locator(launcher).evaluate((button: HTMLButtonElement) => button.click());
   const panel = page.locator(widget).getByRole('dialog');
   await expect(panel).toBeVisible();
@@ -80,9 +131,16 @@ test('a live docked panel preserves content width on route changes and from the 
   const dockedWidth = await mainWidth();
   expect(dockedWidth).toBeLessThan(undockedWidth);
 
+  for (const width of [1280, 1920, 1440]) {
+    await page.setViewportSize({ width, height: 1000 });
+    await expect.poll(async () => (await panel.boundingBox())?.x).toBe(width - 460);
+    const bounds = await page.locator(content).boundingBox();
+    expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width - 460);
+  }
+  await page.keyboard.press('Shift');
+  await expect(page.locator('[data-deferred-mount]')).toHaveCount(0);
   const previousWidget = await page.locator(widget).elementHandle();
   await page.evaluate(() => { window.dockFrames.length = 0; });
-  await expect(page.locator('[data-deferred-mount]')).toBeVisible();
   const guideLink = page.locator(`a[href="${guide}"]`).filter({ visible: true }).first();
   await guideLink.click();
   await expect(page).toHaveURL(new RegExp(`${guide}$`));
@@ -101,21 +159,24 @@ test('a live docked panel preserves content width on route changes and from the 
   const cdp = await context.newCDPSession(page);
   await cdp.send('Network.enable');
   await cdp.send('Network.setCacheDisabled', { cacheDisabled: true });
-  await cdp.send('Network.emulateNetworkConditionsByRule', {
+  await cdp.send('Network.emulateNetworkConditions', {
     offline: false,
-    matchedNetworkConditions: [{
-      urlPattern: `${endpoint}/widget.js`,
-      latency: 900,
-      downloadThroughput: -1,
-      uploadThroughput: -1,
-    }],
+    latency: 400,
+    downloadThroughput: 400 * 1024,
+    uploadThroughput: 400 * 1024,
   });
   const requestsBeforeReload = requests.length;
   await page.reload({ waitUntil: 'commit' });
   await expect(page.locator('div[id^="solv-dock:1:"]')).toBeVisible({ timeout: 1_500 });
   await expect(panel).toBeVisible();
   await expect(page.locator('div[id^="solv-dock:1:"]')).toHaveCount(0);
-  expect(requests.slice(requestsBeforeReload)).toContain(`${endpoint}/widget.js`);
+  expect(requests.slice(requestsBeforeReload).filter(url => url === `${endpoint}/widget.js`)).toHaveLength(1);
+  await page.waitForLoadState('domcontentloaded');
+  const { widgetStart, domContentLoaded } = await page.evaluate(url => ({
+    widgetStart: performance.getEntriesByName(url, 'resource')[0]?.startTime,
+    domContentLoaded: (performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming).domContentLoadedEventStart,
+  }), `${endpoint}/widget.js`);
+  expect(widgetStart).toBeLessThan(domContentLoaded);
   const reloadFrames = await page.evaluate(() => new Promise<DockFrame[]>(resolve => {
     requestAnimationFrame(() => requestAnimationFrame(() => resolve(window.dockFrames)));
   }));
@@ -123,9 +184,11 @@ test('a live docked panel preserves content width on route changes and from the 
   expect(reloadFrames[reloadFrames.length - 1]).toEqual({ width: dockedWidth, placeholder: false, panel: true });
   expect(reloadFrames.every(frame => frame.width === dockedWidth && (frame.placeholder || frame.panel))).toBe(true);
 
+  await cdp.detach();
+
   // A separate tab has no dock state, even while the original tab is open.
   const fresh = await context.newPage();
-  await useLiveEndpoint(fresh, baseURL!);
+  if (process.env.VITE_SOLV_ENDPOINT !== endpoint) await useLiveEndpoint(fresh, baseURL!);
   const freshRequests: string[] = [];
   fresh.on('request', request => {
     if (new URL(request.url()).origin === endpoint) freshRequests.push(request.url());
@@ -146,4 +209,102 @@ test('a live docked panel preserves content width on route changes and from the 
   await expect(page.locator(widget)).toHaveCount(0);
   expect(await mainWidth()).toBe(undockedWidth);
   expect(requests).toHaveLength(requestsAfterClose);
+});
+
+for (const { path, heading } of [
+  { path: '/catalog', heading: 'Submit a server' },
+  { path: '/learn', heading: 'What is the Model Context Protocol?' },
+]) {
+  test(`the first link click on ${path} navigates natively at the same speed with the assistant configured`, async ({ browser, baseURL }) => {
+    test.setTimeout(120_000);
+    const measure = async (configured: boolean) => {
+      const context = await browser.newContext({ baseURL });
+      try {
+        const page = await context.newPage();
+        await useLiveEndpoint(page, baseURL!, configured);
+        const cdp = await context.newCDPSession(page);
+        await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
+        await cdp.send('Network.emulateNetworkConditions', {
+          offline: false, latency: 150, downloadThroughput: -1, uploadThroughput: -1,
+        });
+        await page.addInitScript(() => {
+          window.addEventListener('click', event => {
+            const link = (event.target as Element).closest('main a[href]');
+            if (link) sessionStorage.setItem('static-link-click', JSON.stringify({
+              time: performance.timeOrigin + event.timeStamp,
+              prevented: event.defaultPrevented,
+            }));
+          });
+        });
+        const samples: number[] = [];
+        for (let run = 0; run < 3; run += 1) {
+          await page.goto(path, { waitUntil: 'domcontentloaded' });
+          await expect(page.locator('[data-deferred-mount]')).toBeVisible();
+          const link = page.locator('.main-content a[href^="/"]').first();
+          const destination = new URL((await link.getAttribute('href'))!, page.url()).href;
+          await link.click({ noWaitAfter: true });
+          await page.waitForURL(destination, { waitUntil: 'commit' });
+          await expect(page.getByRole('heading', { level: 1, name: heading, exact: true })).toBeVisible();
+          const { prevented, elapsed } = await page.evaluate(() => {
+            const click = JSON.parse(sessionStorage.getItem('static-link-click')!);
+            const navigation = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming;
+            return { prevented: click.prevented, elapsed: performance.timeOrigin + navigation.responseStart - click.time };
+          });
+          expect(prevented).toBe(false);
+          expect(elapsed).toBeGreaterThanOrEqual(0);
+          samples.push(elapsed);
+        }
+        return samples.sort((left, right) => left - right)[1];
+      } finally {
+        await context.close();
+      }
+    };
+
+    const baseline = await measure(false);
+    const configured = await measure(true);
+    expect(configured).toBeLessThanOrEqual(baseline * 1.5);
+  });
+}
+
+test('prerendered and mounted pages scroll beside the live docked panel', async ({ page, baseURL }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  if (process.env.VITE_SOLV_ENDPOINT !== endpoint) await useLiveEndpoint(page, baseURL!);
+  await page.goto(guide);
+  await page.locator(launcher).evaluate((button: HTMLButtonElement) => button.click());
+  const panel = page.locator(widget).getByRole('dialog');
+  const expand = panel.getByRole('button', { name: 'Expand to a side panel' });
+  const collapse = panel.getByRole('button', { name: 'Collapse to a small window' });
+  await expect(expand.or(collapse)).toBeVisible();
+  if (await expand.isVisible()) await expand.evaluate((button: HTMLButtonElement) => button.click());
+
+  const verifyScroller = async () => {
+    const bounds = await panel.boundingBox();
+    expect(bounds?.x).toBe(980);
+    const column = page.locator(content);
+    const offsets = () => column.evaluate(element => ({
+      right: element.getBoundingClientRect().right,
+      top: element.scrollTop,
+      documentY: window.scrollY,
+      documentHeight: document.scrollingElement!.scrollHeight,
+    }));
+    await column.hover();
+    const start = (await offsets()).top;
+    await page.mouse.wheel(0, 240);
+    await expect.poll(async () => (await offsets()).top).toBeGreaterThan(start);
+    expect(await offsets()).toMatchObject({ right: bounds!.x, documentY: 0, documentHeight: 900 });
+    await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
+  };
+
+  for (const path of [guide, '/servers/context7/', '/catalog']) {
+    await page.goto(path);
+    await expect(page.locator('[data-deferred-mount]')).toBeVisible();
+    await expect(collapse).toBeVisible();
+    await verifyScroller();
+
+    const top = await page.locator(content).evaluate(element => element.scrollTop);
+    await page.locator(content).press('Shift');
+    await expect(page.locator('[data-deferred-mount]')).toHaveCount(0);
+    await expect.poll(() => page.locator(content).evaluate(element => element.scrollTop)).toBe(top);
+    await verifyScroller();
+  }
 });

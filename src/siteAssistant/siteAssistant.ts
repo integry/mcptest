@@ -1,3 +1,4 @@
+import { loadWidgetScript } from './widgetScript';
 import {
   isSiteAssistantPath,
   resolveSiteAssistantConfig,
@@ -9,8 +10,8 @@ import {
 /*
  * The entry's half of the site assistant: a few hundred bytes that read the
  * build's config meta tag and import the launcher on idle or when there is
- * a docked panel to restore. The launcher requests widget.js only on restore
- * or after the visitor presses it.
+ * a docked panel to restore. On restore, widget.js and the launcher load in
+ * parallel. Otherwise the launcher requests widget.js on demand.
  */
 
 export interface SiteAssistantLauncher {
@@ -49,7 +50,12 @@ export const whenLoadedAndIdle = (win: Window = window): Promise<void> => new Pr
   else win.addEventListener('load', idle, { once: true });
 });
 
-const importLauncher: LoadLauncher = (config, restore) => import('./launcher').then(module => module.mountSiteAssistantLauncher(config, restore));
+const importLauncher: LoadLauncher = (config, restore) => {
+  const widget = restore ? loadWidgetScript(config) : undefined;
+  // The launcher reports failures and offers a retry once it has loaded.
+  void widget?.catch(() => {});
+  return import('./launcher').then(module => module.mountSiteAssistantLauncher(config, widget));
+};
 
 /** Shows or hides the launcher for the current path; the chunk is imported the first time it may show. */
 const apply = (current: SiteAssistantState): void => {

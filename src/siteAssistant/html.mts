@@ -9,13 +9,14 @@ import {
   type SiteAssistantConfig,
 } from './config.mts';
 
-// @solvchat/widget@0.1.12, dist/boot.js
-const VENDORED_BOOT_HASH = 'wKNxb9ISGk0wGMPONDaS6EQcivqaehUe6YFzRCFv+KI=';
+// @solvchat/widget@0.1.13, dist/boot.js
+const VENDORED_BOOT_HASH = '8QbwUUUHZbjoxVNSN60wRYrrruEqb6IWfzqkX38JqcQ=';
 
 export const siteAssistantHtmlTransform = (boot: Buffer) => {
   if (createHash('sha256').update(boot).digest('base64') !== VENDORED_BOOT_HASH) {
     throw new Error('The vendored solv.chat boot script does not match its upstream hash.');
   }
+  // The wrapper keeps the vendor body intact and has its own CSP hash.
   // On a client-side route change, run the vendor's timeout cleanup immediately.
   // That cleanup only acts if the placeholder still owns the layout reservation.
   const script = `if (!${SITE_ASSISTANT_EXCLUDED_PATH}.test(location.pathname)) {

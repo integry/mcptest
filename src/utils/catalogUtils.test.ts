@@ -294,12 +294,14 @@ describe('catalog authentication metadata', () => {
       ['versium', 'https://reach-help.versium.com/docs/mcp-overview'],
       ['vestd', 'https://www.vestd.com/help/connect-vestd-to-chatgpt-or-claude'],
       ['wachete', 'https://www.wachete.com/faq'],
+      ['warmerly', 'https://warmerly.com/docs/ai'],
       ['xverum', 'https://www.xverum.com/llms.txt'],
       ['youth4work', 'https://mcp.youth4work.com/'],
       ['zabihah', 'https://www.zabihah.com/developers/docs/mcp'],
       ['zarla', 'https://www.zarla.com/features/mcp-website-builder'],
       ['zeroheight', 'https://help.zeroheight.com/hc/en-us/articles/48004395674011-zeroheight-MCP-overview'],
       ['zip-codes', 'https://www.zip-codes.com/search.asp'],
+      ['zippendo', 'https://www.zippendo.com/docs/mcp/overview'],
       ['zylalabs', 'https://mcp.zylalabs.com/'],
     ]);
     const catalog = getCatalogServers();

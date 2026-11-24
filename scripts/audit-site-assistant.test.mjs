@@ -18,7 +18,8 @@ afterAll(() => {
 /** The production config, read the way `vite build` reads it (.env.production, then the environment). */
 const productionConfig = () => readSiteAssistantEnv(loadEnv('production', projectRoot, 'VITE_'));
 
-const applySiteAssistantToHtml = siteAssistantHtmlTransform(fs.readFileSync(path.join(projectRoot, 'src/siteAssistant/boot.js')));
+const vendoredBoot = fs.readFileSync(path.join(projectRoot, 'src/siteAssistant/boot.js'));
+const applySiteAssistantToHtml = siteAssistantHtmlTransform(vendoredBoot);
 const INDEX_HTML = fs.readFileSync(path.join(projectRoot, 'index.html'), 'utf8');
 const CONFIG = { endpoint: 'https://app.solv.chat', assistantKey: 'pk_yk0rwe2xop2ocmaj5bky' };
 /** index.html as a configured build writes it: the shared layout every prerendered page starts from. */
@@ -33,6 +34,8 @@ describe('the production site assistant config', () => {
   it('allows the widget origin and the exact boot script', () => {
     const before = policyOf(INDEX_HTML);
     const after = policyOf(BUILT);
+    const inlineBoot = BUILT.match(/<script data-key="[^"]*">([\s\S]*?)<\/script>/)[1];
+    expect(inlineBoot).toContain(vendoredBoot.toString('utf8'));
     expect(cspDirective(after, 'script-src')).toEqual([...cspDirective(before, 'script-src'), CONFIG.endpoint, SITE_ASSISTANT_BOOT_SOURCE]);
     expect(cspDirective(after, 'connect-src')).toEqual([...cspDirective(before, 'connect-src'), CONFIG.endpoint]);
     // Every other directive is untouched (style-src included: the widget's styles are constructed stylesheets).
@@ -146,5 +149,13 @@ describe.skipIf(!process.env.SITE_AUDIT)('site assistant audit of dist/', () => 
     const { problems, pages } = auditSiteAssistant(path.join(projectRoot, 'dist'), productionConfig());
     expect(problems).toEqual([]);
     expect(pages).toBeGreaterThan(100);
+  });
+
+  it('prerenders the site assistant conversation memory notice', () => {
+    const html = fs.readFileSync(path.join(projectRoot, 'dist/docs/privacy-policy/index.html'), 'utf8');
+    expect(html).toContain('the last 20 messages with their citations and feedback');
+    expect(html).toContain('After 7 days without a message or answer');
+    expect(html).toContain('<strong>New conversation</strong>');
+    expect(html).toContain('The panel layout, unsent draft and scroll position');
   });
 });

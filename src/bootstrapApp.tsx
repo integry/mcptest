@@ -1,6 +1,6 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useLayoutEffect } from 'react'
 import ReactDOM from 'react-dom/client'
-import { BrowserRouter, useNavigate } from 'react-router-dom'
+import { BrowserRouter } from 'react-router-dom'
 import App from './App'
 import { AuthProvider } from './context/AuthContext'
 import { capturePrerenderedArticle } from './content/prerenderedArticle'
@@ -12,11 +12,15 @@ import { preloadViewsForPath } from './views/deferredViews'
  */
 
 /** Resolves after the tree above it has committed and run its effects. */
-type NavigateFromStatic = (path: string) => void
-
-const OnCommit: React.FC<{ onCommit: (navigate: NavigateFromStatic) => void }> = ({ onCommit }) => {
-  const navigate = useNavigate()
-  useEffect(() => onCommit(navigate), [navigate, onCommit])
+const OnCommit: React.FC<{ onCommit: () => void }> = ({ onCommit }) => {
+  useLayoutEffect(() => {
+    // The sheet is ready, but applying it before the shell swap restyles
+    // the entire static catalog in addition to the mounted page.
+    for (const link of document.querySelectorAll('link[data-deferred-stylesheet][media="not all"]')) {
+      link.removeAttribute('media')
+    }
+  }, [])
+  useEffect(onCommit, [onCommit])
   return null
 }
 
@@ -25,7 +29,7 @@ const STYLESHEET_TIMEOUT_MS = 10000
 /**
  * The full stylesheet arrives as a preload that public/theme-init.js applies
  * (scripts/critical-css.js); the page's inline CSS covers only its static
- * first frame, so React does not render before the rest has applied.
+ * first frame, so React waits for the full stylesheet to load.
  */
 const waitForDeferredStylesheets = (): Promise<void> => {
   const links = Array.from(document.querySelectorAll<HTMLLinkElement>('link[data-deferred-stylesheet]'))
@@ -62,7 +66,7 @@ const waitForDeferredStylesheets = (): Promise<void> => {
  * fallback. A failed preload still mounts; the lazy component retries the
  * download when it renders.
  */
-export const prepareApp = async (): Promise<() => Promise<NavigateFromStatic>> => {
+export const prepareApp = async (): Promise<() => Promise<void>> => {
   const rootElement = document.getElementById('root')!
   // The guide body the generator prerendered; LearnArticlePage keeps it rather than rendering the Markdown again.
   capturePrerenderedArticle(rootElement)
@@ -71,7 +75,7 @@ export const prepareApp = async (): Promise<() => Promise<NavigateFromStatic>> =
       .catch(error => console.warn('[Startup] View chunk preload failed; mounting anyway.', error)),
     waitForDeferredStylesheets(),
   ])
-  return () => new Promise<NavigateFromStatic>((resolve) => {
+  return () => new Promise<void>((resolve) => {
     ReactDOM.createRoot(rootElement).render(
       <React.StrictMode>
         <BrowserRouter>
