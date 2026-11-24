@@ -215,3 +215,13 @@ Each entry needs a local logo file, a provenance record, and a license note. `np
 - [ ] The description is factual and names the authentication method.
 - [ ] The logo provenance and license note are complete.
 - [ ] `npm test`, `npm run typecheck`, `npm run validate-catalog-assets`, and `npm run build` pass.
+
+## Batch 19 import
+
+GitHub issue [#755](https://github.com/integry/mcptest/issues/755) tracks this import under TODO `ff14e799-4a20-42ec-9345-51b2c726d117`. The catalog grew from 856 to 888 entries after matching the new records against the existing catalog.
+
+The validator reached all 32 primary URLs. It stored anonymous, partial tool inventories for Community Funding NZ (eight tools), Mintlify Search (three), Spotify Confidence Docs (six) and Synthflow Docs (one). The other 28 primary URLs returned OAuth challenges. Retell's direct anonymous initialization and the validator's OAuth challenge are both recorded in the app entry's caveat.
+
+The 38 supplied relevance updates were applied, and the 23 previously unscored records still have no score. Spotify Confidence Flags and the Synthflow account server are queued outside this batch. Make's `/v2` endpoint is recorded as an alternative. Its `/claude` plugin attribution is pending endpoint identity evidence.
+
+The linked ProPR amendment records require authentication. The catalog includes the five existing-entry attributions named in the issue and the publisher-verified Exa and Firecrawl Search plugin attributions. Reconciliation of the remaining exact existing-entry attributions requires the amendment records.
