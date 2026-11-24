@@ -387,7 +387,8 @@ for (const { from, destination, label } of [
 
 test('removing a fragment resets the fixed-shell panel and preserves its Back position', async ({ page }) => {
   await page.goto('/catalog#catalog-search');
-  await page.keyboard.press('Shift');
+  // The fragment focuses static search. Tab moves into the app's controls.
+  await page.keyboard.press('Tab');
   await expect(page.locator('[data-deferred-mount]')).toHaveCount(0);
   const panel = page.locator('.main-content');
   const position = await panel.evaluate(element => {

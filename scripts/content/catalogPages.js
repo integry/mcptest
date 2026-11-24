@@ -8,6 +8,7 @@
  */
 const { getServerUrl } = require('../../src/utils/urlUtils.ts');
 const { getPreferredCatalogEndpoint } = require('../../src/utils/clientSetup.ts');
+const { getCatalogSearchText } = require('../../src/utils/catalogSearchText.ts');
 const {
   CATALOG_PATH,
   getCatalogCategoryIntro,
@@ -99,7 +100,6 @@ function renderListingSource(server) {
   return `<a class="catalog-listing-source" href="${escapeHtml(server.listingSource.url)}" target="_blank" rel="noopener noreferrer">${label}<svg class="catalog-listing-source-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15 3h6v6M10 14l11-11M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg></a>`;
 }
 
-/** The unfiltered catalog's first frame. Controls become active when React mounts. */
 /** Default catalog order, matching sortCatalogServers(..., 'catalog-order') in the app. */
 function orderByRelevance(servers) {
   return [...servers].sort((a, b) => (b.relevance ?? 0) - (a.relevance ?? 0));
@@ -113,7 +113,7 @@ function renderCatalogFallback({ servers: seedServers, summaries }) {
     '<h1 class="mb-1">Remote MCP server catalog</h1><p class="text-muted mb-0">Inspect transport, protocol era, and authentication before you connect.</p>',
     '<a href="/submit" class="btn btn-primary mt-3"><i class="bi bi-plus-lg" aria-hidden="true"></i> Submit server</a>',
     `<div class="catalog-results-bar" aria-live="polite"><p class="catalog-results-count">Showing <strong>${servers.length}</strong> of ${servers.length} servers</p></div>`,
-    '</div><div class="catalog-filters"><div class="catalog-search-field"><i class="bi bi-search catalog-search-icon" aria-hidden="true"></i>',
+    '</div><div class="catalog-filters"><div class="catalog-search-field" data-static-catalog-search><i class="bi bi-search catalog-search-icon" aria-hidden="true"></i>',
     '<input id="catalog-search" type="search" class="form-control" aria-label="Search servers" value="" placeholder="Search by name, URL, tag, or description"></div>',
     '<button type="button" class="catalog-filters-toggle" aria-expanded="false" aria-controls="catalog-filter-fields"><i class="bi bi-sliders" aria-hidden="true"></i><span>Filters</span><i class="bi bi-chevron-down catalog-filters-chevron" aria-hidden="true"></i></button>',
     '<div id="catalog-filter-fields" class="catalog-filter-fields" data-active-filters="0">',
@@ -122,7 +122,14 @@ function renderCatalogFallback({ servers: seedServers, summaries }) {
     select('category', 'Category', [['all', `Category: All (${servers.length})`], ...summaries.map(({category, count}) => [category, `Category: ${category} (${count})`])]),
     '</div></div></div><div class="catalog-content-layout">',
     renderCategoryRail(summaries),
-    `<div class="catalog-results-region"><ul class="catalog-server-list" aria-label="Catalog servers">${servers.map(renderCatalogRow).join('')}</ul></div>`,
+    '<div class="catalog-results-region">',
+    `<ul class="catalog-server-list" aria-label="Catalog servers">${servers.map(server => renderCatalogRow(server, true)).join('')}</ul>`,
+    '<section class="catalog-empty-state" aria-labelledby="static-catalog-empty-title" hidden>',
+    '<div class="catalog-empty-state-icon" aria-hidden="true"><i class="bi bi-search"></i></div>',
+    '<h3 id="static-catalog-empty-title">No servers match your search and filters</h3>',
+    '<p>Change the search or filters, or clear them to see every server in scope.</p>',
+    '<button type="button" class="btn btn-outline-primary" data-static-catalog-clear>Clear all filters</button></section>',
+    '</div>',
     '</div></div>',
   ].join('');
 }
@@ -133,7 +140,7 @@ function renderCatalogFallback({ servers: seedServers, summaries }) {
  * repeating the interactive card's full attributes across hundreds of rows is costly.
  * Report and Playground actions stay native anchors before the mount.
  */
-function renderCatalogRow(server) {
+function renderCatalogRow(server, searchable = false) {
   const statusClass = server.status === 'online'
     ? 'catalog-status-dot--online'
     : server.status === 'offline' ? 'catalog-status-dot--offline' : 'catalog-status-dot--unknown';
@@ -143,7 +150,7 @@ function renderCatalogRow(server) {
       ? '<div class="catalog-browser-evidence"><span class="badge catalog-status-badge catalog-status-badge--warning">Proxy required</span></div>'
       : '';
   return [
-    '<li class="catalog-server-list-item"><article class="catalog-server-row">',
+    `<li class="catalog-server-list-item" data-catalog-server-id="${escapeHtml(server.id)}"${searchable ? ` data-catalog-search="${escapeHtml(getCatalogSearchText(server))}"` : ''}><article class="catalog-server-row">`,
     renderRowLogo(server),
     '<div class="catalog-server-heading"><div class="catalog-server-title-row"><div class="catalog-server-name-source">',
     `<h3><a class="catalog-server-title" href="${escapeHtml(getCatalogServerPath(server.id))}">${escapeHtml(server.name)}</a></h3>`,
@@ -243,7 +250,7 @@ function renderCategoryFallback({ summary, summaries, servers, articles }) {
     '<div class="catalog-content-layout">',
     renderCategoryRail(summaries, summary.category),
     '<div class="catalog-results-region">',
-    `<ul class="catalog-server-list" aria-label="Catalog servers">${members.map(renderCatalogRow).join('\n')}</ul>`,
+    `<ul class="catalog-server-list" aria-label="Catalog servers">${members.map(server => renderCatalogRow(server)).join('\n')}</ul>`,
     renderCategoryFooter(summary, summaries.map(item => item.category), articles),
     '</div>',
     '</div>',

@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useLayoutEffect } from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import App from './App'
@@ -13,6 +13,13 @@ import { preloadViewsForPath } from './views/deferredViews'
 
 /** Resolves after the tree above it has committed and run its effects. */
 const OnCommit: React.FC<{ onCommit: () => void }> = ({ onCommit }) => {
+  useLayoutEffect(() => {
+    // The sheet is ready, but applying it before the shell swap restyles
+    // the entire static catalog in addition to the mounted page.
+    for (const link of document.querySelectorAll('link[data-deferred-stylesheet][media="not all"]')) {
+      link.removeAttribute('media')
+    }
+  }, [])
   useEffect(onCommit, [onCommit])
   return null
 }
@@ -22,7 +29,7 @@ const STYLESHEET_TIMEOUT_MS = 10000
 /**
  * The full stylesheet arrives as a preload that public/theme-init.js applies
  * (scripts/critical-css.js); the page's inline CSS covers only its static
- * first frame, so React does not render before the rest has applied.
+ * first frame, so React waits for the full stylesheet to load.
  */
 const waitForDeferredStylesheets = (): Promise<void> => {
   const links = Array.from(document.querySelectorAll<HTMLLinkElement>('link[data-deferred-stylesheet]'))

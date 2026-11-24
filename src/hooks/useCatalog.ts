@@ -152,7 +152,7 @@ const catalogParamsMatch = (currentParams: URLSearchParams, nextParams: URLSearc
   );
 };
 
-export const useCatalog = () => {
+export const useCatalog = (prerenderedSearch?: string) => {
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -166,7 +166,8 @@ export const useCatalog = () => {
         }
       : DEFAULT_CATALOG_FILTERS
   );
-  const [searchQuery, setSearchQueryState] = useState(initialFilters.searchQuery);
+  const [initialPrerenderedSearch] = useState(prerenderedSearch);
+  const [searchQuery, setSearchQueryState] = useState(initialPrerenderedSearch ?? initialFilters.searchQuery);
   const lastUrlSearchQueryRef = useRef(initialFilters.searchQuery);
   const [oauthFilter, setOauthFilterState] = useState<OAuthFilter>(initialFilters.oauthFilter);
   const [selectedCategory, setCategoryState] = useState(initialFilters.category);
@@ -307,6 +308,11 @@ export const useCatalog = () => {
     },
     [clearPendingSearchAnalytics]
   );
+
+  useEffect(() => {
+    // Report a query typed before React mounted just like one typed in the app.
+    if (initialPrerenderedSearch !== undefined) setSearchQuery(initialPrerenderedSearch);
+  }, [initialPrerenderedSearch, setSearchQuery]);
 
   useEffect(() => {
     if (!onCatalogRoute) {

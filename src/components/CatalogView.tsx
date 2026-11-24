@@ -1,5 +1,5 @@
-import React, { useId, useMemo, useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import React, { useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useCatalog } from '../hooks/useCatalog';
 import { trackEvent } from '../utils/analytics';
 import {
@@ -17,6 +17,8 @@ import {
 } from '../utils/catalogCategories';
 import CatalogServerCard from './CatalogServerCard';
 import { CatalogCategoryFooter, CatalogCategorySummaryList } from './CatalogCategoryDetails';
+import { getPrerenderedCatalog, STATIC_SEARCH_EDITED_ATTRIBUTE, syncCatalogRows } from '../staticPage/prerenderedCatalog';
+import { internalLinkPath } from '../utils/internalLink';
 import './CatalogCategory.css';
 
 interface CatalogViewProps {
@@ -42,6 +44,17 @@ const SORT_OPTIONS: Array<{ value: CatalogSortOrder; label: string }> = [
 
 const CatalogView: React.FC<CatalogViewProps> = ({ onTestServer, isActive = true }) => {
   const Heading = isActive ? 'h1' : 'h2';
+  const location = useLocation();
+  const lastCatalogPath = useRef(location.pathname);
+  useLayoutEffect(() => {
+    if (isActive) lastCatalogPath.current = location.pathname;
+  }, [isActive, location.pathname]);
+  // Keep the mounted list attached while another view is active. Its rows
+  // retain their measured heights for the router's Back/Forward scroll.
+  const pathname = isActive ? location.pathname : lastCatalogPath.current;
+  const prerendered = getPrerenderedCatalog(pathname);
+  const prerenderedSearch = prerendered?.list.closest('[data-deferred-mount]')
+    ?.querySelector<HTMLInputElement>(`#catalog-search[${STATIC_SEARCH_EDITED_ATTRIBUTE}]`)?.value;
   const {
     allServers,
     filteredServers,
@@ -56,14 +69,21 @@ const CatalogView: React.FC<CatalogViewProps> = ({ onTestServer, isActive = true
     filterSearch = '',
     sortOrder,
     setSortOrder,
-  } = useCatalog();
-  const location = useLocation();
+  } = useCatalog(prerenderedSearch);
+  const reuseRows = useMemo(
+    () => prerendered && filteredServers.every(server => prerendered.rows.has(server.id)),
+    [filteredServers, prerendered]
+  );
+  const testServer = (server: CatalogServer) => {
+    trackEvent('catalog_open_server', { server_id: server.id, surface: 'list' });
+    onTestServer(server);
+  };
   const idPrefix = useId();
   const [filtersOpen, setFiltersOpen] = useState(false);
   // Stable control IDs let deferredMount restore focus after the static swap.
   const filterFieldsId = 'catalog-filter-fields';
   // On /catalog/<slug> the category is the page itself, not a filter.
-  const onCategoryPage = getCatalogCategorySlugFromPath(location.pathname) !== null;
+  const onCategoryPage = getCatalogCategorySlugFromPath(pathname) !== null;
   const categorySummary = useMemo(
     () => (onCategoryPage && category !== CATALOG_CATEGORY_ALL
       ? summarizeCatalogCategory(allServers, category)
@@ -278,16 +298,15 @@ const CatalogView: React.FC<CatalogViewProps> = ({ onTestServer, isActive = true
                 Clear all filters
               </button>
             </section>
+          ) : reuseRows && prerendered ? (
+            <PrerenderedCatalogRows catalog={prerendered} servers={filteredServers} filterSearch={filterSearch} onTest={testServer} />
           ) : (
             <ul className="catalog-server-list" aria-label="Catalog servers">
               {filteredServers.map((server) => (
                 <li key={server.id} className="catalog-server-list-item">
                   <CatalogServerCard
                     server={server}
-                    onTest={(selected) => {
-                      trackEvent('catalog_open_server', { server_id: selected.id, surface: 'list' });
-                      onTestServer(selected);
-                    }}
+                    onTest={testServer}
                     categorySearch={filterSearch}
                   />
                 </li>
@@ -300,6 +319,46 @@ const CatalogView: React.FC<CatalogViewProps> = ({ onTestServer, isActive = true
     </div>
   );
 };
+
+/** React controls filters and navigation while the server-rendered list keeps its existing nodes. */
+function PrerenderedCatalogRows({ catalog, servers, filterSearch, onTest }: {
+  catalog: NonNullable<ReturnType<typeof getPrerenderedCatalog>>;
+  servers: CatalogServer[];
+  filterSearch: string;
+  onTest: (server: CatalogServer) => void;
+}) {
+  const host = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate();
+  const serversById = useMemo(() => new Map(servers.map(server => [server.id, server])), [servers]);
+
+  useLayoutEffect(() => {
+    const { list, rows } = catalog;
+    const visible = servers.map(server => rows.get(server.id)!);
+    syncCatalogRows(list, visible);
+    for (const row of visible) {
+      const category = row.querySelector<HTMLAnchorElement>('.catalog-metadata-badge--category');
+      if (category && category.search !== filterSearch) category.search = filterSearch;
+    }
+    list.hidden = false;
+    if (list.parentElement !== host.current) host.current!.append(list);
+  }, [catalog, servers, filterSearch]);
+
+  return <div ref={host} onClick={event => {
+    const path = internalLinkPath(event);
+    if (!path) return;
+    const target = event.target as Element;
+    const testLink = target.closest('.catalog-test-button');
+    if (testLink) {
+      event.preventDefault();
+      const row = testLink.closest<HTMLLIElement>('[data-catalog-server-id]');
+      const server = row && serversById.get(row.dataset.catalogServerId!);
+      if (server && server.status !== 'offline') onTest(server);
+    } else {
+      event.preventDefault();
+      navigate(path);
+    }
+  }} />;
+}
 
 interface CategoryRailLinkProps {
   label: string;
