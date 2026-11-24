@@ -14,7 +14,7 @@ vi.mock('./utils/analytics', async (importOriginal) => {
 
 import App from './App';
 import { AuthProvider } from './context/AuthContext';
-import { logPageView } from './utils/analytics';
+import { logPageView, trackEvent } from './utils/analytics';
 import { KEYWORD_LANDING_PAGES, getKeywordLandingPage } from './content/keywordLandingPages';
 import { getRouteView, preloadViewsForPath } from './views/deferredViews';
 import { canonicalAliasPath } from './utils/appRoutes';
@@ -165,6 +165,21 @@ describe('keyword landing routes', () => {
     // The playground has taken over: the connection panel, not a landing.
     expect(container.querySelector('.view-panel:not(.d-none) .landing-title')).toBeNull();
     expect(container.querySelector('.view-panel:not(.d-none) .connection-console')).not.toBeNull();
+  });
+
+  it('drops the delayed auto-connect when the playground unmounts first', async () => {
+    mount('/mcp-test-server');
+    await act(async () => {});
+    typeUrl(container.querySelector<HTMLInputElement>('#test-server-server-url')!, 'https://example.com/mcp');
+    click(container.querySelector('.view-panel:not(.d-none) .landing-connect-button'));
+    await act(async () => {});
+    vi.mocked(trackEvent).mockClear();
+
+    act(() => root?.unmount());
+    root = undefined;
+    // TabContent schedules the connect 100ms out; it must not set state after unmount.
+    await new Promise(resolve => setTimeout(resolve, 150));
+    expect(vi.mocked(trackEvent).mock.calls.filter(([name]) => name === 'connect_attempt')).toEqual([]);
   });
 
   it('opens a new tab when the playground already has a server', async () => {

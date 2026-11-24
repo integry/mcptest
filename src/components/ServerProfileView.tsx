@@ -3,7 +3,7 @@ import { getCatalogServers } from '../utils/catalogUtils';
 import { enhanceEngagement } from '../utils/pageEngagement';
 import React, { Suspense, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import type { CatalogServer } from '../types/catalog';
+import type { CatalogClientDirectory, CatalogServer } from '../types/catalog';
 import { trackEvent } from '../utils/analytics';
 import {
   getCatalogAuthAnswer,
@@ -34,6 +34,11 @@ interface ServerProfileViewProps {
   server?: CatalogServer;
   onTestServer: (server: CatalogServer) => void;
 }
+
+const CLIENT_DIRECTORY_LABELS: Record<CatalogClientDirectory, string> = {
+  claude: 'Claude connector directory',
+  chatgpt: 'ChatGPT app directory',
+};
 
 const formatCheckedAt = (checkedAt?: string) => {
   if (!checkedAt) {
@@ -175,16 +180,16 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
         </div>
         <div className="server-signal-card">
           <span className="server-signal-label">Authentication</span>
-          <strong>{server.authType === 'oauth' ? <a href="/learn/oauth-for-mcp-explained">{formatCatalogAuth(server.authType)}</a> : formatCatalogAuth(server.authType)}</strong>
+          <strong>{server.authType === 'oauth' ? <Link to="/learn/oauth-for-mcp-explained">{formatCatalogAuth(server.authType)}</Link> : formatCatalogAuth(server.authType)}</strong>
           <small>{alternativeAuthLabel(server)}</small>
         </div>
         <div className="server-signal-card">
           <span className="server-signal-label">Protocol lifecycle</span>
-          <strong><a href="/docs/remote-vs-local">{formatProtocolEra(server.protocolEra, server.protocolVersion)}</a></strong>
+          <strong><Link to="/docs/remote-vs-local">{formatProtocolEra(server.protocolEra, server.protocolVersion)}</Link></strong>
           <small>{server.protocolEra === 'unknown' ? 'No lifecycle negotiation recorded' : 'Negotiated by the catalog validator'}</small>
         </div>
         <div className="server-signal-card">
-          <a className="server-signal-label" href="/learn/mcp-cors-headers-for-browser-clients">Browser access</a>
+          <Link className="server-signal-label" to="/learn/mcp-cors-headers-for-browser-clients">Browser access</Link>
           <strong>{browserAccessLabel(server)}</strong>
           <small>{server.browserUrl || 'Server-side validation is reported separately'}</small>
         </div>
@@ -343,7 +348,10 @@ const ServerProfileView: React.FC<ServerProfileViewProps> = ({ server, onTestSer
           <div className="d-flex flex-wrap gap-3">
             {server.homepageUrl && <a href={server.homepageUrl} target="_blank" rel="noopener noreferrer">Product documentation <i className="bi bi-arrow-up-right"></i></a>}
             {server.sourceUrl && <a href={server.sourceUrl} target="_blank" rel="noopener noreferrer">Source repository <i className="bi bi-arrow-up-right"></i></a>}
-            {server.listingSource.url && server.listingSource.url !== server.homepageUrl && <a href={server.listingSource.url} target="_blank" rel="noopener noreferrer">Official listing documentation <i className="bi bi-arrow-up-right"></i></a>}
+            {server.listingSource.url && server.listingSource.url !== server.homepageUrl && server.listingSource.kind !== 'client-directory' && <a href={server.listingSource.url} target="_blank" rel="noopener noreferrer">Official listing documentation <i className="bi bi-arrow-up-right"></i></a>}
+            {server.directoryListings?.map((listing) => (
+              <a key={`${listing.directory}:${listing.id}`} href={listing.url} target="_blank" rel="noopener noreferrer">{CLIENT_DIRECTORY_LABELS[listing.directory]} listing <i className="bi bi-arrow-up-right"></i></a>
+            ))}
             {server.registryUrl && <a href={server.registryUrl} target="_blank" rel="noopener noreferrer">Official MCP Registry record <i className="bi bi-arrow-up-right"></i></a>}
             <Link to={getCatalogCategoryPath(server.category)}>More {server.category} MCP servers <i className="bi bi-arrow-right"></i></Link>
             <Link to="/docs/testing-guide">MCP testing guide <i className="bi bi-arrow-right"></i></Link>

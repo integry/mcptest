@@ -190,6 +190,39 @@ describe('deferMountUntilInput', () => {
     vi.restoreAllMocks();
   });
 
+  it('leaves the incoming entry scroll alone when a fragment changes before commit', async () => {
+    const originalState = window.history.state;
+    const originalUrl = window.location.href;
+    const page = setup();
+    let commit!: () => void;
+    page.render.mockImplementationOnce(() => new Promise<void>((resolve) => {
+      commit = () => {
+        page.root.innerHTML = APP_HTML;
+        page.root.querySelector<HTMLElement>('.main-content')!.scrollTop = 560;
+        resolve();
+      };
+    }));
+    page.root.querySelector<HTMLElement>('.main-content')!.scrollTop = 240;
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab' }));
+    page.ready();
+    await flush();
+
+    const syncRouter = vi.fn();
+    try {
+      window.history.pushState(null, '', '#late');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+      window.addEventListener('popstate', syncRouter);
+      commit();
+      await flush();
+      expect(page.root.querySelector<HTMLElement>('.main-content')!.scrollTop).toBe(560);
+      expect(syncRouter).toHaveBeenCalledTimes(1);
+      expect(syncRouter.mock.calls[0][0].state).toEqual(window.history.state);
+    } finally {
+      window.removeEventListener('popstate', syncRouter);
+      window.history.replaceState(originalState, '', originalUrl);
+    }
+  });
+
   it('tries again on the next input when loading the app fails', async () => {
     document.body.innerHTML = `<div id="root">${STATIC_HTML}</div>`;
     const root = document.getElementById('root')!;
@@ -214,7 +247,8 @@ describe('element locators', () => {
     const root = document.getElementById('root')!;
     const button = root.querySelector('.sidenav-action')!;
     const locator = locateElement(root, button)!;
-    expect(locator).toEqual({ scopeId: 'app-sidenav-desktop', selector: 'button[aria-label="Create new dashboard"]', index: 0 });
+    // locateElement escapes the label with CSS.escape, which jsdom 31+ provides (spaces become `\ `).
+    expect(locator).toEqual({ scopeId: 'app-sidenav-desktop', selector: `button[aria-label="${CSS.escape('Create new dashboard')}"]`, index: 0 });
 
     root.innerHTML = APP_HTML;
     expect(resolveElement(root, locator)).toBe(root.querySelector('#app-sidenav-desktop .sidenav-action'));

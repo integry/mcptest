@@ -14,11 +14,12 @@ import {
   getCatalogServerSeo,
   SITE_URL,
 } from '../utils/catalogSeo';
-import { MCP_TEST_CLIENT_METADATA, MCP_TEST_SERVERS_METADATA, OAUTH_CHECKER_METADATA, BREAKING_CHANGES_METADATA, CATALOG_METADATA, DISCOVERY_METADATA, HOME_METADATA, REPORT_METADATA, SUBMIT_METADATA } from '../utils/pageMetadata';
+import { SERVICE_PAGE_METADATA, MCP_TEST_CLIENT_METADATA, MCP_TEST_SERVERS_METADATA, OAUTH_CHECKER_METADATA, BREAKING_CHANGES_METADATA, CATALOG_METADATA, DISCOVERY_METADATA, HOME_METADATA, REPORT_METADATA, SUBMIT_METADATA } from '../utils/pageMetadata';
 import { BREAKING_CHANGES_TOOL_PATH } from '../utils/breakingChangesRoute';
 import { OG_IMAGE_HEIGHT, OG_IMAGE_WIDTH, getOgImagePath } from '../utils/ogImage';
 import { parseResultShareUrl } from '../utils/urlUtils';
-import { OAUTH_CHECKER_PATH, DISCOVERY_CHECKER_PATH, DASHBOARDS_PATH, MCP_TEST_SERVERS_PATH, MCP_TEST_CLIENT_PATH, isKnownAppPath } from '../utils/appRoutes';
+import { OAUTH_CHECKER_PATH, DISCOVERY_CHECKER_PATH, DASHBOARDS_PATH, MCP_TEST_SERVERS_PATH, MCP_TEST_CLIENT_PATH, SERVICE_PAGE_PATH, isKnownAppPath } from '../utils/appRoutes';
+import { APP_ROUTE_OPTIONS, SERVICE_PAGE_ENABLED } from '../servicePage/buildFlag';
 import {
   LEARN_INDEX_METADATA,
   getContentPage,
@@ -246,6 +247,8 @@ export const useMetaTags = () => {
       applyMetadata({ ...MCP_TEST_SERVERS_METADATA, canonicalUrl: `${SITE_URL}${MCP_TEST_SERVERS_PATH}`, imageUrl: ogImage(MCP_TEST_SERVERS_PATH) });
     } else if (location.pathname === MCP_TEST_CLIENT_PATH) {
       applyMetadata({ ...MCP_TEST_CLIENT_METADATA, canonicalUrl: `${SITE_URL}${MCP_TEST_CLIENT_PATH}`, imageUrl: ogImage(MCP_TEST_CLIENT_PATH) });
+    } else if (SERVICE_PAGE_ENABLED && location.pathname === SERVICE_PAGE_PATH) {
+      applyMetadata({ ...SERVICE_PAGE_METADATA, canonicalUrl: `${SITE_URL}${SERVICE_PAGE_PATH}`, imageUrl: ogImage(SERVICE_PAGE_PATH) });
     } else if (keywordLandingPage) {
       applyMetadata({
         title: keywordLandingPage.title,
@@ -260,12 +263,12 @@ export const useMetaTags = () => {
         canonicalUrl: `${SITE_URL}${DISCOVERY_CHECKER_PATH}`,
         imageUrl: ogImage(DISCOVERY_CHECKER_PATH),
       });
-    } else if (isKnownAppPath(location.pathname) && getAppPageMetadata(location.pathname)) {
+    } else if (isKnownAppPath(location.pathname, APP_ROUTE_OPTIONS) && getAppPageMetadata(location.pathname)) {
       applyMetadata({
         ...getAppPageMetadata(location.pathname)!,
         canonicalUrl: `${SITE_URL}${location.pathname}`,
       });
-    } else if (!isKnownAppPath(location.pathname)) {
+    } else if (!isKnownAppPath(location.pathname, APP_ROUTE_OPTIONS)) {
       applyMetadata({
         title: 'Page Not Found | mcptest.io',
         description: 'This page is not available. Open the playground, browse the MCP server catalog, or read the guides.',

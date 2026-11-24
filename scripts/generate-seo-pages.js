@@ -62,10 +62,10 @@ const {
 const { OG_IMAGE_HEIGHT, OG_IMAGE_WIDTH, getOgImagePath } = require('../src/utils/ogImage.ts');
 const {
   DASHBOARDS_NAVIGATION,
-  FOOTER_NAVIGATION,
   HEADER_COPY,
   LEGAL_NAVIGATION,
   NAVIGATION_GROUPS,
+  getFooterLinkColumns,
   PLAYGROUND_NAVIGATION,
   buildLearnTrackNavigation,
   isNavigationItemActive,
@@ -80,20 +80,21 @@ const { DISCOVERY_COPY, DISCOVERY_GUIDE_PATH } = require('../src/content/discove
 const {
   APP_ROUTE_PREFIXES,
   DISCOVERY_CHECKER_PATH,
-  EXACT_APP_ROUTES,
   MCP_TEST_CLIENT_PATH,
   MCP_TEST_SERVERS_PATH,
   NOT_FOUND_LINKS,
   NOT_FOUND_SUMMARY,
   NOT_FOUND_TITLE,
   READING_SHELL_CLASS,
+  SERVICE_PAGE_PATH,
+  getExactAppRoutes,
   isReadingShellPath,
 } = require('../src/utils/appRoutes.ts');
 const { KEYWORD_LANDING_PAGES, getKeywordLandingFaqStructuredData } = require('../src/content/keywordLandingPages.ts');
 const { writeOgImages } = require('./og/ogImages.js');
 const { inlineCriticalCss, restoreStylesheetLinks } = require('./critical-css.js');
 const { downscalePng, readPngSize } = require('./raster-images.js');
-const { renderCatalogFallback, renderCategoryFallback, renderServerConnect, renderToolInventory } = require('./content/catalogPages.js');
+const { orderByRelevance, renderCatalogFallback, renderCategoryFallback, renderServerConnect, renderToolInventory } = require('./content/catalogPages.js');
 const { getServerUrl } = require('../src/utils/urlUtils.ts');
 const { getServerPageMetaDescription, getServerSetupStructuredData } = require('../src/utils/serverConnect.ts');
 const {
@@ -111,8 +112,14 @@ const { MCP_TEST_SERVERS_COPY, MCP_TEST_SERVERS_FAQ } = require('../src/content/
 const { LANDING_FIXTURE, PUBLIC_FIXTURES } = require('../src/data/publicFixtures.ts');
 const { MCP_TEST_CLIENT_COPY, MCP_TEST_CLIENT_FAQ } = require('../src/content/mcpTestClientCopy.ts');
 const { CLIENT_CHECKLISTS } = require('../src/content/mcpTestClientChecklist.ts');
+const { SERVICE_PAGE_COPY } = require('../src/content/servicePageCopy.ts');
+const { resolveServicePageConfig } = require('../src/servicePage/config.mts');
 
 const SITE_URL = 'https://mcptest.io';
+const CLIENT_DIRECTORY_LABELS = {
+  claude: 'Claude connector directory',
+  chatgpt: 'ChatGPT app directory',
+};
 const projectRoot = path.join(__dirname, '..');
 const distRoot = path.join(projectRoot, 'dist');
 const indexPath = path.join(distRoot, 'index.html');
@@ -240,6 +247,29 @@ function formatDisplayTimestamp(value) {
     hour: 'numeric', minute: '2-digit',
   }).format(timestamp);
   return `${date} at ${time}`;
+}
+
+let mergedCatalogCache = null;
+
+/**
+ * The seed catalog merged with validation results, read from disk. Server
+ * pages each need it for their next-steps links, so it is parsed and merged
+ * once (re-read only when either file changes) instead of once per page.
+ */
+function loadMergedCatalogFromDisk() {
+  const stamp = [catalogPath, validationPath]
+    .map(file => { const { mtimeMs, size } = fs.statSync(file); return `${mtimeMs}:${size}`; })
+    .join('|');
+  if (mergedCatalogCache?.stamp !== stamp) {
+    mergedCatalogCache = {
+      stamp,
+      servers: mergeCatalogServers(
+        JSON.parse(fs.readFileSync(catalogPath, 'utf8')),
+        JSON.parse(fs.readFileSync(validationPath, 'utf8'))
+      ),
+    };
+  }
+  return mergedCatalogCache.servers;
 }
 
 function validationStatusLabel(server) {
@@ -415,9 +445,13 @@ function renderServerFallback(server) {
     ? `<a href="${escapeHtml(server.registryUrl)}">Official MCP Registry record</a>`
     : '';
   const listingLink = server.listingSource?.url && server.listingSource.url !== server.homepageUrl
+    && server.listingSource.kind !== 'client-directory'
     ? `<a href="${escapeHtml(server.listingSource.url)}">Official listing documentation</a>`
     : '';
-  const references = [homepageLink, sourceLink, listingLink, registryLink].filter(Boolean).join(' · ');
+  const directoryLinks = (server.directoryListings || []).map((listing) => (
+    `<a href="${escapeHtml(listing.url)}">${escapeHtml(CLIENT_DIRECTORY_LABELS[listing.directory] || 'Client directory')} listing</a>`
+  ));
+  const references = [homepageLink, sourceLink, listingLink, ...directoryLinks, registryLink].filter(Boolean).join(' · ');
   const requiredHeaders = (server.requiredHeaders || []).map((header) => (
     `      <div><dt>Required header</dt><dd><code class="technical-string technical-string-inline">${escapeHtml(header.name)}</code>${header.description ? ` — ${escapeHtml(header.description)}` : ''}</dd></div>`
   ));
@@ -474,7 +508,7 @@ function renderServerFallback(server) {
     '  </div></section>',
     renderAuthorizationSetup(server),
     renderServerConnect(server),
-    renderServerNextSteps(server, mergeCatalogServers(JSON.parse(fs.readFileSync(catalogPath, 'utf8')), JSON.parse(fs.readFileSync(validationPath, 'utf8')))),
+    renderServerNextSteps(server, loadMergedCatalogFromDisk()),
     '  <section class="card server-profile-section"><div class="card-body">',
     '    <section class="badge-embed" aria-labelledby="server-badge-embed-title">',
     '      <div class="badge-embed-heading">',
@@ -773,11 +807,11 @@ function renderMarkdown(markdown, context = undefined) {
         index += 1;
       }
       html.push([
-        '<table><thead><tr>',
+        '<div class="reading-table"><table><thead><tr>',
         ...headerCells.map(cell => `<th>${renderInlineMarkdown(cell.trim())}</th>`),
         '</tr></thead><tbody>',
         ...rows.map(cells => `<tr>${cells.map(cell => `<td>${renderInlineMarkdown(cell.trim())}</td>`).join('')}</tr>`),
-        '</tbody></table>',
+        '</tbody></table></div>',
       ].join(''));
       continue;
     }
@@ -1166,11 +1200,10 @@ function renderSideNavFallback({ view = 'playground' }) {
  * view's panel content). The mobile drawer is omitted; it is off-screen until
  * opened. `attributes` go on the shell element (src/staticPage reads them).
  */
-function renderSiteFooter() {
+function renderSiteFooter({ servicePage = false } = {}) {
   const columns = [
     ...FOOTER_COLUMNS.map(column => ({ title: column.title, links: column.links.map(([label, href]) => ({ label, href })) })),
-    { title: 'Tools', links: FOOTER_NAVIGATION.slice(3, 6) },
-    { title: 'Project', links: FOOTER_NAVIGATION.slice(6) },
+    ...getFooterLinkColumns({ servicePage }),
   ];
   const linkColumns = columns.map(column => `<section><h2>${escapeHtml(column.title)}</h2><ul>${column.links.map(link => `<li><a href="${escapeHtml(link.href)}">${escapeHtml(link.label)}</a></li>`).join('')}</ul></section>`).join('');
   return `<footer class="site-footer" aria-label="Site resources"><div class="site-link-columns">${linkColumns}</div><div class="site-footer-meta"><nav aria-label="Project and legal links">${LEGAL_NAVIGATION.map(link => `<a href="${escapeHtml(link.href)}">${escapeHtml(link.label)}</a>`).join('')}</nav><small>© ${new Date().getFullYear()} Unchained Development OÜ</small></div></footer>`;
@@ -1184,6 +1217,7 @@ function renderAppShell({
   attributes = {},
   learnTracks = [],
   authEnabled = false,
+  servicePage = false,
   versionInfo = VERSION_INFO,
   year = new Date().getFullYear(),
 }) {
@@ -1206,7 +1240,7 @@ function renderAppShell({
     panelStyle ? `<div class="view-panel" style="${escapeHtml(panelStyle)}">` : '<div class="view-panel">',
     content,
     '</div>',
-    ['playground', 'catalog', 'server-profile', 'docs', 'learn', 'keyword-landing', 'mcp-test-servers', 'mcp-test-client', 'oauth-check', 'discovery', 'breaking-changes'].includes(view) ? renderSiteFooter() : '',
+    ['playground', 'catalog', 'server-profile', 'docs', 'learn', 'keyword-landing', 'mcp-test-servers', 'mcp-test-client', 'service-page', 'oauth-check', 'discovery', 'breaking-changes'].includes(view) ? renderSiteFooter({ servicePage }) : '',
     '</div>',
     '</main>',
     '</div>',
@@ -1449,6 +1483,7 @@ function listHtmlFiles(directory) {
 function finalizeHtmlPages() {
   const manifest = JSON.parse(fs.readFileSync(path.join(distRoot, '.vite', 'manifest.json'), 'utf8'));
   const appPreloads = findAppPreloadHrefs(manifest);
+  const catalogSearch = manifest['src/staticPage/catalogSearch.ts'].file;
   const stylesheets = new Map();
   const readStylesheet = (href) => {
     const file = href.split(/[?#]/)[0].replace(/^\//, '');
@@ -1459,9 +1494,20 @@ function finalizeHtmlPages() {
   for (const file of listHtmlFiles(distRoot)) {
     const html = fs.readFileSync(file, 'utf8');
     if (!html.includes('<div id="root"')) continue;
-    const next = inlineCriticalCss(addAppPreloads(html, appPreloads), readStylesheet, {
-      extraClasses: RUNTIME_STATE_CLASSES,
-      extraAttributes: RUNTIME_STATE_ATTRIBUTES,
+    const isCatalog = file === path.join(distRoot, 'catalog.html');
+    const withSearchPreload = isCatalog
+      ? html.replace(/\s*<link[^>]* data-catalog-search-preload>/g, '')
+        .replace('</head>', `  <link rel="modulepreload" crossorigin href="/${escapeHtml(catalogSearch)}" data-catalog-search-preload>\n</head>`)
+      : html;
+    const next = inlineCriticalCss(addAppPreloads(withSearchPreload, appPreloads), readStylesheet, {
+      // The idle assistant launcher can render before the catalog mounts.
+      extraClasses: isCatalog
+        ? [...RUNTIME_STATE_CLASSES, 'site-assistant-launcher', 'site-assistant-launcher-icon']
+        : RUNTIME_STATE_CLASSES,
+      extraAttributes: isCatalog ? [...RUNTIME_STATE_ATTRIBUTES, 'hidden', 'data-state'] : RUNTIME_STATE_ATTRIBUTES,
+      // The inline rules cover the catalog fallback. Applying the full CSS
+      // before mount makes the browser restyle hundreds of static rows.
+      deferStylesheetUntilMount: isCatalog,
     });
     if (next !== html) fs.writeFileSync(file, next, 'utf8');
     pages += 1;
@@ -1503,13 +1549,23 @@ function readBuildEnv(name, mode = 'production') {
   return undefined;
 }
 
+/** The service page config from the build env, read like Vite reads it. */
+function readServicePageConfig(mode = 'production') {
+  return resolveServicePageConfig({
+    VITE_SERVICE_PAGE_ENABLED: readBuildEnv('VITE_SERVICE_PAGE_ENABLED', mode),
+    VITE_SERVICE_API: readBuildEnv('VITE_SERVICE_API', mode),
+    VITE_SOLV_ENDPOINT: readBuildEnv('VITE_SOLV_ENDPOINT', mode),
+    VITE_SOLV_QUOTE_ASSISTANT_KEY: readBuildEnv('VITE_SOLV_QUOTE_ASSISTANT_KEY', mode),
+  });
+}
+
 function renderCatalogHtml(indexHtml, catalogMetadata, { servers = [], shell = {} } = {}) {
   return renderStaticPageHtml(indexHtml, '/catalog', catalogMetadata, {
     structuredData: {
       '@context': 'https://schema.org',
       '@type': 'ItemList',
       numberOfItems: servers.length,
-      itemListElement: servers.map((server, index) => ({
+      itemListElement: orderByRelevance(servers).map((server, index) => ({
         '@type': 'ListItem', position: index + 1, name: server.name,
         url: canonicalUrlFor(serverPath(server.id)),
       })),
@@ -1626,7 +1682,7 @@ function stripSiteSuffix(title) {
 }
 
 /** One Open Graph card per prerendered page. */
-function buildOgCards({ servers, articles, pageMetadata }) {
+function buildOgCards({ servers, articles, pageMetadata, servicePage = false }) {
   const categoryCards = summarizeCatalogCategories(servers).map(summary => ({
     pagePath: summary.path,
     eyebrow: 'Server catalog',
@@ -1657,6 +1713,7 @@ function buildOgCards({ servers, articles, pageMetadata }) {
     { pagePath: CI_PATH, eyebrow: 'GitHub Actions', title: CI_TITLE, summary: CI_DESCRIPTION },
     { pagePath: MCP_TEST_SERVERS_PATH, eyebrow: 'Free test servers', title: MCP_TEST_SERVERS_COPY.heading, summary: pageMetadata.mcpTestServers.description },
     { pagePath: MCP_TEST_CLIENT_PATH, eyebrow: 'Client checklist', title: MCP_TEST_CLIENT_COPY.heading, summary: pageMetadata.mcpTestClient.description },
+    ...(servicePage ? [{ pagePath: SERVICE_PAGE_PATH, eyebrow: 'Service', title: SERVICE_PAGE_COPY.heading, summary: pageMetadata.serviceDevelopment.description }] : []),
     { pagePath: '/learn', eyebrow: 'Guides', title: pageMetadata.learn.title, summary: pageMetadata.learn.description },
     { pagePath: '/guides', eyebrow: 'Guides', title: pageMetadata.learn.title, summary: pageMetadata.learn.description },
     ...Object.entries(pageMetadata.tools || {}).map(([slug, metadata]) => ({
@@ -1720,15 +1777,18 @@ function writeCategoryPages(indexHtml, servers, articles, shell) {
   return summaries.length;
 }
 
-/** React-only documentation pages (privacy, terms, contact) keep their metadata in pageMetadata.json. */
-function writeStaticPages(indexHtml, docsMetadata) {
+/** Documentation pages keep their metadata in pageMetadata.json. */
+function writeStaticPages(indexHtml, docsMetadata, { shell, prerender }) {
   for (const [slug, metadata] of Object.entries(docsMetadata)) {
     const pathname = `/docs/${slug}`;
     const outputDirectory = path.join(distRoot, 'docs', slug);
+    const fallbackHtml = slug === 'privacy-policy'
+      ? renderContentShell(prerender.renderPrivacyPolicyPage(), { view: 'docs', pathname, pageViewTitle: 'Docs: privacy policy', shell })
+      : undefined;
     fs.mkdirSync(outputDirectory, { recursive: true });
     fs.writeFileSync(
       path.join(outputDirectory, 'index.html'),
-      renderStaticPageHtml(indexHtml, pathname, metadata),
+      renderStaticPageHtml(indexHtml, pathname, metadata, { fallbackHtml }),
       'utf8'
     );
   }
@@ -1915,6 +1975,54 @@ function writeMcpTestClientPage(indexHtml, metadata, { shell, prerender }) {
   }), 'utf8');
 }
 
+/** JSON-LD for /mcp-server-development: the page and the service. Prices are runtime data, so none here. */
+function getServicePageStructuredData(metadata) {
+  const url = canonicalUrlFor(SERVICE_PAGE_PATH);
+  return {
+    '@context': 'https://schema.org',
+    '@graph': [
+      {
+        '@type': 'WebPage',
+        '@id': url,
+        url,
+        name: metadata.title,
+        description: metadata.description,
+        isPartOf: { '@type': 'WebSite', name: 'mcptest.io', url: `${SITE_URL}/` },
+      },
+      {
+        '@type': 'Service',
+        '@id': `${url}#service`,
+        name: SERVICE_PAGE_COPY.heading,
+        serviceType: 'MCP server development',
+        description: metadata.description,
+        url,
+        provider: { '@type': 'Organization', name: 'mcptest.io', url: `${SITE_URL}/` },
+      },
+    ],
+  };
+}
+
+/**
+ * /mcp-server-development as mcp-server-development/index.html, only in
+ * builds with VITE_SERVICE_PAGE_ENABLED=true. Not a deferred mount: the app
+ * mounts at load so the page can fetch the current offer; the static HTML
+ * carries the neutral price copy.
+ */
+function writeServicePage(indexHtml, metadata, { shell, prerender, config }) {
+  const outputDirectory = distPathFor(SERVICE_PAGE_PATH);
+  fs.mkdirSync(outputDirectory, { recursive: true });
+  fs.writeFileSync(path.join(outputDirectory, 'index.html'), renderStaticPageHtml(indexHtml, SERVICE_PAGE_PATH, metadata, {
+    structuredData: getServicePageStructuredData(metadata),
+    fallbackHtml: renderAppShell({
+      ...shell,
+      content: prerender.renderServicePage(config),
+      view: 'service-page',
+      pathname: SERVICE_PAGE_PATH,
+      panelStyle: '',
+    }),
+  }), 'utf8');
+}
+
 /** A standalone static action setup page; no App route or hydration is needed. */
 function writeCiPage(indexHtml) {
   const markdown = [
@@ -1982,7 +2090,7 @@ function latestDay(values) {
  * contact pages) carry no lastmod rather than the build date. /report is not listed: it has no prerendered page, and the shell the
  * origin serves for it canonicalises to the home page.
  */
-function getSitemapEntries(servers, articles, docsSlugs = []) {
+function getSitemapEntries(servers, articles, docsSlugs = [], options = {}) {
   const catalogValidated = latestDay(servers.map(server => server.checkedAt));
   const guidesReviewed = latestDay(articles.map(article => article.lastReviewed));
   const categorized = servers.filter(server => server.category);
@@ -2005,14 +2113,15 @@ function getSitemapEntries(servers, articles, docsSlugs = []) {
     { pathname: '/tools/oauth-check' },
     { pathname: MCP_TEST_SERVERS_PATH },
     { pathname: MCP_TEST_CLIENT_PATH },
+    ...(options.servicePage ? [{ pathname: SERVICE_PAGE_PATH }] : []),
     ...articles.map(article => ({ pathname: article.path, lastModified: isoDay(article.lastReviewed) })),
     ...docsSlugs.map(slug => ({ pathname: `/docs/${slug}` })),
     ...servers.map(server => ({ pathname: serverPath(server.id), lastModified: isoDay(server.checkedAt) })),
   ];
 }
 
-function renderSitemap(servers, articles, docsSlugs = []) {
-  const entries = getSitemapEntries(servers, articles, docsSlugs).map(({ pathname, lastModified }) => [
+function renderSitemap(servers, articles, docsSlugs = [], options = {}) {
+  const entries = getSitemapEntries(servers, articles, docsSlugs, options).map(({ pathname, lastModified }) => [
     '  <url>',
     `    <loc>${escapeXml(canonicalUrlFor(pathname))}</loc>`,
     ...(lastModified ? [`    <lastmod>${lastModified}</lastmod>`] : []),
@@ -2031,8 +2140,8 @@ function renderRobotsTxt() {
   return `User-agent: *\nAllow: /\n\nSitemap: ${SITE_URL}/sitemap.xml\n`;
 }
 
-function writeSitemap(servers, articles, docsSlugs) {
-  fs.writeFileSync(path.join(distRoot, 'sitemap.xml'), renderSitemap(servers, articles, docsSlugs), 'utf8');
+function writeSitemap(servers, articles, docsSlugs, options) {
+  fs.writeFileSync(path.join(distRoot, 'sitemap.xml'), renderSitemap(servers, articles, docsSlugs, options), 'utf8');
   fs.writeFileSync(path.join(distRoot, 'robots.txt'), renderRobotsTxt(), 'utf8');
 }
 
@@ -2080,8 +2189,8 @@ function render404Html(indexHtml) {
  * to return 404 for anything else. `/path` is one exact path; `/prefix/*` is
  * every path below a prefix. See docs/site-hygiene.md.
  */
-function renderRoutesTxt(pagePaths) {
-  const exact = [...new Set([...EXACT_APP_ROUTES, ...pagePaths])].sort();
+function renderRoutesTxt(pagePaths, options = {}) {
+  const exact = [...new Set([...getExactAppRoutes(options), ...pagePaths])].sort();
   return [
     '# Known app routes, generated by scripts/generate-seo-pages.js.',
     '# Exact paths, then prefixes (/prefix/* matches every path below /prefix/).',
@@ -2093,9 +2202,9 @@ function renderRoutesTxt(pagePaths) {
   ].join('\n');
 }
 
-function writeNotFoundAndRoutes(indexHtml, pagePaths) {
+function writeNotFoundAndRoutes(indexHtml, pagePaths, options) {
   fs.writeFileSync(path.join(distRoot, '404.html'), render404Html(indexHtml), 'utf8');
-  fs.writeFileSync(path.join(distRoot, 'routes.txt'), renderRoutesTxt(pagePaths), 'utf8');
+  fs.writeFileSync(path.join(distRoot, 'routes.txt'), renderRoutesTxt(pagePaths, options), 'utf8');
 }
 
 function validateInputs(servers) {
@@ -2259,8 +2368,8 @@ function validateLearnIndex(learnIndex) {
   }
 }
 
-function validatePageMetadata(pageMetadata) {
-  for (const key of ['home', 'catalog', 'discovery', 'mcpTestServers', 'mcpTestClient']) {
+function validatePageMetadata(pageMetadata, { servicePage = false } = {}) {
+  for (const key of ['home', 'catalog', 'discovery', 'mcpTestServers', 'mcpTestClient', ...(servicePage ? ['serviceDevelopment'] : [])]) {
     if (!pageMetadata[key]?.title || !pageMetadata[key]?.description) {
       throw new Error(`pageMetadata.json requires a title and description for ${key}.`);
     }
@@ -2283,7 +2392,10 @@ async function main() {
   validateInputs(seeds);
   validateCapabilitySnapshots(capabilitySnapshots, seeds);
   validateLearnIndex(learnIndex);
-  validatePageMetadata(pageMetadata);
+  // The MCP server development page and its links (src/servicePage/config.mts): off unless VITE_SERVICE_PAGE_ENABLED=true.
+  const servicePageConfig = readServicePageConfig();
+  const servicePage = servicePageConfig.enabled;
+  validatePageMetadata(pageMetadata, { servicePage });
   const articles = loadArticles({
     reservedPaths: Object.keys(pageMetadata.docs).map(slug => `/docs/${slug}`),
   });
@@ -2294,16 +2406,17 @@ async function main() {
     quickPicks: selectLandingQuickPicks(servers),
     learnTracks: buildLearnTrackNavigation(buildTrackNavigation(articles)),
     authEnabled: readBuildEnv('VITE_FIREBASE_AUTH_ENABLED') === 'true',
+    servicePage,
   };
 
   // The Learn pages are rendered with the app's components (through vite-node).
   const prerender = await import('../src/prerender/contentPages.tsx');
   await prerender.prepareContentPrerender();
-  const contentShell = { learnTracks: shellOptions.learnTracks, authEnabled: shellOptions.authEnabled };
+  const contentShell = { learnTracks: shellOptions.learnTracks, authEnabled: shellOptions.authEnabled, servicePage };
 
   writeServerPages(indexHtml, servers, contentShell);
   const categoryCount = writeCategoryPages(indexHtml, servers, articles, contentShell);
-  writeStaticPages(indexHtml, pageMetadata.docs);
+  writeStaticPages(indexHtml, pageMetadata.docs, { shell: contentShell, prerender });
   writeCiPage(indexHtml);
   writeToolPages(indexHtml, pageMetadata.tools, { shell: contentShell, prerender });
   fs.writeFileSync(`${distPathFor('/tools/oauth-check')}.html`, renderStaticPageHtml(indexHtml, '/tools/oauth-check', pageMetadata.tools['oauth-check'], {
@@ -2311,6 +2424,7 @@ async function main() {
   }), 'utf8');
   writeMcpTestServersPage(indexHtml, pageMetadata.mcpTestServers, { shell: contentShell, prerender });
   writeMcpTestClientPage(indexHtml, pageMetadata.mcpTestClient, { shell: contentShell, prerender });
+  if (servicePage) writeServicePage(indexHtml, pageMetadata.serviceDevelopment, { shell: contentShell, prerender, config: servicePageConfig });
   writeDiscoveryPage(indexHtml, pageMetadata.discovery, {
     shell: contentShell,
     proxyConfigured: Boolean(readBuildEnv('VITE_PROXY_URL')),
@@ -2323,13 +2437,13 @@ async function main() {
   writeSearchIndex(articles);
   writeLlmsTxt(articles);
   const docsSlugs = Object.keys(pageMetadata.docs);
-  writeSitemap(servers, articles, docsSlugs);
-  writeNotFoundAndRoutes(indexHtml, getSitemapEntries(servers, articles, docsSlugs).map(entry => entry.pathname));
+  writeSitemap(servers, articles, docsSlugs, { servicePage });
+  writeNotFoundAndRoutes(indexHtml, getSitemapEntries(servers, articles, docsSlugs, { servicePage }).map(entry => entry.pathname), { servicePage });
   const resizedLogos = writeServedLogos();
   const finalizedPages = finalizeHtmlPages();
 
   const ogStartedAt = Date.now();
-  const cards = buildOgCards({ servers, articles, pageMetadata });
+  const cards = buildOgCards({ servers, articles, pageMetadata, servicePage });
   const og = await writeOgImages(cards, { distRoot });
 
   console.log(`Generated ${servers.length} server profile documents, ${categoryCount} catalog category pages, ${Object.keys(pageMetadata.docs).length} documentation documents, ${articles.length} Markdown articles (HTML + .md), the home, catalog, discovery checker and ${KEYWORD_LANDING_PAGES.length} keyword landing pages, learn/feed.xml, learn/search-index.json, llms.txt, sitemap.xml, robots.txt, 404.html and routes.txt.`);
@@ -2373,6 +2487,8 @@ module.exports = {
   renderAuthorizationSetup,
   canonicalUrlFor,
   getMcpTestClientStructuredData,
+  getServicePageStructuredData,
+  renderSiteFooter,
   getMcpTestServersStructuredData,
   getSitemapEntries,
   render404Html,

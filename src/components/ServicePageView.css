@@ -1,0 +1,67 @@
+/* /mcp-server-development: the reading layout, the options list and the price band. */
+.service-options {
+  display: grid;
+  gap: var(--space-3);
+  margin-block: var(--space-3) var(--space-5);
+}
+
+.service-options > div {
+  padding: var(--space-3) var(--space-4);
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+}
+
+.service-options dt {
+  font-weight: var(--weight-semibold);
+}
+
+.service-options dd {
+  margin: var(--space-1) 0 0;
+}
+
+.service-offer {
+  margin-block: var(--space-6);
+}
+
+.reading-prose .service-offer-list {
+  list-style: none;
+  padding: 0;
+  margin: var(--space-3) 0;
+  border-top: 1px solid var(--border-color);
+}
+
+.reading-prose .service-offer-list li {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+  padding-block: var(--space-2);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.service-offer-name {
+  font-weight: var(--weight-semibold);
+  margin-inline-end: auto;
+}
+
+.service-offer-price {
+  font-family: var(--font-family-mono);
+}
+
+.service-offer-delivery,
+.service-offer-note,
+.service-quote-error {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.service-quote-action .btn {
+  text-decoration: none;
+}
+
+.service-orders-closed {
+  font-weight: var(--weight-medium);
+}
+

@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title">
-  <title id="title">AgentSEO generated fallback monogram</title>
-  <rect width="128" height="128" rx="24" fill="#be123c"/>
-  <text x="64" y="75" fill="#fff" font-family="Arial, Helvetica, sans-serif" font-size="42" font-weight="700" text-anchor="middle">AG</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+  <rect x="8" y="8" width="84" height="84" rx="22" fill="#FF5B0A" />
+  <path d="M50 22L74 78H63L56 63H44L37 78H26L50 22Z" fill="white" />
+  <rect x="42" y="52" width="16" height="8" rx="4" fill="#FF5B0A" />
 </svg>

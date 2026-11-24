@@ -39,6 +39,18 @@ export const KEYWORD_LANDING_PATHS: readonly string[] = [
 
 export const isKeywordLandingPath = (pathname: string): boolean => KEYWORD_LANDING_PATHS.includes(pathname);
 
+/**
+ * The MCP server development page (src/components/ServicePageView.tsx), a
+ * route only in builds with VITE_SERVICE_PAGE_ENABLED=true. Spelled out like
+ * src/servicePage/config.mts so this file stays import-free.
+ */
+export const SERVICE_PAGE_PATH = '/mcp-server-development';
+
+/** Build options for routes that exist only behind a flag; the browser passes src/servicePage/buildFlag.ts's. */
+export interface AppRouteOptions {
+  servicePage?: boolean;
+}
+
 export const EXACT_APP_ROUTES: readonly string[] = [
   '/',
   '/catalog',
@@ -57,6 +69,10 @@ export const EXACT_APP_ROUTES: readonly string[] = [
   '/install-integration',
 ];
 
+/** EXACT_APP_ROUTES plus the flagged routes this build has. */
+export const getExactAppRoutes = (options: AppRouteOptions = {}): readonly string[] =>
+  options.servicePage ? [...EXACT_APP_ROUTES, SERVICE_PAGE_PATH] : EXACT_APP_ROUTES;
+
 /** Dynamic app routes: every path under these prefixes is an app view. */
 export const APP_ROUTE_PREFIXES: readonly string[] = [
   '/server/', // playground connection links: /server/<endpoint>[/mcp|/sse]
@@ -66,8 +82,8 @@ export const APP_ROUTE_PREFIXES: readonly string[] = [
 ];
 
 /** Whether the app has a view for `pathname`; false means the NotFound page. */
-export const isKnownAppPath = (pathname: string): boolean => {
-  if (EXACT_APP_ROUTES.includes(pathname)) return true;
+export const isKnownAppPath = (pathname: string, options: AppRouteOptions = {}): boolean => {
+  if (getExactAppRoutes(options).includes(pathname)) return true;
   if (pathname === '/learn/' || pathname === '/guides/') return true;
   // Content slugs: unknown ones get the app's own guide, server or category not-found view.
   if (/^\/servers\/[^/]+\/?$/.test(pathname)) return true;
@@ -85,13 +101,13 @@ export const isKnownAppPath = (pathname: string): boolean => {
  * no page's spelling. main.tsx replaces the URL with it before the app mounts,
  * so a served alias shows its page instead of a 200 NotFound.
  */
-export const canonicalAliasPath = (pathname: string): string | null => {
+export const canonicalAliasPath = (pathname: string, options: AppRouteOptions = {}): string | null => {
   if (APP_ROUTE_PREFIXES.some(prefix => pathname.startsWith(prefix))) return null;
   let target = pathname.replace(/\/index\.html$/, '/').replace(/\.html$/, '');
   // Server pages end in a slash (/servers/<id>/); every other page does not.
   if (/^\/servers\/[^/]+\/?$/.test(target)) target = target.replace(/\/?$/, '/');
   else if (target.length > 1) target = target.replace(/\/+$/, '');
-  return target !== pathname && isKnownAppPath(target) ? target : null;
+  return target !== pathname && isKnownAppPath(target, options) ? target : null;
 };
 
 /** Where a reader who followed a dead link most likely wanted to go (NotFound and dist/404.html). */

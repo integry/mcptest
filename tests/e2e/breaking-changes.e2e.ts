@@ -40,6 +40,7 @@ test('breaking changes: classifies two pasted tools/list payloads from the mock 
   const main = page.getByRole('main');
   await expect(main.getByRole('heading', { level: 1, name: 'MCP breaking-change checker' })).toBeVisible();
   await expect(page.locator('#app-sidenav-desktop a[href="/tools/breaking-changes"]')).toHaveClass(/active/);
+  await expect(page.locator('#root .seo-shell-fallback')).toHaveCount(0);
 
   await main.getByLabel('Before (currently deployed)').fill(JSON.stringify(before, null, 2));
   await main.getByLabel('After (about to ship)').fill(JSON.stringify(after, null, 2));
@@ -83,8 +84,12 @@ test('breaking changes: classifies two pasted tools/list payloads from the mock 
 
 test('breaking changes: the explanation link opens the guide section', async ({ page }) => {
   await page.goto('/tools/breaking-changes');
+  // The prerendered buttons are visible before React attaches their handlers.
+  await expect(page.locator('#root .seo-shell-fallback')).toHaveCount(0);
   const main = page.getByRole('main');
   await main.getByRole('button', { name: 'Load an example' }).click();
+  await expect(main.getByLabel('Before (currently deployed)')).toHaveValue(/"name": "get_issue"/);
+  await expect(main.getByLabel('After (about to ship)')).toHaveValue(/"name": "fetch_issue"/);
   await main.getByRole('button', { name: 'Compare', exact: true }).click();
   await expect(main.getByTestId('breaking-changes-summary')).toContainText('breaking');
   await main.getByRole('link', { name: /^Why: Renamed to/ }).click();

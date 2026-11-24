@@ -196,6 +196,30 @@ export const FOOTER_NAVIGATION: readonly FooterLink[] = [
   },
 ];
 
+/**
+ * The MCP server development page; a footer link only in builds with
+ * VITE_SERVICE_PAGE_ENABLED=true (path as in src/utils/appRoutes.ts).
+ */
+export const SERVICE_PAGE_FOOTER_LINK: FooterLink = { label: 'MCP server development', href: '/mcp-server-development' };
+
+export interface FooterLinkColumn {
+  title: string;
+  links: readonly FooterLink[];
+}
+
+/**
+ * The footer's Tools and Project columns, shared by src/components/Footer.tsx
+ * and the static shell. The service page link joins Project only when the
+ * build has the page.
+ */
+export const getFooterLinkColumns = (options: { servicePage?: boolean } = {}): FooterLinkColumn[] => {
+  const project = FOOTER_NAVIGATION.slice(6);
+  return [
+    { title: 'Tools', links: FOOTER_NAVIGATION.slice(3, 6) },
+    { title: 'Project', links: options.servicePage ? [project[0], SERVICE_PAGE_FOOTER_LINK, ...project.slice(1)] : project },
+  ];
+};
+
 export const LEGAL_NAVIGATION: readonly FooterLink[] = [
   { label: 'Contact', href: '/docs/contact' },
   { label: 'Privacy', href: '/docs/privacy-policy' },

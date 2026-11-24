@@ -71,7 +71,7 @@ describe('SideNav dashboard rows', () => {
     expect(getComputedStyle(list!).marginLeft).toBe('0px');
     expect(getComputedStyle(link!).width).toBe('100%');
     expect(getComputedStyle(name!).flex).toBe('1 1 0%');
-    expect(getComputedStyle(name!).minWidth).toBe('0');
+    expect(getComputedStyle(name!).minWidth).toBe('0px');
     expect(getComputedStyle(name!).textOverflow).toBe('ellipsis');
     expect(getComputedStyle(count!).flex).toBe('0 0 auto');
     expect(getComputedStyle(count!).whiteSpace).toBe('nowrap');

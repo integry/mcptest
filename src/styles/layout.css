@@ -254,7 +254,7 @@
   position: fixed;
   top: 0;
   left: 0;
-  width: 100%;
+  width: var(--site-viewport-width);
   height: 100%;
   background-color: rgba(0, 0, 0, 0.5);
   z-index: 1050;
@@ -336,7 +336,7 @@
 }
 
 /* Switch to a drawer before the inspector becomes cramped. */
-@media (max-width: 1179.98px) {
+@container app-shell (width < 1180px) {
   .mobile-menu-toggle {
     display: inline-flex !important;
     align-items: center;
@@ -411,7 +411,7 @@
   }
 }
 
-@media (min-width: 1180px) {
+@container app-shell (width >= 1180px) {
   .mobile-menu-toggle,
   .mobile-sidebar-overlay,
   .mobile-sidebar {
@@ -436,7 +436,8 @@
 
 /* --- Technical interface refresh --- */
 .app-shell {
-  /* App chrome spans the viewport; only page content is centered. */
+  /* Respond to the space left by the docked assistant as well as window resizes. */
+  container: app-shell / inline-size;
   width: 100%;
   max-width: none;
   margin-inline: auto;
@@ -573,7 +574,7 @@
 }
 
 
-@media (max-width: 1179.98px) {
+@container app-shell (width < 1180px) {
   .mobile-sidebar {
     left: 0;
     width: min(88vw, 310px);
@@ -941,7 +942,7 @@
 }
 .app-header { width: 100%; max-width: none; }
 .app-shell--home .main-content { --main-pad: 24px; }
-@media (max-width: 768px) { .main-content, .app-shell--home .main-content { --main-pad: var(--space-4); } }
+@container app-shell (width < 1180px) { .app-shell--home .main-content { --main-pad: var(--space-4); } }
 .app-shell--home .main-content > .view-panel {
   min-height: 0 !important;
 }

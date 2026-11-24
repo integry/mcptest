@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import React from 'react';
 import {
   directoryPreflightStatusLabel,
@@ -53,7 +54,7 @@ const ConnectorDirectoryPreflight: React.FC<ConnectorDirectoryPreflightProps> = 
         <p>
           Claude and ChatGPT directory requirements from official documentation, reviewed {preflight.requirementsReviewedOn}.
           {' '}Automatic items reuse this report&rsquo;s evidence; items marked manual review cannot be decided from the endpoint.
-          {' '}<a href="/learn/mcp-connector-directory-requirements">Read the requirements guide</a>.
+          {' '}<Link to="/learn/mcp-connector-directory-requirements">Read the requirements guide</Link>.
         </p>
       </div>
     </div>

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   CAPABILITY_INVENTORY_ITEM_LIMIT,
+  CAPABILITY_INVENTORY_STRING_LIMITS,
   createCapabilityInventory,
   validateCapabilityInventory,
 } from './capabilityInventory';
@@ -217,6 +218,23 @@ describe('public-safe capability inventory', () => {
       expect(serialized).not.toContain(secret);
     }
     expect(validateCapabilityInventory(inventory)).toEqual(inventory);
+  });
+
+  it('does not split a surrogate pair when truncating long descriptions', () => {
+    const description = `${'a'.repeat(CAPABILITY_INVENTORY_STRING_LIMITS.description - 1)}\u{1F3E8} tail`;
+    const inventory = createCapabilityInventory({
+      observedAt: '2026-11-19T18:00:00.000Z',
+      testedEndpoint: 'https://example.com/mcp',
+      route: 'direct',
+      authentication: 'unauthenticated',
+      statuses,
+      discovered: { tools: [{ name: 'emoji_tool', description, inputSchema: { type: 'object' } }] },
+    });
+    const stored = inventory.tools.items[0].description;
+
+    expect(stored).toBe('a'.repeat(CAPABILITY_INVENTORY_STRING_LIMITS.description - 1));
+    expect(stored).not.toMatch(/[\uD800-\uDBFF]$/);
+    expect(validateCapabilityInventory(JSON.parse(JSON.stringify(inventory)))).toEqual(inventory);
   });
 
   it('deduplicates argument names case-insensitively for canonical consumers', () => {

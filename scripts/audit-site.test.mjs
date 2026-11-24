@@ -161,7 +161,9 @@ describe.skipIf(!process.env.SITE_AUDIT)('sitemap, robots and canonical audit of
     expect(html).toContain('data-deferred-mount');
     const data = JSON.parse(html.match(/<script id="server-structured-data" type="application\/ld\+json">(.*?)<\/script>/)[1]);
     expect(data.numberOfItems).toBe(servers.length);
-    expect(data.itemListElement.map(item => item.url)).toEqual(servers.map(({ id }) => `https://mcptest.io/servers/${encodeURIComponent(id)}/`));
+    // The ItemList follows the default catalog order: higher relevance first, seed order on ties.
+    const ordered = [...servers].sort((a, b) => (b.relevance ?? 0) - (a.relevance ?? 0));
+    expect(data.itemListElement.map(item => item.url)).toEqual(ordered.map(({ id }) => `https://mcptest.io/servers/${encodeURIComponent(id)}/`));
   });
 
   it('has no broken internal links', () => {

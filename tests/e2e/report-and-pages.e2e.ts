@@ -75,6 +75,37 @@ test('guide: renders a Learn article', async ({ page }) => {
   await expect(page).toHaveTitle(/MCP HTTP headers reference/);
 });
 
+for (const width of [1440, 390, 320]) {
+  test(`guide: comparison tables fit in the article at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+
+    for (const { path, tableStart, tableCount, finalColumn } of [
+      { path: 'add-remote-mcp-server-to-claude', tableStart: '#compatibility-at-a-glance', tableCount: 5, finalColumn: 'Verified' },
+      { path: 'mcp-inspector-alternatives', tableStart: '#comparison-table', tableCount: 3, finalColumn: 'Cost' },
+      { path: 'best-remote-mcp-testing-tools', tableStart: '#test-and-mock-servers + p', tableCount: 2, finalColumn: 'Where it runs' },
+    ]) {
+      await page.goto(`/learn/${path}`);
+      await page.evaluate(() => document.fonts.ready);
+      const tables = page.locator('.reading-prose .reading-table');
+      const comparison = page.locator(`${tableStart} + .reading-table + .reading-table`);
+      await expect(comparison).toBeVisible();
+      const finalHeader = page.getByRole('columnheader', { name: finalColumn, exact: true });
+      await finalHeader.scrollIntoViewIfNeeded();
+      await expect(finalHeader).toBeInViewport();
+      const widths = await tables.evaluateAll(wrappers => wrappers.map(wrapper => {
+        const table = wrapper.querySelector('table')!;
+        return {
+          columns: table.rows[0].cells.length,
+          overflow: Math.max(wrapper.scrollWidth - wrapper.clientWidth, table.scrollWidth - table.clientWidth),
+        };
+      }));
+      expect(widths.length).toBeGreaterThanOrEqual(tableCount);
+      expect(widths.filter(({ columns, overflow }) => columns > 4 || overflow > 0), path).toEqual([]);
+      expect(await hasHorizontalScroll(page)).toBe(false);
+    }
+  });
+}
+
 test.describe('mobile viewport sanity', () => {
   test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
 

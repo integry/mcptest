@@ -40,7 +40,33 @@ export type CatalogBrowserAccess = 'direct' | 'proxy-required' | 'unknown';
 
 /** How a catalog listing was discovered. This is independent of live validation. */
 /** `community-submission` entries came through the in-app /submit flow and were reviewed by a maintainer. */
-export type CatalogListingSourceKind = 'publisher' | 'mcp-registry' | 'community' | 'community-submission';
+/**
+ * `client-directory` entries were imported from a vendor-reviewed connector
+ * directory and have no publisher documentation for the endpoint. Prefer
+ * `publisher` whenever such documentation exists.
+ */
+export type CatalogListingSourceKind =
+  | 'publisher'
+  | 'mcp-registry'
+  | 'client-directory'
+  | 'community'
+  | 'community-submission';
+
+/** Public connector directories run by MCP client vendors. */
+export type CatalogClientDirectory = 'claude' | 'chatgpt';
+
+/**
+ * Membership of a server in a client vendor's connector directory. It is
+ * recorded for any entry, whatever its listing source, so directory imports
+ * can match on the directory's own id instead of the endpoint URL.
+ */
+export interface CatalogDirectoryListing {
+  directory: CatalogClientDirectory;
+  /** Stable identifier of the entry in the directory's own data. */
+  id: string;
+  /** HTTPS page of the entry, or of the directory when entries have no page. */
+  url: string;
+}
 
 export interface CatalogListingSource {
   /** Curated source class; it must not be inferred from tags or validation results. */
@@ -217,6 +243,14 @@ export interface CatalogServerSeed {
   tags: string[];
   /** Explicit listing provenance, kept separate from runtime validation evidence. */
   listingSource: CatalogListingSource;
+  /** Client connector directories that list this server; required for `client-directory` sources. */
+  directoryListings?: CatalogDirectoryListing[];
+  /**
+   * Curated popularity score from 0 to 100. Higher scores are listed first in
+   * the default catalog order; entries without one count as 0 and keep their
+   * seed order.
+   */
+  relevance?: number;
   /** Known or preferred transport for this remote server. */
   transport: CatalogTransport;
   /** Whether the server requires an OAuth flow before testing. */

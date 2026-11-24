@@ -1,0 +1,75 @@
+/*
+ * The site assistant launcher (issue #637). A floating control, so it uses
+ * the floating-surface rules of docs/design-language.md: an opaque card
+ * surface (its label must never blur into the page), a hairline, the one
+ * float shadow and square corners. It is not the accent: the accent belongs to
+ * the action each view exists for. Fixed position, so adding it never moves
+ * the page.
+ */
+.site-assistant-launcher {
+  position: fixed;
+  right: max(var(--space-4), env(safe-area-inset-right));
+  bottom: max(var(--space-4), env(safe-area-inset-bottom));
+  /* Above page content and the sticky header, below the mobile drawer, menus and dialogs. */
+  z-index: 1025;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 2.75rem;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--button-radius);
+  background-color: var(--card-bg);
+  color: var(--text-color);
+  box-shadow: var(--shadow-float);
+  font-family: var(--font-family-sans-serif);
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color var(--motion-fast) ease, border-color var(--motion-fast) ease;
+}
+
+.site-assistant-launcher[hidden] {
+  display: none;
+}
+
+.site-assistant-launcher:hover {
+  background-color: var(--card-bg-secondary);
+  border-color: var(--input-border);
+}
+
+.site-assistant-launcher:active {
+  transform: translateY(1px);
+}
+
+.site-assistant-launcher:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-float), var(--focus-ring);
+  border-color: var(--primary-color);
+}
+
+.site-assistant-launcher[data-state='loading'] {
+  cursor: progress;
+  color: var(--text-muted);
+}
+
+.site-assistant-launcher[data-state='failed'] .site-assistant-launcher-icon {
+  color: var(--danger-color);
+}
+
+.site-assistant-launcher-icon {
+  flex: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .site-assistant-launcher {
+    transition: none;
+  }
+}
+
+@media print {
+  .site-assistant-launcher {
+    display: none;
+  }
+}

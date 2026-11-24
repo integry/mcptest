@@ -66,7 +66,7 @@ location ^~ /space/             { try_files $uri $uri/ /index.html; }
 location ^~ /report/            { try_files $uri $uri/ /index.html; }
 ```
 
-The app-only routes change rarely: only when `EXACT_APP_ROUTES` or `APP_ROUTE_PREFIXES` in `src/utils/appRoutes.ts` changes. Compare `dist/routes.txt` with the `location` blocks after such a change. New guides and catalog servers need no origin change, because they are files.
+The app-only routes change rarely: only when `EXACT_APP_ROUTES` or `APP_ROUTE_PREFIXES` in `src/utils/appRoutes.ts` changes. Builds with `VITE_SERVICE_PAGE_ENABLED=true` also list `/mcp-server-development` (a prerendered file, in the sitemap too); without the flag it is not a route and returns the 404 page (see `docs/service-offer-contract.md`). Compare `dist/routes.txt` with the `location` blocks after such a change. New guides and catalog servers need no origin change, because they are files.
 
 Check the result with `curl -sI https://mcptest.io/no-such-page` (expect `404`), `curl -sI https://mcptest.io/report` (expect `200`) and `curl -sI https://mcptest.io/catalog.html` (expect `301` to `/catalog`).
 

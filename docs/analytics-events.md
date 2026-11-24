@@ -121,6 +121,20 @@ Earlier, unstructured events were replaced by catalog events. `connect_success` 
 `catalog_open_server`. `server_url_connection` and `result_share_connection` now send a host
 instead of the full endpoint URL and tool name.
 
+### Site assistant
+
+The solv.chat assistant widget (`src/siteAssistant/`) is on only in builds with
+`VITE_SOLV_ENDPOINT` and `VITE_SOLV_ASSISTANT_KEY` set, and never on `/oauth/callback`,
+`/install-integration`, `/space…`, `/report…`, `/server/…`, `/call/…` or `/r/…`.
+
+| Event | When | Parameters |
+| --- | --- | --- |
+| `assistant_launcher_click` | The "Ask" launcher is pressed. The first press requests the widget script. | none |
+| `assistant_widget_load` | The widget script finished loading or failed (an error event or 15 s without `<solv-chat>` being defined). | `outcome`: `loaded` \| `failed`; `trigger`: `launcher` (the visitor pressed the launcher) \| `restore` (a later page in a tab where the assistant was already opened, so its conversation carries over); `duration_ms` |
+
+Neither event carries the question, the answer, the assistant key or the endpoint. What a
+visitor asks goes to solv.chat, not to analytics.
+
 ### Landing-page next actions and reading depth
 
 | Event | When | Parameters |

@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { deferMountUntilInput } from '../src/staticPage/deferredMount';
 import { enhanceStaticPage, snapshotStaticPageState } from '../src/staticPage/staticPage';
 import CatalogView from '../src/components/CatalogView';
-import { getCatalogServers } from '../src/utils/catalogUtils';
+import { getCatalogServers, sortCatalogServers } from '../src/utils/catalogUtils';
 import pageMetadata from '../src/data/pageMetadata.json';
 import generator from './generate-seo-pages.js';
 
@@ -58,15 +58,17 @@ describe('catalog prerender parity', () => {
 
   it('renders every server as report and Playground anchors and canonical ItemList entries', () => {
     const rows = fallback.querySelectorAll('.catalog-server-row');
+    // The default catalog order lists higher relevance first.
+    const ordered = sortCatalogServers(servers, 'catalog-order');
     expect(rows).toHaveLength(servers.length);
-    for (const [i, server] of servers.entries()) {
+    for (const [i, server] of ordered.entries()) {
       expect(rows[i].querySelector('.catalog-report-link')?.getAttribute('href')).toBe(`/servers/${server.id}/`);
       expect(rows[i].querySelector('a.catalog-test-button')?.getAttribute('href')).toMatch(/^\/server\//);
     }
     const data = JSON.parse(fallback.querySelector('script[type="application/ld+json"]')!.textContent!);
     expect(data['@type']).toBe('ItemList');
     expect(data.numberOfItems).toBe(servers.length);
-    expect(data.itemListElement).toEqual(servers.map((server, i) => ({
+    expect(data.itemListElement).toEqual(ordered.map((server, i) => ({
       '@type': 'ListItem', position: i + 1, name: server.name, url: `https://mcptest.io/servers/${server.id}/`,
     })));
   });

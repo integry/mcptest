@@ -1,3 +1,4 @@
+import { MemoryRouter } from 'react-router-dom';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
@@ -26,9 +27,11 @@ describe('AuthorizationSetup callback copying', () => {
     document.body.append(container);
     root = createRoot(container);
     act(() => root?.render(
-      <AuthorizationSetup
-        guidance={getAuthorizationGuidanceForEndpoint('https://mcp.asana.com/v2/mcp')}
-      />
+      <MemoryRouter>
+        <AuthorizationSetup
+          guidance={getAuthorizationGuidanceForEndpoint('https://mcp.asana.com/v2/mcp')}
+        />
+      </MemoryRouter>
     ));
 
     const callback = container.querySelector('.authorization-callback code');

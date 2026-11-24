@@ -68,7 +68,7 @@ const failure = (request, status, error, message, extra = {}, headers = {}) => (
   json(request, status, { error, message, ...extra }, headers)
 );
 
-const sha256Hex = async (value) => {
+export const sha256Hex = async (value) => {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 };
@@ -100,13 +100,17 @@ const verifyTurnstile = async (secret, token, remoteIp) => {
   }
 };
 
-/** Consumes one slot from a sliding-window counter; returns { allowed, retryAfterSeconds }. */
-const consumeRateLimit = async (env, key, { limit, windowMs }) => {
+/**
+ * Consumes one slot from a sliding-window counter; returns { allowed, retryAfterSeconds }. Also used by catalogMcp.js.
+ * With `expire: true` the object deletes its own storage once the window has passed and writes nothing on a
+ * refusal; use it only for keys that are never released (a release works on the stored "hits").
+ */
+export const consumeRateLimit = async (env, key, { limit, windowMs, expire = false }) => {
   const stub = env.SUBMISSION_RATE_LIMITER.get(env.SUBMISSION_RATE_LIMITER.idFromName(key));
   const response = await stub.fetch("https://rate-limiter/consume", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ limit, windowMs, now: Date.now() }),
+    body: JSON.stringify({ limit, windowMs, now: Date.now(), ...(expire && { expire: true }) }),
   });
   return response.json();
 };
@@ -251,14 +255,45 @@ export async function handleSubmissionRequest(request, env) {
   }
 }
 
+/** Storage key of the self-expiring window; kept apart from "hits" so the submission path is unchanged. */
+const EXPIRING_WINDOW_KEY = "window";
+
 /**
  * Sliding-window counter, one instance per rate-limit key. Requests to one
  * Durable Object are serialized, so concurrent submissions cannot both take the
  * last slot. Only timestamps are stored, and they expire with the window.
+ *
+ * Requests with `expire: true` (the public catalog endpoint, one object per
+ * client address) also schedule an alarm that deletes the object's storage
+ * once its newest hit has left the window, and a refused request writes
+ * nothing, so an address that stops calling leaves no stored state behind.
  */
 export class SubmissionRateLimiter {
   constructor(state) {
     this.storage = state.storage;
+  }
+
+  async consumeExpiring({ limit, windowMs, now }) {
+    const stored = await this.storage.get(EXPIRING_WINDOW_KEY);
+    const hits = (stored?.hits || []).filter((time) => time > now - windowMs);
+    if (hits.length >= limit) {
+      return Response.json({ allowed: false, retryAfterSeconds: Math.ceil((hits[0] + windowMs - now) / 1000) });
+    }
+    hits.push(now);
+    await this.storage.put(EXPIRING_WINDOW_KEY, { windowMs, hits });
+    // One pending alarm is enough: when it fires it reschedules itself if newer hits arrived.
+    if ((await this.storage.getAlarm()) === null) await this.storage.setAlarm(now + windowMs);
+    return Response.json({ allowed: true, remaining: limit - hits.length });
+  }
+
+  async alarm() {
+    const stored = await this.storage.get(EXPIRING_WINDOW_KEY);
+    const newest = stored?.hits?.at(-1);
+    if (newest !== undefined && newest + stored.windowMs > Date.now()) {
+      await this.storage.setAlarm(newest + stored.windowMs);
+      return;
+    }
+    await this.storage.deleteAll();
   }
 
   async fetch(request) {
@@ -268,7 +303,8 @@ export class SubmissionRateLimiter {
       await this.storage.put("hits", stored);
       return Response.json({ released: true, remaining: stored.length });
     }
-    const { limit, windowMs, now } = await request.json();
+    const { limit, windowMs, now, expire } = await request.json();
+    if (expire) return this.consumeExpiring({ limit, windowMs, now });
     const hits = ((await this.storage.get("hits")) || []).filter((time) => time > now - windowMs);
     if (hits.length >= limit) {
       await this.storage.put("hits", hits);

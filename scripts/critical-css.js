@@ -294,7 +294,7 @@ function extractCriticalCss(css, html, { extraClasses = [], extraAttributes = []
 
 const STYLESHEET_LINK = /<link\s+rel="stylesheet"((?:\s+crossorigin)?)\s+href="([^"]+)"\s*\/?>/g;
 const CRITICAL_BLOCK = /<style data-critical-css>[\s\S]*?<\/style>\n\s*/g;
-const DEFERRED_LINK = /<link rel="preload" as="style"((?:\s+crossorigin)?) href="([^"]+)" data-deferred-stylesheet>(?:<noscript><link rel="stylesheet"(?:\s+crossorigin)? href="[^"]+"><\/noscript>)?/g;
+const DEFERRED_LINK = /<link rel="preload" as="style"((?:\s+crossorigin)?) href="([^"]+)" data-deferred-stylesheet(?: media="not all")?>(?:<noscript><link rel="stylesheet"(?:\s+crossorigin)? href="[^"]+"><\/noscript>)?/g;
 
 /** Undoes `inlineCriticalCss`, so rerunning the generator on its own output is stable. */
 function restoreStylesheetLinks(html) {
@@ -313,7 +313,7 @@ function findStylesheetHrefs(html) {
  * every stylesheet link into a non-blocking preload. `readStylesheet(href)`
  * returns the CSS text a link points at.
  */
-function inlineCriticalCss(html, readStylesheet, options = {}) {
+function inlineCriticalCss(html, readStylesheet, { deferStylesheetUntilMount = false, ...options } = {}) {
   const source = restoreStylesheetLinks(html);
   const hrefs = Array.from(source.matchAll(STYLESHEET_LINK), match => match[2]);
   if (!hrefs.length) return source;
@@ -324,7 +324,8 @@ function inlineCriticalCss(html, readStylesheet, options = {}) {
   const critical = extractCriticalCss(css, source, options).replace(/<\//g, '<\\/');
   let inserted = false;
   return source.replace(STYLESHEET_LINK, (_match, crossorigin, href) => {
-    const deferred = `<link rel="preload" as="style"${crossorigin} href="${href}" data-deferred-stylesheet>`
+    const media = deferStylesheetUntilMount ? ' media="not all"' : '';
+    const deferred = `<link rel="preload" as="style"${crossorigin} href="${href}" data-deferred-stylesheet${media}>`
       + `<noscript><link rel="stylesheet"${crossorigin} href="${href}"></noscript>`;
     if (inserted) return deferred;
     inserted = true;

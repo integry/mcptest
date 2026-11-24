@@ -134,6 +134,30 @@ describe('ServerProfileView capability inventory', () => {
 
 
 describe('server page SEO prerender parity', () => {
+  it('links client directory listings instead of calling them official documentation', () => {
+    const listingUrl = 'https://claude.com/connectors/context7';
+    const server: CatalogServer = {
+      ...getCatalogServerById('context7')!,
+      listingSource: { kind: 'client-directory', url: listingUrl },
+      directoryListings: [
+        { directory: 'claude', id: 'wf.context7', url: listingUrl },
+        { directory: 'chatgpt', id: 'context7', url: 'https://chatgpt.com/apps' },
+      ],
+    };
+    const parse = (html: string) => new DOMParser().parseFromString(html, 'text/html');
+    const prerendered = parse(generator.renderServerHtml('<html><head><title></title></head><body><div id="root"></div></body></html>', server));
+    const react = parse(renderToStaticMarkup(
+      <MemoryRouter><ServerProfileView server={server} onTestServer={vi.fn()} /></MemoryRouter>
+    ));
+    for (const doc of [prerendered, react]) {
+      const links = Array.from(doc.querySelectorAll('a'))
+        .map((link) => [link.textContent?.trim(), link.getAttribute('href')]);
+      expect(links).toContainEqual(['Claude connector directory listing', listingUrl]);
+      expect(links).toContainEqual(['ChatGPT app directory listing', 'https://chatgpt.com/apps']);
+      expect(doc.body.textContent).not.toContain('Official listing documentation');
+    }
+  });
+
   it.each(['canva', 'context7', 'airtable', 'docusign-developer', 'neon', 'upwork'])(
     'matches visible endpoint/auth answers and metadata for %s', (id) => {
       const server = getCatalogServerById(id)!;

@@ -1,5 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title">
-  <title id="title">CADProps generated fallback monogram</title>
-  <rect width="128" height="128" rx="24" fill="#0f766e"/>
-  <text x="64" y="75" fill="#fff" font-family="Arial, Helvetica, sans-serif" font-size="42" font-weight="700" text-anchor="middle">CA</text>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 52" role="img" aria-label="CADProps"><path d="M24 3 44 14.5 24 26 4 14.5Z" fill="#f97316"/><path d="M4 18 21.8 28.3V49L4 38.7Z" fill="#c6500b"/><path d="M26.2 28.3 44 18v20.7L26.2 49Z" fill="#ea580c"/></svg>

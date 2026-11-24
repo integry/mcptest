@@ -1,6 +1,9 @@
 import TransportDiagnosticsPanel from './TransportDiagnosticsPanel';
 import { transportDiagnosticsFromSections } from '../utils/transportDiagnostics';
 import React, { useMemo } from 'react';
+import { Link } from 'react-router-dom';
+import { REPORT_HELP_LINK } from '../content/servicePageCopy';
+import { SERVICE_PAGE_PATH } from '../utils/appRoutes';
 import {
   HOST_PROFILES,
   type AuthorizationScheme,
@@ -43,6 +46,13 @@ interface ReleaseReadinessReportProps {
   oauthTrace?: OAuthTraceV1;
   expandedItems: Set<string>;
   onToggleItem: (key: string) => void;
+  /**
+   * Show the one "Need help fixing this?" link to the MCP server development
+   * page when the report has failing checks. Only ReportView sets it, and only
+   * in builds with the service page; badges, catalog validation and published
+   * report permalinks never show it.
+   */
+  showServiceLink?: boolean;
 }
 
 const statusLabel: Record<CompatibilityStatus, string> = {
@@ -169,6 +179,7 @@ const ReleaseReadinessReport: React.FC<ReleaseReadinessReportProps> = ({
   expandedItems,
   onToggleItem,
   authorizationActions,
+  showServiceLink = false,
 }) => {
   const facts = useMemo(() => createObservedServerFacts(report, oauthTrace), [report, oauthTrace]);
   const authorizationGuidance = useMemo(
@@ -281,6 +292,11 @@ const ReleaseReadinessReport: React.FC<ReleaseReadinessReportProps> = ({
               <p className="text-muted mb-0">{decision.priorities.length - 6} more findings appear in the detailed sections below.</p>
             )}
           </div>
+        )}
+        {showServiceLink && decision.status === 'blocked' && (
+          <p className="release-service-link">
+            <Link to={SERVICE_PAGE_PATH}>{REPORT_HELP_LINK}</Link>
+          </p>
         )}
       </section>
 

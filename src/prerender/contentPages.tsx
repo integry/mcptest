@@ -12,7 +12,10 @@ import OAuthCheckerView from '../components/OAuthCheckerView';
 import BreakingChangesView from '../components/BreakingChangesView';
 import McpTestServersView from '../components/McpTestServersView';
 import McpTestClientView from '../components/McpTestClientView';
+import ServicePageView from '../components/ServicePageView';
+import type { ServicePageConfig } from '../servicePage/config.mts';
 import KeywordLandingView from '../components/KeywordLandingView';
+import PrivacyPolicy from '../components/docs/PrivacyPolicy';
 import { getKeywordLandingPage } from '../content/keywordLandingPages';
 import LearnIndex from '../components/learn/LearnIndex';
 import MarkdownLearnArticle from '../components/learn/MarkdownLearnArticle';
@@ -53,6 +56,8 @@ export const renderArticlePage = (pathname: string): string | null => {
 /** The Learn index as /learn renders it. */
 export const renderLearnIndexPage = (): string => renderAt('/learn', <LearnIndex />);
 
+export const renderPrivacyPolicyPage = (): string => renderAt('/docs/privacy-policy', <PrivacyPolicy />);
+
 /** The breaking-change check as /tools/breaking-changes first renders it. */
 export const renderBreakingChangesPage = (): string => renderAt('/tools/breaking-changes', <BreakingChangesView />);
 
@@ -73,3 +78,10 @@ export const renderKeywordLandingPage = (pathname: string): string | null => {
   if (!page) return null;
   return renderAt(pathname, <KeywordLandingView page={page} onConnect={() => {}} onOpenAdvancedOptions={() => {}} />);
 };
+
+/**
+ * /mcp-server-development with the build's config (scripts/generate-seo-pages.js
+ * writes it only when the flag is on). Effects do not run here, so it has the
+ * neutral price copy the page shows until the offer loads.
+ */
+export const renderServicePage = (config: ServicePageConfig): string => renderAt('/mcp-server-development', <ServicePageView config={config} />);

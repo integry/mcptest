@@ -147,11 +147,80 @@ describe('catalog seed provenance validation', () => {
     })).toMatchObject({ id: 'registry' });
   });
 
+  it('accepts directory listings on any source and client-directory provenance that reuses one', () => {
+    const claude = { directory: 'claude', id: 'wf.example', url: 'https://claude.com/connectors/example' };
+    const chatgpt = { directory: 'chatgpt', id: 'example', url: 'https://chatgpt.com/apps' };
+    expect(validateCatalogSeed({
+      id: 'publisher-listed',
+      listingSource: { kind: 'publisher', url: 'https://example.com/mcp' },
+      directoryListings: [claude, chatgpt],
+    })).toMatchObject({ id: 'publisher-listed' });
+
+    expect(validateCatalogSeed({
+      id: 'directory-only',
+      listingSource: { kind: 'client-directory', url: chatgpt.url },
+      directoryListings: [claude, chatgpt],
+    })).toMatchObject({ id: 'directory-only' });
+  });
+
+  it('accepts an integer relevance from 0 to 100 and rejects anything else', () => {
+    const seed = { id: 'scored', listingSource: { kind: 'publisher', url: 'https://example.com/mcp' } };
+    for (const relevance of [0, 55, 100]) {
+      expect(validateCatalogSeed({ ...seed, relevance }).relevance).toBe(relevance);
+    }
+    for (const relevance of [-1, 101, 4.5, '50', null]) {
+      expect(() => validateCatalogSeed({ ...seed, relevance }))
+        .toThrow('relevance must be an integer from 0 to 100');
+    }
+  });
+
+  it.each([
+    [
+      { listingSource: { kind: 'client-directory', url: 'https://claude.com/connectors/example' } },
+      'client-directory provenance must reuse a directoryListings url',
+    ],
+    [
+      {
+        listingSource: { kind: 'client-directory', url: 'https://claude.com/connectors/other' },
+        directoryListings: [{ directory: 'claude', id: 'a', url: 'https://claude.com/connectors/example' }],
+      },
+      'client-directory provenance must reuse a directoryListings url',
+    ],
+    [{ directoryListings: [] }, 'directoryListings must be a non-empty array when present'],
+    [
+      { directoryListings: [{ directory: 'cursor', id: 'a', url: 'https://example.com/a' }] },
+      'directoryListings entries need a directory of claude or chatgpt',
+    ],
+    [
+      { directoryListings: [{ directory: 'claude', id: ' ', url: 'https://example.com/a' }] },
+      "directoryListings entries need the directory's own id",
+    ],
+    [
+      { directoryListings: [{ directory: 'claude', id: 'a', url: 'http://example.com/a' }] },
+      'directoryListings entries need a valid HTTPS url',
+    ],
+    [
+      {
+        directoryListings: [
+          { directory: 'claude', id: 'a', url: 'https://example.com/a' },
+          { directory: 'claude', id: 'a', url: 'https://example.com/b' },
+        ],
+      },
+      'directoryListings repeats claude entry a',
+    ],
+  ])('rejects invalid directory listings: %s', (seed, message) => {
+    expect(() => validateCatalogSeed({
+      id: 'directory',
+      listingSource: { kind: 'publisher', url: 'https://example.com/mcp' },
+      ...seed,
+    })).toThrow(message);
+  });
+
   it.each([
     [{ id: 'missing' }, 'listingSource is required'],
     [
       { id: 'kind', listingSource: { kind: 'verified' } },
-      'listingSource.kind must be publisher, mcp-registry, community, or community-submission',
+      'listingSource.kind must be publisher, mcp-registry, client-directory, community, or community-submission',
     ],
     [
       { id: 'http', listingSource: { kind: 'community', url: 'http://example.com' } },

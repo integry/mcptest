@@ -162,6 +162,21 @@ describe('client setup transports and authentication', () => {
     expect(setups[1].copyText).toContain('codex mcp login');
   });
 
+  it('keeps Seismic CLI registration guidance visible even with an unverified transport', () => {
+    const seismic = getCatalogServerById('seismic')!;
+    const [claude, codex] = generateClientSetups(seismic);
+    for (const setup of [claude, codex]) {
+      expect(setup).toMatchObject({ supported: false, format: 'text' });
+      expect(setup.copyText).toContain('transport is unverified');
+      expect(setup.notes.join(' ')).toContain('Authenticated tool discovery still needs verification');
+    }
+    expect(claude.copyText).toContain('--callback-port');
+    expect(claude.copyText).toContain('/callback');
+    expect(codex.copyText).toContain('public PKCE registration uses no client secret');
+    expect(codex.copyText).toContain('confidential registration requires one');
+    expect(codex.copyText).toContain('exact redirect URI');
+  });
+
   it('uses Asana publisher evidence for every pre-registered OAuth client', () => {
     const asana = getCatalogServerById('asana');
     expect(asana).toBeDefined();

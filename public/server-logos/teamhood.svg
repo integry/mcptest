@@ -1,5 +1,24 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title">
-  <title id="title">Teamhood generated fallback monogram</title>
-  <rect width="128" height="128" rx="24" fill="#334155"/>
-  <text x="64" y="75" fill="#fff" font-family="Arial, Helvetica, sans-serif" font-size="42" font-weight="700" text-anchor="middle">TE</text>
+<!--
+  viewBox is 160 units with the 140-unit mark centred (10 units of padding).
+  Both numbers matter for crispness: the artwork sits on a 10-unit lattice, and
+  160 / 16px = 10, so at every favicon size that is a multiple of 16 each edge
+  lands exactly on a pixel boundary (a 20-unit arm = 2px at 16px). Cropping flush
+  to the mark at 140 units puts every edge on a fraction (140 / 16 = 8.75), which
+  anti-aliases all of it and smears the two corner brackets into blobs.
+
+  The 4-unit gap above the crossbar is deliberately sub-pixel at favicon sizes
+  (0.4px at 16px, 0.8px at 32px), so this file resolves to a plain plus. That is
+  the intended small cut, not a rounding bug: the gap — and the T it reveals
+  inside the plus — only resolves above roughly 40px, where the mark is
+  presented rather than glanced at. Do not widen it to make it visible here;
+  6 units detaches the arm and the plus stops reading as one shape.
+-->
+<svg width="160" height="160" viewBox="30 30 160 160" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect x="126" y="40" width="54" height="20" rx="6" fill="#B9D8FF" />
+  <rect x="160" y="40" width="20" height="54" rx="6" fill="#B9D8FF" />
+  <rect x="40" y="160" width="54" height="20" rx="6" fill="#B9D8FF" />
+  <rect x="40" y="126" width="20" height="54" rx="6" fill="#B9D8FF" />
+  <path d="M100 76A6 6 0 0 1 106 70H114A6 6 0 0 1 120 76V96H100Z" fill="#509DFF" />
+  <rect x="70" y="100" width="80" height="20" rx="6" fill="#1B5BFF" />
+  <rect x="100" y="100" width="20" height="50" rx="6" fill="#1B5BFF" />
 </svg>

@@ -36,6 +36,24 @@ Catalog servers can use a badge that follows the latest catalog validation inste
 
 The main worker serves `GET /badge/server/<catalog id>.svg` from validation data bundled at build time (`src/data/catalogValidation.json`), so a badge request never contacts the MCP server. Redeploy the worker after running `npm run validate-catalog` to publish new results. A negotiated session maps to `ready`, an authentication challenge to `authorization-required`, an offline endpoint to `blocked` and an inconclusive probe to `unknown`. Unknown ids return the neutral badge with HTTP 200, so an embed never shows a broken image. Run `npm run generate-badges` after changing `src/utils/badges.ts` to regenerate the static SVGs in `public/badge/`.
 
+## Catalog MCP server
+
+The public catalog is also available as a read-only MCP server, so an agent or MCP client can look up remote servers without scraping the site:
+
+```
+https://mcptest.io/mcp/catalog
+```
+
+It is a Streamable HTTP endpoint with no authentication. It answers the stateless 2026-07-28 revision (`server/discover`) and the stateful 2025-11-25 handshake (`initialize`) on the same URL, sends CORS headers for browser clients (`Access-Control-Allow-Origin: *`, no cookies or credentials), and rate limits each client address to 120 requests per minute (HTTP 429 with `Retry-After`). Every tool is annotated read-only. Its answers come from the catalog data bundled with the worker at build time (`src/data/serverCatalog.json`, `catalogValidation.json` and `catalogCapabilities.json`), so a tool call never contacts a listed server.
+
+| Tool | Arguments | Returns |
+| --- | --- | --- |
+| `search_catalog` | `query?` (at most 200 characters), `category?`, `status?` (`ready`, `authorization-required`, `blocked`, `unknown`), `limit?` (1–25, default 10) | Ranked matches over name, description, category and observed tool names. Each result has the id, name, one-line description, category, endpoint URL, latest validation status with its check date, and the mcptest.io page URL. |
+| `get_catalog_server` | `id` | The public entry: description, endpoint, transport, authentication requirement, validation status and date, capability summary (tool count and up to 50 tool names), caveats, and the page and badge URLs. An unknown id returns an `isError` result. |
+| `list_catalog_categories` | none | Each category with its server count and category page URL. |
+
+Add it to a client like any remote server, for example `claude mcp add --transport http mcptest-catalog https://mcptest.io/mcp/catalog`. The implementation is `cloudflare-worker/src/catalogMcp.js`; CI runs this repository's composite action against it under `wrangler dev` on every pull request. Redeploy the worker after catalog changes to publish them.
+
 ## Report history and privacy
 
 Completed reports are saved as redacted snapshots in the current browser so the report page can show semantic drift. History retains the newest 10 snapshots for each endpoint and 20 snapshots overall. Once either limit is reached, the oldest applicable snapshots are removed automatically.
@@ -64,7 +82,7 @@ Every guide is also available as raw Markdown by appending `.md` to its URL, `/l
 
 ## Local development
 
-Requirements: Node.js 22 or newer and npm.
+Requirements: Node.js 22.22.2 or newer within 22.x, 24.15.0 or newer within 24.x, or 26 and later (matching `engines` in `package.json`), and npm.
 
 ```bash
 git clone https://github.com/integry/mcptest.git

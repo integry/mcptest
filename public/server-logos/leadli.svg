@@ -1,5 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title">
-  <title id="title">leadli.me generated fallback monogram</title>
-  <rect width="128" height="128" rx="24" fill="#047857"/>
-  <text x="64" y="75" fill="#fff" font-family="Arial, Helvetica, sans-serif" font-size="42" font-weight="700" text-anchor="middle">LM</text>
+<svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <rect x="6" y="13" width="52" height="40" rx="11" fill="#d9f99d" transform="rotate(-2 32 33)"/>
+  <text
+    x="32"
+    y="45"
+    fill="#1c1917"
+    font-family="Georgia, 'Times New Roman', serif"
+    font-size="42"
+    font-weight="700"
+    letter-spacing="-4"
+    text-anchor="middle"
+  >li</text>
 </svg>

@@ -1,0 +1,128 @@
+import { loadWidgetScript } from './widgetScript';
+import {
+  isSiteAssistantPath,
+  resolveSiteAssistantConfig,
+  SITE_ASSISTANT_CANCEL_DOCK_EVENT,
+  SITE_ASSISTANT_META_NAME,
+  type SiteAssistantConfig,
+} from './config.mts';
+
+/*
+ * The entry's half of the site assistant: a few hundred bytes that read the
+ * build's config meta tag and import the launcher on idle or when there is
+ * a docked panel to restore. On restore, widget.js and the launcher load in
+ * parallel. Otherwise the launcher requests widget.js on demand.
+ */
+
+export interface SiteAssistantLauncher {
+  setActive(active: boolean): void;
+}
+
+export type LoadLauncher = (config: SiteAssistantConfig, restore: boolean) => Promise<SiteAssistantLauncher>;
+
+interface SiteAssistantState {
+  config: SiteAssistantConfig;
+  doc: Document;
+  pathname: string;
+  /** The page is idle or has a docked panel waiting to be restored. */
+  ready: boolean;
+  restore: boolean;
+  loadLauncher: LoadLauncher;
+  launcher: Promise<SiteAssistantLauncher | null> | null;
+}
+
+let state: SiteAssistantState | null = null;
+
+/** The config written into index.html by the build, or null when the assistant is off. */
+export const readSiteAssistantConfig = (doc: Document = document): SiteAssistantConfig | null => {
+  const meta = doc.querySelector<HTMLMetaElement>(`meta[name="${SITE_ASSISTANT_META_NAME}"]`);
+  if (!meta) return null;
+  return resolveSiteAssistantConfig(meta.dataset.endpoint, meta.dataset.assistant);
+};
+
+/** Resolves after the load event and the next idle period (or a timeout when the page never idles). */
+export const whenLoadedAndIdle = (win: Window = window): Promise<void> => new Promise(resolve => {
+  const idle = () => {
+    if (typeof win.requestIdleCallback === 'function') win.requestIdleCallback(() => resolve(), { timeout: 4000 });
+    else win.setTimeout(resolve, 1500);
+  };
+  if (win.document.readyState === 'complete') idle();
+  else win.addEventListener('load', idle, { once: true });
+});
+
+const importLauncher: LoadLauncher = (config, restore) => {
+  const widget = restore ? loadWidgetScript(config) : undefined;
+  // The launcher reports failures and offers a retry once it has loaded.
+  void widget?.catch(() => {});
+  return import('./launcher').then(module => module.mountSiteAssistantLauncher(config, widget));
+};
+
+/** Shows or hides the launcher for the current path; the chunk is imported the first time it may show. */
+const apply = (current: SiteAssistantState): void => {
+  if (!current.ready) return;
+  const active = isSiteAssistantPath(current.pathname);
+  if (!current.launcher) {
+    // Excluded pages never fetch the launcher chunk.
+    if (!active) return;
+    current.launcher = current.loadLauncher(current.config, current.restore).catch(error => {
+      console.warn('[Site assistant] The launcher could not load.', error);
+      return null;
+    });
+  }
+  void current.launcher.then(launcher => {
+    if (state === current) launcher?.setActive(isSiteAssistantPath(current.pathname));
+  });
+};
+
+/**
+ * Starts the assistant for this page. Returns false, and does nothing at all,
+ * when the build has no assistant configured.
+ */
+export const startSiteAssistant = (options: {
+  doc?: Document;
+  win?: Window;
+  ready?: Promise<void>;
+  loadLauncher?: LoadLauncher;
+} = {}): boolean => {
+  const doc = options.doc ?? document;
+  const win = options.win ?? window;
+  if (state) return true;
+  const config = readSiteAssistantConfig(doc);
+  if (!config) return false;
+  const pathname = win.location.pathname;
+  const restore = isSiteAssistantPath(pathname)
+    && doc.getElementById(`solv-dock:1:${config.assistantKey}`) !== null;
+  const current: SiteAssistantState = {
+    config,
+    doc,
+    pathname,
+    ready: restore,
+    restore,
+    loadLauncher: options.loadLauncher ?? importLauncher,
+    launcher: null,
+  };
+  state = current;
+  if (restore) apply(current);
+  else {
+    void (options.ready ?? whenLoadedAndIdle(win)).then(() => {
+      current.ready = true;
+      if (state === current) apply(current);
+    });
+  }
+  return true;
+};
+
+/** Called on every client-side navigation: hides the launcher and widget on excluded pages. */
+export const syncSiteAssistantRoute = (pathname: string): void => {
+  if (!state) return;
+  state.pathname = pathname;
+  if (!isSiteAssistantPath(pathname)) {
+    state.doc.dispatchEvent(new Event(SITE_ASSISTANT_CANCEL_DOCK_EVENT));
+  }
+  apply(state);
+};
+
+/** Test hook: forget the started assistant. */
+export const resetSiteAssistantForTests = (): void => {
+  state = null;
+};

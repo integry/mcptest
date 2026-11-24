@@ -108,6 +108,11 @@ const getListingSourceDetails = (
         label: 'MCP Registry',
         description: 'Listing sourced from an official MCP Registry record; publisher identity is not proven',
       };
+    case 'client-directory':
+      return {
+        label: 'Client directory',
+        description: 'Listing sourced from a client vendor connector directory; the endpoint is not confirmed by publisher documentation',
+      };
     case 'community-submission':
       return {
         label: 'Community submission',

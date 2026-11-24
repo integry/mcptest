@@ -205,10 +205,15 @@ describe('submission draft validation', () => {
 describe('reviewed community submission entries', () => {
   const futureinfra = (serverCatalog as CatalogServerSeed[]).find((seed) => seed.id === 'futureinfra');
 
-  it('uses the FI monogram for FutureInfra in the logo and its license note', () => {
+  it('uses the official FutureInfra icon in the logo and its license note', () => {
     const svg = readFileSync(resolve('public/server-logos/futureinfra.svg'), 'utf8');
-    expect(svg).toMatch(/>FI<\/text>/);
-    expect(futureinfra?.logoLicenseNote).toContain('generated FI monogram');
+    expect(svg).toContain('aria-label="FutureInfra"');
+    expect(svg).not.toMatch(/>FI<\/text>/);
+    expect(futureinfra).toMatchObject({
+      logoSourceKind: 'official-site',
+      logoSourceUrl: 'https://futureinfra.ai/assets/favicon.svg',
+    });
+    expect(futureinfra?.logoLicenseNote).toContain('Official FutureInfra');
   });
 
   it('keeps FutureInfra limitations in caveats and records its publisher-documented OAuth flow', () => {

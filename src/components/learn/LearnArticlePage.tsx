@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import type { LearnArticle, LearnArticleEntry } from '../../content/learnRegistry';
 import { ARTICLE_PROSE_PROPS, getPrerenderedArticle } from '../../content/prerenderedArticle';
 import { handleCodeCopyClick } from '../../utils/codeCopy';
+import { internalLinkPath } from '../../utils/internalLink';
 import { ViewFallback } from '../../views/deferredViews';
 import LearnArticleLayout from './LearnArticleLayout';
 import { markdownLearnArticle } from './deferredMarkdownArticle';
@@ -11,10 +12,6 @@ interface LearnArticlePageProps {
   /** A registry entry, whose body is loaded on demand, or an article that carries its body. */
   article: LearnArticleEntry | LearnArticle;
 }
-
-const isPlainClick = (event: React.MouseEvent) => (
-  event.button === 0 && !event.defaultPrevented && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey
-);
 
 /**
  * A guide page. When the app mounted over the page the build prerendered for
@@ -39,11 +36,10 @@ const LearnArticlePage: React.FC<LearnArticlePageProps> = ({ article }) => {
   // internal links in the app the way ArticleMarkdown's <Link>s do.
   const handleClick = (event: React.MouseEvent<HTMLDivElement>) => {
     if (handleCodeCopyClick(event)) return;
-    const anchor = (event.target as Element).closest('a[href]');
-    const href = anchor?.getAttribute('href') ?? '';
-    if (!href.startsWith('/') || href.startsWith('//') || anchor?.hasAttribute('target') || !isPlainClick(event)) return;
+    const path = internalLinkPath(event);
+    if (!path) return;
     event.preventDefault();
-    navigate(href);
+    navigate(path);
   };
 
   return (

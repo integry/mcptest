@@ -64,13 +64,13 @@
 }
 
 /* The workbench gives the bar its height, so the page itself never scrolls. */
-@media (min-width: 1200px) {
+@container app-shell (width >= 1200px) {
   .tab-content-panel:has(> .workbench-status-bar) > .playground-workbench {
     height: calc(100dvh - var(--workbench-top, 11.5rem) - var(--workbench-status-height));
   }
 }
 
-@media (max-width: 767.98px) {
+@container app-shell (width < 768px) {
   .workbench-status-bar {
     flex-wrap: wrap;
     height: auto;

@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import React from 'react';
 import type { LearnArticleSummary } from '../../content/contentModel';
 import { getCatalogServers } from '../../utils/catalogUtils';
@@ -19,8 +20,8 @@ export default function GuideServers({ article }: { article: LearnArticleSummary
   return <section className="reading-related" aria-label="Servers to try"><h2>Servers to try</h2><ul>{servers.map(server => {
     const endpoint = getPreferredCatalogEndpoint(server);
     return <li key={server.id}>
-    <a href={`/servers/${server.id}/`}>{server.name}</a> — {server.description}{' '}
-    <a href={getServerUrl(endpoint.url, endpoint.transport)}>Test it live<span className="visually-hidden">: {server.name}</span></a>
+    <Link to={`/servers/${server.id}/`}>{server.name}</Link> — {server.description}{' '}
+    <Link to={getServerUrl(endpoint.url, endpoint.transport)}>Test it live<span className="visually-hidden">: {server.name}</span></Link>
   </li>;
   })}</ul></section>;
 }

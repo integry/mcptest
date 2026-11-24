@@ -1,5 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title">
-  <title id="title">Patto generated fallback monogram</title>
-  <rect width="128" height="128" rx="24" fill="#1d4ed8"/>
-  <text x="64" y="75" fill="#fff" font-family="Arial, Helvetica, sans-serif" font-size="42" font-weight="700" text-anchor="middle">PA</text>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#08090a"/><path fill="#fff" transform="translate(6.5 6.7) scale(.7)" d="M72.03,31.4c1.48-8.28.66-14.12-2.41-17.8-2.89-3.36-8.45-5.28-15.33-5.28-8.32,0-14.44,2.32-19.32,7.44l1.19-6.32H10.43L0,64h16.57l10.92-8.35,1.5-7.97c3.92,5.12,8.24,6.8,17.2,6.8s14.93-2.4,19.36-7.68c3.05-3.82,5.18-8.79,6.48-15.4ZM46.47,31.68c-1.05,5.6-4.58,9.04-9.22,9.04s-6.87-3.44-5.81-9.12c1.01-5.36,4.49-8.56,9.13-8.56s6.92,3.2,5.9,8.64Z"/></svg>

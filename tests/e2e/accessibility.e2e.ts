@@ -8,8 +8,13 @@ const THIRD_PARTY_ALLOWLIST = ['iframe[src^="https://challenges.cloudflare.com/"
 
 async function scan(page: Page, info: TestInfo, state: string) {
   await page.evaluate(() => document.fonts.ready);
-  const builder = new AxeBuilder({ page })
-    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa', 'best-practice']);
+  const builder = new AxeBuilder({ page });
+  if (new URL(page.url()).pathname === '/catalog' && page.frames().length === 1) {
+    // Report in the catalog document to avoid transferring the full set of
+    // intermediate results through Playwright to a second browser page.
+    builder.setLegacyMode().options({ resultTypes: ['violations', 'incomplete'] });
+  }
+  builder.withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa', 'best-practice']);
   for (const selector of THIRD_PARTY_ALLOWLIST) builder.exclude(selector);
   const results = await builder.analyze();
   await info.attach(`axe-${state}`, {

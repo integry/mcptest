@@ -1,5 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title">
-  <title id="title">Whalesync generated fallback monogram</title>
-  <rect width="128" height="128" rx="24" fill="#334155"/>
-  <text x="64" y="75" fill="#fff" font-family="Arial, Helvetica, sans-serif" font-size="42" font-weight="700" text-anchor="middle">WH</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <rect width="100" height="100" rx="12.5" fill="#02a2f2"/>
+  <g fill="#fff" transform="translate(14.121 32.597) scale(1.8684)">
+    <path d="M17.6439 19.1914C8.36735 18.4285 1.0031 10.9176 0.470215 1.57764H11.8541C15.0517 1.57764 17.6439 4.16983 17.6439 7.36746V19.1914Z"/>
+    <path d="M37.9352 1.57764C37.4024 10.9174 30.0383 18.4283 20.7619 19.1914V7.36746C20.7619 4.16983 23.3541 1.57764 26.5518 1.57764H37.9352Z"/>
+  </g>
 </svg>

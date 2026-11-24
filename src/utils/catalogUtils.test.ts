@@ -210,6 +210,42 @@ describe('catalog authentication metadata', () => {
     expect(JSON.stringify(catalog)).not.toMatch(/"logoUrl":"https?:/);
   });
 
+  it('shows Hookr as online at its submitted endpoint with anonymous discovery and a partial tool inventory', () => {
+    const endpoint = 'https://hookr.fun/api/mcp';
+    const entry = getCatalogServerById('hookr');
+
+    expect(entry).toMatchObject({
+      url: endpoint,
+      validatedUrl: endpoint,
+      status: 'online',
+      declaredAuthType: 'none',
+      authType: 'none',
+      transport: 'streamable-http',
+      protocolEra: 'stateless',
+    });
+    expect(entry?.capabilityInventory).toMatchObject({
+      provenance: { testedEndpoint: endpoint, route: 'direct' },
+      authentication: 'unauthenticated',
+      tools: { status: 'partial' },
+    });
+    expect(entry?.capabilityInventory?.tools.omittedCount).toBeGreaterThan(0);
+  });
+
+  it('attributes endpoints that only a client directory documents to that directory', () => {
+    // A caveat that says the publisher's page omits the endpoint (or shows only a placeholder)
+    // means the URL is directory-derived, so the structured provenance must say so too.
+    const directoryDerived = /publisher does not document this endpoint|does not state the endpoint URL|URL comes from the (Claude|ChatGPT) directory|placeholder domain/i;
+    const flagged = catalogSeeds.filter(({ caveats }) => (caveats ?? []).some(caveat => directoryDerived.test(caveat)));
+    expect(flagged.map(({ id }) => id)).toEqual(expect.arrayContaining([
+      'malwarebytes', 'snomed-ct', 'snagajob', 'descrybe', 'constant-contact', 'cash-app-ordering',
+      'athenahq', 'taskrabbit', 'pophive', 'civitatis', 'all-accor', 'aiwyn-tax',
+    ]));
+    for (const { id, listingSource, directoryListings } of flagged) {
+      expect(listingSource.kind, id).toBe('client-directory');
+      expect((directoryListings ?? []).map(({ url }) => url), id).toContain(listingSource.url);
+    }
+  });
+
   it('resolves exact Upwork catalog transport and OAuth evidence without a provider rule', () => {
     expect(getCatalogEndpointDiagnosticEvidence('https://mcp.upwork.com/mcp')).toEqual({
       preferredTransport: 'streamable-http',
@@ -236,6 +272,38 @@ describe('catalog authentication metadata', () => {
       'ffmpeg-api', 'feedhive', 'geckoboard', 'g2x', 'datocapital', 'kindwise',
       'legitfit', 'leadboxer', 'qencode',
     ];
+    const publisherSources = new Map([
+      ['basedash', 'https://www.basedash.com/features/mcp-server'],
+      ['dart', 'https://help.dartai.com/en/articles/10733406-dart-mcp'],
+      ['datocapital', 'https://api.datocapital.com/docs/mcp'],
+      ['elfsight', 'https://github.com/elfsight/ai-chatbot-mcp'],
+      ['ffmpeg-api', 'https://mcp.ffmpeg-api.com/'],
+      ['gameanalytics', 'https://docs.gameanalytics.com/ai-tools/documentation-mcp/'],
+      ['leadboxer', 'https://developers.leadboxer.com/docs/mcp'],
+      ['legitfit', 'https://support.legitfit.com/business/how-do-i-connect-legitfit-to-claude'],
+      ['lessmeeting', 'https://lessmeeting.com/features/mcp-server/'],
+      ['maileroo', 'https://maileroo.com/help/connect-maileroo-to-ai'],
+      ['mailtester', 'https://mailtester.com/llms.txt'],
+      ['pandavideo', 'https://docs.pandavideo.com/reference/mcp'],
+      ['parsely', 'https://docs.parse.ly/mcp-server/'],
+      ['tallyfy', 'https://tallyfy.com/products/pro/integrations/mcp-server/openai-chatgpt/'],
+      ['unstoppabledomains', 'https://docs.unstoppabledomains.com/user-api/mcp-server'],
+      ['upcoach', 'https://upcoach.com/help/settings-and-account/connect-ai-tools-with-mcp'],
+      ['uptimerobot', 'https://help.uptimerobot.com/en/articles/12928342-uptimerobot-mcp-integration-guide'],
+      ['valossa', 'https://mcp-assistant.valossa.com/documentation'],
+      ['versium', 'https://reach-help.versium.com/docs/mcp-overview'],
+      ['vestd', 'https://www.vestd.com/help/connect-vestd-to-chatgpt-or-claude'],
+      ['wachete', 'https://www.wachete.com/faq'],
+      ['warmerly', 'https://warmerly.com/docs/ai'],
+      ['xverum', 'https://www.xverum.com/llms.txt'],
+      ['youth4work', 'https://mcp.youth4work.com/'],
+      ['zabihah', 'https://www.zabihah.com/developers/docs/mcp'],
+      ['zarla', 'https://www.zarla.com/features/mcp-website-builder'],
+      ['zeroheight', 'https://help.zeroheight.com/hc/en-us/articles/48004395674011-zeroheight-MCP-overview'],
+      ['zip-codes', 'https://www.zip-codes.com/search.asp'],
+      ['zippendo', 'https://www.zippendo.com/docs/mcp/overview'],
+      ['zylalabs', 'https://mcp.zylalabs.com/'],
+    ]);
     const catalog = getCatalogServers();
     expect(addedIds.length).toBeGreaterThanOrEqual(60);
     for (const id of addedIds) {
@@ -243,7 +311,11 @@ describe('catalog authentication metadata', () => {
       expect(entry, id).toBeDefined();
       expect(entry?.status, id).toBe('online');
       expect(entry?.homepageUrl, id).toMatch(/^https:\/\//);
-      expect(entry?.listingSource.kind, id).toBe('mcp-registry');
+      expect(entry?.registryUrl, id).toMatch(/^https:\/\//);
+      const publisherUrl = publisherSources.get(id);
+      expect(entry?.listingSource, id).toEqual(publisherUrl
+        ? { kind: 'publisher', url: publisherUrl }
+        : { kind: 'mcp-registry', url: entry?.registryUrl });
       expect(catalogValidation.find(result => result.serverId === id)?.validatedUrl, id)
         .toMatch(/^https:\/\//);
     }
@@ -303,6 +375,21 @@ describe('catalog sorting', () => {
     server('alpha-untested', 'none', { name: 'Alpha', browserAccess: 'unknown' }),
   ];
 
+  it('lists higher relevance first in catalog order and keeps seed order for ties', () => {
+    const scored = [
+      server('unscored', 'none'),
+      server('low', 'none', { relevance: 20 }),
+      server('high-first', 'none', { relevance: 90 }),
+      server('high-second', 'none', { relevance: 90 }),
+      server('zero', 'none', { relevance: 0 }),
+    ];
+
+    expect(sortCatalogServers(scored, 'catalog-order').map(({ id }) => id))
+      .toEqual(['high-first', 'high-second', 'low', 'unscored', 'zero']);
+    expect(sortCatalogServers(scored, 'name').map(({ id }) => id))
+      .toEqual(['high-first', 'high-second', 'low', 'unscored', 'zero']);
+  });
+
   it.each([
     ['catalog-order', ['zulu', 'beta', 'alpha-new', 'alpha-untested']],
     ['name', ['alpha-new', 'alpha-untested', 'beta', 'zulu']],
@@ -351,13 +438,22 @@ describe('catalog category facets', () => {
 });
 
 
-it('keeps diagnostic transport observations separate from concrete connection hints', () => {
-  for (const server of getCatalogServers()) {
-    for (const endpoint of [server.url, server.browserUrl, server.validatedUrl, ...(server.alternativeEndpoints ?? []).map(({ url }) => url)].filter(Boolean)) {
+it.each(getCatalogServers())(
+  'keeps diagnostic transport observations separate from concrete connection hints for $id',
+  (server) => {
+    const endpoints = new Set([
+      server.url,
+      server.browserUrl,
+      server.validatedUrl,
+      ...(server.alternativeEndpoints ?? []).map(({ url }) => url),
+    ]);
+
+    for (const endpoint of endpoints) {
+      if (!endpoint) continue;
       const evidence = getCatalogEndpointDiagnosticEvidence(endpoint);
       if (!evidence) continue;
-      expect(evidence.preferredTransport).toBe(resolveCatalogEndpointTransport(server, endpoint));
-      expect(evidence.preferredTransport === undefined || evidence.preferredTransport === 'streamable-http' || evidence.preferredTransport === 'legacy-sse').toBe(true);
+      expect(evidence.preferredTransport, endpoint).toBe(resolveCatalogEndpointTransport(server, endpoint));
+      expect([undefined, 'streamable-http', 'legacy-sse'], endpoint).toContain(evidence.preferredTransport);
     }
   }
-});
+);

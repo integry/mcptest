@@ -70,18 +70,40 @@ The official [MCP Inspector](https://modelcontextprotocol.io/docs/tools/inspecto
 
 The tools are the **MCP Inspector**, **mcptest.io**, **MCPJam**, **MCP Playground Online**, **Postman**, **Insomnia**, Cloudflare's **Workers AI Playground** and the **Glama** inspector. Every claim was checked against each product's documentation, pricing page or repository on November 11, 2026 (sources below). "Not documented" means we could not find it, not that it is impossible. mcptest.io is our product.
 
-## Comparison table
+## Comparison tables {#comparison-table}
 
-| | Install | Remote vs local / stdio | OAuth | CI use | Shareable results | Open source | Cost |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| **MCP Inspector** | `npx`, Node 22.19 or newer; web UI, CLI and terminal UI | Both: stdio commands and remote HTTP or SSE | Yes, including dynamic registration, pre-registered clients and Client ID Metadata Documents | CLI with JSON output and exit codes | Logs, no report | Yes, Apache-2.0 (moving from MIT) | Free |
-| **mcptest.io** | None, runs in the browser | Remote HTTP only; local HTTP only over a direct browser connection; no stdio | OAuth 2.1 with PKCE, bearer token, API key | Headless CLI and GitHub Action | Public report URL, JSON and Markdown export, badges | Yes, MIT | Free |
-| **MCPJam** | Hosted web app, desktop app (macOS, Windows), `npx` or Docker | Web app: HTTPS servers only. Desktop and terminal: HTTP, HTTPS and stdio | Step-by-step OAuth debugger | CLI health checks, conformance and evals; GitHub Action | Share hosted servers with other MCPJam users | Yes, mostly Apache-2.0; some eval code under a separate license | Free to start; model usage has a daily allowance and paid credits |
-| **MCP Playground Online** | None in the browser; desktop app for macOS and Windows | Browser: remote servers. Desktop: stdio and localhost | Bearer token documented for its inspector; OAuth not documented there | Not documented | Export the JSON-RPC log as JSON | No source published | Browser tools free; desktop app after a 7-day trial needs a paid plan |
-| **Postman** | Postman app and account | Both: stdio and Streamable HTTP | Authorization tab and an OAuth 2.1 debugger | No: the Postman CLI skips MCP requests | Collections and workspaces | No | Free plan; Solo $9 per month, Team $19 per user per month, billed annually |
-| **Insomnia** | Insomnia desktop app | Remote MCP server URLs (documented); stdio not documented | Automatic MCP auth flow with dynamic registration; personal token or your own OAuth app otherwise | Not documented | MCP clients stored in Git, cloud or local projects | Yes, Apache-2.0 | Free plan; paid plans per user |
-| **Cloudflare Workers AI Playground** | None, runs in the browser | Remote servers by URL | Signs in when the server requires it | No | Not documented | Not documented | Not documented |
-| **Glama inspector** | None, runs in the browser; no account | Remote Streamable HTTP and SSE; stdio only through a tunnel | OAuth 2.1 with PKCE and dynamic registration, bearer token, custom headers | Not documented | Configuration saved in the page URL | No source published | Free; chat uses Glama tokens and needs sign-in |
+| Tool | Install | Remote vs local / stdio |
+| --- | --- | --- |
+| **MCP Inspector** | `npx`, Node 22.19 or newer; web UI, CLI and terminal UI | Both: stdio commands and remote HTTP or SSE |
+| **mcptest.io** | None, runs in the browser | Remote HTTP only; local HTTP only over a direct browser connection; no stdio |
+| **MCPJam** | Hosted web app, desktop app (macOS, Windows), `npx` or Docker | Web app: HTTPS servers only. Desktop and terminal: HTTP, HTTPS and stdio |
+| **MCP Playground Online** | None in the browser; desktop app for macOS and Windows | Browser: remote servers. Desktop: stdio and localhost |
+| **Postman** | Postman app and account | Both: stdio and Streamable HTTP |
+| **Insomnia** | Insomnia desktop app | Remote MCP server URLs (documented); stdio not documented |
+| **Cloudflare Workers AI Playground** | None, runs in the browser | Remote servers by URL |
+| **Glama inspector** | None, runs in the browser; no account | Remote Streamable HTTP and SSE; stdio only through a tunnel |
+
+| Tool | OAuth | CI use | Shareable results |
+| --- | --- | --- | --- |
+| **MCP Inspector** | Yes, including dynamic registration, pre-registered clients and Client ID Metadata Documents | CLI with JSON output and exit codes | Logs, no report |
+| **mcptest.io** | OAuth 2.1 with PKCE, bearer token, API key | Headless CLI and GitHub Action | Public report URL, JSON and Markdown export, badges |
+| **MCPJam** | Step-by-step OAuth debugger | CLI health checks, conformance and evals; GitHub Action | Share hosted servers with other MCPJam users |
+| **MCP Playground Online** | Bearer token documented for its inspector; OAuth not documented there | Not documented | Export the JSON-RPC log as JSON |
+| **Postman** | Authorization tab and an OAuth 2.1 debugger | No: the Postman CLI skips MCP requests | Collections and workspaces |
+| **Insomnia** | Automatic MCP auth flow with dynamic registration; personal token or your own OAuth app otherwise | Not documented | MCP clients stored in Git, cloud or local projects |
+| **Cloudflare Workers AI Playground** | Signs in when the server requires it | No | Not documented |
+| **Glama inspector** | OAuth 2.1 with PKCE and dynamic registration, bearer token, custom headers | Not documented | Configuration saved in the page URL |
+
+| Tool | Open source | Cost |
+| --- | --- | --- |
+| **MCP Inspector** | Yes, Apache-2.0 (moving from MIT) | Free |
+| **mcptest.io** | Yes, MIT | Free |
+| **MCPJam** | Yes, mostly Apache-2.0; some eval code under a separate license | Free to start; model usage has a daily allowance and paid credits |
+| **MCP Playground Online** | No source published | Browser tools free; desktop app after a 7-day trial needs a paid plan |
+| **Postman** | No | Free plan; Solo $9 per month, Team $19 per user per month, billed annually |
+| **Insomnia** | Yes, Apache-2.0 | Free plan; paid plans per user |
+| **Cloudflare Workers AI Playground** | Not documented | Not documented |
+| **Glama inspector** | No source published | Free; chat uses Glama tokens and needs sign-in |
 
 ## MCP Inspector
 

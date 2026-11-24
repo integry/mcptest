@@ -1,3 +1,4 @@
+import { MemoryRouter } from 'react-router-dom';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -46,7 +47,7 @@ const renderError = (
   const container = document.createElement('div');
   root = createRoot(container);
   act(() => {
-    root?.render(<ConnectionErrorCard
+    root?.render(<MemoryRouter><ConnectionErrorCard
       errorDetails={{
         error: 'All connections failed: Failed to fetch',
         serverUrl: 'https://mcp.upwork.com/mcp',
@@ -58,7 +59,7 @@ const renderError = (
         ...overrides,
       }}
       {...props}
-    />);
+    /></MemoryRouter>);
   });
   return container;
 };

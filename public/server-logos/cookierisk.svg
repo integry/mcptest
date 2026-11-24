@@ -1,5 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title">
-  <title id="title">CookieRisk Quickscan generated fallback monogram</title>
-  <rect width="128" height="128" rx="24" fill="#1d4ed8"/>
-  <text x="64" y="75" fill="#fff" font-family="Arial, Helvetica, sans-serif" font-size="42" font-weight="700" text-anchor="middle">CQ</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="180" height="180" viewBox="0 0 180 180" fill="none">
+  <rect width="180" height="180" rx="40" fill="#2563EB"/>
+  <circle cx="90" cy="90" r="56" fill="#DBEAFE"/>
+  <circle cx="68" cy="73" r="11" fill="#2563EB"/>
+  <circle cx="112" cy="73" r="8.5" fill="#2563EB"/>
+  <circle cx="90" cy="107" r="8.5" fill="#2563EB"/>
+  <circle cx="62" cy="100" r="6" fill="#2563EB"/>
+  <circle cx="118" cy="96" r="6" fill="#2563EB"/>
 </svg>

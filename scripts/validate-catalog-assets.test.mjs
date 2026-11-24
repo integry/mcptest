@@ -67,21 +67,24 @@ const embeddedImageSvg = dataUri => (
 describe('catalog logo asset validation', () => {
   it('accepts all production assets and provenance records', () => {
     expect(validateCatalogAssets(catalog)).toEqual([]);
-  });
+    // Parses every catalog SVG, so runtime grows with each import batch.
+  }, 30_000);
 
   it('rejects dead Simple Icons provenance URLs with v-prefixed version tags', () => {
-    const canva = catalog.find(seed => seed.id === 'canva');
-    const errors = validateCatalogAssets(catalog.map(seed => (
-      seed.id === 'canva'
-        ? {
-            ...seed,
-            logoSourceUrl: 'https://github.com/simple-icons/simple-icons/blob/v15.16.0/icons/canva.svg',
-          }
-        : seed
-    )));
+    const publicRoot = temporaryDirectory();
+    const logoDirectory = path.join(publicRoot, 'server-logos');
+    fs.mkdirSync(logoDirectory);
+    fs.writeFileSync(path.join(logoDirectory, 'canva.svg'), '<svg viewBox="0 0 1 1" />');
 
-    expect(canva).toBeDefined();
-    expect(errors).toContain('canva: Simple Icons version tags must not have a leading v');
+    const errors = validateCatalogAssets([{
+      id: 'canva',
+      logoUrl: '/server-logos/canva.svg',
+      logoSourceKind: 'simple-icons',
+      logoSourceUrl: 'https://github.com/simple-icons/simple-icons/blob/v15.16.0/icons/canva.svg',
+      logoRetrievedAt: '2026-08-18',
+    }], { publicRoot });
+
+    expect(errors).toEqual(['canva: Simple Icons version tags must not have a leading v']);
   });
 
   it('rejects unsafe SVG behaviors and external resources', () => {
@@ -211,9 +214,17 @@ describe('catalog logo asset validation', () => {
   });
 
   it.each([
-    'apify', 'attio', 'bright-data', 'builder-cms', 'exa', 'financial-datasets', 'firecrawl',
-    'fullstory', 'globalping', 'kernel', 'mux', 'parallel-search', 'parallel-task', 'pendo',
-    'port', 'ref', 'statsig', 'tavily', 'you-com', 'zuplo-docs',
+    'agentseo', 'agentweb', 'ahrefs', 'apify', 'athenahq', 'attio', 'basedash', 'blockvectra-docs',
+    'braze', 'bright-data', 'builder-cms', 'cadprops', 'chembl', 'clinical-trials', 'common-room',
+    'configure-memory', 'consensus', 'constant-contact', 'cookierisk', 'courier', 'customer-io',
+    'datocapital', 'descript', 'elicit', 'eorscope', 'etherscan', 'exa', 'fathom', 'ffmpeg-api',
+    'financial-datasets', 'firecrawl', 'fullstory', 'futureinfra', 'g2x', 'gamma', 'globalping',
+    'gong', 'govisit', 'grigora', 'happyscribe', 'hex', 'kernel', 'leadli', 'lusha', 'mailtester',
+    'mux', 'omniakey', 'openai-docs', 'pandadoc', 'parallel', 'parallel-search', 'parallel-task',
+    'pattorelay', 'pendo', 'port', 'portoperatingsystem', 'productboard', 'realtycrawl', 'ref',
+    'salesql', 'statsig', 'tallyfy', 'tapcart', 'tasarim', 'tavily', 'teamhood', 'upcoach',
+    'usafacts', 'viator', 'vistaprint', 'whalesync', 'whimsical', 'xverum', 'you-com', 'zarla',
+    'zuplo-docs',
   ])(
     'gives the replaced %s logo a root viewBox so it scales to its display box',
     id => {

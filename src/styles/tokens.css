@@ -62,6 +62,10 @@
   --workspace-strip-height: 2.75rem;
   --main-pad: clamp(1rem, 2.6vw, 2.5rem);
 
+  /* The assistant overrides its reserved width on the root while docked. */
+  --solv-chat-panel-width: 0px;
+  --site-viewport-width: calc(100% - var(--solv-chat-panel-width));
+
   /* The signal rail: the 3px left edge that marks the active nav item, a
      verdict, a JSON-RPC message on the wire and a callout. */
   --rail-width: 3px;

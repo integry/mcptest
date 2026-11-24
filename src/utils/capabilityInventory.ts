@@ -114,7 +114,11 @@ const cleanText = (
     .replace(JWT_VALUE, '[REDACTED]')
     .replace(STANDALONE_CREDENTIAL, '[REDACTED]');
   if (!redacted) return { changed: value.length > 0 };
-  const bounded = redacted.length > limit ? redacted.slice(0, limit).trimEnd() : redacted;
+  // Never cut a surrogate pair in half: a lone high surrogate is not valid Unicode
+  // and makes the stored JSON snapshot unparseable for strict JSON loaders.
+  const bounded = redacted.length > limit
+    ? redacted.slice(0, limit).replace(/[\uD800-\uDBFF]$/, '').trimEnd()
+    : redacted;
   return { value: bounded, changed: bounded !== value };
 };
 

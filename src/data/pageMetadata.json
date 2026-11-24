@@ -27,6 +27,10 @@
     "title": "Test Your MCP Client: Protocol Checklist & Servers | mcptest.io",
     "description": "Test an MCP client against free public test servers: a checklist for initialize, version negotiation, tools, bearer auth, errors, timeouts, structuredContent."
   },
+  "serviceDevelopment": {
+    "title": "MCP Server Development: Tested Servers From Your API | mcptest.io",
+    "description": "A tested remote MCP server built from your documented API, delivered with a passing mcptest report, a catalog listing and a badge. Fixed scope, quoted extras."
+  },
   "learn": {
     "title": "Learn MCP",
     "description": "Source-backed MCP guides: how MCP works, connecting clients to remote servers, OAuth, building and testing a server, and decoding errors.",
@@ -45,7 +49,7 @@
   "docs": {
     "privacy-policy": {
       "title": "Privacy Policy | mcptest.io",
-      "description": "Read the mcptest.io privacy policy, including how server connections, test history, local browser storage, and website analytics are handled."
+      "description": "Read the mcptest.io privacy policy, including how server connections, test history, local browser storage, website analytics and the site assistant are handled."
     },
     "terms-of-service": {
       "title": "Terms of Service | mcptest.io",

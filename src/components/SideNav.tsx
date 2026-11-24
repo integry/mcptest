@@ -18,7 +18,7 @@ import {
 } from '../content/navigation';
 import { closeMobileDrawer, useMobileDrawer } from '../hooks/useMobileDrawer';
 
-type ActiveView = 'playground' | 'dashboards' | 'docs' | 'learn' | 'report' | 'catalog' | 'server-profile' | 'breaking-changes' | 'discovery' | 'oauth-check' | 'mcp-test-servers' | 'mcp-test-client' | 'keyword-landing';
+type ActiveView = 'playground' | 'dashboards' | 'docs' | 'learn' | 'report' | 'catalog' | 'server-profile' | 'breaking-changes' | 'discovery' | 'oauth-check' | 'mcp-test-servers' | 'mcp-test-client' | 'service-page' | 'keyword-landing';
 
 interface SideNavProps {
   activeView: ActiveView;

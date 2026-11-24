@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Browser-based tester and catalog for remote MCP servers",
   "engines": {
-    "node": ">=22.0.0"
+    "node": "^22.22.2 || ^24.15.0 || >=26.0.0"
   },
   "scripts": {
     "predev": "node scripts/generate-version.js",
@@ -14,7 +14,7 @@
     "test:lighthouse": "lhci autorun --config=lighthouserc.cjs",
     "test:lighthouse:mobile": "lhci autorun --config=lighthouserc.mobile.cjs",
     "test:bundle-graph": "BUNDLE_GRAPH=1 vitest run scripts/bundle-graph.test.js",
-    "test:site-audit": "SITE_AUDIT=1 vitest run scripts/audit-site.test.mjs",
+    "test:site-audit": "SITE_AUDIT=1 vitest run scripts/audit-site.test.mjs scripts/audit-site-assistant.test.mjs",
     "check-links": "node scripts/check-links.mjs",
     "check-links:external": "node scripts/check-links.mjs --external --concurrency 8 --timeout 10000",
     "analyze": "vite build && node scripts/bundle/report.mjs",
@@ -68,7 +68,7 @@
     "@vitejs/plugin-react": "^6.3.0",
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",
-    "jsdom": "^26.1.0",
+    "jsdom": "^31.0.1",
     "rollup-plugin-visualizer": "^7.1.3",
     "satori": "^0.63.2",
     "typescript": "^7.0.2",
