@@ -26,7 +26,7 @@ export type SiteAssistantEnv = Partial<Record<'VITE_SOLV_ENDPOINT' | 'VITE_SOLV_
 
 /** `name` of the meta tag that carries the config into the page. */
 export const SITE_ASSISTANT_META_NAME = 'mcptest-site-assistant';
-export const SITE_ASSISTANT_BOOT_HASH = 'rajJTGkmDqnHHZdRc/T5s30fwpgQyhbtd1KM/hiBEmI=';
+export const SITE_ASSISTANT_BOOT_HASH = 'r9XUBq3jJTI0aJcTy3vNF2z5H8G5UZoKJXiTglY3bYs=';
 export const SITE_ASSISTANT_BOOT_SOURCE = `'sha256-${SITE_ASSISTANT_BOOT_HASH}'`;
 export const SITE_ASSISTANT_CANCEL_DOCK_EVENT = 'mcptest:cancel-site-assistant-dock';
 

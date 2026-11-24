@@ -10,7 +10,7 @@
  *   - carry the config meta tag exactly once, naming the configured endpoint
  *     and assistant key (missing = no assistant on that page; twice = two);
  *   - have exactly one policy, whose script-src and connect-src list the
- *     endpoint, and whose script-src allows only the boot script inline;
+ *     endpoint, and whose script-src allows only the guarded boot script inline;
  *   - let the widget frame the chat service's visitor check: from solv.chat
  *     0.1.8 the widget runs Cloudflare Turnstile in a frame served by the
  *     endpoint (`<endpoint>/v1/check/frame`, issue #699), so frame-src (or the

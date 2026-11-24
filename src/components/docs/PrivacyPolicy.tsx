@@ -36,7 +36,9 @@ const PrivacyPolicy: React.FC = () => {
           <p>Once you open the assistant:</p>
           <ul>
             <li>The questions you type and the answers you get are stored by the chat service, so that we can see what visitors ask and improve the site's content. The address of the page you asked from is sent with each question.</li>
-            <li>A random identifier is kept in your browser's local storage to keep one conversation together. The open conversation is also kept in session storage, which your browser clears when you close the tab.</li>
+            <li>Your browser's local storage keeps a random visitor identifier, the conversation ID, the last 20 messages with their citations and feedback, and the time of the last message or answer. This lets you continue the conversation in another tab or after restarting your browser.</li>
+            <li>After 7 days without a message or answer, the assistant forgets the conversation the next time it loads. You can clear it sooner by choosing <strong>New conversation</strong> in the panel. This clears the conversation from your browser only. The chat service keeps its copy.</li>
+            <li>The panel layout, unsent draft and scroll position are kept in the tab's session storage, which your browser clears when you close the tab.</li>
             <li>Your messages are processed by the model providers the service uses: Anthropic for answers and OpenAI for search embeddings.</li>
           </ul>
           <p>
