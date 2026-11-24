@@ -315,7 +315,9 @@ export const useCatalog = (prerenderedSearch?: string) => {
   }, [initialPrerenderedSearch, setSearchQuery]);
 
   useEffect(() => {
-    if (!onCatalogRoute) {
+    // Wait for the legacy redirect to commit before writing filter params
+    // against the canonical router location.
+    if (!onCatalogRoute || locationCategory.fromLegacyParam) {
       return;
     }
 
@@ -342,6 +344,7 @@ export const useCatalog = (prerenderedSearch?: string) => {
     };
   }, [
     clearPendingSearchParamSync,
+    locationCategory.fromLegacyParam,
     normalizedSearchQuery,
     oauthFilter,
     onCatalogRoute,
