@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title">
-  <title id="title">Port OS Smart Home generated fallback monogram</title>
-  <rect width="128" height="128" rx="24" fill="#047857"/>
-  <text x="64" y="75" fill="#fff" font-family="Arial, Helvetica, sans-serif" font-size="42" font-weight="700" text-anchor="middle">PO</text>
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M2 12C5.84615 5.69868 14.2721 -0.66958 18.1538 8.84911L22 6.48567V11.9998" stroke="black" stroke-width="2"/>
+<path d="M2 12C5.84615 18.3012 14.2721 24.6693 18.1538 15.1508L22 17.5142V12.0002" stroke="black" stroke-width="2"/>
+<path d="M12 10L5 15L11.5 12L16 14.5L21.5 9.5L16 12.5L12 10Z" fill="black"/>
 </svg>

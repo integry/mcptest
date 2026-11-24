@@ -155,6 +155,7 @@ describe('parseServiceOffer', () => {
         { id: 'audit-fix', name: 'Audit and fix', fromPrice: 75000, deliveryDays: 5 },
       ],
       maintenanceMonthlyPrice: 3900,
+      paymentMethod: 'invoice',
       updatedAt: '2026-11-18T00:00:00Z',
     });
   });
@@ -173,6 +174,16 @@ describe('parseServiceOffer', () => {
     });
     expect(offer?.offers).toEqual([{ id: 'basic-build', name: 'Build', fromPrice: 49900, deliveryDays: null }]);
     expect(offer?.maintenanceMonthlyPrice).toBeNull();
+  });
+
+  it.each([
+    ['absent', undefined, 'invoice'],
+    ['"invoice"', 'invoice', 'invoice'],
+    ['"polar"', 'polar', 'polar'],
+    ['unknown', 'stripe', 'invoice'],
+    ['not a string', 1, 'invoice'],
+  ])('reads an optional paymentMethod (%s)', (_label, paymentMethod, expected) => {
+    expect(parseServiceOffer({ ...CONTRACT_EXAMPLE, paymentMethod })?.paymentMethod).toBe(expected);
   });
 
   it.each([

@@ -1,3 +1,4 @@
+import { getCatalogSearchText, matchesCatalogSearch } from './catalogSearchText';
 import { resolveCatalogEndpointTransport } from './clientSetup';
 import serverCatalog from '../data/serverCatalog.json';
 import catalogValidation from '../data/catalogValidation.json';
@@ -91,30 +92,6 @@ const getDeclaredAuthType = (seed: CatalogServerSeed): CatalogAuthType => {
       : 'none';
 };
 
-const getSearchText = (server: CatalogServer): string => {
-  const searchText = [
-    server.name,
-    server.description,
-    server.url,
-    server.category,
-    server.authType,
-    server.declaredAuthType,
-    server.protocolEra,
-    server.protocolVersion,
-    server.registryName,
-    ...(server.alternativeAuthTypes ?? []),
-    ...(server.alternativeEndpoints ?? []).flatMap(({ url, authType, description }) => [
-      url,
-      authType,
-      description,
-    ]),
-    ...(server.caveats ?? []),
-    ...server.tags,
-  ].join(' ').toLowerCase();
-
-  return `${searchText} ${searchText.replace(/-/g, ' ')}`;
-};
-
 const supportsAuthType = (server: CatalogServer, authType: CatalogAuthType): boolean => {
   return server.authType === authType || server.alternativeAuthTypes?.includes(authType) === true;
 };
@@ -123,50 +100,51 @@ const isResponseClass = (value: unknown): value is NonNullable<CatalogServer['re
   value === 'bot-protection' || value === 'rate-limited' || value === 'payment-required'
 );
 
-export const getCatalogServers = (): CatalogServer[] => {
-  const validationByServerId = new Map(
-    CATALOG_VALIDATION.map((result) => [result.serverId, result])
-  );
+const validationByServerId = new Map(CATALOG_VALIDATION.map((result) => [result.serverId, result]));
 
-  return CATALOG_SEEDS.map((seed) => {
-    const validation = validationByServerId.get(seed.id);
-    const declaredAuthType = getDeclaredAuthType(seed);
-    const authType = declaredAuthType === 'api-key'
-      || declaredAuthType === 'api-token'
-      || declaredAuthType === 'bearer-token'
-      ? declaredAuthType
-      : isCatalogAuthType(validation?.authType)
-        ? validation.authType
-        : declaredAuthType;
+const toCatalogServer = (seed: CatalogServerSeed): CatalogServer => {
+  const validation = validationByServerId.get(seed.id);
+  const declaredAuthType = getDeclaredAuthType(seed);
+  const authType = declaredAuthType === 'api-key'
+    || declaredAuthType === 'api-token'
+    || declaredAuthType === 'bearer-token'
+    ? declaredAuthType
+    : isCatalogAuthType(validation?.authType)
+      ? validation.authType
+      : declaredAuthType;
 
-    return {
-      ...seed,
-      declaredTransport: seed.transport,
-      declaredAuthType,
-      authType,
-      status: validation?.status ?? 'unknown',
-      transport: isValidationTransport(validation?.transport)
-        ? validation.transport
-        : 'unknown',
-      requiresOAuth: authType === 'oauth',
-      protocolEra: isCatalogProtocolEra(validation?.protocolEra)
-        ? validation.protocolEra
-        : 'unknown',
-      protocolVersion: validation?.protocolVersion,
-      validatedUrl: validation?.validatedUrl,
-      authorizationServers: validation?.authorizationServers,
-      checkedAt: validation?.checkedAt,
-      validationMessage: validation?.message,
-      ...(isResponseClass(validation?.responseClass) ? { responseClass: validation.responseClass } : {}),
-      ...(CATALOG_CAPABILITIES[seed.id]
-        ? { capabilityInventory: getInventory(seed.id) }
-        : {}),
-    };
-  });
+  return {
+    ...seed,
+    declaredTransport: seed.transport,
+    declaredAuthType,
+    authType,
+    status: validation?.status ?? 'unknown',
+    transport: isValidationTransport(validation?.transport)
+      ? validation.transport
+      : 'unknown',
+    requiresOAuth: authType === 'oauth',
+    protocolEra: isCatalogProtocolEra(validation?.protocolEra)
+      ? validation.protocolEra
+      : 'unknown',
+    protocolVersion: validation?.protocolVersion,
+    validatedUrl: validation?.validatedUrl,
+    authorizationServers: validation?.authorizationServers,
+    checkedAt: validation?.checkedAt,
+    validationMessage: validation?.message,
+    ...(isResponseClass(validation?.responseClass) ? { responseClass: validation.responseClass } : {}),
+    // Listing and endpoint lookups need no inventory. Validate only
+    // when a profile or category summary actually reads it.
+    get capabilityInventory() {
+      return CATALOG_CAPABILITIES[seed.id] ? getInventory(seed.id) : undefined;
+    },
+  };
 };
 
+export const getCatalogServers = (): CatalogServer[] => CATALOG_SEEDS.map(toCatalogServer);
+
 export const getCatalogServerById = (serverId: string): CatalogServer | undefined => {
-  return getCatalogServers().find((server) => server.id === serverId);
+  const seed = CATALOG_SEEDS.find((server) => server.id === serverId);
+  return seed && toCatalogServer(seed);
 };
 
 /**
@@ -247,7 +225,7 @@ export const filterCatalogServers = (
   }
 
   return servers.filter((server) => {
-    if (query && !getSearchText(server).includes(query)) {
+    if (query && !matchesCatalogSearch(getCatalogSearchText(server), query)) {
       return false;
     }
 

@@ -262,6 +262,7 @@ const SAMPLE_EXPRESSION = `(() => {
     workspaceRecent: has('.recent-server-link'),
     tabs: [...(root?.querySelectorAll('.playground-tab-label') || [])].map(el => el.textContent),
     inter,
+    documentReady: performance.getEntriesByType('navigation')[0]?.domContentLoadedEventEnd > 0,
     painted: Boolean(state && state.paints['first-paint'] !== undefined),
     cls: state ? state.cls : 0,
   };
@@ -315,21 +316,22 @@ async function measureFirstPaint(options = {}) {
     const startedAt = Date.now();
     await page('Page.navigate', { url: `${server.origin}${settings.pathname || '/'}` });
 
-    let inputTriggered = false;
+    let inputTriggeredAt = null;
     for (let tick = 0; tick < ticks; tick++) {
       const due = startedAt + tick * settings.intervalMs;
       const wait = due - Date.now();
       if (wait > 0) await new Promise(done => setTimeout(done, wait));
       const t = Date.now() - startedAt;
-      if (settings.triggerMountAtMs !== undefined && t >= settings.triggerMountAtMs && !inputTriggered) {
-        inputTriggered = true;
-        // Synthetic input starts the deferred mount without excluding layout
-        // shifts as recent user input, so the swap is part of the CLS budget.
-        await page('Runtime.evaluate', { expression: "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift', bubbles: true }))" });
-      }
       const { result } = await page('Runtime.evaluate', { expression: SAMPLE_EXPRESSION, returnByValue: true });
       const sample = { t, ...(result.value || { phase: 'no-document', blank: true }) };
       if (!String(sample.url || '').startsWith(server.origin)) sample.phase = 'navigating';
+      if (settings.triggerMountAtMs !== undefined && t >= settings.triggerMountAtMs
+        && inputTriggeredAt === null && sample.painted && sample.documentReady) {
+        // The entry module installs the listener before DOMContentLoaded.
+        // Synthetic input keeps the swap inside the CLS measurement.
+        inputTriggeredAt = Date.now() - startedAt;
+        await page('Runtime.evaluate', { expression: "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift', bubbles: true }))" });
+      }
       if (tick % screenshotEvery === 0 && screenshots.length < settings.maxScreenshots) {
         const { data } = await page('Page.captureScreenshot', { format: 'jpeg', quality: 40 });
         const bytes = Buffer.from(data, 'base64');
@@ -357,6 +359,7 @@ async function measureFirstPaint(options = {}) {
       screenshots: screenshots.map(({ t, bytes }) => ({ t, bytes: bytes.length })),
       themeChanges: observed.themeChanges,
       paints: observed.paints,
+      inputTriggeredAt,
       cls: observed.cls,
       shifts: observed.shifts,
     };
@@ -394,6 +397,7 @@ function formatTimeline(result) {
   lines.push(`first-paint ${firstPaint?.toFixed(0)} ms, first-contentful-paint ${result.paints['first-contentful-paint']?.toFixed(0)} ms (page clock)`);
   lines.push(`data-theme changes: ${result.themeChanges.map(change => `${change.value}@${change.t.toFixed(0)}ms`).join(', ') || 'none'}`);
   lines.push(`theme set before first paint: ${Boolean(themeSet && firstPaint !== undefined && themeSet.t <= firstPaint)}`);
+  if (result.inputTriggeredAt !== null) lines.push(`mount input: ${result.inputTriggeredAt} ms`);
   lines.push(`cumulative layout shift: ${result.cls.toFixed(4)}${result.shifts.length ? ` (${result.shifts.map(shift => `${shift.value.toFixed(4)}@${shift.t.toFixed(0)}ms ${shift.sources.join(',')}`).join('; ')})` : ''}`);
   lines.push(`screenshots: ${result.screenshots.length} (${result.screenshots.map(shot => `${shot.t}ms:${Math.round(shot.bytes / 1024)}KB`).join(' ')})`);
   return lines.join('\n');

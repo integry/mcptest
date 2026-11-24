@@ -1,7 +1,7 @@
 import React from 'react';
 import { createDeferredComponent } from '../utils/deferredComponent';
 import { getCatalogServerIdFromPath } from '../utils/catalogSeo';
-import { getContentPage, getLearnArticleFromPath, loadLearnArticleBody } from '../content/learnRegistry';
+import { getContentPage, getLearnArticleFromPath, isLearnIndexPath, loadLearnArticleBody } from '../content/learnRegistry';
 import { parseResultShareUrl, parseServerUrl } from '../utils/urlUtils';
 import { getPrerenderedArticle } from '../content/prerenderedArticle';
 import { markdownLearnArticle } from '../components/learn/deferredMarkdownArticle';
@@ -100,7 +100,7 @@ export const getRouteView = (pathname: string, search = ''): RouteView => {
   if (pathname.startsWith('/space/')) return 'dashboards';
   if (getCatalogServerIdFromPath(pathname)) return 'server-profile';
   if (pathname.startsWith('/catalog')) return 'catalog';
-  if (pathname === '/learn' || pathname === '/learn/') return 'learn-index';
+  if (isLearnIndexPath(pathname)) return 'learn-index';
   const content = getContentPage(pathname);
   if (content?.kind === 'article') return 'article';
   if (content?.kind === 'page') return 'page';

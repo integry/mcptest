@@ -4,7 +4,12 @@
  * here: the page reads them at runtime from the service's public offer
  * (docs/service-offer-contract.md) and falls back to PRICE_FALLBACK. Both
  * states carry ESTIMATE_NOTE: a quote is an estimate until we confirm it.
+ * Prices exclude tax, which is added to the invoice where it applies, so both
+ * states also carry taxNote(). Payment is by invoice unless the offer says
+ * otherwise (`paymentMethod`, see howItWorks()).
  */
+
+import type { PaymentMethod } from '../servicePage/offer';
 
 export const SERVICE_PAGE_COPY = {
   breadcrumb: 'MCP server development',
@@ -40,17 +45,45 @@ export const SERVICE_OPTIONS: readonly { id: string; title: string; detail: stri
   { id: 'audit-fix', title: 'Audit and fix', detail: 'You already have an MCP server. We run the full report, fix what fails and hand back the changes.' },
 ];
 
-export const HOW_IT_WORKS: readonly string[] = [
+const BEFORE_PAYMENT: readonly string[] = [
   'Describe your API to the quote assistant: where its documentation is, how it authenticates and what the server should let an AI client do.',
   'Get an estimate of the scope, price and delivery time and, if you want hosting, of the maintenance.',
   'Confirm your email address.',
   'We review the scope and confirm the quote or adjust it.',
-  'You pay once you have the confirmed quote. Work starts after the payment.',
 ];
+const PAYMENT_STEPS: Record<PaymentMethod, readonly string[]> = {
+  invoice: [
+    'Request your invoice from the quote page and give us your billing details.',
+    'Pay the invoice (+ tax if applicable). Work starts once the payment is received.',
+  ],
+  polar: ['You pay once you have the confirmed quote (+ tax if applicable). Work starts after the payment.'],
+};
+/**
+ * The steps for the offer's payment method: by invoice (the default, also in
+ * the prerendered HTML) or, when the offer says `"polar"`, online.
+ */
+export const howItWorks = (paymentMethod: PaymentMethod = 'invoice'): readonly string[] => [
+  ...BEFORE_PAYMENT,
+  ...PAYMENT_STEPS[paymentMethod],
+];
+export const HOW_IT_WORKS: readonly string[] = howItWorks();
 
 export const INDEPENDENCE_STATEMENT = 'Validation results, catalog status and badges are produced the same way for every server and are not affected by buying this service. A server we build is tested by the same checks, listed under the same rules and gets the same badge as any other server.';
 
 export const PRICE_FALLBACK = 'Prices depend on your API and the options you choose. Describe your API to the assistant to get an estimate of the price and delivery time.';
+/**
+ * The short note directly under the prices, with or without the public offer:
+ * prices exclude tax, which is added where it applies, and payment is by
+ * invoice unless the offer says it is online. The currency is only known once
+ * the offer has loaded.
+ */
+export const taxNote = (currency: string | null, paymentMethod: PaymentMethod = 'invoice'): string => {
+  const tax = currency ? `Prices are in ${currency}, + tax if applicable.` : 'Prices exclude tax, + tax if applicable.';
+  return paymentMethod === 'invoice' ? `${tax} Payment is by invoice.` : tax;
+};
+/** The maintenance price, `$39 per month, billed by invoice`. */
+export const maintenancePrice = (monthly: string, paymentMethod: PaymentMethod = 'invoice'): string =>
+  paymentMethod === 'invoice' ? `${monthly} per month, billed by invoice` : `${monthly} per month`;
 /** Shown next to the prices and the quote action, with or without the public offer. */
 export const ESTIMATE_NOTE = 'Prices shown and quotes from the assistant are initial estimates. The final price and delivery time may change once the requirements are clarified, and we confirm both with you before any work starts.';
 export const ORDERS_CLOSED = 'We are not taking orders right now. The prices above show the usual offer.';

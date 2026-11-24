@@ -7,6 +7,9 @@
 
 export const offerUrl = (serviceApi: string): string => `${serviceApi}/public/offer`;
 
+/** How a confirmed quote is paid: by invoice (the default) or online through Polar. */
+export type PaymentMethod = 'invoice' | 'polar';
+
 export interface ServiceOfferItem {
   id: string;
   name: string;
@@ -21,6 +24,8 @@ export interface ServiceOffer {
   offers: ServiceOfferItem[];
   /** Minor units per month, or null when maintenance is not offered. */
   maintenanceMonthlyPrice: number | null;
+  /** `invoice` when the field is missing or has another value. */
+  paymentMethod: PaymentMethod;
   updatedAt: string | null;
 }
 
@@ -58,6 +63,7 @@ export const parseServiceOffer = (json: unknown): ServiceOffer | null => {
     currency,
     offers,
     maintenanceMonthlyPrice,
+    paymentMethod: json.paymentMethod === 'polar' ? 'polar' : 'invoice',
     updatedAt: typeof json.updatedAt === 'string' ? json.updatedAt : null,
   };
 };

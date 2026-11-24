@@ -1,5 +1,28 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title">
-  <title id="title">Whimsical generated fallback monogram</title>
-  <rect width="128" height="128" rx="24" fill="#7a3cf0"/>
-  <text x="64" y="75" fill="#fff" font-family="Arial, Helvetica, sans-serif" font-size="42" font-weight="700" text-anchor="middle">WH</text>
+<svg width="35" height="25" viewBox="0 0 35 25" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path fill-rule="evenodd" clip-rule="evenodd" d="M13.2938 3.64742C13.0374 3.3901 12.6217 3.3901 12.3653 3.64742L4.00919 12.034C3.7528 12.2913 3.7528 12.7085 4.00919 12.9658L12.3653 21.3524C12.6217 21.6097 13.0374 21.6097 13.2938 21.3524L21.6499 12.9658C21.9063 12.7085 21.9063 12.2913 21.6499 12.034L13.2938 3.64742ZM13.758 0.385981C13.2452 -0.12866 12.4139 -0.12866 11.9011 0.385981L0.75958 11.5681C0.246807 12.0827 0.246807 12.9171 0.75958 13.4317L11.9011 24.6138C12.4139 25.1285 13.2452 25.1285 13.758 24.6138L24.8995 13.4317C25.4123 12.9171 25.4123 12.0827 24.8995 11.5681L13.758 0.385981Z" fill="#220A33"/>
+<mask id="mask0_1145_6531" style="mask-type:alpha" maskUnits="userSpaceOnUse" x="0" y="0" width="26" height="25">
+<path fill-rule="evenodd" clip-rule="evenodd" d="M13.2938 3.64742C13.0374 3.3901 12.6217 3.3901 12.3653 3.64742L4.00919 12.034C3.7528 12.2913 3.7528 12.7085 4.00919 12.9658L12.3653 21.3524C12.6217 21.6097 13.0374 21.6097 13.2938 21.3524L21.6499 12.9658C21.9063 12.7085 21.9063 12.2913 21.6499 12.034L13.2938 3.64742ZM13.758 0.385981C13.2452 -0.12866 12.4139 -0.12866 11.9011 0.385981L0.75958 11.5681C0.246807 12.0827 0.246807 12.9171 0.75958 13.4317L11.9011 24.6138C12.4139 25.1285 13.2452 25.1285 13.758 24.6138L24.8995 13.4317C25.4123 12.9171 25.4123 12.0827 24.8995 11.5681L13.758 0.385981Z" fill="#220A33"/>
+</mask>
+<g mask="url(#mask0_1145_6531)">
+<g filter="url(#filter0_d_1145_6531)">
+<path d="M21.2409 0.385981C21.7537 -0.12866 22.5851 -0.12866 23.0978 0.385981L34.2394 11.5681C34.7521 12.0827 34.7521 12.9171 34.2394 13.4317L23.0978 24.6138C22.5851 25.1285 21.7537 25.1285 21.2409 24.6138L10.0994 13.4317C9.58665 12.9171 9.58665 12.0827 10.0994 11.5681L21.2409 0.385981Z" fill="black"/>
+</g>
+</g>
+<path d="M21.2409 0.385981C21.7537 -0.12866 22.5851 -0.12866 23.0978 0.385981L34.2394 11.5681C34.7521 12.0827 34.7521 12.9171 34.2394 13.4317L23.0978 24.6138C22.5851 25.1285 21.7537 25.1285 21.2409 24.6138L10.0994 13.4317C9.58665 12.9171 9.58665 12.0827 10.0994 11.5681L21.2409 0.385981Z" fill="url(#paint0_linear_1145_6531)"/>
+<defs>
+<filter id="filter0_d_1145_6531" x="5.96484" y="-3.75" width="32.4102" height="32.5" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+<feFlood flood-opacity="0" result="BackgroundImageFix"/>
+<feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>
+<feOffset/>
+<feGaussianBlur stdDeviation="1.875"/>
+<feColorMatrix type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0"/>
+<feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_1145_6531"/>
+<feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow_1145_6531" result="shape"/>
+</filter>
+<linearGradient id="paint0_linear_1145_6531" x1="9.74897" y1="12.4998" x2="34.1418" y2="15.4514" gradientUnits="userSpaceOnUse">
+<stop stop-color="#4433FF"/>
+<stop offset="0.489583" stop-color="#AA33FF"/>
+<stop offset="1" stop-color="#E36BFF"/>
+</linearGradient>
+</defs>
 </svg>

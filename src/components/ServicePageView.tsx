@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import {
   BASIC_SCOPE,
   ESTIMATE_NOTE,
-  HOW_IT_WORKS,
   INDEPENDENCE_STATEMENT,
   ORDERS_CLOSED,
   PRICE_FALLBACK,
@@ -15,6 +14,9 @@ import {
   SERVICE_OPTIONS,
   SERVICE_PAGE_COPY as copy,
   WHAT_YOU_GET,
+  howItWorks,
+  maintenancePrice,
+  taxNote,
 } from '../content/servicePageCopy';
 import { SERVICE_PAGE } from '../servicePage/buildFlag';
 import type { ServicePageConfig } from '../servicePage/config.mts';
@@ -92,7 +94,7 @@ const OfferSummary: React.FC<{ offer: ServiceOffer }> = ({ offer }) => (
     )}
     {offer.maintenanceMonthlyPrice !== null && (
       <p data-offer="maintenance">
-        Hosting and maintenance: {formatPrice(offer.maintenanceMonthlyPrice, offer.currency)} per month.
+        Hosting and maintenance: {maintenancePrice(formatPrice(offer.maintenanceMonthlyPrice, offer.currency), offer.paymentMethod)}.
       </p>
     )}
   </>
@@ -168,6 +170,7 @@ export default function ServicePageView({
                 {offer && <OfferSummary offer={offer} />}
               </>
             )}
+            <p className="service-offer-note" data-note="tax">{taxNote(offer?.currency ?? null, offer?.paymentMethod)}</p>
             <p className="service-offer-note" data-note="estimate">{ESTIMATE_NOTE}</p>
             {ordersClosed
               ? <p className="service-orders-closed" role="status">{ORDERS_CLOSED}</p>
@@ -175,7 +178,7 @@ export default function ServicePageView({
           </section>
 
           <h2 id="how-it-works">How it works</h2>
-          <ol>{HOW_IT_WORKS.map(step => <li key={step}>{step}</li>)}</ol>
+          <ol>{howItWorks(offer?.paymentMethod).map(step => <li key={step}>{step}</li>)}</ol>
 
           <h2 id="independence">Independence</h2>
           <p>{INDEPENDENCE_STATEMENT}</p>

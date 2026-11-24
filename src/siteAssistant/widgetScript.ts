@@ -52,8 +52,9 @@ export const createWidgetElement = (config: SiteAssistantConfig): HTMLElement =>
 
 /**
  * Opens an attached widget's panel, and leaves an open one open. The widget
- * has no public open method; its own launcher toggles the panel (closing it
- * when open) and reports the state in `aria-expanded` (solv.chat
+ * launcher works after an asynchronous script load and opens the chat without
+ * starting the visitor check. It toggles the panel and reports the state in
+ * `aria-expanded` (solv.chat
  * packages/widget/src/element.ts). The panel can already be open from an
  * earlier call or from the conversation solv.chat restores from
  * sessionStorage, so the launcher is clicked only while it reports closed;

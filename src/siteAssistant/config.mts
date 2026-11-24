@@ -9,15 +9,11 @@
  *
  * This module is pure (no DOM) and is the one place the build and the browser
  * derive anything from those variables: vite.config.mjs uses it to extend the
- * Content-Security-Policy in index.html and to write the config meta tag, and
- * every prerendered page (scripts/generate-seo-pages.js, scripts/critical-css.js)
- * is built from that index.html, so they inherit both. The Worker's own
+ * Content-Security-Policy and write the config meta tag and dock boot script.
+ * Every prerendered page inherits them from the built index.html. The Worker's own
  * policies (badges) are for SVGs that never show the widget, and published
  * report permalinks (/r/*) are JSON served by the Worker, so neither changes.
  */
-
-/** The service page's path (src/servicePage/config.mts); spelled out so this module stays import-free. */
-const SERVICE_PAGE_PATH = '/mcp-server-development';
 
 export interface SiteAssistantConfig {
   /** The solv.chat Worker origin, e.g. `https://chat.example.com`. Never a path. */
@@ -30,6 +26,9 @@ export type SiteAssistantEnv = Partial<Record<'VITE_SOLV_ENDPOINT' | 'VITE_SOLV_
 
 /** `name` of the meta tag that carries the config into the page. */
 export const SITE_ASSISTANT_META_NAME = 'mcptest-site-assistant';
+export const SITE_ASSISTANT_BOOT_HASH = 'r9XUBq3jJTI0aJcTy3vNF2z5H8G5UZoKJXiTglY3bYs=';
+export const SITE_ASSISTANT_BOOT_SOURCE = `'sha256-${SITE_ASSISTANT_BOOT_HASH}'`;
+export const SITE_ASSISTANT_CANCEL_DOCK_EVENT = 'mcptest:cancel-site-assistant-dock';
 
 /** Public keys are opaque ids; anything else is a misconfiguration, not markup to inject. */
 const ASSISTANT_KEY = /^[A-Za-z0-9_-]{1,128}$/;
@@ -77,11 +76,11 @@ export const readSiteAssistantEnv = (env: SiteAssistantEnv): SiteAssistantConfig
 export const widgetScriptUrl = (config: SiteAssistantConfig): string => `${config.endpoint}/widget.js`;
 
 /**
- * The CSP additions: the widget script, and its config, chat (server-sent
- * events over fetch) and feedback requests. Exactly the configured origin.
+ * Allows the boot script by hash and the configured widget origin for scripts
+ * and connections.
  */
 export const siteAssistantCspSources = (config: SiteAssistantConfig | null): Record<string, string[]> =>
-  config ? { 'script-src': [config.endpoint], 'connect-src': [config.endpoint] } : {};
+  config ? { 'script-src': [config.endpoint, SITE_ASSISTANT_BOOT_SOURCE], 'connect-src': [config.endpoint] } : {};
 
 /**
  * `policy` with `additions` (directive name to sources) merged in, without
@@ -122,16 +121,6 @@ export const transformCspMeta = (html: string, transform: (policy: string) => st
 };
 
 /**
- * index.html for this build: the policy extended and the config meta tag
- * added after it. With the assistant off the HTML is returned unchanged.
- */
-export const applySiteAssistantToHtml = (html: string, config: SiteAssistantConfig | null): string => {
-  if (!config) return html;
-  const meta = `<meta name="${SITE_ASSISTANT_META_NAME}" data-endpoint="${config.endpoint}" data-assistant="${config.assistantKey}" />`;
-  return transformCspMeta(html, policy => applySiteAssistantCsp(policy, config), meta);
-};
-
-/**
  * Paths that never load the widget: auth flows, pages that show a visitor's
  * own data, and pages whose URL carries an endpoint (the widget sends the page
  * URL with every question):
@@ -144,11 +133,6 @@ export const applySiteAssistantToHtml = (html: string, config: SiteAssistantConf
  * - `/mcp-server-development`: the service page shows its own quote
  *   assistant instead (src/servicePage/).
  */
-const EXCLUDED_EXACT = new Set(['/oauth/callback', '/install-integration', '/space', '/report', '/r', SERVICE_PAGE_PATH]);
-const EXCLUDED_PREFIXES = ['/oauth/callback/', '/install-integration/', '/space/', '/report/', '/server/', '/call/', '/r/'];
+export const SITE_ASSISTANT_EXCLUDED_PATH = /^\/(?:(?:oauth\/callback|install-integration|space|report|r)(?:\/|$)|(?:server|call)\/|mcp-server-development\/*$)/;
 
-export const isSiteAssistantPath = (pathname: string): boolean => {
-  const path = pathname.length > 1 ? pathname.replace(/\/+$/, '') || '/' : pathname;
-  if (EXCLUDED_EXACT.has(path)) return false;
-  return !EXCLUDED_PREFIXES.some(prefix => pathname.startsWith(prefix));
-};
+export const isSiteAssistantPath = (pathname: string): boolean => !SITE_ASSISTANT_EXCLUDED_PATH.test(pathname);

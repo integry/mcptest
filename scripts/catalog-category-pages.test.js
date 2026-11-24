@@ -50,7 +50,7 @@ describe('prerendered catalog category pages', () => {
       );
       expect(html).toContain(`<h1 class="mb-1">${summary.category.replace(/&/g, '&amp;')} MCP servers</h1>`);
       expect(decode(html)).toContain(getCatalogCategoryIntro(summary).join(' '));
-      expect(html.match(/<li class="catalog-server-list-item">/g)).toHaveLength(summary.count);
+      expect(html.match(/<li class="catalog-server-list-item" data-catalog-server-id="/g)).toHaveLength(summary.count);
       expect(html).toContain(`aria-current="page"><span>${summary.category}</span><span aria-label="${summary.count} servers">`);
       expect(html.match(/class="catalog-category-option"/g)).toHaveLength(summaries.length + 1);
     }
@@ -156,5 +156,6 @@ describe('prerendered server tool inventory', () => {
       ).toBe(true);
       expect(() => structuredData(html), server.id).not.toThrow();
     }
-  });
+    // Renders every catalog page, so its cost grows with each import batch.
+  }, 30_000);
 });

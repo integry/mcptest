@@ -403,6 +403,16 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
 
   // Initialize tab state and handle auto-connection
   const hasAutoConnected = useRef(false);
+  // Delayed connect callbacks must not run after the tab unmounts (closing a
+  // tab, leaving the playground, or test teardown). StrictMode's simulated
+  // unmount/remount sets this back to true before the timers fire.
+  const isMounted = useRef(true);
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
   useEffect(() => {
     if (!hasInitialized.current) {
       setServerUrl(tab.serverUrl);
@@ -431,6 +441,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
       
       // Use a small timeout to ensure state is properly initialized
       setTimeout(() => {
+        if (!isMounted.current) return;
         trackEvent('connect_attempt', { source: tab.resultShareData ? 'shared_link' : 'catalog', transport_hint: getPreferredTransportHint(tab.serverUrl) ?? 'auto', proxy: tab.useProxy !== false });
         handleConnect(
           setTools,
@@ -807,6 +818,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
       
       // Add a small delay to ensure token is properly stored and available
       setTimeout(() => {
+        if (!isMounted.current) return;
         console.log('[OAuth] Triggering reconnection after delay...');
         // Trigger reconnection
         trackEvent('connect_attempt', { source: 'reconnect', transport_hint: getPreferredTransportHint(tab.serverUrl) ?? 'auto', proxy: tab.useProxy !== false });
@@ -1168,8 +1180,9 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
   useEffect(() => {
     const workbench = workbenchRef.current;
     if (!workbench || !isConnected || !isActive) return;
+    const scroller = workbench.closest('.main-content');
     const updateHeight = () => {
-      const top = workbench.getBoundingClientRect().top + window.scrollY;
+      const top = workbench.getBoundingClientRect().top + (scroller?.scrollTop ?? 0);
       workbench.style.setProperty('--workbench-top', `${top}px`);
     };
     updateHeight();
@@ -1207,6 +1220,7 @@ const TabContent: React.FC<TabContentProps> = ({ tab, isActive, onUpdateTab, spa
     >
       {showLanding ? (
         <LandingHero
+          isActive={isActive}
           serverUrl={serverUrl}
           onServerUrlChange={handleServerUrlChange}
           onConnect={handleLandingConnect}

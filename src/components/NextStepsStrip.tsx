@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import React, { useState } from 'react';
 import { trackEvent } from '../utils/analytics';
 import { completeNextStep } from '../utils/nextStepsProgress';
@@ -32,7 +33,7 @@ export default function NextStepsStrip({ endpoint, onCallTool }: { endpoint: str
     }}>Dismiss</button></div>
     <ul className="next-steps-list list-unstyled mb-0">{steps.map(([step, label, href]) => <li key={step}>
       {completed.includes(step) ? <span className="next-step-completed" aria-label="Completed">✓</span> : <span className="next-step-pending" aria-hidden="true">→</span>}
-      {href ? <a href={href} onClick={() => click(step)}>{label}</a> : <button className="btn btn-link p-0 align-baseline" onClick={() => click(step)}>{label}</button>}
+      {href ? <Link to={href} reloadDocument={step === 'ci'} onClick={() => click(step)}>{label}</Link> : <button className="btn btn-link p-0 align-baseline" onClick={() => click(step)}>{label}</button>}
     </li>)}</ul>
   </aside>;
 }

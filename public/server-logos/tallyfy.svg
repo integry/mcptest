@@ -1,5 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title">
-  <title id="title">Tallyfy generated fallback monogram</title>
-  <rect width="128" height="128" rx="24" fill="#334155"/>
-  <text x="64" y="75" fill="#fff" font-family="Arial, Helvetica, sans-serif" font-size="42" font-weight="700" text-anchor="middle">TA</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
+<title>Tallyfy</title>
+<style>@media (prefers-color-scheme:dark){.b{fill:#5f88bf}}</style>
+<path fill="#ee7616" d="M.5 5.5L4.25 6.75L6 8L2.25 8Z"/>
+<path class="b" fill="#2e5c9b" d="M0 8L6.5 8L7.25 13L6.25 12L4.5 10.75L0 8.5Z"/>
+<path fill="#3fb65b" d="M12.5 .5L7.5 7.75L3.5 5.25L3.25 5.5L7.5 14.5L13.75 2L16 2L16 1.5Z"/>
 </svg>

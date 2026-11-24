@@ -12,7 +12,9 @@ initial estimates, not final prices. The flow is: the visitor describes their
 API to the assistant, gets an estimate of scope, price, delivery and
 maintenance, and confirms their email address. An operator then reviews the
 scope and confirms the quote or adjusts it, and only a confirmed quote can be
-paid. The page says so next to the prices and the quote action, both with the
+paid. For the launch, payment is by invoice: the visitor requests an invoice
+from the quote page with their billing details and pays it, and work starts
+once the payment is received (see `paymentMethod` below). The page says so next to the prices and the quote action, both with the
 offer and with the neutral fallback copy. This does not change the JSON shape
 below; the page's prices still come only from this endpoint.
 
@@ -56,11 +58,32 @@ every visit.
 | `offers` | array, required | Rendered in order. Offers may be added or removed; the page renders whatever is listed. |
 | `offers[].id` | string, required | Stable id (also used for quote pages). |
 | `offers[].name` | string, required | Shown as is. |
-| `offers[].fromPrice` | integer ≥ 0, required | The starting price in minor units, shown as "from $499". An estimate; the operator confirms the final price. |
+| `offers[].fromPrice` | integer ≥ 0, required | The starting price in minor units, shown as "from $499". Excludes tax. An estimate; the operator confirms the final price. |
 | `offers[].deliveryDays` | integer > 0, optional | Shown as "delivery in about N days"; omitted when missing. |
 | `maintenance` | object or `null`, required | `null` when hosting and maintenance is not offered. |
-| `maintenance.monthlyPrice` | integer ≥ 0 | Monthly price in minor units. |
+| `maintenance.monthlyPrice` | integer ≥ 0 | Monthly price in minor units. Excludes tax. |
+| `paymentMethod` | `"invoice"` or `"polar"`, optional | How a confirmed quote is paid. Missing or any other value: `"invoice"`. |
 | `updatedAt` | ISO 8601 string, optional | When the offer last changed. Not shown. |
+
+`fromPrice` and `monthlyPrice` exclude tax: sales tax or VAT is added where it
+applies. The page says so in one short note under the prices ("Prices are in
+USD, + tax if applicable. Payment is by invoice."), and in its neutral copy too
+("Prices exclude tax, + tax if applicable. Payment is by invoice.").
+
+`paymentMethod` is optional and additive: the example above omits it, and a
+service that does not send it keeps working. It only changes wording, never
+the prices or whether the quote action is shown:
+
+- `"invoice"`, missing, or any other value (the prerendered HTML too): the
+  last two "How it works" steps are "Request your invoice from the quote page
+  and give us your billing details." and "Pay the invoice (+ tax if
+  applicable). Work starts once the payment is received.", the note under the
+  prices ends with "Payment is by invoice.", and maintenance is shown as "$39
+  per month, billed by invoice". Nothing on the page offers online or card
+  payment.
+- `"polar"`: the last step is "You pay once you have the confirmed quote (+ tax
+  if applicable). Work starts after the payment.", and the invoice wording is
+  left out of the note and the maintenance price.
 
 Prices are formatted with `Intl.NumberFormat` in the currency's own number of
 minor digits (USD 49900 is `$499`, 49950 is `$499.50`, JPY 5000 is `¥5,000`).
@@ -80,7 +103,8 @@ when:
 The quote assistant has one page action, `open_quote({ url })`, registered
 with `confirm: true`, so the solv.chat widget asks the visitor before it runs.
 A quote page shows the estimate until an operator has confirmed or adjusted
-it; payment is offered only for a confirmed quote. The action navigates the
+it; payment (an invoice request, or online payment when `paymentMethod` is
+`"polar"`) is offered only for a confirmed quote. The action navigates the
 tab only to an `https` URL on the `VITE_SERVICE_API` origin
 whose path is under `<base path>/q/`; any other URL is refused with
 `{ "opened": false, "error": "That destination is not allowed. …" }` and

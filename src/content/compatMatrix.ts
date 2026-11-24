@@ -6,7 +6,7 @@
  *   <!-- compat-matrix clients="cursor" limitations="true" -->
  *
  * The directive is expanded when the article is created, so the React page,
- * the prerendered HTML and the raw `.md` export all carry the same table.
+ * the prerendered HTML and the raw `.md` export all carry the same tables.
  */
 import {
   CLIENT_COMPATIBILITY_IDS,
@@ -95,7 +95,10 @@ export const parseCompatMatrixDirective = (body: string): { clients: string[]; l
   return { clients, limitations: attributes.get('limitations') === 'true' };
 };
 
-/** Markdown table (and optional limitation list) for the given client ids. */
+const markdownTable = (headers: readonly string[], rows: readonly string[][]) =>
+  [headers, headers.map(() => '---'), ...rows].map(row => `| ${row.join(' | ')} |`).join('\n');
+
+/** Markdown tables (and optional limitation list) for the given client ids. */
 export const renderCompatMatrixMarkdown = (
   clientIds: readonly string[],
   options: { limitations?: boolean; currentPath?: string } = {}
@@ -105,26 +108,35 @@ export const renderCompatMatrixMarkdown = (
     if (!entry) throw new Error(`compat-matrix references unknown client ${id}. Known clients: ${CLIENT_COMPATIBILITY_IDS.join(', ')}.`);
     return entry;
   });
-  const header = ['Client', 'Version', 'Streamable HTTP', 'Legacy SSE', 'stdio', 'Protocol versions', 'OAuth registration', 'Other credentials', 'Private hosts', 'Configuration', 'Verified'];
-  const rows = entries.map((entry) => [
-    clientCell(entry, options.currentPath),
-    versionCell(entry),
-    transportCell(entry, 'streamableHttp'),
-    transportCell(entry, 'legacySse'),
-    transportCell(entry, 'stdio'),
-    protocolCell(entry),
-    oauthCell(entry),
-    credentialsCell(entry),
-    support(entry.privateHosts),
-    configurationCell(entry),
-    entry.verifiedOn,
-  ].map(escapeCell));
-
-  const lines = [
-    `| ${header.join(' | ')} |`,
-    `| ${header.map(() => '---').join(' | ')} |`,
-    ...rows.map((row) => `| ${row.join(' | ')} |`),
+  const tables = [
+    {
+      headers: ['Client', 'Streamable HTTP', 'Legacy SSE'],
+      cells: (entry: ClientCompatibilityEntry) => [transportCell(entry, 'streamableHttp'), transportCell(entry, 'legacySse')],
+    },
+    {
+      headers: ['Client', 'stdio', 'Private hosts'],
+      cells: (entry: ClientCompatibilityEntry) => [transportCell(entry, 'stdio'), support(entry.privateHosts)],
+    },
+    {
+      headers: ['Client', 'OAuth client setup', 'Other credentials'],
+      cells: (entry: ClientCompatibilityEntry) => [oauthCell(entry), credentialsCell(entry)],
+    },
+    {
+      headers: ['Client', 'Configuration'],
+      cells: (entry: ClientCompatibilityEntry) => [configurationCell(entry)],
+    },
+    {
+      headers: ['Client', 'Versions', 'Verified'],
+      cells: (entry: ClientCompatibilityEntry) => [
+        `Client: ${versionCell(entry)}. Protocol: ${protocolCell(entry)}.`,
+        entry.verifiedOn,
+      ],
+    },
   ];
+  const lines = [tables.map(({ headers, cells }) => {
+    const rows = entries.map(entry => [clientCell(entry, options.currentPath), ...cells(entry)].map(escapeCell));
+    return markdownTable(headers, rows);
+  }).join('\n\n')];
 
   if (options.limitations) {
     const limitationLines = entries.flatMap((entry) => entry.limitations.map(({ text, source }) => (
@@ -144,7 +156,7 @@ export const renderCompatMatrixMarkdown = (
 
 /**
  * Replaces every compat-matrix directive in an article body with the rendered
- * table. `currentPath` drops the guide link that would point at the article itself.
+ * tables. `currentPath` drops the guide link that would point at the article itself.
  */
 export const expandCompatMatrixDirectives = (content: string, currentPath?: string): string =>
   content.replace(COMPAT_MATRIX_DIRECTIVE_PATTERN, (_match, body: string) => {

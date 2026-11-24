@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import React from 'react';
 import NextStepsStrip from './NextStepsStrip';
 import { LogEntry, Space, SpaceCard, SelectedTool, ResourceTemplate } from '../types';
@@ -47,7 +48,7 @@ export const ShareReportHint: React.FC<{ href: string; onDismiss?: () => void }>
     <div className="onboarding-hint-text">
       <p className="onboarding-hint-title"><i className="bi bi-share onboarding-hint-icon" aria-hidden="true"></i> Next: share a report</p>
       <p>{SHARE_REPORT_EXPLANATION}</p>
-      <a className="btn btn-sm btn-outline-secondary" href={href}>Share report</a>
+      <Link className="btn btn-sm btn-outline-secondary" to={href}>Share report</Link>
     </div>
     {onDismiss && (
       <button type="button" className="btn btn-sm btn-ghost" onClick={onDismiss} aria-label="Dismiss the share report hint">

@@ -269,14 +269,13 @@ const OutputPanel: React.FC<OutputPanelProps> = (props) => {
             position: 'fixed',
             top: 0,
             left: 0,
-            width: '100vw',
             height: '100vh',
             backgroundColor: 'rgba(0,0,0,0.8)',
             zIndex: 9999
           }}
         >
           <div className="modal-dialog modal-fullscreen" style={{ margin: 0 }}>
-            <div className="modal-content" style={{ height: '100vh', width: '100vw' }}>
+            <div className="modal-content" style={{ height: '100vh' }}>
               <div className="modal-header">
                 <h5 className="modal-title">{props.lastResult.callContext?.name || 'Result'} - Output</h5>
                 <button

@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   CATALOG_SUBMISSION_API_PATH,
@@ -251,7 +252,7 @@ const SubmitServerView: React.FC<SubmitServerViewProps> = ({
           {checkError && <div id={fieldId('check-error')} className="invalid-feedback d-block">{checkError}</div>}
           {duplicate && (
             <p className="submit-server-note" role="status">
-              This endpoint is already listed as <a href={`/servers/${encodeURIComponent(duplicate.id)}`}>{duplicate.name}</a>.
+              This endpoint is already listed as <Link to={`/servers/${encodeURIComponent(duplicate.id)}`}>{duplicate.name}</Link>.
             </p>
           )}
 
@@ -439,7 +440,7 @@ const SubmitServerView: React.FC<SubmitServerViewProps> = ({
           <div className="alert alert-danger" role="alert">
             <p className="mb-0">{submitError.message}</p>
             {submitError.catalogId && (
-              <p className="mb-0 mt-1"><a href={`/servers/${encodeURIComponent(submitError.catalogId)}`}>Open the existing listing</a></p>
+              <p className="mb-0 mt-1"><Link to={`/servers/${encodeURIComponent(submitError.catalogId)}`}>Open the existing listing</Link></p>
             )}
             {submitError.details && (
               <ul className="mb-0 mt-1">

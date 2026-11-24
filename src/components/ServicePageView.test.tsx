@@ -5,7 +5,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import ServicePageView from './ServicePageView';
 import ReleaseReadinessReport from './ReleaseReadinessReport';
-import { ESTIMATE_NOTE, HOW_IT_WORKS, INDEPENDENCE_STATEMENT, ORDERS_CLOSED, PRICE_FALLBACK, REPORT_HELP_LINK } from '../content/servicePageCopy';
+import { ESTIMATE_NOTE, HOW_IT_WORKS, INDEPENDENCE_STATEMENT, ORDERS_CLOSED, PRICE_FALLBACK, REPORT_HELP_LINK, howItWorks, taxNote } from '../content/servicePageCopy';
 import { SERVICE_PAGE_OFF, type ServicePageConfig } from '../servicePage/config.mts';
 import { parseServiceOffer, type ServiceOffer } from '../servicePage/offer';
 import type { QuoteAssistant } from '../servicePage/quoteAssistant';
@@ -50,6 +50,16 @@ const mount = async (props: React.ComponentProps<typeof ServicePageView>): Promi
 
 const prices = (page: HTMLElement) => page.querySelector<HTMLElement>('.service-offer')!;
 const estimateNote = (page: HTMLElement) => prices(page).querySelector('[data-note="estimate"]')?.textContent;
+const taxNoteText = (page: HTMLElement) => prices(page).querySelector('[data-note="tax"]')?.textContent;
+const NEUTRAL_TAX_NOTE = 'Prices exclude tax, + tax if applicable. Payment is by invoice.';
+const steps = (page: HTMLElement) => Array.from(page.querySelectorAll('#how-it-works + ol li'), step => step.textContent ?? '');
+const INVOICE_STEPS = [
+  'Request your invoice from the quote page and give us your billing details.',
+  'Pay the invoice (+ tax if applicable). Work starts once the payment is received.',
+];
+const ONLINE_STEP = 'You pay once you have the confirmed quote (+ tax if applicable). Work starts after the payment.';
+// Nothing may promise or imply instant online payment or a card checkout.
+const ONLINE_PAYMENT = /\bonline\b|\bcard\b|checkout|instant/i;
 
 describe('ServicePageView', () => {
   it('covers the offer, the scope, the options, how it works and the independence statement', () => {
@@ -62,19 +72,23 @@ describe('ServicePageView', () => {
       expect(text, phrase).toContain(phrase);
     }
     expect(Array.from(page.querySelectorAll('[data-option]'), option => option.getAttribute('data-option'))).toEqual(['build-only', 'hosting', 'audit-fix']);
-    // A quote is an estimate we confirm before payment; paying is the last step.
-    const steps = Array.from(page.querySelectorAll('#how-it-works + ol li'), step => step.textContent ?? '');
-    expect(steps).toEqual([...HOW_IT_WORKS]);
-    expect(steps).toHaveLength(5);
-    expect(steps[0]).toMatch(/^Describe your API to the quote assistant/);
-    expect(steps[1]).toMatch(/estimate of the scope, price and delivery time.*maintenance/);
-    expect(steps[2]).toMatch(/Confirm your email/);
-    expect(steps[3]).toMatch(/We review the scope and confirm the quote or adjust it/);
-    expect(steps[4]).toMatch(/^You pay once you have the confirmed quote/);
-    expect(steps.slice(0, 4).join(' ')).not.toMatch(/\bpay/i);
+    // A quote is an estimate we confirm before payment; payment is by invoice, last.
+    const listed = steps(page);
+    expect(listed).toEqual([...HOW_IT_WORKS]);
+    expect(listed).toHaveLength(6);
+    expect(listed[0]).toMatch(/^Describe your API to the quote assistant/);
+    expect(listed[1]).toMatch(/estimate of the scope, price and delivery time.*maintenance/);
+    expect(listed[2]).toMatch(/Confirm your email/);
+    expect(listed[3]).toBe('We review the scope and confirm the quote or adjust it.');
+    expect(listed.slice(4)).toEqual(INVOICE_STEPS);
+    // Tax is mentioned once in the steps, in the paying step.
+    expect(listed.filter(step => /tax/i.test(step))).toEqual([listed[5]]);
+    expect(listed.slice(0, 4).join(' ')).not.toMatch(/\bpay/i);
+    expect(text).not.toMatch(ONLINE_PAYMENT);
     expect(text).toContain(INDEPENDENCE_STATEMENT);
     // The prerendered HTML has no prices, only the neutral copy and the action.
     expect(prices(page).textContent).toContain(PRICE_FALLBACK);
+    expect(taxNoteText(page)).toBe(NEUTRAL_TAX_NOTE);
     expect(estimateNote(page)).toBe(ESTIMATE_NOTE);
     expect(prices(page).textContent).not.toMatch(/\$\d/);
     expect(text).not.toMatch(/fixed price/i);
@@ -86,6 +100,7 @@ describe('ServicePageView', () => {
     expect(loadOffer).not.toHaveBeenCalled();
     expect(prices(page).dataset.offerState).toBe('unavailable');
     expect(prices(page).textContent).toContain(PRICE_FALLBACK);
+    expect(taxNoteText(page)).toBe(NEUTRAL_TAX_NOTE);
     expect(estimateNote(page)).toBe(ESTIMATE_NOTE);
     const quote = prices(page).querySelector('a.btn-primary')!;
     expect(quote.textContent).toBe('Get a quote');
@@ -101,16 +116,46 @@ describe('ServicePageView', () => {
     expect(rows).toEqual([
       'MCP server from your APIfrom $499delivery in about 5 days',
       'Audit and fixfrom $750delivery in about 5 days',
-      'Hosting and maintenance: $39 per month.',
+      'Hosting and maintenance: $39 per month, billed by invoice.',
     ]);
     expect(prices(page).textContent).not.toContain(PRICE_FALLBACK);
-    // The note sits between the prices and the quote action.
+    // One tax note directly under the prices, then the estimate note, then the quote action.
+    const tax = prices(page).querySelector('[data-note="tax"]')!;
+    expect(tax.textContent).toBe('Prices are in USD, + tax if applicable. Payment is by invoice.');
+    expect(prices(page).querySelectorAll('[data-note="tax"]')).toHaveLength(1);
+    expect(prices(page).querySelector('[data-offer="maintenance"]')!.nextElementSibling).toBe(tax);
     const note = prices(page).querySelector('[data-note="estimate"]')!;
     expect(note.textContent).toBe(ESTIMATE_NOTE);
+    expect(tax.nextElementSibling).toBe(note);
     const quote = prices(page).querySelector('.btn-primary')!;
     expect(quote.textContent).toBe('Get a quote');
     expect(prices(page).querySelector('.service-offer-list')!.compareDocumentPosition(note) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(note.compareDocumentPosition(quote) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(steps(page).slice(4)).toEqual(INVOICE_STEPS);
+    expect(page.textContent).not.toMatch(ONLINE_PAYMENT);
+  });
+
+  it.each([
+    ['"invoice"', 'invoice'],
+    ['an unknown value', 'card'],
+  ])('uses the invoice wording when paymentMethod is %s', async (_label, paymentMethod) => {
+    const offer = parseServiceOffer({ ordersOpen: true, currency: 'USD', offers: [{ id: 'basic-build', name: 'Build', fromPrice: 49900 }], maintenance: { monthlyPrice: 3900 }, paymentMethod })!;
+    expect(offer.paymentMethod).toBe('invoice');
+    const page = await mount({ config: WITH_API, loadOffer: async () => offer });
+    expect(steps(page)).toEqual([...HOW_IT_WORKS]);
+    expect(taxNoteText(page)).toBe('Prices are in USD, + tax if applicable. Payment is by invoice.');
+    expect(prices(page).querySelector('[data-offer="maintenance"]')?.textContent).toBe('Hosting and maintenance: $39 per month, billed by invoice.');
+  });
+
+  it('uses the online paying step when paymentMethod is "polar"', async () => {
+    const page = await mount({ config: WITH_API, loadOffer: async () => ({ ...OFFER, paymentMethod: 'polar' }) });
+    const listed = steps(page);
+    expect(listed).toEqual([...howItWorks('polar')]);
+    expect(listed.slice(0, 4)).toEqual(HOW_IT_WORKS.slice(0, 4));
+    expect(listed.slice(4)).toEqual([ONLINE_STEP]);
+    expect(taxNoteText(page)).toBe('Prices are in USD, + tax if applicable.');
+    expect(prices(page).querySelector('[data-offer="maintenance"]')?.textContent).toBe('Hosting and maintenance: $39 per month.');
+    expect(page.textContent).not.toMatch(/invoice/i);
   });
 
   it('renders whatever offers are listed, without maintenance when it is null', async () => {
@@ -118,6 +163,13 @@ describe('ServicePageView', () => {
     const page = await mount({ config: WITH_API, loadOffer: async () => offer });
     expect(Array.from(prices(page).querySelectorAll('[data-offer]'), row => row.getAttribute('data-offer'))).toEqual(['audit-fix']);
     expect(prices(page).textContent).not.toContain('Hosting and maintenance');
+    expect(prices(page).querySelector('.service-offer-list')!.nextElementSibling?.textContent).toBe('Prices are in USD, + tax if applicable. Payment is by invoice.');
+  });
+
+  it('names the offer currency in the tax note', () => {
+    expect(taxNote('EUR')).toBe('Prices are in EUR, + tax if applicable. Payment is by invoice.');
+    expect(taxNote('EUR', 'polar')).toBe('Prices are in EUR, + tax if applicable.');
+    expect(taxNote(null)).toBe(NEUTRAL_TAX_NOTE);
   });
 
   it.each([
@@ -127,6 +179,7 @@ describe('ServicePageView', () => {
     const page = await mount({ config: WITH_API, loadOffer });
     expect(prices(page).dataset.offerState).toBe('unavailable');
     expect(prices(page).textContent).toContain(PRICE_FALLBACK);
+    expect(taxNoteText(page)).toBe(NEUTRAL_TAX_NOTE);
     expect(estimateNote(page)).toBe(ESTIMATE_NOTE);
     expect(prices(page).querySelector('.btn-primary')?.textContent).toBe('Get a quote');
   });
@@ -135,6 +188,7 @@ describe('ServicePageView', () => {
     const page = await mount({ config: WITH_ASSISTANT, loadOffer: async () => ({ ...OFFER, ordersOpen: false }) });
     expect(prices(page).textContent).toContain('from $499');
     expect(prices(page).querySelector('.service-orders-closed')?.textContent).toBe(ORDERS_CLOSED);
+    expect(taxNoteText(page)).toBe(taxNote('USD'));
     expect(estimateNote(page)).toBe(ESTIMATE_NOTE);
     expect(prices(page).querySelector('.btn-primary')).toBeNull();
   });

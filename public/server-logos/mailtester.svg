@@ -1,5 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title">
-  <title id="title">MailTester generated fallback monogram</title>
-  <rect width="128" height="128" rx="24" fill="#334155"/>
-  <text x="64" y="75" fill="#fff" font-family="Arial, Helvetica, sans-serif" font-size="42" font-weight="700" text-anchor="middle">MA</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <rect width="32" height="32" rx="7" fill="#ffffff"/>
+  <g transform="translate(3.95 3.2) scale(0.93)">
+    <path d="M830.947,232.24h-5.568V214.4l5.568,5.31Z" transform="translate(-825.379 -204.711)" fill="#191847"/>
+    <path d="M896.143,214.935h-5.957v-20.16l5.957-5.391Z" transform="translate(-870.214 -187.406)" fill="#191847"/>
+    <path d="M842.881,182.965l-8.951,7.957-8.239-7.6a2.857,2.857,0,0,0-.312-.235v7.9l8.48,7.82L851.308,183.3v-.333Z" transform="translate(-825.379 -182.965)" fill="#489306"/>
+    <path d="M833.931,191.2l4.413,3.9-4.485,3.987-8.48-7.82v-7.9" transform="translate(-825.379 -183.24)" fill="#489306"/>
+  </g>
 </svg>

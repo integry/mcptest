@@ -1,3 +1,4 @@
+import { MemoryRouter } from 'react-router-dom';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
@@ -51,7 +52,7 @@ describe('the /mcp-server-development route', () => {
     const { getRouteView, Footer } = await loadWithFlag(enabled);
     expect(getRouteView(SERVICE_PAGE_PATH)).toBe(enabled ? 'service-page' : 'not-found');
     expect(getRouteView('/mcp-test-client')).toBe('mcp-test-client');
-    const footer = renderToStaticMarkup(<Footer />);
+    const footer = renderToStaticMarkup(<MemoryRouter><Footer /></MemoryRouter>);
     expect(footer.includes(`href="${SERVICE_PAGE_PATH}"`)).toBe(enabled);
   });
 });

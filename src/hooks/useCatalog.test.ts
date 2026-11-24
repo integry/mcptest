@@ -177,8 +177,23 @@ describe('catalog query params', () => {
     expect(view.catalog.oauthFilter).toBe('no-auth');
     expect(view.catalog.sortOrder).toBe('name');
     expect(view.catalog.filteredServers.map(({ name }) => name)).toEqual([
+      'Aiwyn Tax',
+      'ARAG Spain Insurance Products',
+      'Blockscout',
+      'Clarity AI SFDR 2.0',
       'CoinGecko',
+      'CoinGecko (MCP app)',
+      'DoubleTaxation',
       'EOR Scope',
+      'ExpenseOS',
+      'Gemini',
+      'Hookr',
+      'Kuotia',
+      'QuarterWise 1099 Tax Planner',
+      'Ramp Data',
+      'Ratehub Mortgage',
+      'Réassurez-Moi',
+      'TaxAct',
       'Yahoo Finance',
     ]);
     expect(view.location.pathname).toBe('/catalog/finance');

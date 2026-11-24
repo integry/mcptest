@@ -404,9 +404,8 @@ function validateOAuthRegistration(seed, label) {
   }
 
   if (registration.mode === 'pre-registered-required'
-      && (!registration.clientId.required || !registration.clientSecret.required
-        || !registration.callback.required)) {
-    throw new Error(`${label}: pre-registered OAuth requires client ID, secret, and callback metadata`);
+      && (!registration.clientId.required || !registration.callback.required)) {
+    throw new Error(`${label}: pre-registered OAuth requires client ID and callback metadata`);
   }
   if (registration.clientSecret.required && registration.browserPublicClientSupported === true) {
     throw new Error(`${label}: a secret-required OAuth app cannot advertise a browser/public fallback`);

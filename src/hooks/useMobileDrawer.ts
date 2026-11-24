@@ -43,8 +43,9 @@ export const useMobileDrawer = (enabled: boolean, navRef: RefObject<HTMLElement 
       if (open) {
         opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
         focusableWithin(drawer)[0]?.focus();
-      } else if (opener && document.contains(opener)) {
-        opener.focus();
+      } else {
+        const active = document.activeElement;
+        if (opener?.isConnected && (active === body || drawer.contains(active))) opener.focus();
         opener = null;
       }
     };
@@ -76,9 +77,15 @@ export const useMobileDrawer = (enabled: boolean, navRef: RefObject<HTMLElement 
 
     const observer = new MutationObserver(onOpenChange);
     observer.observe(body, { attributes: true, attributeFilter: ['class'] });
+    // Closing the dock can restore the desktop sidebar while the drawer is open.
+    const resize = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => {
+      if (wasOpen && getComputedStyle(drawer).display === 'none') closeMobileDrawer();
+    });
+    resize?.observe(drawer);
     document.addEventListener('keydown', onKeyDown);
     return () => {
       observer.disconnect();
+      resize?.disconnect();
       document.removeEventListener('keydown', onKeyDown);
     };
   }, [enabled, navRef]);

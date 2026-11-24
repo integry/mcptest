@@ -14,7 +14,7 @@
     "test:lighthouse": "lhci autorun --config=lighthouserc.cjs",
     "test:lighthouse:mobile": "lhci autorun --config=lighthouserc.mobile.cjs",
     "test:bundle-graph": "BUNDLE_GRAPH=1 vitest run scripts/bundle-graph.test.js",
-    "test:site-audit": "SITE_AUDIT=1 vitest run scripts/audit-site.test.mjs",
+    "test:site-audit": "SITE_AUDIT=1 vitest run scripts/audit-site.test.mjs scripts/audit-site-assistant.test.mjs",
     "check-links": "node scripts/check-links.mjs",
     "check-links:external": "node scripts/check-links.mjs --external --concurrency 8 --timeout 10000",
     "analyze": "vite build && node scripts/bundle/report.mjs",

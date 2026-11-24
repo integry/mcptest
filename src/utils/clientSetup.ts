@@ -482,7 +482,7 @@ const claudeSetup = (server: CatalogServer, endpoint: PreferredCatalogEndpoint):
   const callbackPort = claudeRedirects[0]?.port;
   if (registration && claudeRedirects.length === 0) {
     requirements.unsupportedReasons.push(
-      'The catalog does not document a usable Claude Code loopback redirect URL with an explicit port.'
+      `Confirm that ${server.name} accepts the exact HTTP loopback redirect URI sent by your Claude Code version. Check the host (localhost or 127.0.0.1), choose a fixed port with --callback-port, and register the full URI including /callback.`
     );
   }
   const command = [
@@ -514,7 +514,8 @@ const claudeSetup = (server: CatalogServer, endpoint: PreferredCatalogEndpoint):
     id: 'claude-code', label: 'Claude Code', heading: 'Claude Code setup',
     documentationUrl: CLIENT_DOCUMENTATION['claude-code'],
     documentationLabel: 'Claude Code MCP documentation',
-    location: 'Run in a terminal. This user-scoped entry is available across projects.',
+    location: supported ? 'Run in a terminal. This user-scoped entry is available across projects.'
+      : 'Review the app registration before configuring Claude Code.',
     copyText: supported ? command : unsupportedCopyText('Claude Code', requirements.unsupportedReasons),
     format: supported ? 'shell' : 'text',
     supported, unsupportedReasons: requirements.unsupportedReasons, endpoint,
@@ -545,14 +546,18 @@ const codexSetup = (server: CatalogServer, endpoint: PreferredCatalogEndpoint): 
     const remote = registration.codexMcpRemote;
     const notes = commonNotes(server, endpoint, selectedAuthType);
     if (!remote) {
-      const unsupportedReasons = ['Codex does not accept the required static OAuth client secret.'];
-      notes.push(`Unsupported setup: ${unsupportedReasons[0]} No secret option is fabricated.`);
+      const unsupportedReasons = [
+        registration.clientSecret.required
+          ? `The registered ${server.name} app requires a client ID and client secret.`
+          : `Use the registered ${server.name} app’s client ID. A public PKCE registration uses no client secret. A confidential registration requires one.`,
+        `Confirm that your Codex CLI version supports the app’s credentials and that ${server.name} accepts its exact redirect URI, including the scheme, host, port and path.`,
+      ];
       return {
         id: 'codex-cli', label: 'Codex CLI', heading: 'Codex CLI setup',
         documentationUrl: CLIENT_DOCUMENTATION['codex-cli'],
         documentationLabel: 'Codex MCP documentation',
-        location: 'Use a publisher-documented compatibility bridge, or choose a client with native pre-registered OAuth support.',
-        copyText: 'Native direct Codex setup is unsupported for this pre-registered OAuth server.',
+        location: 'Check the app registration before configuring Codex CLI.',
+        copyText: unsupportedCopyText('Codex CLI', unsupportedReasons),
         format: 'text', supported: false, unsupportedReasons, endpoint,
         authSummary: authSummary(server, selectedAuthType), notes,
       };
@@ -830,6 +835,10 @@ export const generateClientSetups = (server: CatalogServer): ClientSetup[] => {
       `The catalog OAuth ${field === 'clientId' ? 'client-ID' : 'client-secret'} environment-variable name is invalid. Ask the publisher to correct the catalog metadata before configuring this client.`
     ));
     if (!endpoint.transport && id !== 'cursor') {
+      // A transport gap and an OAuth registration gap can both apply to the same endpoint.
+      if (!invalidCredentials.length && preRegisteredOAuth(server) && (id === 'claude-code' || id === 'codex-cli')) {
+        reasons.push(...generate(server, endpoint).unsupportedReasons);
+      }
       reasons.push('The endpoint transport is unverified. Confirm a concrete transport with the publisher before configuring this client.');
     }
     if (!reasons.length) return generate(server, endpoint);
