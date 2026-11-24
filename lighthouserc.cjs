@@ -28,7 +28,10 @@ module.exports = {
       numberOfRuns: 3,
       settings: {
         preset: 'desktop',
-        chromeFlags: '--no-sandbox --headless=new',
+        // Match Playwright by disabling Chromium's field trial testing config.
+        // Background page-content extraction can force layout of offscreen
+        // catalog rows during collection and inflate total blocking time.
+        chromeFlags: '--no-sandbox --headless=new --disable-field-trial-config',
       },
     },
     assert: {
