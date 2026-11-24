@@ -11552,5 +11552,17 @@
     "authorizationServers": [
       "https://xzwoqetdbqaejrnqpeok.supabase.co/auth/v1"
     ]
+  },
+  {
+    "serverId": "aiprocurement",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateful",
+    "checkedAt": "2026-11-24T16:42:50.252Z",
+    "message": "Negotiated stateful MCP 2025-11-25 at https://mcp.aiprocurement.club/mcp; detected transport streamable-http; authentication none",
+    "validatedUrl": "https://mcp.aiprocurement.club/mcp",
+    "protocolVersion": "2025-11-25"
   }
 ]
