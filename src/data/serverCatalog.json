@@ -641,6 +641,11 @@
         "directory": "claude",
         "id": "directoryPlugin.e79a19e5-515f-41dd-b522-50bbe7af1759",
         "url": "https://claude.com/marketplace/plugins/slack"
+      },
+      {
+        "directory": "claude",
+        "id": "directoryPlugin.522840f9-0318-4eb2-b7ab-60e68f2c5edd",
+        "url": "https://claude.com/marketplace/plugins/sales-cloud"
       }
     ],
     "relevance": 99,
@@ -4152,6 +4157,11 @@
         "directory": "chatgpt",
         "id": "plugin_asdk_app_6a2c0bf33cb48191884d842b15ad3c20",
         "url": "https://chatgpt.com/plugins/plugin_asdk_app_6a2c0bf33cb48191884d842b15ad3c20"
+      },
+      {
+        "directory": "claude",
+        "id": "wf.6a0c9e0662709584d811dcb2",
+        "url": "https://claude.com/marketplace/plugins/mapbox"
       }
     ],
     "relevance": 54,
@@ -38955,6 +38965,11 @@
         "directory": "claude",
         "id": "connector.9e536e6c-e8bf-42be-bea4-ef8e02c4d848",
         "url": "https://claude.com/marketplace/connectors/buffer"
+      },
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6ae21da086548191a7c824ea3dd59064",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6ae21da086548191a7c824ea3dd59064"
       }
     ],
     "relevance": 83,
@@ -40352,10 +40367,10 @@
     "homepageUrl": "https://www.cisco.com/"
   },
   {
-    "id": "retell-ai-chatgpt-app",
+    "id": "retell-ai-chatgpt",
     "name": "Retell AI ChatGPT App",
     "url": "https://chatgpt-app.retellai.com/mcp",
-    "description": "Connect to the Retell AI app for ChatGPT for voice-agent workflows. Sign in with OAuth to connect.",
+    "description": "Manage Retell AI voice agents and workspaces through the ChatGPT app endpoint. Anonymous tool discovery is available, and account workflows require OAuth.",
     "category": "Automation",
     "tags": [
       "voice-agents",
@@ -40395,13 +40410,14 @@
       "evidenceUrl": "https://chatgpt.com/plugins/plugin_asdk_app_695b101534508191a313998a4a5badc0"
     },
     "exactEndpointOnly": true,
-    "logoUrl": "/server-logos/retell-ai-chatgpt-app.svg",
+    "logoUrl": "/server-logos/retell-ai-chatgpt.svg",
     "logoSourceKind": "generated-fallback",
     "logoRetrievedAt": "2026-11-24",
     "logoLicenseNote": "Locally generated monogram for Retell AI ChatGPT App. This monogram is not an official mark.",
     "homepageUrl": "https://www.retellai.com/",
     "caveats": [
-      "The repository validator received an OAuth challenge at the client-specific ChatGPT app endpoint. A direct initialization without credentials identified the app as Retell. The Retell SDK endpoint identifies itself as retell-sdk."
+      "An anonymous session negotiated MCP 2025-06-18, identified this endpoint as Retell 2.4.0, and listed 27 tools. The default validator received an OAuth challenge.",
+      "The protected-resource metadata names https://retell-chatgpt-app.onrender.com/mcp, which also initialized anonymously as Retell 2.4.0."
     ]
   },
   {
@@ -42279,5 +42295,1310 @@
         "url": "https://chatgpt.com/plugins/plugin_asdk_app_695308f21c648191a0dd48dc9965f4bb"
       }
     ]
+  },
+  {
+    "id": "mapbox-docs",
+    "name": "Mapbox Documentation",
+    "url": "https://mcp-docs.mapbox.com/mcp",
+    "description": "Search and retrieve Mapbox documentation for APIs, SDKs, and mapping products. Tool discovery is available without credentials.",
+    "category": "Documentation",
+    "tags": [
+      "mapbox",
+      "documentation",
+      "maps"
+    ],
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "wf.6a0c9e0662709584d811dcb2",
+        "url": "https://claude.com/marketplace/plugins/mapbox"
+      }
+    ],
+    "homepageUrl": "https://www.mapbox.com/",
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://docs.mapbox.com/location-ai/mcp-servers/docs-mcp-server/"
+    },
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/mapbox-docs.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-25",
+    "logoLicenseNote": "Unofficial, locally generated fallback monogram for Mapbox Documentation."
+  },
+  {
+    "id": "char-gen",
+    "name": "CharGen",
+    "url": "https://api.char-gen.com/mcp",
+    "description": "Manage tabletop RPG campaigns and worldbuilding records, and generate text and media. Connect with OAuth or a CharGen personal access token.",
+    "category": "Design",
+    "tags": [
+      "tabletop-rpg",
+      "worldbuilding",
+      "media"
+    ],
+    "homepageUrl": "https://char-gen.com/",
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://char-gen.com/llms.txt"
+    },
+    "directoryListings": [
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6ad71b9b2abc8191a0e60a367ee070ab",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6ad71b9b2abc8191a0e60a367ee070ab"
+      }
+    ],
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "alternativeAuthTypes": [
+      "bearer-token"
+    ],
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-25",
+      "evidenceUrl": "https://char-gen.com/llms.txt"
+    },
+    "exactEndpointOnly": true,
+    "caveats": [
+      "A direct anonymous session negotiated MCP 2025-11-25 and listed tools. The default validator received an OAuth challenge."
+    ],
+    "logoUrl": "/server-logos/char-gen.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-25",
+    "logoLicenseNote": "Unofficial, locally generated fallback monogram for CharGen."
+  },
+  {
+    "id": "hoplix",
+    "name": "Hoplix Print on Demand",
+    "url": "https://api.hoplix.com/mcp",
+    "description": "Browse the print-on-demand catalog, create campaigns, calculate quotes, and track orders. Sign in to Hoplix with OAuth for account operations.",
+    "category": "Marketplace",
+    "tags": [
+      "print-on-demand",
+      "products",
+      "orders"
+    ],
+    "homepageUrl": "https://hoplix.com/",
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://hoplix.com/en/mcp-integration"
+    },
+    "directoryListings": [
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6ae382a60cc481919c5be7ad7a25ff7f",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6ae382a60cc481919c5be7ad7a25ff7f"
+      }
+    ],
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-25",
+      "evidenceUrl": "https://hoplix.com/en/mcp-integration"
+    },
+    "exactEndpointOnly": true,
+    "caveats": [
+      "A direct anonymous session negotiated MCP 2025-11-25 and listed tools. The default validator received an OAuth challenge."
+    ],
+    "logoUrl": "/server-logos/hoplix.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-25",
+    "logoLicenseNote": "Unofficial, locally generated fallback monogram for Hoplix Print on Demand."
+  },
+  {
+    "id": "pyai",
+    "name": "PyAI",
+    "url": "https://api.pyai.com/mcp",
+    "description": "Generate speech, transcribe audio, and work with voice agents. Sign in to PyAI with OAuth for account operations.",
+    "category": "Communication",
+    "tags": [
+      "speech",
+      "transcription",
+      "voice-agents"
+    ],
+    "homepageUrl": "https://pyai.com/",
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://pyai.com/mcp"
+    },
+    "directoryListings": [
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6aa0c7069ae08191b0b072967652e640",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6aa0c7069ae08191b0b072967652e640"
+      }
+    ],
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-25",
+      "evidenceUrl": "https://pyai.com/mcp"
+    },
+    "exactEndpointOnly": true,
+    "caveats": [
+      "A direct anonymous session negotiated MCP 2025-11-25 and listed tools. The default validator received an OAuth challenge."
+    ],
+    "logoUrl": "/server-logos/pyai.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-25",
+    "logoLicenseNote": "Unofficial, locally generated fallback monogram for PyAI."
+  },
+  {
+    "id": "signal8",
+    "name": "Signal8",
+    "url": "https://mcp.signal8.ai/mcp",
+    "description": "Look up US equities, filings, ownership data, and market activity. Connect with OAuth or a Signal8 API key for hosted tool calls.",
+    "category": "Finance",
+    "tags": [
+      "market-data",
+      "equities",
+      "filings"
+    ],
+    "homepageUrl": "https://signal8.ai/",
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://signal8.ai/llms.txt"
+    },
+    "directoryListings": [
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6aeede6fca4c8191ab60dc88d9a45514",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6aeede6fca4c8191ab60dc88d9a45514"
+      }
+    ],
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "alternativeAuthTypes": [
+      "bearer-token"
+    ],
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-25",
+      "evidenceUrl": "https://signal8.ai/llms.txt"
+    },
+    "exactEndpointOnly": true,
+    "caveats": [
+      "A direct anonymous session negotiated MCP 2025-11-25 and listed tools. The default validator received an OAuth challenge."
+    ],
+    "logoUrl": "/server-logos/signal8.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-25",
+    "logoLicenseNote": "Unofficial, locally generated fallback monogram for Signal8."
+  },
+  {
+    "id": "tenderlead",
+    "name": "TenderLead",
+    "url": "https://tenderlead.co.uk/mcp",
+    "description": "Review matched UK public-sector tenders, saved qualification decisions, and pipeline insights. Sign in with OAuth to access your account.",
+    "category": "Search",
+    "tags": [
+      "procurement",
+      "tenders",
+      "qualification"
+    ],
+    "homepageUrl": "https://tenderlead.co.uk/",
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://tenderlead.co.uk/llms.txt"
+    },
+    "directoryListings": [
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6a931892b2748191a2fcc64789c66933",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6a931892b2748191a2fcc64789c66933"
+      }
+    ],
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-25",
+      "evidenceUrl": "https://tenderlead.co.uk/llms.txt"
+    },
+    "exactEndpointOnly": true,
+    "caveats": [
+      "A direct anonymous session negotiated MCP 2025-11-25 and listed tools. The default validator received an OAuth challenge.",
+      "TenderLead links to its ChatGPT app. The public ChatGPT release leaves its endpoint undisclosed."
+    ],
+    "logoUrl": "/server-logos/tenderlead.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-25",
+    "logoLicenseNote": "Unofficial, locally generated fallback monogram for TenderLead."
+  },
+  {
+    "id": "vokolla",
+    "name": "Vokolla Press Release Agent",
+    "url": "https://vokolla.com/api/mcp",
+    "description": "Draft and revise press releases, run editorial checks, and review release records. Sign in with OAuth for account operations.",
+    "category": "Communication",
+    "tags": [
+      "press-releases",
+      "editorial",
+      "publishing"
+    ],
+    "homepageUrl": "https://vokolla.com/",
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://vokolla.com/llms.txt"
+    },
+    "directoryListings": [
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6ad2fea4448c8191b9e66fae6f078f83",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6ad2fea4448c8191b9e66fae6f078f83"
+      }
+    ],
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "alternativeEndpoints": [
+      {
+        "url": "https://vokolla.com/api/mcp/editorial",
+        "authType": "oauth",
+        "description": "Use the ChatGPT editorial and release-records profile."
+      }
+    ],
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-25",
+      "evidenceUrl": "https://vokolla.com/llms.txt"
+    },
+    "exactEndpointOnly": true,
+    "caveats": [
+      "A direct anonymous session negotiated MCP 2025-11-25 and listed tools. The default validator received an OAuth challenge.",
+      "The ChatGPT release uses the editorial profile listed under alternative endpoints."
+    ],
+    "logoUrl": "/server-logos/vokolla.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-25",
+    "logoLicenseNote": "Unofficial, locally generated fallback monogram for Vokolla Press Release Agent."
+  },
+  {
+    "id": "salesforce-headless-360",
+    "name": "Salesforce Headless 360",
+    "url": "https://api.salesforce.com/platform/mcp/v1/platform/headless-360",
+    "description": "Discover and use Salesforce APIs and org data within the signed-in user’s permissions. Requires a Salesforce OAuth JWT access token.",
+    "category": "CRM",
+    "tags": [
+      "salesforce",
+      "crm",
+      "oauth"
+    ],
+    "relevance": 98,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.a352dbf6-c732-43d4-84c1-0bbb389d3921",
+        "url": "https://claude.com/marketplace/connectors/salesforce-headless-360"
+      },
+      {
+        "directory": "claude",
+        "id": "directoryPlugin.522840f9-0318-4eb2-b7ab-60e68f2c5edd",
+        "url": "https://claude.com/marketplace/plugins/sales-cloud"
+      }
+    ],
+    "homepageUrl": "https://www.salesforce.com/",
+    "caveats": [
+      "Enable the hosted server in the Salesforce org and configure an External Client App for the mcp_api scope and JWT-based access tokens."
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://developer.salesforce.com/workshops/aiforce-workshop/exercises/2-connect-ai-assistant-to-salesforce"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-25",
+      "evidenceUrl": "https://developer.salesforce.com/workshops/aiforce-workshop/exercises/2-connect-ai-assistant-to-salesforce"
+    },
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/salesforce-headless-360.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-25",
+    "logoLicenseNote": "Unofficial, locally generated fallback monogram for Salesforce Headless 360."
+  },
+  {
+    "id": "sigma",
+    "name": "Sigma",
+    "url": "https://aws-api.sigmacomputing.com/mcp/v2",
+    "description": "Search, explore, and query data accessible to the signed-in Sigma user. Requires Sigma OAuth.",
+    "category": "Analytics",
+    "tags": [
+      "analytics",
+      "business-intelligence",
+      "oauth"
+    ],
+    "relevance": 86,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.d02b089b-6cc9-44e3-8667-a590a0aa8df6",
+        "url": "https://claude.com/marketplace/connectors/sigma"
+      }
+    ],
+    "homepageUrl": "https://www.sigmacomputing.com/",
+    "alternativeEndpoints": [
+      {
+        "url": "https://api.us-a.aws.sigmacomputing.com/mcp/v2",
+        "authType": "oauth",
+        "description": "Use for a Sigma organization hosted in AWS US East."
+      },
+      {
+        "url": "https://api.ca.aws.sigmacomputing.com/mcp/v2",
+        "authType": "oauth",
+        "description": "Use for a Sigma organization hosted in AWS Canada."
+      },
+      {
+        "url": "https://api.eu.aws.sigmacomputing.com/mcp/v2",
+        "authType": "oauth",
+        "description": "Use for a Sigma organization hosted in AWS EU."
+      },
+      {
+        "url": "https://api.uk.aws.sigmacomputing.com/mcp/v2",
+        "authType": "oauth",
+        "description": "Use for a Sigma organization hosted in AWS UK."
+      },
+      {
+        "url": "https://api.au.aws.sigmacomputing.com/mcp/v2",
+        "authType": "oauth",
+        "description": "Use for a Sigma organization hosted in AWS Australia."
+      },
+      {
+        "url": "https://api.us.azure.sigmacomputing.com/mcp/v2",
+        "authType": "oauth",
+        "description": "Use for a Sigma organization hosted in Azure US."
+      },
+      {
+        "url": "https://api.eu.azure.sigmacomputing.com/mcp/v2",
+        "authType": "oauth",
+        "description": "Use for a Sigma organization hosted in Azure EU."
+      },
+      {
+        "url": "https://api.ca.azure.sigmacomputing.com/mcp/v2",
+        "authType": "oauth",
+        "description": "Use for a Sigma organization hosted in Azure Canada."
+      },
+      {
+        "url": "https://api.uk.azure.sigmacomputing.com/mcp/v2",
+        "authType": "oauth",
+        "description": "Use for a Sigma organization hosted in Azure UK."
+      },
+      {
+        "url": "https://api.au.azure.sigmacomputing.com/mcp/v2",
+        "authType": "oauth",
+        "description": "Use for a Sigma organization hosted in Azure Australia."
+      },
+      {
+        "url": "https://api.sigmacomputing.com/mcp/v2",
+        "authType": "oauth",
+        "description": "Use for a Sigma organization hosted in GCP US."
+      },
+      {
+        "url": "https://api.sa.gcp.sigmacomputing.com/mcp/v2",
+        "authType": "oauth",
+        "description": "Use for a Sigma organization hosted in GCP Saudi Arabia."
+      }
+    ],
+    "caveats": [
+      "The primary endpoint is for AWS US-West. Choose your organization’s cloud region and make sure your account has the “Use Sigma MCP with OAuth” permission."
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://help.sigmacomputing.com/docs/use-the-sigma-plugin-for-ai-assistants"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-25",
+      "evidenceUrl": "https://help.sigmacomputing.com/docs/use-the-sigma-plugin-for-ai-assistants"
+    },
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/sigma.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-25",
+    "logoLicenseNote": "Unofficial, locally generated fallback monogram for Sigma."
+  },
+  {
+    "id": "activecampaign",
+    "name": "ActiveCampaign",
+    "url": "https://mcp.app-us1.com/http",
+    "description": "Access contacts, campaigns, and marketing automation in an ActiveCampaign account. Sign in with OAuth to connect.",
+    "category": "CRM",
+    "tags": [
+      "contacts",
+      "marketing-automation",
+      "oauth"
+    ],
+    "relevance": 72,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "wf.6913ed26057e239ce7a9f7fa",
+        "url": "https://claude.com/marketplace/connectors/activecampaign"
+      },
+      {
+        "directory": "claude",
+        "id": "directoryPlugin.d919d0db-b331-4848-9c0d-0a16ce2354dd",
+        "url": "https://claude.com/marketplace/plugins/activecampaign"
+      },
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6a4fb1116fe4819198f372bd1dc45baf",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6a4fb1116fe4819198f372bd1dc45baf"
+      }
+    ],
+    "homepageUrl": "https://www.activecampaign.com/",
+    "caveats": [
+      "The portable plugin uses the shared URL. The Claude Code plugin prompts for an account-specific URL. The ChatGPT listing leaves its endpoint undisclosed."
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://github.com/ActiveCampaign/activecampaign-plugin/blob/c00f8f724fc4cd8a1f8aeb00951f9b3b95834991/README.md"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-25",
+      "evidenceUrl": "https://mcp.app-us1.com/.well-known/oauth-protected-resource"
+    },
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/activecampaign.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-25",
+    "logoLicenseNote": "Unofficial, locally generated fallback monogram for ActiveCampaign."
+  },
+  {
+    "id": "retool",
+    "name": "Retool",
+    "url": "https://mcp.retool.com/mcp",
+    "description": "Inspect workflows, build apps, and manage Retool resources. Sign in with OAuth and select a Retool Cloud organization.",
+    "category": "Developer Tools",
+    "tags": [
+      "workflows",
+      "app-development",
+      "oauth"
+    ],
+    "relevance": 63,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.632e260d-ae22-4f20-82f1-0495f0149125",
+        "url": "https://claude.com/marketplace/connectors/retool"
+      }
+    ],
+    "homepageUrl": "https://retool.com/",
+    "caveats": [
+      "Self-hosted Retool installations use instance-specific URLs."
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://docs.retool.com/workflows/guides/mcp"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-25",
+      "evidenceUrl": "https://mcp.retool.com/.well-known/oauth-protected-resource"
+    },
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/retool.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-25",
+    "logoLicenseNote": "Unofficial, locally generated fallback monogram for Retool."
+  },
+  {
+    "id": "semgrep-appsec-platform",
+    "name": "Semgrep AppSec Platform",
+    "url": "https://semgrep.dev/api/mcp",
+    "description": "Review Semgrep findings and security context for repositories accessible to your organization. Sign in with Semgrep OAuth.",
+    "category": "Security",
+    "tags": [
+      "security",
+      "static-analysis",
+      "findings"
+    ],
+    "homepageUrl": "https://semgrep.dev/",
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://docs.semgrep.dev/mcp/authentication"
+    },
+    "directoryListings": [
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6aee327d76f481918497c9cc2e76986b",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6aee327d76f481918497c9cc2e76986b"
+      }
+    ],
+    "relevance": 50,
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "alternativeEndpoints": [
+      {
+        "url": "https://semgrep.dev/api/mcp/read-only",
+        "authType": "oauth",
+        "description": "Use for a restricted, read-only AppSec Platform connection."
+      }
+    ],
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-25",
+      "evidenceUrl": "https://docs.semgrep.dev/mcp/authentication"
+    },
+    "exactEndpointOnly": true,
+    "caveats": [
+      "The AppSec Platform endpoint uses a separate host and path from the Semgrep server at mcp.semgrep.ai."
+    ],
+    "logoUrl": "/server-logos/semgrep-appsec-platform.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-25",
+    "logoLicenseNote": "Unofficial, locally generated fallback monogram for Semgrep AppSec Platform."
+  },
+  {
+    "id": "thunderphone",
+    "name": "ThunderPhone",
+    "url": "https://api.thunderphone.com/v1/mcp",
+    "description": "List an organization’s voice agents, place calls, and inspect call results and transcripts. Connect with OAuth or send an organization API key as a bearer token.",
+    "category": "Communication",
+    "tags": [
+      "voice-agents",
+      "phone",
+      "transcripts",
+      "oauth"
+    ],
+    "relevance": 44,
+    "alternativeAuthTypes": [
+      "bearer-token"
+    ],
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.b2184228-bfe7-4a83-baf7-b8b95461a988",
+        "url": "https://claude.com/marketplace/connectors/thunderphone"
+      }
+    ],
+    "homepageUrl": "https://thunderphone.com/",
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://thunderphone.com/docs/guides/thunderphone-mcp-server"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-25",
+      "evidenceUrl": "https://api.thunderphone.com/.well-known/oauth-protected-resource"
+    },
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/thunderphone.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-25",
+    "logoLicenseNote": "Unofficial, locally generated fallback monogram for ThunderPhone."
+  },
+  {
+    "id": "lena",
+    "name": "Lena",
+    "url": "https://www.letlena.com/mcp",
+    "description": "Upload creative, build paused campaigns, and review performance for connected Meta ad accounts. Sign in with OAuth and choose which accounts to connect.",
+    "category": "Automation",
+    "tags": [
+      "meta-ads",
+      "campaigns",
+      "creative",
+      "oauth"
+    ],
+    "relevance": 36,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.9607e127-7f94-491c-b0eb-c8497ed1c07a",
+        "url": "https://claude.com/marketplace/connectors/extuitive"
+      }
+    ],
+    "homepageUrl": "https://www.letlena.com/",
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://www.letlena.com/support"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-25",
+      "evidenceUrl": "https://www.letlena.com/.well-known/oauth-protected-resource"
+    },
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/lena.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-25",
+    "logoLicenseNote": "Unofficial, locally generated fallback monogram for Lena."
+  },
+  {
+    "id": "synthflow",
+    "name": "Synthflow",
+    "url": "https://mcp.synthflow.ai/mcp",
+    "description": "Build voice agents, review calls, and run simulations in a Synthflow workspace. Connect with OAuth or a Synthflow API key as a bearer token.",
+    "category": "Automation",
+    "tags": [
+      "voice-agents",
+      "call-review",
+      "simulations",
+      "oauth"
+    ],
+    "relevance": 29,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.cd555870-e96b-4b83-aa83-014420901518",
+        "url": "https://claude.com/marketplace/connectors/synthflow"
+      },
+      {
+        "directory": "claude",
+        "id": "directoryPlugin.8cf09b95-db42-4ca3-a9e4-a4e1c206e061",
+        "url": "https://claude.com/marketplace/plugins/synthflow"
+      },
+      {
+        "directory": "chatgpt",
+        "id": "plugin_templated_apps_6a8d61e3eb088191a6116aa249be72cd",
+        "url": "https://chatgpt.com/plugins/plugin_templated_apps_6a8d61e3eb088191a6116aa249be72cd"
+      }
+    ],
+    "alternativeAuthTypes": [
+      "bearer-token"
+    ],
+    "alternativeEndpoints": [
+      {
+        "url": "https://mcp.us.synthflow.ai/mcp",
+        "authType": "oauth",
+        "description": "Use for Synthflow workspaces hosted in the United States."
+      },
+      {
+        "url": "https://mcp.eu.synthflow.ai/mcp",
+        "authType": "oauth",
+        "description": "Use for Synthflow workspaces hosted in the European Union."
+      }
+    ],
+    "homepageUrl": "https://synthflow.ai/",
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://docs.synthflow.ai/mcp-server"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-25",
+      "evidenceUrl": "https://docs.synthflow.ai/mcp-server"
+    },
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/synthflow.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-25",
+    "logoLicenseNote": "Unofficial, locally generated fallback monogram for Synthflow."
+  },
+  {
+    "id": "weinc",
+    "name": "WeInc",
+    "url": "https://my.we.inc/api/mcp",
+    "description": "Manage website projects and clients, retrieve previews, and read templates and analytics. Connect with OAuth or an organization API key.",
+    "category": "Developer Tools",
+    "tags": [
+      "websites",
+      "projects",
+      "analytics",
+      "oauth"
+    ],
+    "relevance": 27,
+    "alternativeAuthTypes": [
+      "api-key"
+    ],
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.f597ed9c-f7e0-436a-85b7-dc02bc2ebed2",
+        "url": "https://claude.com/marketplace/connectors/weinc"
+      }
+    ],
+    "homepageUrl": "https://we.inc/",
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://my.we.inc/docs/api"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-25",
+      "evidenceUrl": "https://my.we.inc/docs/api"
+    },
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/weinc.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-25",
+    "logoLicenseNote": "Unofficial, locally generated fallback monogram for WeInc."
+  },
+  {
+    "id": "okx-global-atk-simple",
+    "name": "OKX Agent Trade Kit",
+    "url": "https://www.okx.com/api/v1/mcp/trading-oauth-simple",
+    "description": "Read crypto market data and OKX portfolio information. Sign in with OKX OAuth and approve read access.",
+    "category": "Finance",
+    "tags": [
+      "market-data",
+      "portfolio",
+      "oauth"
+    ],
+    "homepageUrl": "https://www.okx.com/agent-tradekit",
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://www.okx.com/api/v1/mcp/trading-oauth-simple/.well-known/oauth-protected-resource"
+    },
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.6d367322-43d0-4a2f-a75b-55bd25a54e7d",
+        "url": "https://claude.com/marketplace/connectors/okx-global-atk-simple"
+      }
+    ],
+    "relevance": 27,
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-25",
+      "evidenceUrl": "https://www.okx.com/api/v1/mcp/trading-oauth-simple/.well-known/oauth-protected-resource"
+    },
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/okx-global-atk-simple.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-25",
+    "logoLicenseNote": "Unofficial, locally generated fallback monogram for OKX Agent Trade Kit."
+  },
+  {
+    "id": "mapbox-devkit",
+    "name": "Mapbox DevKit",
+    "url": "https://mcp-devkit.mapbox.com/mcp",
+    "description": "Manage Mapbox styles, tokens, and tilesets, access feedback, and preview GeoJSON. Connect with Mapbox OAuth or a Mapbox access token with the required scopes.",
+    "category": "Developer Tools",
+    "tags": [
+      "mapbox",
+      "maps",
+      "styles",
+      "oauth"
+    ],
+    "alternativeAuthTypes": [
+      "bearer-token"
+    ],
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "wf.6a0c9e0662709584d811dcb2",
+        "url": "https://claude.com/marketplace/plugins/mapbox"
+      }
+    ],
+    "homepageUrl": "https://www.mapbox.com/",
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://docs.mapbox.com/location-ai/mcp-servers/devkit-mcp-server/"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-25",
+      "evidenceUrl": "https://docs.mapbox.com/location-ai/mcp-servers/devkit-mcp-server/"
+    },
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/mapbox-devkit.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-25",
+    "logoLicenseNote": "Unofficial, locally generated fallback monogram for Mapbox DevKit."
+  },
+  {
+    "id": "weinc-instant-website",
+    "name": "WeInc Instant Website",
+    "url": "https://my.we.inc/api/instant/mcp",
+    "description": "Generate a website from a description and publish it after confirmation. Sign in with OAuth to connect.",
+    "category": "Design",
+    "tags": [
+      "websites",
+      "instant",
+      "oauth"
+    ],
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.42fde4fd-3ec5-4d81-8473-ecbfe56535d4",
+        "url": "https://claude.com/marketplace/connectors/weinc-instant-website"
+      }
+    ],
+    "homepageUrl": "https://we.inc/",
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://my.we.inc/.well-known/oauth-protected-resource/api/instant/mcp"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-25",
+      "evidenceUrl": "https://my.we.inc/.well-known/oauth-protected-resource/api/instant/mcp"
+    },
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/weinc-instant-website.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-25",
+    "logoLicenseNote": "Unofficial, locally generated fallback monogram for WeInc Instant Website."
+  },
+  {
+    "id": "weinc-domain-for-anything",
+    "name": "WeInc Domain for Anything",
+    "url": "https://my.we.inc/api/domain/mcp",
+    "description": "Connect a domain you own to an existing page or site. Sign in with OAuth to connect.",
+    "category": "Developer Tools",
+    "tags": [
+      "websites",
+      "domain",
+      "oauth"
+    ],
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.81133b22-78c6-45b4-932d-8fd33ccc7047",
+        "url": "https://claude.com/marketplace/connectors/weinc-domain-for-anything"
+      }
+    ],
+    "homepageUrl": "https://we.inc/",
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://my.we.inc/.well-known/oauth-protected-resource/api/domain/mcp"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-25",
+      "evidenceUrl": "https://my.we.inc/.well-known/oauth-protected-resource/api/domain/mcp"
+    },
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/weinc-domain-for-anything.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-25",
+    "logoLicenseNote": "Unofficial, locally generated fallback monogram for WeInc Domain for Anything."
+  },
+  {
+    "id": "weinc-copy-any-design",
+    "name": "WeInc Copy Any Design",
+    "url": "https://my.we.inc/api/design/mcp",
+    "description": "Create a website preview from a reference link or screenshot and your own content. Sign in with OAuth to connect.",
+    "category": "Design",
+    "tags": [
+      "websites",
+      "design",
+      "oauth"
+    ],
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.84690ed5-6bb3-4488-9525-ecc4ec54aafd",
+        "url": "https://claude.com/marketplace/connectors/weinc-copy-any-design"
+      }
+    ],
+    "homepageUrl": "https://we.inc/",
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://my.we.inc/.well-known/oauth-protected-resource/api/design/mcp"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-25",
+      "evidenceUrl": "https://my.we.inc/.well-known/oauth-protected-resource/api/design/mcp"
+    },
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/weinc-copy-any-design.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-25",
+    "logoLicenseNote": "Unofficial, locally generated fallback monogram for WeInc Copy Any Design."
+  },
+  {
+    "id": "sonatype-guide",
+    "name": "Sonatype Guide",
+    "url": "https://mcp.guide.sonatype.com/mcp",
+    "description": "Check open-source dependencies for vulnerabilities, license issues, and safer upgrades. Authorization requires a Sonatype account token.",
+    "category": "Security",
+    "tags": [
+      "dependencies",
+      "vulnerabilities",
+      "licenses"
+    ],
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "directoryPlugin.434d148d-d105-4c11-bdc8-0d966c9a08e7",
+        "url": "https://claude.com/marketplace/plugins/sonatype-guide"
+      }
+    ],
+    "homepageUrl": "https://guide.sonatype.com/",
+    "requiredHeaders": [
+      {
+        "name": "Authorization",
+        "description": "Sonatype Guide account token.",
+        "valueTemplate": "Bearer <SONATYPE_GUIDE_TOKEN>",
+        "required": true,
+        "secret": true
+      }
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://guide.sonatype.com/mcp"
+    },
+    "transport": "streamable-http",
+    "authType": "bearer-token",
+    "requiresOAuth": false,
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/sonatype-guide.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-25",
+    "logoLicenseNote": "Unofficial, locally generated fallback monogram for Sonatype Guide."
+  },
+  {
+    "id": "tres-finance",
+    "name": "TRES Finance",
+    "url": "https://ai.tres.finance/mcp",
+    "description": "Analyze blockchain transactions and work with accounting ledgers in a TRES Finance account. Sign in with OAuth to connect.",
+    "category": "Finance",
+    "tags": [
+      "accounting",
+      "blockchain",
+      "oauth"
+    ],
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "directoryPlugin.6ba67707-fc39-4233-b18d-9b4740c26ff5",
+        "url": "https://claude.com/marketplace/plugins/tres-finance-plugin"
+      }
+    ],
+    "homepageUrl": "https://tres.finance/",
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://github.com/tres-finance-public/tres-claude-plugin/blob/8f0fa9a4a66adf60cd566e011f240d204fa3a554/README.md"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-25",
+      "evidenceUrl": "https://ai.tres.finance/.well-known/oauth-protected-resource"
+    },
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/tres-finance.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-25",
+    "logoLicenseNote": "Unofficial, locally generated fallback monogram for TRES Finance."
+  },
+  {
+    "id": "spotify-confidence-flags",
+    "name": "Spotify Confidence Flags",
+    "url": "https://mcp.confidence.dev/mcp/flags",
+    "description": "Create, inspect, and manage feature flags and targeting rules in Spotify Confidence. Sign in with OAuth to connect.",
+    "category": "Developer Tools",
+    "tags": [
+      "feature-flags",
+      "experimentation",
+      "oauth"
+    ],
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "wf.6a36c9c0c12e869a19a2240f",
+        "url": "https://claude.com/marketplace/plugins/confidence"
+      }
+    ],
+    "homepageUrl": "https://confidence.spotify.com/",
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://github.com/spotify/confidence-ai-plugins/blob/ba96f74234db404e87619d885020ac6d46dad907/README.md#mcp-servers"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-25",
+      "evidenceUrl": "https://github.com/spotify/confidence-ai-plugins/blob/ba96f74234db404e87619d885020ac6d46dad907/README.md#mcp-servers"
+    },
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/spotify-confidence-flags.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-25",
+    "logoLicenseNote": "Unofficial, locally generated fallback monogram for Spotify Confidence Flags."
+  },
+  {
+    "id": "hypd-ai",
+    "name": "HYPD AI",
+    "url": "https://mcp.hypd.ai/mcp",
+    "description": "Review campaign performance and query connected advertising data. Sign in with OAuth and select the ad accounts to share.",
+    "category": "Analytics",
+    "tags": [
+      "advertising",
+      "marketing-analytics",
+      "oauth"
+    ],
+    "homepageUrl": "https://www.hypd.ai/",
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://www.hypd.ai/resources/tutorials/getting-started-with-claude-hypd"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-25",
+      "evidenceUrl": "https://mcp.hypd.ai/.well-known/oauth-protected-resource/mcp"
+    },
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/hypd-ai.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-25",
+    "logoLicenseNote": "Unofficial, locally generated fallback monogram for HYPD AI."
   }
 ]
