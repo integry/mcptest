@@ -41819,8 +41819,34 @@
     },
     "relevance": 70,
     "transport": "streamable-http",
-    "authType": "bearer-token",
-    "requiresOAuth": false,
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-25",
+      "evidenceUrl": "https://coralogix.com/docs/user-guides/mcp-server/setup/"
+    },
+    "alternativeAuthTypes": [
+      "bearer-token"
+    ],
+    "requiredHeaders": [
+      {
+        "name": "Authorization",
+        "description": "Optional Coralogix API key alternative: Bearer <CORALOGIX_API_KEY>",
+        "valueTemplate": "Bearer <CORALOGIX_API_KEY>",
+        "required": false,
+        "secret": true
+      }
+    ],
     "exactEndpointOnly": true,
     "logoUrl": "/server-logos/coralogix.svg",
     "logoSourceKind": "generated-fallback",

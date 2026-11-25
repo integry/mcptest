@@ -12356,11 +12356,11 @@
     "serverId": "coralogix",
     "status": "online",
     "transport": "unknown",
-    "authType": "bearer-token",
-    "requiresOAuth": false,
+    "authType": "oauth",
+    "requiresOAuth": true,
     "protocolEra": "unknown",
-    "checkedAt": "2026-11-24T22:16:24.702Z",
-    "message": "Authentication challenge at https://api.eu2.coralogix.com/mgmt/api/v1/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication bearer-token",
+    "checkedAt": "2026-11-25T02:09:12.527Z",
+    "message": "Authentication challenge at https://api.eu2.coralogix.com/mgmt/api/v1/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
     "validatedUrl": "https://api.eu2.coralogix.com/mgmt/api/v1/mcp",
     "authorizationServers": [
       "https://api.eu2.coralogix.com/mgmt/api/v1/mcp_oauth"
