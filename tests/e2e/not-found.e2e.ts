@@ -80,6 +80,29 @@ test('not found: a trailing-slash alias the host serves takes the canonical URL 
   await expect(page.locator('.not-found-page')).toHaveCount(0);
 });
 
+test('the legacy Retell profile opens the canonical profile listed once in the catalog', async ({ page }) => {
+  const alias = '/servers/retell-ai-chatgpt-app/';
+  const canonical = '/servers/retell-ai-chatgpt/';
+  const heading = page.getByRole('heading', { level: 1, name: 'Retell AI ChatGPT App MCP server' });
+  const profile = await page.goto(canonical);
+  expect(profile?.status()).toBe(200);
+  await expect(heading).toBeVisible();
+  const profileHtml = await profile?.text();
+
+  const legacy = await page.goto(`${alias}?ref=bookmark`);
+  expect(legacy?.status()).toBe(200);
+  expect(await legacy?.text()).toBe(profileHtml);
+  await expect(page).toHaveURL(`${canonical}?ref=bookmark`);
+  await expect(heading).toBeVisible();
+
+  await page.goto('/catalog');
+  const rows = page.locator('.catalog-server-list');
+  const retell = rows.getByRole('link', { name: 'Retell AI ChatGPT App', exact: true });
+  await expect(retell).toHaveCount(1);
+  await expect(retell).toHaveAttribute('href', canonical);
+  await expect(rows.locator(`a[href="${alias}"]`)).toHaveCount(0);
+});
+
 test('not found: a direct request for the error page is a 404', async ({ page }) => {
   const response = await page.goto('/404.html');
   expect(response?.status()).toBe(404);

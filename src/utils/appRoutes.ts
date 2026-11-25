@@ -81,6 +81,11 @@ export const APP_ROUTE_PREFIXES: readonly string[] = [
   '/report/',
 ];
 
+/** Former server profile paths and their canonical destinations. */
+export const SERVER_PROFILE_ALIASES: ReadonlyMap<string, string> = new Map([
+  ['/servers/retell-ai-chatgpt-app/', '/servers/retell-ai-chatgpt/'],
+]);
+
 /** Whether the app has a view for `pathname`; false means the NotFound page. */
 export const isKnownAppPath = (pathname: string, options: AppRouteOptions = {}): boolean => {
   if (getExactAppRoutes(options).includes(pathname)) return true;
@@ -107,6 +112,7 @@ export const canonicalAliasPath = (pathname: string, options: AppRouteOptions = 
   // Server pages end in a slash (/servers/<id>/); every other page does not.
   if (/^\/servers\/[^/]+\/?$/.test(target)) target = target.replace(/\/?$/, '/');
   else if (target.length > 1) target = target.replace(/\/+$/, '');
+  target = SERVER_PROFILE_ALIASES.get(target) ?? target;
   return target !== pathname && isKnownAppPath(target, options) ? target : null;
 };
 

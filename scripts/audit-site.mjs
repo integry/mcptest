@@ -6,12 +6,14 @@
  *   - have exactly one <link rel="canonical"> and one og:url, and they agree;
  *   - canonicalise to the https://mcptest.io URL the host serves it at;
  *   - be in the sitemap exactly once under that URL, unless it is noindex;
- * and robots.txt must reference the sitemap and block no sitemap URL.
+ * Server profile aliases serve the same document as their canonical target.
+ * robots.txt must reference the sitemap and block no sitemap URL.
  */
 
 import fs from 'node:fs';
 import path from 'node:path';
 import { SITE_ORIGIN, decodeEntities, loadSite, resolveFile } from './check-links.mjs';
+import { SERVER_PROFILE_ALIASES } from '../src/utils/appRoutes.ts';
 
 /** <loc> and optional <lastmod> of each <url> in a sitemap. */
 export function parseSitemap(xml) {
@@ -120,8 +122,20 @@ export function auditSite(distDir) {
     if (url.origin !== SITE_ORIGIN || url.search || url.hash) {
       problems.push(`${file}: canonical ${canonical[0]} is not a bare ${SITE_ORIGIN} URL`);
     }
-    // The canonical URL must be the one the host serves this file at.
     const served = resolveFile(site, url.pathname);
+    const aliasTarget = SERVER_PROFILE_ALIASES.get(`/${file.replace(/index\.html$/, '')}`);
+    if (aliasTarget) {
+      if (canonical[0] !== `${SITE_ORIGIN}${aliasTarget}` || !served || served === file) {
+        problems.push(`${file}: server profile alias must point to ${aliasTarget}`);
+      } else {
+        const read = relative => fs.readFileSync(path.join(site.root, relative));
+        if (!read(file).equals(read(served))) {
+          problems.push(`${file}: server profile alias differs from ${served}`);
+        }
+      }
+      continue;
+    }
+    // The canonical URL must be the one the host serves this file at.
     if (served !== file) problems.push(`${file}: canonical ${canonical[0]} is served from ${served ?? 'no file'}`);
     if (pagesByCanonical.has(canonical[0])) {
       problems.push(`${file} and ${pagesByCanonical.get(canonical[0]).file} share the canonical ${canonical[0]}`);
