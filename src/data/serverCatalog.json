@@ -41806,7 +41806,7 @@
     "id": "coralogix",
     "name": "Coralogix",
     "url": "https://api.eu2.coralogix.com/mgmt/api/v1/mcp",
-    "description": "Explore Coralogix observability data such as logs, metrics, and traces. The EU2 primary challenges for a bearer token.",
+    "description": "Coralogix recommends connecting to this EU2 endpoint with OAuth 2.1. Start authentication in your MCP client, then sign in to Coralogix and authorize access in your browser. Alternatively, send a Coralogix API key as a bearer token in the Authorization header. Authenticated capabilities are unverified.",
     "category": "Observability",
     "tags": [
       "logs",
@@ -41815,7 +41815,7 @@
     ],
     "listingSource": {
       "kind": "publisher",
-      "url": "https://coralogix.com/docs/integrations/coralogix-endpoints/"
+      "url": "https://coralogix.com/docs/user-guides/mcp-server/setup/"
     },
     "relevance": 70,
     "transport": "streamable-http",
