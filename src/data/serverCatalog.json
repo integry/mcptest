@@ -30,7 +30,7 @@
         "url": "https://claude.com/marketplace/plugins/context7"
       }
     ],
-    "relevance": 95,
+    "relevance": 96,
     "transport": "streamable-http",
     "requiresOAuth": false,
     "authType": "none",
@@ -935,7 +935,7 @@
         "url": "https://claude.com/marketplace/plugins/neon"
       }
     ],
-    "relevance": 80,
+    "relevance": 81,
     "transport": "streamable-http",
     "requiresOAuth": true,
     "authType": "oauth",
@@ -4164,7 +4164,7 @@
         "url": "https://claude.com/marketplace/plugins/mapbox"
       }
     ],
-    "relevance": 54,
+    "relevance": 55,
     "transport": "streamable-http",
     "requiresOAuth": true,
     "authType": "oauth",
@@ -4600,7 +4600,7 @@
         "url": "https://chatgpt.com/plugins/plugin_asdk_app_694574813e548191bac45327be0a61d1"
       }
     ],
-    "relevance": 72,
+    "relevance": 73,
     "transport": "streamable-http",
     "requiresOAuth": true,
     "authType": "oauth",
@@ -6451,7 +6451,7 @@
         "url": "https://claude.com/marketplace/connectors/google-compute-engine"
       }
     ],
-    "relevance": 83,
+    "relevance": 82,
     "transport": "streamable-http",
     "requiresOAuth": true,
     "authType": "oauth",
@@ -7130,7 +7130,7 @@
         "url": "https://claude.com/marketplace/connectors/clickhouse"
       }
     ],
-    "relevance": 76,
+    "relevance": 77,
     "transport": "streamable-http",
     "requiresOAuth": true,
     "authType": "oauth",
@@ -7352,7 +7352,7 @@
         "url": "https://claude.com/marketplace/connectors/newrelic"
       }
     ],
-    "relevance": 70,
+    "relevance": 71,
     "transport": "streamable-http",
     "requiresOAuth": true,
     "authType": "oauth",
@@ -8660,7 +8660,7 @@
         "url": "https://claude.com/marketplace/connectors/harness"
       }
     ],
-    "relevance": 50,
+    "relevance": 51,
     "transport": "streamable-http",
     "requiresOAuth": true,
     "authType": "oauth",
@@ -11917,7 +11917,7 @@
         "url": "https://chatgpt.com/plugins/plugin_asdk_app_69c6561277188191a1beac515a4b2ea4"
       }
     ],
-    "relevance": 84,
+    "relevance": 85,
     "transport": "streamable-http",
     "requiresOAuth": true,
     "authType": "oauth",
@@ -13138,7 +13138,7 @@
         "url": "https://claude.com/marketplace/connectors/padlet-mcp"
       }
     ],
-    "relevance": 58,
+    "relevance": 59,
     "transport": "streamable-http",
     "requiresOAuth": true,
     "authType": "oauth",
@@ -13181,7 +13181,7 @@
         "url": "https://chatgpt.com/plugins/plugin_asdk_app_6a96ec86423c8191a13c7369bba45295"
       }
     ],
-    "relevance": 84,
+    "relevance": 85,
     "transport": "streamable-http",
     "requiresOAuth": true,
     "authType": "oauth",
@@ -16164,7 +16164,7 @@
         "url": "https://claude.com/marketplace/connectors/gemini-mcp"
       }
     ],
-    "relevance": 86,
+    "relevance": 87,
     "transport": "streamable-http",
     "requiresOAuth": false,
     "authType": "none",
@@ -16507,7 +16507,7 @@
         "url": "https://claude.com/marketplace/connectors/slidesgpt"
       }
     ],
-    "relevance": 85,
+    "relevance": 84,
     "transport": "streamable-http",
     "requiresOAuth": false,
     "authType": "none",
@@ -16552,7 +16552,7 @@
         "url": "https://claude.com/marketplace/connectors/dice"
       }
     ],
-    "relevance": 84,
+    "relevance": 83,
     "transport": "streamable-http",
     "requiresOAuth": false,
     "authType": "none",
@@ -16716,7 +16716,7 @@
         "url": "https://chatgpt.com/plugins/plugin_asdk_app_6ac34fe17ad08191a720849c9f43639b"
       }
     ],
-    "relevance": 82,
+    "relevance": 83,
     "transport": "streamable-http",
     "requiresOAuth": false,
     "authType": "none",
@@ -16880,7 +16880,7 @@
         "url": "https://claude.com/marketplace/connectors/website-generator-by-b12"
       }
     ],
-    "relevance": 69,
+    "relevance": 70,
     "transport": "streamable-http",
     "requiresOAuth": false,
     "authType": "none",
@@ -16959,7 +16959,7 @@
         "url": "https://chatgpt.com/plugins/plugin_asdk_app_6a4f02d735388191959c8328877e0bbd"
       }
     ],
-    "relevance": 67,
+    "relevance": 68,
     "transport": "streamable-http",
     "requiresOAuth": false,
     "authType": "none",
@@ -16998,7 +16998,7 @@
         "url": "https://claude.com/marketplace/connectors/snomed-ct-terminology"
       }
     ],
-    "relevance": 65,
+    "relevance": 64,
     "transport": "streamable-http",
     "requiresOAuth": false,
     "authType": "none",
@@ -17122,7 +17122,7 @@
         "url": "https://chatgpt.com/plugins/plugin_asdk_app_6ae234d433788191b0f03f5fc5ac1577"
       }
     ],
-    "relevance": 64,
+    "relevance": 65,
     "transport": "streamable-http",
     "requiresOAuth": false,
     "authType": "none",
@@ -17284,7 +17284,7 @@
         "url": "https://claude.com/marketplace/connectors/descrybe"
       }
     ],
-    "relevance": 55,
+    "relevance": 56,
     "transport": "streamable-http",
     "requiresOAuth": false,
     "authType": "none",
@@ -17360,7 +17360,7 @@
         "url": "https://claude.com/marketplace/connectors/courtroom5"
       }
     ],
-    "relevance": 54,
+    "relevance": 53,
     "transport": "streamable-http",
     "requiresOAuth": false,
     "authType": "none",
@@ -17397,7 +17397,7 @@
         "url": "https://claude.com/marketplace/connectors/constant-contact"
       }
     ],
-    "relevance": 55,
+    "relevance": 56,
     "transport": "streamable-http",
     "requiresOAuth": false,
     "authType": "none",
@@ -17627,7 +17627,7 @@
         "url": "https://chatgpt.com/plugins/plugin_asdk_app_6af3cf4a66f88191a85850f12e044517"
       }
     ],
-    "relevance": 65,
+    "relevance": 66,
     "transport": "streamable-http",
     "requiresOAuth": false,
     "authType": "none",
@@ -17787,7 +17787,7 @@
         "url": "https://claude.com/marketplace/connectors/usafacts-connector"
       }
     ],
-    "relevance": 45,
+    "relevance": 46,
     "transport": "streamable-http",
     "requiresOAuth": false,
     "authType": "none",
@@ -18171,7 +18171,7 @@
         "url": "https://claude.com/marketplace/connectors/autonomad"
       }
     ],
-    "relevance": 43,
+    "relevance": 44,
     "transport": "streamable-http",
     "requiresOAuth": false,
     "authType": "none",
@@ -18360,7 +18360,7 @@
         "url": "https://chatgpt.com/plugins/plugin_asdk_app_69050bf6de9c8191b3968f2cc08d33d6"
       }
     ],
-    "relevance": 91,
+    "relevance": 90,
     "transport": "streamable-http",
     "requiresOAuth": false,
     "authType": "none",
@@ -18625,7 +18625,7 @@
         "url": "https://claude.com/marketplace/connectors/taxact"
       }
     ],
-    "relevance": 37,
+    "relevance": 36,
     "transport": "streamable-http",
     "requiresOAuth": false,
     "authType": "none",
@@ -18805,7 +18805,7 @@
         "url": "https://claude.com/marketplace/connectors/lacuna-research"
       }
     ],
-    "relevance": 40,
+    "relevance": 41,
     "transport": "streamable-http",
     "requiresOAuth": false,
     "authType": "none",
@@ -18842,7 +18842,7 @@
         "url": "https://claude.com/marketplace/connectors/fourthwall"
       }
     ],
-    "relevance": 35,
+    "relevance": 36,
     "transport": "streamable-http",
     "requiresOAuth": false,
     "authType": "none",
@@ -18962,7 +18962,7 @@
         "url": "https://claude.com/marketplace/connectors/pga-play-golf"
       }
     ],
-    "relevance": 28,
+    "relevance": 27,
     "transport": "streamable-http",
     "requiresOAuth": false,
     "authType": "none",
@@ -19085,7 +19085,7 @@
         "url": "https://claude.com/marketplace/connectors/vistaprint"
       }
     ],
-    "relevance": 46,
+    "relevance": 49,
     "transport": "streamable-http",
     "requiresOAuth": false,
     "authType": "none",
@@ -19210,7 +19210,7 @@
         "url": "https://claude.com/marketplace/connectors/military-and-veteran-family-assistant"
       }
     ],
-    "relevance": 25,
+    "relevance": 24,
     "transport": "streamable-http",
     "requiresOAuth": false,
     "authType": "none",
@@ -19291,7 +19291,7 @@
         "url": "https://claude.com/marketplace/connectors/clutch"
       }
     ],
-    "relevance": 20,
+    "relevance": 21,
     "transport": "streamable-http",
     "requiresOAuth": false,
     "authType": "none",
@@ -19386,7 +19386,7 @@
         "url": "https://chatgpt.com/plugins/plugin_asdk_app_6aa0e3a4d96881918593f11719c426e3"
       }
     ],
-    "relevance": 22,
+    "relevance": 23,
     "transport": "streamable-http",
     "requiresOAuth": false,
     "authType": "none",
@@ -19621,7 +19621,7 @@
         "url": "https://chatgpt.com/plugins/plugin_asdk_app_6ac02eea72c88191b5d5055189e41db6"
       }
     ],
-    "relevance": 37,
+    "relevance": 39,
     "transport": "streamable-http",
     "requiresOAuth": false,
     "authType": "none",
@@ -19661,7 +19661,7 @@
         "url": "https://chatgpt.com/plugins/plugin_asdk_app_6ac41dc3ab3c81918fd029677b417183"
       }
     ],
-    "relevance": 16,
+    "relevance": 17,
     "transport": "streamable-http",
     "requiresOAuth": false,
     "authType": "none",
@@ -19833,7 +19833,7 @@
         "url": "https://claude.com/marketplace/connectors/arag-spain-insurance"
       }
     ],
-    "relevance": 9,
+    "relevance": 10,
     "transport": "streamable-http",
     "requiresOAuth": false,
     "authType": "none",
@@ -20537,7 +20537,7 @@
         "url": "https://chatgpt.com/plugins/plugin_asdk_app_6a172fe86f5481919f73cbc3bc3ad5bb"
       }
     ],
-    "relevance": 63,
+    "relevance": 64,
     "transport": "streamable-http",
     "requiresOAuth": true,
     "authType": "oauth",
@@ -20779,7 +20779,7 @@
         "url": "https://claude.com/marketplace/connectors/jentic"
       }
     ],
-    "relevance": 36,
+    "relevance": 35,
     "transport": "streamable-http",
     "requiresOAuth": true,
     "authType": "oauth",
@@ -21678,7 +21678,7 @@
         "url": "https://claude.com/marketplace/plugins/supermetrics"
       }
     ],
-    "relevance": 96,
+    "relevance": 95,
     "transport": "streamable-http",
     "requiresOAuth": true,
     "authType": "oauth",
@@ -23698,7 +23698,7 @@
         "url": "https://claude.com/marketplace/connectors/picsart-media-studio"
       }
     ],
-    "relevance": 90,
+    "relevance": 91,
     "transport": "streamable-http",
     "requiresOAuth": true,
     "authType": "oauth",
@@ -24241,7 +24241,7 @@
         "url": "https://chatgpt.com/plugins/plugin_asdk_app_69d66f1e2abc8191b041e1dd10105a3e"
       }
     ],
-    "relevance": 88,
+    "relevance": 89,
     "transport": "streamable-http",
     "requiresOAuth": true,
     "authType": "oauth",
@@ -24600,7 +24600,7 @@
         "url": "https://chatgpt.com/plugins/plugin_asdk_app_6a0783e216e48191957d34a5381e3b06"
       }
     ],
-    "relevance": 87,
+    "relevance": 88,
     "transport": "streamable-http",
     "requiresOAuth": true,
     "authType": "oauth",
@@ -24781,7 +24781,7 @@
         "url": "https://chatgpt.com/plugins/plugin_asdk_app_6abe4fa17aa08191a0b49e5ed5da3845"
       }
     ],
-    "relevance": 17,
+    "relevance": 18,
     "transport": "streamable-http",
     "requiresOAuth": true,
     "authType": "oauth",
@@ -25886,7 +25886,7 @@
         "url": "https://claude.com/marketplace/connectors/g2"
       }
     ],
-    "relevance": 82,
+    "relevance": 83,
     "transport": "streamable-http",
     "requiresOAuth": true,
     "authType": "oauth",
@@ -26055,7 +26055,7 @@
         "url": "https://claude.com/marketplace/connectors/imanage"
       }
     ],
-    "relevance": 81,
+    "relevance": 82,
     "transport": "streamable-http",
     "requiresOAuth": true,
     "authType": "oauth",
@@ -26130,7 +26130,7 @@
         "url": "https://claude.com/marketplace/connectors/speko"
       }
     ],
-    "relevance": 83,
+    "relevance": 84,
     "transport": "streamable-http",
     "requiresOAuth": true,
     "authType": "oauth",
@@ -26632,7 +26632,7 @@
         "url": "https://claude.com/marketplace/connectors/cb-insights"
       }
     ],
-    "relevance": 79,
+    "relevance": 80,
     "transport": "streamable-http",
     "requiresOAuth": true,
     "authType": "oauth",
@@ -27330,7 +27330,7 @@
         "url": "https://chatgpt.com/plugins/plugin_asdk_app_6ac6c781b9b08191826e5b6c74335a44"
       }
     ],
-    "relevance": 79,
+    "relevance": 80,
     "transport": "streamable-http",
     "requiresOAuth": true,
     "authType": "oauth",
@@ -28130,7 +28130,7 @@
         "url": "https://claude.com/marketplace/connectors/brighthire"
       }
     ],
-    "relevance": 77,
+    "relevance": 76,
     "transport": "streamable-http",
     "requiresOAuth": true,
     "authType": "oauth",
@@ -28275,7 +28275,7 @@
         "url": "https://claude.com/marketplace/connectors/ubersuggest-by-neil-patel"
       }
     ],
-    "relevance": 75,
+    "relevance": 76,
     "transport": "streamable-http",
     "requiresOAuth": true,
     "authType": "oauth",
@@ -29336,7 +29336,7 @@
         "url": "https://chatgpt.com/plugins/plugin_asdk_app_6ac6ccf216388191b8e128395ccac53e"
       }
     ],
-    "relevance": 32,
+    "relevance": 33,
     "transport": "streamable-http",
     "requiresOAuth": true,
     "authType": "oauth",
@@ -29481,7 +29481,7 @@
         "url": "https://claude.com/marketplace/connectors/adspirer-social-ads"
       }
     ],
-    "relevance": 77,
+    "relevance": 78,
     "transport": "streamable-http",
     "requiresOAuth": true,
     "authType": "oauth",
@@ -30688,7 +30688,7 @@
         "url": "https://claude.com/marketplace/connectors/triple-whale"
       }
     ],
-    "relevance": 70,
+    "relevance": 71,
     "transport": "streamable-http",
     "requiresOAuth": true,
     "authType": "oauth",
@@ -33892,7 +33892,7 @@
         "url": "https://claude.com/marketplace/connectors/etoro-connector"
       }
     ],
-    "relevance": 54,
+    "relevance": 55,
     "transport": "streamable-http",
     "requiresOAuth": true,
     "authType": "oauth",
@@ -38972,7 +38972,7 @@
         "url": "https://chatgpt.com/plugins/plugin_asdk_app_6ae21da086548191a7c824ea3dd59064"
       }
     ],
-    "relevance": 83,
+    "relevance": 84,
     "transport": "streamable-http",
     "requiresOAuth": true,
     "authType": "oauth",
@@ -39228,7 +39228,7 @@
         "url": "https://claude.com/marketplace/connectors/graphify"
       }
     ],
-    "relevance": 76,
+    "relevance": 77,
     "transport": "streamable-http",
     "requiresOAuth": true,
     "authType": "oauth",
@@ -39282,7 +39282,7 @@
         "url": "https://chatgpt.com/plugins/plugin_asdk_app_6ad39267fdc8819196306e460ebcd076"
       }
     ],
-    "relevance": 75,
+    "relevance": 74,
     "transport": "streamable-http",
     "requiresOAuth": true,
     "authType": "oauth",
@@ -39400,7 +39400,7 @@
         "url": "https://chatgpt.com/plugins/plugin_asdk_app_6ade03541ce08191b35bbad1dc5b4121"
       }
     ],
-    "relevance": 74,
+    "relevance": 75,
     "transport": "streamable-http",
     "requiresOAuth": true,
     "authType": "oauth",
@@ -39459,7 +39459,7 @@
         "url": "https://claude.com/marketplace/connectors/krisp"
       }
     ],
-    "relevance": 74,
+    "relevance": 75,
     "transport": "streamable-http",
     "requiresOAuth": true,
     "authType": "oauth",
@@ -39732,7 +39732,7 @@
         "url": "https://claude.com/marketplace/plugins/mintlify"
       }
     ],
-    "relevance": 73,
+    "relevance": 74,
     "transport": "streamable-http",
     "requiresOAuth": true,
     "authType": "oauth",
@@ -39992,7 +39992,7 @@
         "url": "https://claude.com/marketplace/connectors/contentsquare"
       }
     ],
-    "relevance": 73,
+    "relevance": 74,
     "transport": "streamable-http",
     "requiresOAuth": true,
     "authType": "oauth",
@@ -40240,7 +40240,7 @@
         "url": "https://claude.com/marketplace/connectors/qonto"
       }
     ],
-    "relevance": 72,
+    "relevance": 73,
     "transport": "streamable-http",
     "requiresOAuth": true,
     "authType": "oauth",
@@ -41027,7 +41027,7 @@
       "kind": "publisher",
       "url": "https://idiolect.app/developers"
     },
-    "relevance": 71,
+    "relevance": 72,
     "transport": "streamable-http",
     "authType": "oauth",
     "requiresOAuth": true,
@@ -41086,7 +41086,7 @@
       "kind": "publisher",
       "url": "https://developers.grain.com/mcp"
     },
-    "relevance": 71,
+    "relevance": 72,
     "transport": "streamable-http",
     "authType": "oauth",
     "requiresOAuth": true,
@@ -41464,7 +41464,22 @@
         "directory": "claude",
         "id": "connector.dd010e89-0eef-4093-af70-796c6bf5d2c1",
         "url": "https://claude.com/marketplace/connectors/funnel"
+      },
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6a2bc16567548191832b2be64604745b",
+        "url": "https://chatgpt.com/plugins/funnel"
       }
+    ],
+    "alternativeEndpoints": [
+      {
+        "url": "https://mcp.eu.ai.funnel.io/mcp",
+        "authType": "oauth",
+        "description": "For EU-hosted Funnel accounts. In ChatGPT, enable Developer mode and add a custom plugin with this server URL and OAuth, then sign in to Funnel."
+      }
+    ],
+    "caveats": [
+      "The ChatGPT directory plugin connects to the global Funnel server. EU-hosted accounts use the EU endpoint and a custom ChatGPT plugin."
     ]
   },
   {
@@ -41535,7 +41550,7 @@
       "kind": "publisher",
       "url": "https://lunarcrush.com/developers/api/ai"
     },
-    "relevance": 71,
+    "relevance": 70,
     "transport": "streamable-http",
     "authType": "oauth",
     "requiresOAuth": true,
@@ -41786,7 +41801,7 @@
       "kind": "publisher",
       "url": "https://pennylane-mcp.readme.io/docs/getting-started"
     },
-    "relevance": 70,
+    "relevance": 71,
     "transport": "streamable-http",
     "authType": "oauth",
     "requiresOAuth": true,
@@ -41895,7 +41910,7 @@
       "kind": "publisher",
       "url": "https://help.openalex.org/access/connector/"
     },
-    "relevance": 69,
+    "relevance": 70,
     "transport": "streamable-http",
     "authType": "oauth",
     "requiresOAuth": true,
@@ -42378,7 +42393,8 @@
     "logoUrl": "/server-logos/char-gen.svg",
     "logoSourceKind": "generated-fallback",
     "logoRetrievedAt": "2026-11-25",
-    "logoLicenseNote": "Unofficial, locally generated fallback monogram for CharGen."
+    "logoLicenseNote": "Unofficial, locally generated fallback monogram for CharGen.",
+    "relevance": 50
   },
   {
     "id": "hoplix",
@@ -42427,7 +42443,8 @@
     "logoUrl": "/server-logos/hoplix.svg",
     "logoSourceKind": "generated-fallback",
     "logoRetrievedAt": "2026-11-25",
-    "logoLicenseNote": "Unofficial, locally generated fallback monogram for Hoplix Print on Demand."
+    "logoLicenseNote": "Unofficial, locally generated fallback monogram for Hoplix Print on Demand.",
+    "relevance": 50
   },
   {
     "id": "pyai",
@@ -42476,7 +42493,8 @@
     "logoUrl": "/server-logos/pyai.svg",
     "logoSourceKind": "generated-fallback",
     "logoRetrievedAt": "2026-11-25",
-    "logoLicenseNote": "Unofficial, locally generated fallback monogram for PyAI."
+    "logoLicenseNote": "Unofficial, locally generated fallback monogram for PyAI.",
+    "relevance": 50
   },
   {
     "id": "signal8",
@@ -42528,7 +42546,8 @@
     "logoUrl": "/server-logos/signal8.svg",
     "logoSourceKind": "generated-fallback",
     "logoRetrievedAt": "2026-11-25",
-    "logoLicenseNote": "Unofficial, locally generated fallback monogram for Signal8."
+    "logoLicenseNote": "Unofficial, locally generated fallback monogram for Signal8.",
+    "relevance": 50
   },
   {
     "id": "tenderlead",
@@ -42578,7 +42597,8 @@
     "logoUrl": "/server-logos/tenderlead.svg",
     "logoSourceKind": "generated-fallback",
     "logoRetrievedAt": "2026-11-25",
-    "logoLicenseNote": "Unofficial, locally generated fallback monogram for TenderLead."
+    "logoLicenseNote": "Unofficial, locally generated fallback monogram for TenderLead.",
+    "relevance": 50
   },
   {
     "id": "vokolla",
@@ -42635,7 +42655,8 @@
     "logoUrl": "/server-logos/vokolla.svg",
     "logoSourceKind": "generated-fallback",
     "logoRetrievedAt": "2026-11-25",
-    "logoLicenseNote": "Unofficial, locally generated fallback monogram for Vokolla Press Release Agent."
+    "logoLicenseNote": "Unofficial, locally generated fallback monogram for Vokolla Press Release Agent.",
+    "relevance": 50
   },
   {
     "id": "salesforce-headless-360",
@@ -42983,7 +43004,7 @@
       "transcripts",
       "oauth"
     ],
-    "relevance": 44,
+    "relevance": 47,
     "alternativeAuthTypes": [
       "bearer-token"
     ],
@@ -43034,7 +43055,7 @@
       "creative",
       "oauth"
     ],
-    "relevance": 36,
+    "relevance": 39,
     "directoryListings": [
       {
         "directory": "claude",
@@ -43082,7 +43103,7 @@
       "simulations",
       "oauth"
     ],
-    "relevance": 29,
+    "relevance": 30,
     "directoryListings": [
       {
         "directory": "claude",
@@ -43155,7 +43176,7 @@
       "analytics",
       "oauth"
     ],
-    "relevance": 27,
+    "relevance": 29,
     "alternativeAuthTypes": [
       "api-key"
     ],
@@ -43217,7 +43238,7 @@
         "url": "https://claude.com/marketplace/connectors/okx-global-atk-simple"
       }
     ],
-    "relevance": 27,
+    "relevance": 28,
     "transport": "streamable-http",
     "authType": "oauth",
     "requiresOAuth": true,
@@ -43335,7 +43356,8 @@
     "logoUrl": "/server-logos/weinc-instant-website.svg",
     "logoSourceKind": "generated-fallback",
     "logoRetrievedAt": "2026-11-25",
-    "logoLicenseNote": "Unofficial, locally generated fallback monogram for WeInc Instant Website."
+    "logoLicenseNote": "Unofficial, locally generated fallback monogram for WeInc Instant Website.",
+    "relevance": 2
   },
   {
     "id": "weinc-domain-for-anything",
@@ -43381,7 +43403,8 @@
     "logoUrl": "/server-logos/weinc-domain-for-anything.svg",
     "logoSourceKind": "generated-fallback",
     "logoRetrievedAt": "2026-11-25",
-    "logoLicenseNote": "Unofficial, locally generated fallback monogram for WeInc Domain for Anything."
+    "logoLicenseNote": "Unofficial, locally generated fallback monogram for WeInc Domain for Anything.",
+    "relevance": 2
   },
   {
     "id": "weinc-copy-any-design",
@@ -43427,7 +43450,8 @@
     "logoUrl": "/server-logos/weinc-copy-any-design.svg",
     "logoSourceKind": "generated-fallback",
     "logoRetrievedAt": "2026-11-25",
-    "logoLicenseNote": "Unofficial, locally generated fallback monogram for WeInc Copy Any Design."
+    "logoLicenseNote": "Unofficial, locally generated fallback monogram for WeInc Copy Any Design.",
+    "relevance": 10
   },
   {
     "id": "sonatype-guide",

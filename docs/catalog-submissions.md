@@ -273,3 +273,86 @@ The catalog validator reported all 25 additions and the reconciled Retell app on
 The ProPR import TODO returned HTTP 401. The public batch records identified three additional queued servers whose publisher-documented endpoints passed validation. Synthflow shares its Claude plugin with the existing documentation server. Its connector ranked 856 of 1,214 for a relevance score of 29. Spotify Confidence Flags shares its plugin with Spotify Confidence Docs. HYPD AI uses its publisher's shared OAuth endpoint and has no verified directory ID or relevance score in this import. [Issue #755](https://github.com/integry/mcptest/issues/755) · [Issue #757](https://github.com/integry/mcptest/issues/757) · [Claude connector index](https://claude.com/marketplace/connectors-plugins)
 
 The batch 14 carry-forward evidence supplied seven more verified entries. CharGen, Hoplix, PyAI, Signal8, TenderLead, and Vokolla completed anonymous sessions using MCP 2025-11-25 and returned tool lists. The canonical snapshots record only the sections observed, with the catalog size and privacy limits applied. The default validator received OAuth challenges for these endpoints. Semgrep AppSec Platform returned HTTP 401 at its primary and read-only URLs. Vokolla's ChatGPT release names the editorial profile, recorded as an alternative. The batch 15 carry-forward identified OKX, whose protected-resource metadata confirms the exact Claude connector endpoint. It returned HTTP 401 and ranks 887 of 1,214 for a relevance score of 27. [Batch 14 evidence](catalog-batch-14-review-evidence.md#carry-forward) · [Batch 15 evidence](catalog-batch-15-review-evidence.md) · [OKX protected-resource metadata](https://www.okx.com/api/v1/mcp/trading-oauth-simple/.well-known/oauth-protected-resource)
+
+### Batch 21 follow-up
+
+The ProPR import TODO `ff14e799-4a20-42ec-9345-51b2c726d117` requires separate access. The public Claude connector index retrieved on November 25, 2026 contained 1,224 records and 1,221 numeric popularity scores. Its HTML SHA-256 was `fdb90f7c42e95ac67b8dc01a5ac9022fd6741d9b320477b8aa81c5954e81593b`. Applying the batch 20 rule with 1,221 as the denominator to the previous PR head `a3613ed6bc9e08408703fb2afe0016af93716dde` yields 76 changes. This includes the three specialized WeInc connectors that now have numeric ranks. The six queued initial scores of 50 are assigned to CharGen, Hoplix, PyAI, Signal8, TenderLead, and Vokolla. [Claude connector index](https://claude.com/marketplace/connectors-plugins)
+
+Funnel's ChatGPT listing connects to the global server. For EU-hosted accounts, enable Developer mode in ChatGPT, add a custom plugin using `https://mcp.eu.ai.funnel.io/mcp` and OAuth, then sign in to Funnel. Anonymous initialization of the EU endpoint returned HTTP 401 with an OAuth challenge. Its protected-resource metadata reports the exact EU URL. [Global ChatGPT listing](https://chatgpt.com/plugins/funnel) · [Funnel's ChatGPT setup guide](https://help.funnel.io/en/articles/16522580-connect-funnel-mcp-to-chatgpt) · [EU protected-resource metadata](https://mcp.eu.ai.funnel.io/.well-known/oauth-protected-resource/mcp)
+
+#### Reproduce the batch 21 review
+
+Use the PR base `c3fd6700c98f3f6c951e86c3971d97568c02b094`. Generate the full comparison locally with Git to include the capability patch that GitHub omitted from the earlier review.
+
+```sh
+base=c3fd6700c98f3f6c951e86c3971d97568c02b094
+git diff --no-ext-diff --binary --full-index "$base" HEAD
+gh api repos/integry/mcptest/issues/759 --jq .body
+npm run build
+CHROME_PATH=/usr/bin/chromium npm run test:e2e -- tests/e2e/not-found.e2e.ts -g 'legacy Retell'
+```
+
+For a structural check, save the following as `dist/verify-batch-21.mts` after building and run `npx vite-node --script dist/verify-batch-21.mts`. It verifies the 25 additions with recorded online validation, normalized endpoint uniqueness across the full catalog, all 441 preserved inventories and eight new ones, and the generated Retell alias and canonical sitemap entry.
+
+```ts
+import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { normalizeCatalogEndpoint } from '../src/utils/catalogSubmission.ts';
+
+const base = 'c3fd6700c98f3f6c951e86c3971d97568c02b094';
+const read = (name, ref?) => {
+  const path = `src/data/${name}.json`;
+  return JSON.parse(ref
+    ? execFileSync('git', ['show', `${ref}:${path}`], { maxBuffer: 20_000_000 })
+    : readFileSync(path, 'utf8'));
+};
+const legacy = 'retell-ai-chatgpt-app';
+const canonical = 'retell-ai-chatgpt';
+const prior = read('serverCatalog', base);
+const current = read('serverCatalog');
+const priorIds = new Set(prior.map(({ id }) => id === legacy ? canonical : id));
+const currentIds = new Set(current.map(({ id }) => id));
+const additions = current.filter(({ id }) => !priorIds.has(id));
+assert.equal(priorIds.size, 922);
+assert.equal(current.length, 947);
+assert.equal(currentIds.size, current.length);
+assert.equal(additions.length, 25);
+assert([...priorIds].every((id) => currentIds.has(id)));
+assert(!currentIds.has(legacy));
+
+const owners = new Map();
+for (const server of current) {
+  const alternatives = (server.alternativeEndpoints ?? []).map(({ url }) => url);
+  for (const endpoint of [server.url, server.browserUrl, ...alternatives].filter(Boolean)) {
+    const key = normalizeCatalogEndpoint(endpoint);
+    assert(key, endpoint);
+    assert(!owners.has(key) || owners.get(key) === server.id, `Duplicate endpoint ${key}`);
+    owners.set(key, server.id);
+  }
+}
+const validation = new Map(read('catalogValidation').map((row) => [row.serverId, row]));
+for (const { id, listingSource } of additions) {
+  assert.equal(validation.get(id)?.status, 'online', id);
+  assert.equal(listingSource?.kind, 'publisher', id);
+}
+console.table(additions.map(({ id, url }) => ({ id, url })));
+
+const oldSnapshots = read('catalogCapabilities', base);
+const snapshots = read('catalogCapabilities');
+assert.equal(Object.keys(oldSnapshots).length, 441);
+for (const [id, snapshot] of Object.entries(oldSnapshots)) {
+  assert.deepEqual(snapshots[id], snapshot, id);
+}
+assert.deepEqual(Object.keys(snapshots).filter((id) => !Object.hasOwn(oldSnapshots, id)).sort(),
+  ['char-gen', 'hoplix', 'mapbox-docs', 'pyai', canonical, 'signal8', 'tenderlead', 'vokolla']);
+assert.equal(snapshots[canonical].tools.observedCount, 27);
+
+const page = (id) => readFileSync(`dist/servers/${id}/index.html`, 'utf8');
+const canonicalUrl = `https://mcptest.io/servers/${canonical}/`;
+const sitemap = readFileSync('dist/sitemap.xml', 'utf8');
+assert.equal(page(legacy), page(canonical));
+assert(page(canonical).includes(`<link rel="canonical" href="${canonicalUrl}"`));
+assert.equal(sitemap.split(`<loc>${canonicalUrl}</loc>`).length - 1, 1);
+assert(!sitemap.includes(`/servers/${legacy}/`));
+```
