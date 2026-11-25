@@ -11990,13 +11990,13 @@
     ]
   },
   {
-    "serverId": "retell-ai-chatgpt-app",
+    "serverId": "retell-ai-chatgpt",
     "status": "online",
     "transport": "unknown",
     "authType": "oauth",
     "requiresOAuth": true,
     "protocolEra": "unknown",
-    "checkedAt": "2026-11-24T18:12:01.364Z",
+    "checkedAt": "2026-11-25T09:14:33.672Z",
     "message": "Authentication challenge at https://chatgpt-app.retellai.com/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
     "validatedUrl": "https://chatgpt-app.retellai.com/mcp",
     "authorizationServers": [
@@ -12476,6 +12476,337 @@
     "validatedUrl": "https://circleback.ai/api/mcp",
     "authorizationServers": [
       "https://circleback.ai"
+    ]
+  },
+  {
+    "serverId": "mapbox-docs",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateful",
+    "checkedAt": "2026-11-25T09:14:35.837Z",
+    "message": "Negotiated stateful MCP 2025-11-25 at https://mcp-docs.mapbox.com/mcp; detected transport streamable-http; authentication none",
+    "validatedUrl": "https://mcp-docs.mapbox.com/mcp",
+    "protocolVersion": "2025-11-25"
+  },
+  {
+    "serverId": "char-gen",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-25T09:23:10.542Z",
+    "message": "Authentication challenge at https://api.char-gen.com/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://api.char-gen.com/mcp",
+    "authorizationServers": [
+      "https://api.char-gen.com"
+    ]
+  },
+  {
+    "serverId": "hoplix",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-25T09:23:11.095Z",
+    "message": "Authentication challenge at https://api.hoplix.com/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://api.hoplix.com/mcp",
+    "authorizationServers": [
+      "https://api.hoplix.com"
+    ]
+  },
+  {
+    "serverId": "pyai",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-25T09:23:11.395Z",
+    "message": "Authentication challenge at https://api.pyai.com/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://api.pyai.com/mcp",
+    "authorizationServers": [
+      "https://api.pyai.com"
+    ]
+  },
+  {
+    "serverId": "signal8",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-25T09:23:10.687Z",
+    "message": "Authentication challenge at https://mcp.signal8.ai/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://mcp.signal8.ai/mcp",
+    "authorizationServers": [
+      "https://api.signal8.ai/"
+    ]
+  },
+  {
+    "serverId": "tenderlead",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-25T09:23:11.536Z",
+    "message": "Authentication challenge at https://tenderlead.co.uk/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://tenderlead.co.uk/mcp",
+    "authorizationServers": [
+      "https://tenderlead.co.uk"
+    ]
+  },
+  {
+    "serverId": "vokolla",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-25T09:23:12.185Z",
+    "message": "Authentication challenge at https://vokolla.com/api/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://vokolla.com/api/mcp",
+    "authorizationServers": [
+      "https://vokolla.com"
+    ]
+  },
+  {
+    "serverId": "salesforce-headless-360",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-25T09:14:33.332Z",
+    "message": "Authentication challenge at https://api.salesforce.com/platform/mcp/v1/platform/headless-360 returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://api.salesforce.com/platform/mcp/v1/platform/headless-360",
+    "authorizationServers": [
+      "https://login.salesforce.com"
+    ]
+  },
+  {
+    "serverId": "sigma",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-25T09:14:33.704Z",
+    "message": "Authentication challenge at https://aws-api.sigmacomputing.com/mcp/v2 returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://aws-api.sigmacomputing.com/mcp/v2",
+    "authorizationServers": [
+      "https://aws-api.sigmacomputing.com"
+    ]
+  },
+  {
+    "serverId": "activecampaign",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-25T09:14:33.271Z",
+    "message": "Authentication challenge at https://mcp.app-us1.com/http returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://mcp.app-us1.com/http",
+    "authorizationServers": [
+      "https://mcp.app-us1.com"
+    ]
+  },
+  {
+    "serverId": "retool",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-25T09:14:34.325Z",
+    "message": "Authentication challenge at https://mcp.retool.com/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://mcp.retool.com/mcp",
+    "authorizationServers": [
+      "https://mcp.retool.com"
+    ]
+  },
+  {
+    "serverId": "semgrep-appsec-platform",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-25T09:23:11.757Z",
+    "message": "Authentication challenge at https://semgrep.dev/api/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://semgrep.dev/api/mcp",
+    "authorizationServers": [
+      "https://login.semgrep.dev"
+    ]
+  },
+  {
+    "serverId": "thunderphone",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-25T09:14:34.724Z",
+    "message": "Authentication challenge at https://api.thunderphone.com/v1/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://api.thunderphone.com/v1/mcp",
+    "authorizationServers": [
+      "https://api.thunderphone.com"
+    ]
+  },
+  {
+    "serverId": "lena",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-25T09:14:34.254Z",
+    "message": "Authentication challenge at https://www.letlena.com/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://www.letlena.com/mcp",
+    "authorizationServers": [
+      "https://www.letlena.com"
+    ]
+  },
+  {
+    "serverId": "synthflow",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-25T09:14:34.867Z",
+    "message": "Authentication challenge at https://mcp.synthflow.ai/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://mcp.synthflow.ai/mcp",
+    "authorizationServers": [
+      "https://kind-prelude-27.authkit.app"
+    ]
+  },
+  {
+    "serverId": "weinc",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-25T09:14:35.282Z",
+    "message": "Authentication challenge at https://my.we.inc/api/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://my.we.inc/api/mcp",
+    "authorizationServers": [
+      "https://my.we.inc"
+    ]
+  },
+  {
+    "serverId": "okx-global-atk-simple",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-25T09:25:26.080Z",
+    "message": "Authentication challenge at https://www.okx.com/api/v1/mcp/trading-oauth-simple returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://www.okx.com/api/v1/mcp/trading-oauth-simple",
+    "authorizationServers": [
+      "https://www.okx.com/v3/users/mcp-authorization-server/trading-oauth-simple"
+    ]
+  },
+  {
+    "serverId": "mapbox-devkit",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-25T09:14:35.200Z",
+    "message": "Authentication challenge at https://mcp-devkit.mapbox.com/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://mcp-devkit.mapbox.com/mcp",
+    "authorizationServers": [
+      "https://mcp-devkit.mapbox.com"
+    ]
+  },
+  {
+    "serverId": "weinc-instant-website",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-25T09:14:36.269Z",
+    "message": "Authentication challenge at https://my.we.inc/api/instant/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://my.we.inc/api/instant/mcp",
+    "authorizationServers": [
+      "https://my.we.inc"
+    ]
+  },
+  {
+    "serverId": "weinc-domain-for-anything",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-25T09:14:36.036Z",
+    "message": "Authentication challenge at https://my.we.inc/api/domain/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://my.we.inc/api/domain/mcp",
+    "authorizationServers": [
+      "https://my.we.inc"
+    ]
+  },
+  {
+    "serverId": "weinc-copy-any-design",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-25T09:14:36.139Z",
+    "message": "Authentication challenge at https://my.we.inc/api/design/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://my.we.inc/api/design/mcp",
+    "authorizationServers": [
+      "https://my.we.inc"
+    ]
+  },
+  {
+    "serverId": "sonatype-guide",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "bearer-token",
+    "requiresOAuth": false,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-25T09:14:36.280Z",
+    "message": "Authentication challenge at https://mcp.guide.sonatype.com/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication bearer-token",
+    "validatedUrl": "https://mcp.guide.sonatype.com/mcp"
+  },
+  {
+    "serverId": "spotify-confidence-flags",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-25T09:14:36.570Z",
+    "message": "Authentication challenge at https://mcp.confidence.dev/mcp/flags returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://mcp.confidence.dev/mcp/flags",
+    "authorizationServers": [
+      "https://mcp.confidence.dev"
+    ]
+  },
+  {
+    "serverId": "hypd-ai",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-25T09:14:36.486Z",
+    "message": "Authentication challenge at https://mcp.hypd.ai/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://mcp.hypd.ai/mcp",
+    "authorizationServers": [
+      "https://mcp.hypd.ai"
     ]
   }
 ]

@@ -261,3 +261,190 @@ Sort numeric scores in descending order, preserving snapshot order for ties. For
 - Claude lists alternate routes for Crustdata, Lawve AI and Inkbox. The Crustdata Claude route advertises a separate authorization server. ChatGPT releases name the alternatives for Crustdata, Idiolect and Inkbox, and the primaries for Grain, RocketReach and Cognito Forms. The public ChatGPT releases for Sonos, Gem, LunarCrush, Mem and Circleback confirm listing membership and omit their MCP endpoint URLs.
 - LogRocket's bare primary is retained. The publisher's Claude plugin requests the same route with `?toolsets=all`. [LogRocket manifest](https://github.com/logrocket/logrocket-claude-plugin/blob/2e44dbb47faf9bb54e3405a8ae2714e7c5ce9791/plugins/logrocket/.mcp.json)
 - ChatGPT mappings for Webull and Funnel are pending. HYPD AI remains queued for a later batch. Crypto.com, Zillow, Lawstronaut, pg-aiguide and Tracy AI Interviewer remain deferred under the issue's inventory validation findings.
+
+## Batch 21 import
+
+The post-#758 catalog grew from 922 to 946 entries with 24 additions. TRES Finance is deferred to the later OAuth batch. The Retell ChatGPT app already matched the supplied directory ID and normalized endpoint. Its catalog ID is now `retell-ai-chatgpt`. The Retell SDK retains its publisher source, relevance, and separate endpoint. [Tracking issue #759](https://github.com/integry/mcptest/issues/759) · [Maintainer scope decision](https://github.com/integry/mcptest/pull/760#issuecomment-7170423694)
+
+Publisher manifests confirm that the Mapbox plugin configures the geocoding, Documentation, and DevKit servers, and that the Sales Cloud plugin configures Salesforce Headless 360 and Slack. Each distinct endpoint carries its plugin's directory ID. Buffer's public ChatGPT release names the existing Buffer endpoint. The existing Mapbox, Slack, and Buffer records retain their publisher sources and scores. [Mapbox manifest](https://github.com/mapbox/mapbox-agent-skills/blob/84d991e36ad5ac7195796ff9e9fdc378155f470c/.mcp.json) · [Sales Cloud manifest](https://github.com/salesforce/salesforce-skills/blob/80434ffa64fad714c52bb1dc7475783306997ca7/salesforce-for-sales/.mcp.json) · [Buffer release](https://chatgpt.com/backend-anon/ps/plugins/plugin_asdk_app_6ae21da086548191a7c824ea3dd59064)
+
+The recorded catalog validation shows all 24 additions and the reconciled Retell app online. Mapbox Documentation listed three tools anonymously. The default validator received an OAuth challenge at the Retell app. A separate anonymous session negotiated MCP 2025-06-18 as Retell 2.4.0 and listed 27 tools and six resources. Its prompt listing returned HTTP 401. Retell's protected-resource metadata names the Render endpoint, where a separate anonymous session also identified Retell 2.4.0. All 12 Sigma regional URLs returned HTTP 401 during anonymous initialization. Authenticated inventories remain unverified. [Retell protected-resource metadata](https://chatgpt-app.retellai.com/.well-known/oauth-protected-resource/mcp) · [Sigma regional endpoints](https://github.com/sigmacomputing/sigma-plugin/blob/0dfd34f1086060e7faea43adad562fb070aa04a8/README.md)
+
+The ProPR import TODO returned HTTP 401. The public batch records identified three additional queued servers whose publisher-documented endpoints passed validation. Synthflow shares its Claude plugin with the existing documentation server. Its connector ranked 856 of 1,214 for a relevance score of 29. Spotify Confidence Flags shares its plugin with Spotify Confidence Docs. HYPD AI uses its publisher's shared OAuth endpoint and has no verified directory ID or relevance score in this import. [Issue #755](https://github.com/integry/mcptest/issues/755) · [Issue #757](https://github.com/integry/mcptest/issues/757) · [Claude connector index](https://claude.com/marketplace/connectors-plugins)
+
+The batch 14 carry-forward evidence supplied seven more verified entries. CharGen, Hoplix, PyAI, Signal8, TenderLead, and Vokolla completed anonymous sessions using MCP 2025-11-25 and returned tool lists. The canonical snapshots record only the sections observed, with the catalog size and privacy limits applied. The default validator received OAuth challenges for these endpoints. Semgrep AppSec Platform returned HTTP 401 at its primary and read-only URLs. Vokolla's ChatGPT release names the editorial profile, recorded as an alternative. The batch 15 carry-forward identified OKX, whose protected-resource metadata confirms the exact Claude connector endpoint. It returned HTTP 401 and ranks 887 of 1,214 for a relevance score of 27. [Batch 14 evidence](catalog-batch-14-review-evidence.md#carry-forward) · [Batch 15 evidence](catalog-batch-15-review-evidence.md) · [OKX protected-resource metadata](https://www.okx.com/api/v1/mcp/trading-oauth-simple/.well-known/oauth-protected-resource)
+
+### Batch 21 follow-up
+
+The ProPR import TODO `ff14e799-4a20-42ec-9345-51b2c726d117` requires separate access. The correction run reported 1,224 records and 1,221 numeric popularity scores from the public Claude connector index retrieved on November 25, 2026. It recorded the source HTML SHA-256 as `fdb90f7c42e95ac67b8dc01a5ac9022fd6741d9b320477b8aa81c5954e81593b` and attributed 76 relevance changes to that input, including the three specialized WeInc connectors. The six queued initial scores of 50 were assigned to CharGen, Hoplix, PyAI, Signal8, TenderLead, and Vokolla. [Claude connector index](https://claude.com/marketplace/connectors-plugins)
+
+Funnel's ChatGPT listing connects to the global server. For EU-hosted accounts, enable Developer mode in ChatGPT, add a custom plugin using `https://mcp.eu.ai.funnel.io/mcp` and OAuth, then sign in to Funnel. Anonymous initialization of the EU endpoint returned HTTP 401 with an OAuth challenge. Its protected-resource metadata reports the exact EU URL. [Global ChatGPT listing](https://chatgpt.com/plugins/funnel) · [Funnel's ChatGPT setup guide](https://help.funnel.io/en/articles/16522580-connect-funnel-mcp-to-chatgpt) · [EU protected-resource metadata](https://mcp.eu.ai.funnel.io/.well-known/oauth-protected-resource/mcp)
+
+#### Claude relevance evidence
+
+**Maintainer decision required.** The original HTML and ordered ranking input could not be recovered from the available Git history, prior run bundle path, or GitHub Actions artifacts. The public archive returned no capture for the retrieval date, the live HTML hash differed, and the ProPR correction task API required authentication (HTTP 401). The reported HTML hash, denominator, and source-derived scores remain unverified. A maintainer needs to decide whether to obtain the original response from the correction run or explicitly accept the provenance gap. [Correction run](https://ui.gitfix.dev/tasks/pr-comments-batch-integry-mcptest-760-1795615667711) · [Partial ProPR review](https://github.com/integry/mcptest/pull/760#issuecomment-7173223817)
+
+If the original HTML becomes available, verify its SHA-256 with `sha256sum`, extract the ordered connector array from the embedded Next.js payload, and check for 1,224 records and 1,221 numeric scores. Sort the numeric scores descending, preserving source order for ties. For catalog entries with exactly one ranked Claude listing, compute `Math.round(100 * (1221 - rank) / 1221)` using one-based rank. Compare the computed values and the set of changed IDs against the Git comparison below.
+
+The comparison starts at `a3613ed6bc9e08408703fb2afe0016af93716dde`, immediately before the corrections, and ends at the correction commit `b4ac0334a5d2c24c4c8913593c48ca72804cdd00`. It records 76 changed values on entries with Claude listings and six separate initial scores. All 82 values are present at reviewed head `6f872e5353cf8f75ad8b75f2dab425234dd5d670`. Run this from the repository root to print every changed value and its Claude listing IDs as TSV. [Download the exact correction diff](https://github.com/integry/mcptest/compare/a3613ed6bc9e08408703fb2afe0016af93716dde..b4ac0334a5d2c24c4c8913593c48ca72804cdd00.diff)
+
+```sh
+node --input-type=module <<'JS'
+import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+
+const readCatalog = (revision) => new Map(JSON.parse(execFileSync('git', [
+  'show', `${revision}:src/data/serverCatalog.json`,
+], { maxBuffer: 20_000_000 })).map((entry) => [entry.id, entry]));
+const before = readCatalog('a3613ed6bc9e08408703fb2afe0016af93716dde');
+const corrected = readCatalog('b4ac0334a5d2c24c4c8913593c48ca72804cdd00');
+const reviewed = readCatalog('6f872e5353cf8f75ad8b75f2dab425234dd5d670');
+assert.deepEqual(new Set(corrected.keys()), new Set(before.keys()));
+assert.deepEqual(new Set(reviewed.keys()), new Set([...corrected.keys()].filter((id) => id !== 'tres-finance')));
+
+const initial = new Set(['char-gen', 'hoplix', 'pyai', 'signal8', 'tenderlead', 'vokolla']);
+const changes = [];
+for (const [id, entry] of corrected) {
+  if (reviewed.has(id)) assert.equal(reviewed.get(id).relevance, entry.relevance, id);
+  const previous = before.get(id);
+  if (previous.relevance === entry.relevance) continue;
+  const listings = (previous.directoryListings ?? [])
+    .filter(({ directory }) => directory === 'claude')
+    .map((listing) => listing.id);
+  if (initial.delete(id)) {
+    assert.equal(previous.relevance, undefined, id);
+    assert.equal(entry.relevance, 50, id);
+    continue;
+  }
+  assert(listings.length > 0, id);
+  assert.equal(reviewed.get(id)?.relevance, entry.relevance, id);
+  changes.push([id, previous.relevance ?? 'unset', entry.relevance, listings.join(',')]);
+}
+assert.equal(initial.size, 0);
+assert.equal(changes.length, 76);
+console.log('id\tbefore\tafter\tclaudeListingIds');
+for (const row of changes) console.log(row.join('\t'));
+JS
+```
+
+#### Complete capability comparison
+
+The reviewed PR base is `c3fd6700c98f3f6c951e86c3971d97568c02b094` and the reviewed head is `6f872e5353cf8f75ad8b75f2dab425234dd5d670`. The downloadable diff includes the complete `src/data/catalogCapabilities.json` patch (14,182 added and 8,635 removed lines). Its file section matched the local Git diff byte for byte. [Download the full diff](https://github.com/integry/mcptest/compare/c3fd6700c98f3f6c951e86c3971d97568c02b094..6f872e5353cf8f75ad8b75f2dab425234dd5d670.diff) · [Base JSON](https://raw.githubusercontent.com/integry/mcptest/c3fd6700c98f3f6c951e86c3971d97568c02b094/src/data/catalogCapabilities.json) · [Head JSON](https://raw.githubusercontent.com/integry/mcptest/6f872e5353cf8f75ad8b75f2dab425234dd5d670/src/data/catalogCapabilities.json)
+
+The base contains 441 snapshots and the head contains 449. All 441 base IDs remain present with deeply equal JSON values. There are zero removals and zero modifications to existing snapshot values. The eight new snapshot IDs are `char-gen`, `hoplix`, `mapbox-docs`, `pyai`, `retell-ai-chatgpt`, `signal8`, `tenderlead`, and `vokolla`. The base had no snapshot under the legacy Retell ChatGPT ID.
+
+Run this from the repository root to reproduce the patch and check every snapshot at the pinned revisions. It requires Git and Node.js.
+
+```sh
+git diff --no-ext-diff --no-textconv \
+  c3fd6700c98f3f6c951e86c3971d97568c02b094 6f872e5353cf8f75ad8b75f2dab425234dd5d670 \
+  -- src/data/catalogCapabilities.json
+
+node --input-type=module <<'JS'
+import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+
+const readSnapshots = (revision) => JSON.parse(execFileSync('git', [
+  'show', `${revision}:src/data/catalogCapabilities.json`,
+], { maxBuffer: 20_000_000 }));
+const base = readSnapshots('c3fd6700c98f3f6c951e86c3971d97568c02b094');
+const head = readSnapshots('6f872e5353cf8f75ad8b75f2dab425234dd5d670');
+assert.equal(Object.keys(base).length, 441);
+assert.equal(Object.keys(head).length, 449);
+for (const [id, snapshot] of Object.entries(base)) {
+  assert(Object.hasOwn(head, id), id);
+  assert.deepEqual(head[id], snapshot, id);
+}
+assert(!Object.hasOwn(base, 'retell-ai-chatgpt-app'));
+const added = Object.keys(head).filter((id) => !Object.hasOwn(base, id)).sort();
+assert.deepEqual(added, [
+  'char-gen', 'hoplix', 'mapbox-docs', 'pyai', 'retell-ai-chatgpt', 'signal8', 'tenderlead', 'vokolla',
+]);
+console.log('441 preserved, zero removed or modified, eight added', added);
+JS
+```
+
+#### Reproduce the batch 21 review
+
+Use the PR base `c3fd6700c98f3f6c951e86c3971d97568c02b094`. Generate the full comparison locally with Git to include the capability patch that GitHub omitted from the earlier review.
+
+```sh
+base=c3fd6700c98f3f6c951e86c3971d97568c02b094
+git diff --no-ext-diff --binary --full-index "$base" HEAD
+gh api -H 'Accept: application/vnd.github.diff' "repos/integry/mcptest/compare/$base...$(git rev-parse HEAD)"
+gh issue view 759 --repo integry/mcptest --json body,comments,url
+npm run build
+CHROME_PATH=/usr/bin/chromium npm run test:e2e -- tests/e2e/not-found.e2e.ts -g 'legacy Retell'
+```
+
+For a structural check, save the following as `dist/verify-batch-21.mts` after building and run `npx vite-node --script dist/verify-batch-21.mts`. It verifies the 24 additions with recorded online validation, the TRES Finance exclusion, normalized endpoint uniqueness across the full catalog, all 441 preserved inventories and eight new ones, and the generated Retell alias and canonical sitemap entry.
+
+```ts
+import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { existsSync, readFileSync } from 'node:fs';
+import { normalizeCatalogEndpoint } from '../src/utils/catalogSubmission.ts';
+
+const base = 'c3fd6700c98f3f6c951e86c3971d97568c02b094';
+const read = (name, ref?) => {
+  const path = `src/data/${name}.json`;
+  return JSON.parse(ref
+    ? execFileSync('git', ['show', `${ref}:${path}`], { maxBuffer: 20_000_000 })
+    : readFileSync(path, 'utf8'));
+};
+const legacy = 'retell-ai-chatgpt-app';
+const canonical = 'retell-ai-chatgpt';
+const deferred = 'tres-finance';
+const prior = read('serverCatalog', base);
+const current = read('serverCatalog');
+const priorIds = new Set(prior.map(({ id }) => id === legacy ? canonical : id));
+const currentIds = new Set(current.map(({ id }) => id));
+const additions = current.filter(({ id }) => !priorIds.has(id));
+assert.equal(priorIds.size, 922);
+assert.equal(current.length, 946);
+assert.equal(currentIds.size, current.length);
+assert.equal(additions.length, 24);
+assert([...priorIds].every((id) => currentIds.has(id)));
+assert(!currentIds.has(legacy));
+assert(!currentIds.has(deferred));
+
+const owners = new Map();
+for (const server of current) {
+  const alternatives = (server.alternativeEndpoints ?? []).map(({ url }) => url);
+  for (const endpoint of [server.url, server.browserUrl, ...alternatives].filter(Boolean)) {
+    const key = normalizeCatalogEndpoint(endpoint);
+    assert(key, endpoint);
+    assert(!owners.has(key) || owners.get(key) === server.id, `Duplicate endpoint ${key}`);
+    owners.set(key, server.id);
+  }
+}
+const validation = new Map(read('catalogValidation').map((row) => [row.serverId, row]));
+assert(!validation.has(deferred));
+assert.equal(validation.get(canonical)?.status, 'online');
+assert(!existsSync(`public/server-logos/${deferred}.svg`));
+for (const { id, listingSource } of additions) {
+  assert.equal(validation.get(id)?.status, 'online', id);
+  assert.equal(listingSource?.kind, 'publisher', id);
+}
+console.table(additions.map(({ id, url }) => ({ id, url })));
+
+const oldSnapshots = read('catalogCapabilities', base);
+const snapshots = read('catalogCapabilities');
+assert.equal(Object.keys(oldSnapshots).length, 441);
+for (const [id, snapshot] of Object.entries(oldSnapshots)) {
+  assert.deepEqual(snapshots[id], snapshot, id);
+}
+assert.deepEqual(Object.keys(snapshots).filter((id) => !Object.hasOwn(oldSnapshots, id)).sort(),
+  ['char-gen', 'hoplix', 'mapbox-docs', 'pyai', canonical, 'signal8', 'tenderlead', 'vokolla']);
+assert.equal(snapshots[canonical].tools.observedCount, 27);
+
+const page = (id) => readFileSync(`dist/servers/${id}/index.html`, 'utf8');
+const canonicalUrl = `https://mcptest.io/servers/${canonical}/`;
+const sitemap = readFileSync('dist/sitemap.xml', 'utf8');
+assert.equal(page(legacy), page(canonical));
+assert(page(canonical).includes(`<link rel="canonical" href="${canonicalUrl}"`));
+assert.equal(sitemap.split(`<loc>${canonicalUrl}</loc>`).length - 1, 1);
+assert(!sitemap.includes(`/servers/${legacy}/`));
+assert(!sitemap.includes(`/servers/${deferred}/`));
+assert(!existsSync(`dist/servers/${deferred}/index.html`));
+```
