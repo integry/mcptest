@@ -264,11 +264,11 @@ Sort numeric scores in descending order, preserving snapshot order for ties. For
 
 ## Batch 21 import
 
-The post-#758 catalog grew from 922 to 947 entries. The Retell ChatGPT app already matched the supplied directory ID and normalized endpoint. Its catalog ID is now `retell-ai-chatgpt`. The Retell SDK retains its publisher source, relevance, and separate endpoint. [Tracking issue #759](https://github.com/integry/mcptest/issues/759)
+The post-#758 catalog grew from 922 to 946 entries with 24 additions. TRES Finance is deferred to the later OAuth batch. The Retell ChatGPT app already matched the supplied directory ID and normalized endpoint. Its catalog ID is now `retell-ai-chatgpt`. The Retell SDK retains its publisher source, relevance, and separate endpoint. [Tracking issue #759](https://github.com/integry/mcptest/issues/759) · [Maintainer scope decision](https://github.com/integry/mcptest/pull/760#issuecomment-7170423694)
 
 Publisher manifests confirm that the Mapbox plugin configures the geocoding, Documentation, and DevKit servers, and that the Sales Cloud plugin configures Salesforce Headless 360 and Slack. Each distinct endpoint carries its plugin's directory ID. Buffer's public ChatGPT release names the existing Buffer endpoint. The existing Mapbox, Slack, and Buffer records retain their publisher sources and scores. [Mapbox manifest](https://github.com/mapbox/mapbox-agent-skills/blob/84d991e36ad5ac7195796ff9e9fdc378155f470c/.mcp.json) · [Sales Cloud manifest](https://github.com/salesforce/salesforce-skills/blob/80434ffa64fad714c52bb1dc7475783306997ca7/salesforce-for-sales/.mcp.json) · [Buffer release](https://chatgpt.com/backend-anon/ps/plugins/plugin_asdk_app_6ae21da086548191a7c824ea3dd59064)
 
-The catalog validator reported all 25 additions and the reconciled Retell app online. Mapbox Documentation listed three tools anonymously. The default validator received an OAuth challenge at the Retell app. A separate anonymous session negotiated MCP 2025-06-18 as Retell 2.4.0 and listed 27 tools and six resources. Its prompt listing returned HTTP 401. Retell's protected-resource metadata names the Render endpoint, where a separate anonymous session also identified Retell 2.4.0. All 12 Sigma regional URLs returned HTTP 401 during anonymous initialization. Authenticated inventories remain unverified. [Retell protected-resource metadata](https://chatgpt-app.retellai.com/.well-known/oauth-protected-resource/mcp) · [Sigma regional endpoints](https://github.com/sigmacomputing/sigma-plugin/blob/0dfd34f1086060e7faea43adad562fb070aa04a8/README.md)
+The recorded catalog validation shows all 24 additions and the reconciled Retell app online. Mapbox Documentation listed three tools anonymously. The default validator received an OAuth challenge at the Retell app. A separate anonymous session negotiated MCP 2025-06-18 as Retell 2.4.0 and listed 27 tools and six resources. Its prompt listing returned HTTP 401. Retell's protected-resource metadata names the Render endpoint, where a separate anonymous session also identified Retell 2.4.0. All 12 Sigma regional URLs returned HTTP 401 during anonymous initialization. Authenticated inventories remain unverified. [Retell protected-resource metadata](https://chatgpt-app.retellai.com/.well-known/oauth-protected-resource/mcp) · [Sigma regional endpoints](https://github.com/sigmacomputing/sigma-plugin/blob/0dfd34f1086060e7faea43adad562fb070aa04a8/README.md)
 
 The ProPR import TODO returned HTTP 401. The public batch records identified three additional queued servers whose publisher-documented endpoints passed validation. Synthflow shares its Claude plugin with the existing documentation server. Its connector ranked 856 of 1,214 for a relevance score of 29. Spotify Confidence Flags shares its plugin with Spotify Confidence Docs. HYPD AI uses its publisher's shared OAuth endpoint and has no verified directory ID or relevance score in this import. [Issue #755](https://github.com/integry/mcptest/issues/755) · [Issue #757](https://github.com/integry/mcptest/issues/757) · [Claude connector index](https://claude.com/marketplace/connectors-plugins)
 
@@ -287,17 +287,18 @@ Use the PR base `c3fd6700c98f3f6c951e86c3971d97568c02b094`. Generate the full co
 ```sh
 base=c3fd6700c98f3f6c951e86c3971d97568c02b094
 git diff --no-ext-diff --binary --full-index "$base" HEAD
-gh api repos/integry/mcptest/issues/759 --jq .body
+gh api -H 'Accept: application/vnd.github.diff' "repos/integry/mcptest/compare/$base...$(git rev-parse HEAD)"
+gh issue view 759 --repo integry/mcptest --json body,comments,url
 npm run build
 CHROME_PATH=/usr/bin/chromium npm run test:e2e -- tests/e2e/not-found.e2e.ts -g 'legacy Retell'
 ```
 
-For a structural check, save the following as `dist/verify-batch-21.mts` after building and run `npx vite-node --script dist/verify-batch-21.mts`. It verifies the 25 additions with recorded online validation, normalized endpoint uniqueness across the full catalog, all 441 preserved inventories and eight new ones, and the generated Retell alias and canonical sitemap entry.
+For a structural check, save the following as `dist/verify-batch-21.mts` after building and run `npx vite-node --script dist/verify-batch-21.mts`. It verifies the 24 additions with recorded online validation, the TRES Finance exclusion, normalized endpoint uniqueness across the full catalog, all 441 preserved inventories and eight new ones, and the generated Retell alias and canonical sitemap entry.
 
 ```ts
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { normalizeCatalogEndpoint } from '../src/utils/catalogSubmission.ts';
 
 const base = 'c3fd6700c98f3f6c951e86c3971d97568c02b094';
@@ -309,17 +310,19 @@ const read = (name, ref?) => {
 };
 const legacy = 'retell-ai-chatgpt-app';
 const canonical = 'retell-ai-chatgpt';
+const deferred = 'tres-finance';
 const prior = read('serverCatalog', base);
 const current = read('serverCatalog');
 const priorIds = new Set(prior.map(({ id }) => id === legacy ? canonical : id));
 const currentIds = new Set(current.map(({ id }) => id));
 const additions = current.filter(({ id }) => !priorIds.has(id));
 assert.equal(priorIds.size, 922);
-assert.equal(current.length, 947);
+assert.equal(current.length, 946);
 assert.equal(currentIds.size, current.length);
-assert.equal(additions.length, 25);
+assert.equal(additions.length, 24);
 assert([...priorIds].every((id) => currentIds.has(id)));
 assert(!currentIds.has(legacy));
+assert(!currentIds.has(deferred));
 
 const owners = new Map();
 for (const server of current) {
@@ -332,6 +335,9 @@ for (const server of current) {
   }
 }
 const validation = new Map(read('catalogValidation').map((row) => [row.serverId, row]));
+assert(!validation.has(deferred));
+assert.equal(validation.get(canonical)?.status, 'online');
+assert(!existsSync(`public/server-logos/${deferred}.svg`));
 for (const { id, listingSource } of additions) {
   assert.equal(validation.get(id)?.status, 'online', id);
   assert.equal(listingSource?.kind, 'publisher', id);
@@ -355,4 +361,6 @@ assert.equal(page(legacy), page(canonical));
 assert(page(canonical).includes(`<link rel="canonical" href="${canonicalUrl}"`));
 assert.equal(sitemap.split(`<loc>${canonicalUrl}</loc>`).length - 1, 1);
 assert(!sitemap.includes(`/servers/${legacy}/`));
+assert(!sitemap.includes(`/servers/${deferred}/`));
+assert(!existsSync(`dist/servers/${deferred}/index.html`));
 ```

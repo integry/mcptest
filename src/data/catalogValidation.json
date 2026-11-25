@@ -12782,20 +12782,6 @@
     "validatedUrl": "https://mcp.guide.sonatype.com/mcp"
   },
   {
-    "serverId": "tres-finance",
-    "status": "online",
-    "transport": "unknown",
-    "authType": "oauth",
-    "requiresOAuth": true,
-    "protocolEra": "unknown",
-    "checkedAt": "2026-11-25T09:14:37.126Z",
-    "message": "Authentication challenge at https://ai.tres.finance/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
-    "validatedUrl": "https://ai.tres.finance/mcp",
-    "authorizationServers": [
-      "https://ai.tres.finance"
-    ]
-  },
-  {
     "serverId": "spotify-confidence-flags",
     "status": "online",
     "transport": "unknown",

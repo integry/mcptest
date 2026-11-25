@@ -43495,52 +43495,6 @@
     "logoLicenseNote": "Unofficial, locally generated fallback monogram for Sonatype Guide."
   },
   {
-    "id": "tres-finance",
-    "name": "TRES Finance",
-    "url": "https://ai.tres.finance/mcp",
-    "description": "Analyze blockchain transactions and work with accounting ledgers in a TRES Finance account. Sign in with OAuth to connect.",
-    "category": "Finance",
-    "tags": [
-      "accounting",
-      "blockchain",
-      "oauth"
-    ],
-    "directoryListings": [
-      {
-        "directory": "claude",
-        "id": "directoryPlugin.6ba67707-fc39-4233-b18d-9b4740c26ff5",
-        "url": "https://claude.com/marketplace/plugins/tres-finance-plugin"
-      }
-    ],
-    "homepageUrl": "https://tres.finance/",
-    "listingSource": {
-      "kind": "publisher",
-      "url": "https://github.com/tres-finance-public/tres-claude-plugin/blob/8f0fa9a4a66adf60cd566e011f240d204fa3a554/README.md"
-    },
-    "transport": "streamable-http",
-    "authType": "oauth",
-    "requiresOAuth": true,
-    "oauthRegistration": {
-      "mode": "unknown",
-      "clientId": {
-        "required": false
-      },
-      "clientSecret": {
-        "required": false
-      },
-      "callback": {
-        "required": false
-      },
-      "reviewedAt": "2026-11-25",
-      "evidenceUrl": "https://ai.tres.finance/.well-known/oauth-protected-resource"
-    },
-    "exactEndpointOnly": true,
-    "logoUrl": "/server-logos/tres-finance.svg",
-    "logoSourceKind": "generated-fallback",
-    "logoRetrievedAt": "2026-11-25",
-    "logoLicenseNote": "Unofficial, locally generated fallback monogram for TRES Finance."
-  },
-  {
     "id": "spotify-confidence-flags",
     "name": "Spotify Confidence Flags",
     "url": "https://mcp.confidence.dev/mcp/flags",
