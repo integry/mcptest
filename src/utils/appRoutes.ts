@@ -120,17 +120,3 @@ export const NOT_FOUND_LINKS = [
 export const NOT_FOUND_TITLE = 'Page not found';
 export const NOT_FOUND_SUMMARY =
   'Nothing lives at this address. It may have moved, or the link that brought you here may be mistyped.';
-
-/**
- * Reading pages (guides) scroll with the window, and on desktop their header
- * scrolls away: the sidebar already pins the primary navigation, so a sticky
- * bar would only cost reading height. The playground and the catalog keep
- * the fixed 100vh shell; the catalog's long server list still has links
- * below the fold that fall short of the 24px target size, which a
- * window-scrolled page puts in front of the accessibility checks. The
- * static shell uses this to match App.
- */
-export const READING_SHELL_CLASS = 'app-shell--reading';
-
-export const isReadingShellPath = (pathname: string): boolean =>
-  /^\/(learn|guides|docs)(\/|$)/.test(pathname);

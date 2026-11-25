@@ -10,8 +10,10 @@
   padding-right: 0.75rem;
 }
 
-/* Main content area spacing */
+/* The content column fills the remaining shell and owns page scrolling. */
 .main-content {
+  min-height: 0;
+  overflow: auto;
   padding: var(--space-4);
 }
 
@@ -331,12 +333,12 @@
   transition: left 0.3s ease, visibility 0s;
 }
 
-.menu-open body {
-  overflow: hidden;
-}
-
 /* Switch to a drawer before the inspector becomes cramped. */
 @container app-shell (width < 1180px) {
+  .menu-open .main-content {
+    overflow: hidden;
+  }
+
   .mobile-menu-toggle {
     display: inline-flex !important;
     align-items: center;
@@ -434,8 +436,18 @@
 }
 
 
-/* --- Technical interface refresh --- */
+/* The assistant reserves width on html. Keep the shell within that width
+   and prevent an extra viewport scrollbar while leaving the panel fixed. */
+html,
+body {
+  overflow: clip;
+}
+
 .app-shell {
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
   /* Respond to the space left by the docked assistant as well as window resizes. */
   container: app-shell / inline-size;
   width: 100%;
@@ -502,7 +514,6 @@
 .desktop-sidebar {
   width: 208px;
   flex-shrink: 0;
-  height: calc(100dvh - 4rem);
   overflow-y: auto;
   padding: var(--space-3) 0 !important;
   border-right: 1px solid var(--border-color);
@@ -884,44 +895,6 @@
   opacity: 0.75;
 }
 
-/* Home scrolls with the viewport while navigation scrolls independently. */
-.app-shell--home {
-  height: auto !important;
-  min-height: 100vh;
-}
-.app-shell--home .app-workspace,
-.app-shell--home .main-content {
-  overflow: visible !important;
-}
-.app-shell--home .desktop-sidebar {
-  position: sticky;
-  top: 4rem;
-  height: calc(100dvh - 4rem);
-  flex-shrink: 0;
-}
-/* Reading pages (guides) scroll with the window too. On desktop
-   the header is static and scrolls away: the sidebar already pins the
-   primary navigation, so a sticky bar would only take reading height and
-   cut through cards. Phones keep it sticky, since it holds the menu button. */
-.app-shell--reading {
-  height: auto !important;
-  min-height: 100vh;
-}
-.app-shell--reading .app-workspace,
-.app-shell--reading .main-content {
-  overflow: visible !important;
-}
-@media (min-width: 768px) {
-  .app-shell--reading .app-header {
-    position: relative;
-  }
-  .app-shell--reading .desktop-sidebar {
-    position: sticky;
-    top: 0;
-    height: 100dvh;
-    flex-shrink: 0;
-  }
-}
 .app-shell--home .main-content > .view-panel:has(.playground-tabs-wrapper) { max-width: 100%; }
 .app-shell--home .tab-content-panel {
   width: 100%;
@@ -977,4 +950,34 @@
 /* Check pages and their footer share the same readable content bounds. */
 .main-content:has(.discovery-checker, .breaking-changes) {
   --page-content-width: 64rem;
+}
+
+@media print {
+  html,
+  body,
+  .app-shell,
+  .app-workspace,
+  .main-content {
+    height: auto;
+    overflow: visible !important;
+  }
+
+  /* A right-docked widget leaves an inline width constraint on html. */
+  body {
+    width: 100vw;
+  }
+
+  .app-shell,
+  .app-workspace,
+  .main-content:has(> .site-footer) {
+    display: block !important;
+  }
+
+  .app-header,
+  .desktop-sidebar,
+  .mobile-sidebar,
+  .mobile-sidebar-overlay,
+  :is(solv-chat, [id^="solv-dock:1:"], .site-assistant-launcher) {
+    display: none !important;
+  }
 }

@@ -40,6 +40,27 @@ if (restoringSession) loadFirebase().catch(() => {})
 scheduleAnalyticsLoad()
 
 const root = document.getElementById('root')!
+const scrollKeys = new Set([' ', 'PageUp', 'PageDown', 'Home', 'End', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'])
+const isScrollKey = (event: Event): event is KeyboardEvent =>
+  event instanceof KeyboardEvent && event.type === 'keydown'
+  && !event.altKey && !event.ctrlKey && !event.metaKey && scrollKeys.has(event.key)
+
+// Let native keyboard scrolling start in the content column without stealing
+// focus on load or changing the behavior of an already focused control.
+document.addEventListener('keydown', event => {
+  if (event.defaultPrevented || !isScrollKey(event)) return
+  if (document.activeElement !== document.body) return
+  root.querySelector<HTMLElement>('.main-content')?.focus({ preventScroll: true })
+})
+
+root.addEventListener('scroll', event => {
+  const panel = event.target
+  if (!(panel instanceof HTMLElement) || !panel.classList.contains('main-content')) return
+  const header = panel.closest('.app-shell')?.querySelector('.app-header')
+  if (panel.scrollTop > 0) header?.setAttribute('data-scrolled', 'true')
+  else header?.removeAttribute('data-scrolled')
+}, { capture: true, passive: true })
+
 const deferredPage = getDeferredStaticPage(root)
 // The home HTML also serves SPA routes. Their actual views must mount at once.
 const staticPage = deferredPage?.querySelector('.seo-landing-fallback') && window.location.pathname !== '/'
@@ -65,21 +86,22 @@ if (staticPage) {
     snapshotState: snapshotStaticPageState,
     // The catalog search and links already work on the prerendered page.
     // Tab can move from search into the app's other filter controls.
-    shouldStartOnInput: isCatalog
-      ? event => {
-          const target = event.target
-          if (!(target instanceof Element)) return true
-          // The assistant's settings handshake runs independently of the catalog.
-          if (!root.contains(target)) {
-            return event.type === 'keydown' && (target === document.body || target === document.documentElement)
-          }
-          if (target.closest(`[${STATIC_CATALOG_SEARCH_ATTRIBUTE}]`)) {
-            return event instanceof KeyboardEvent && event.key === 'Tab'
-          }
-          if (target.closest('[data-static-catalog-clear]')) return false
-          return event.type !== 'pointerdown' || Boolean(target.closest('.catalog-filters, button, input, select, textarea'))
-        }
-      : undefined,
+    shouldStartOnInput: event => {
+      const target = event.target
+      if (!(target instanceof Element)) return true
+      // Keep native scrolling on the static page until an input needs React.
+      if (isScrollKey(event) && (target === document.body || target.matches('.main-content'))) return false
+      if (!isCatalog) return true
+      // The assistant's settings handshake runs independently of the catalog.
+      if (!root.contains(target)) {
+        return event.type === 'keydown' && (target === document.body || target === document.documentElement)
+      }
+      if (target.closest(`[${STATIC_CATALOG_SEARCH_ATTRIBUTE}]`)) {
+        return event instanceof KeyboardEvent && event.key === 'Tab'
+      }
+      if (target.closest('[data-static-catalog-clear]')) return false
+      return event.type !== 'pointerdown' || Boolean(target.closest('.catalog-filters, button, input, select, textarea'))
+    },
   })
   enhanceStaticPage(staticPage)
   // The header shows the signed-in user, which only the app knows.
