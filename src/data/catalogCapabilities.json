@@ -16033,7 +16033,7 @@
   },
   "aws": {
     "version": 1,
-    "observedAt": "2026-11-23T18:15:05.563Z",
+    "observedAt": "2026-11-25T23:16:50.198Z",
     "provenance": {
       "testedEndpoint": "https://aws-mcp.us-east-1.api.aws/mcp",
       "route": "direct"
