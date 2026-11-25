@@ -276,9 +276,93 @@ The batch 14 carry-forward evidence supplied seven more verified entries. CharGe
 
 ### Batch 21 follow-up
 
-The ProPR import TODO `ff14e799-4a20-42ec-9345-51b2c726d117` requires separate access. The public Claude connector index retrieved on November 25, 2026 contained 1,224 records and 1,221 numeric popularity scores. Its HTML SHA-256 was `fdb90f7c42e95ac67b8dc01a5ac9022fd6741d9b320477b8aa81c5954e81593b`. Applying the batch 20 rule with 1,221 as the denominator to the previous PR head `a3613ed6bc9e08408703fb2afe0016af93716dde` yields 76 changes. This includes the three specialized WeInc connectors that now have numeric ranks. The six queued initial scores of 50 are assigned to CharGen, Hoplix, PyAI, Signal8, TenderLead, and Vokolla. [Claude connector index](https://claude.com/marketplace/connectors-plugins)
+The ProPR import TODO `ff14e799-4a20-42ec-9345-51b2c726d117` requires separate access. The correction run reported 1,224 records and 1,221 numeric popularity scores from the public Claude connector index retrieved on November 25, 2026. It recorded the source HTML SHA-256 as `fdb90f7c42e95ac67b8dc01a5ac9022fd6741d9b320477b8aa81c5954e81593b` and attributed 76 relevance changes to that input, including the three specialized WeInc connectors. The six queued initial scores of 50 were assigned to CharGen, Hoplix, PyAI, Signal8, TenderLead, and Vokolla. [Claude connector index](https://claude.com/marketplace/connectors-plugins)
 
 Funnel's ChatGPT listing connects to the global server. For EU-hosted accounts, enable Developer mode in ChatGPT, add a custom plugin using `https://mcp.eu.ai.funnel.io/mcp` and OAuth, then sign in to Funnel. Anonymous initialization of the EU endpoint returned HTTP 401 with an OAuth challenge. Its protected-resource metadata reports the exact EU URL. [Global ChatGPT listing](https://chatgpt.com/plugins/funnel) · [Funnel's ChatGPT setup guide](https://help.funnel.io/en/articles/16522580-connect-funnel-mcp-to-chatgpt) · [EU protected-resource metadata](https://mcp.eu.ai.funnel.io/.well-known/oauth-protected-resource/mcp)
+
+#### Claude relevance evidence
+
+**Maintainer decision required.** The original HTML and ordered ranking input could not be recovered from the available Git history, prior run bundle path, or GitHub Actions artifacts. The public archive returned no capture for the retrieval date, the live HTML hash differed, and the ProPR correction task API required authentication (HTTP 401). The reported HTML hash, denominator, and source-derived scores remain unverified. A maintainer needs to decide whether to obtain the original response from the correction run or explicitly accept the provenance gap. [Correction run](https://ui.gitfix.dev/tasks/pr-comments-batch-integry-mcptest-760-1795615667711) · [Partial ProPR review](https://github.com/integry/mcptest/pull/760#issuecomment-7173223817)
+
+If the original HTML becomes available, verify its SHA-256 with `sha256sum`, extract the ordered connector array from the embedded Next.js payload, and check for 1,224 records and 1,221 numeric scores. Sort the numeric scores descending, preserving source order for ties. For catalog entries with exactly one ranked Claude listing, compute `Math.round(100 * (1221 - rank) / 1221)` using one-based rank. Compare the computed values and the set of changed IDs against the Git comparison below.
+
+The comparison starts at `a3613ed6bc9e08408703fb2afe0016af93716dde`, immediately before the corrections, and ends at the correction commit `b4ac0334a5d2c24c4c8913593c48ca72804cdd00`. It records 76 changed values on entries with Claude listings and six separate initial scores. All 82 values are present at reviewed head `6f872e5353cf8f75ad8b75f2dab425234dd5d670`. Run this from the repository root to print every changed value and its Claude listing IDs as TSV. [Download the exact correction diff](https://github.com/integry/mcptest/compare/a3613ed6bc9e08408703fb2afe0016af93716dde..b4ac0334a5d2c24c4c8913593c48ca72804cdd00.diff)
+
+```sh
+node --input-type=module <<'JS'
+import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+
+const readCatalog = (revision) => new Map(JSON.parse(execFileSync('git', [
+  'show', `${revision}:src/data/serverCatalog.json`,
+], { maxBuffer: 20_000_000 })).map((entry) => [entry.id, entry]));
+const before = readCatalog('a3613ed6bc9e08408703fb2afe0016af93716dde');
+const corrected = readCatalog('b4ac0334a5d2c24c4c8913593c48ca72804cdd00');
+const reviewed = readCatalog('6f872e5353cf8f75ad8b75f2dab425234dd5d670');
+assert.deepEqual(new Set(corrected.keys()), new Set(before.keys()));
+assert.deepEqual(new Set(reviewed.keys()), new Set([...corrected.keys()].filter((id) => id !== 'tres-finance')));
+
+const initial = new Set(['char-gen', 'hoplix', 'pyai', 'signal8', 'tenderlead', 'vokolla']);
+const changes = [];
+for (const [id, entry] of corrected) {
+  if (reviewed.has(id)) assert.equal(reviewed.get(id).relevance, entry.relevance, id);
+  const previous = before.get(id);
+  if (previous.relevance === entry.relevance) continue;
+  const listings = (previous.directoryListings ?? [])
+    .filter(({ directory }) => directory === 'claude')
+    .map((listing) => listing.id);
+  if (initial.delete(id)) {
+    assert.equal(previous.relevance, undefined, id);
+    assert.equal(entry.relevance, 50, id);
+    continue;
+  }
+  assert(listings.length > 0, id);
+  assert.equal(reviewed.get(id)?.relevance, entry.relevance, id);
+  changes.push([id, previous.relevance ?? 'unset', entry.relevance, listings.join(',')]);
+}
+assert.equal(initial.size, 0);
+assert.equal(changes.length, 76);
+console.log('id\tbefore\tafter\tclaudeListingIds');
+for (const row of changes) console.log(row.join('\t'));
+JS
+```
+
+#### Complete capability comparison
+
+The reviewed PR base is `c3fd6700c98f3f6c951e86c3971d97568c02b094` and the reviewed head is `6f872e5353cf8f75ad8b75f2dab425234dd5d670`. The downloadable diff includes the complete `src/data/catalogCapabilities.json` patch (14,182 added and 8,635 removed lines). Its file section matched the local Git diff byte for byte. [Download the full diff](https://github.com/integry/mcptest/compare/c3fd6700c98f3f6c951e86c3971d97568c02b094..6f872e5353cf8f75ad8b75f2dab425234dd5d670.diff) · [Base JSON](https://raw.githubusercontent.com/integry/mcptest/c3fd6700c98f3f6c951e86c3971d97568c02b094/src/data/catalogCapabilities.json) · [Head JSON](https://raw.githubusercontent.com/integry/mcptest/6f872e5353cf8f75ad8b75f2dab425234dd5d670/src/data/catalogCapabilities.json)
+
+The base contains 441 snapshots and the head contains 449. All 441 base IDs remain present with deeply equal JSON values. There are zero removals and zero modifications to existing snapshot values. The eight new snapshot IDs are `char-gen`, `hoplix`, `mapbox-docs`, `pyai`, `retell-ai-chatgpt`, `signal8`, `tenderlead`, and `vokolla`. The base had no snapshot under the legacy Retell ChatGPT ID.
+
+Run this from the repository root to reproduce the patch and check every snapshot at the pinned revisions. It requires Git and Node.js.
+
+```sh
+git diff --no-ext-diff --no-textconv \
+  c3fd6700c98f3f6c951e86c3971d97568c02b094 6f872e5353cf8f75ad8b75f2dab425234dd5d670 \
+  -- src/data/catalogCapabilities.json
+
+node --input-type=module <<'JS'
+import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+
+const readSnapshots = (revision) => JSON.parse(execFileSync('git', [
+  'show', `${revision}:src/data/catalogCapabilities.json`,
+], { maxBuffer: 20_000_000 }));
+const base = readSnapshots('c3fd6700c98f3f6c951e86c3971d97568c02b094');
+const head = readSnapshots('6f872e5353cf8f75ad8b75f2dab425234dd5d670');
+assert.equal(Object.keys(base).length, 441);
+assert.equal(Object.keys(head).length, 449);
+for (const [id, snapshot] of Object.entries(base)) {
+  assert(Object.hasOwn(head, id), id);
+  assert.deepEqual(head[id], snapshot, id);
+}
+assert(!Object.hasOwn(base, 'retell-ai-chatgpt-app'));
+const added = Object.keys(head).filter((id) => !Object.hasOwn(base, id)).sort();
+assert.deepEqual(added, [
+  'char-gen', 'hoplix', 'mapbox-docs', 'pyai', 'retell-ai-chatgpt', 'signal8', 'tenderlead', 'vokolla',
+]);
+console.log('441 preserved, zero removed or modified, eight added', added);
+JS
+```
 
 #### Reproduce the batch 21 review
 
