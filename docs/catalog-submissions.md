@@ -516,3 +516,40 @@ awk -F'\t' '$1 == "connector.352baac0-d2ab-4458-ba9a-85bf162f0980" { print NR, i
 - DevRev accepts a personal access token as `Authorization: Bearer <token>`, [Rillet](https://docs.api.rillet.com/docs/mcp) accepts an API key as `Authorization: Bearer <API_KEY>` on the same endpoint, and Hive accepts an `api-key` request header. All three are recorded as optional `requiredHeaders` with the matching `alternativeAuthTypes`; OAuth stays the primary `authType`.
 - Webex Suite (`/mcp/webex-suite`) is separate from the existing `webex-meetings` record. Stack Overflow (`mcp.stackoverflow.com`) is separate from Stack Overflow for Agents (`agents.stackoverflow.com/mcp`).
 - The Candid, Brisk and Flourish help centers returned HTTP 403 to the container. Flourish's Zendesk article API confirms its endpoint. Candid's and Brisk's protected-resource metadata name the exact catalog primaries. The Mentimeter, Chargebee and MT Newswires pages did not include the endpoint in their server-rendered HTML. Their protected-resource metadata names the catalog primary as its resource.
+
+## Batch 24 import
+
+GitHub issue [#765](https://github.com/integry/mcptest/issues/765) tracks this import under queue reference `ff14e799-4a20-42ec-9345-51b2c726d117`. It builds on batch 23 (`5f3598659b171aa35c026ea76056aeeadc6d523b`). The catalog grew from 1,005 to 1,035 entries. The import TODO had marked SignNow and Remote as covered, but neither was on master, so both are imported here. The 30 candidates were matched first on directory and listing ID, then on the normalized primary and alternative URLs. Neither pass found an existing match. Each new record is internal, with a `publisher` listing source, a Streamable HTTP primary, every identified Claude and ChatGPT listing, and a generated monogram logo.
+
+### Relevance snapshot
+
+Scores use the [batch 23 ranking snapshot](catalog-batch-23-claude-ranking.tsv) (N = 1,222) and its formula, `Math.round(100 * (1222 - rank) / 1222)`. Every supplied score for a new record with a ranked Claude connector matches its snapshot line: ranks 476 (SignNow) to 525 (Ontra) give 61 down to 57. The Claude index retrieved at 10:12 UTC on November 26, 2026 returned 1,227 records, 1,222 of them scored. It ranks all 29 connectors on the same lines as the snapshot. Claude plugin IDs (`directoryPlugin.*`) are not part of that index and do not affect scores. Tesseract has only a ChatGPT listing and takes the default score of 50.
+
+```sh
+awk -F'\t' '$1 == "connector.4bf06559-36bf-4aab-b7f7-360af4e2db86" { print NR, int(100 * (1222 - NR) / 1222 + 0.5) }' \
+  docs/catalog-batch-23-claude-ranking.tsv   # SignNow: 476 61
+```
+
+### Existing records
+
+- `athletedata`, `drata`, `coupler-io`, `oxford-economics`, `harmonic`, `send`, `moodys-credit`, `attention`, `devrev` and `lacuna-research` each gained their ChatGPT listing. Their relevance (82, 75, 70, 69, 69, 69, 68, 64, 62 and 41) and publisher sources are unchanged. Each public release comes from the expected developer and names the catalog primary, except Harmonic's.
+- **Harmonic.** The "Harmonic (new)" release from Harmonic AI, Inc. declares `https://api.harmonic.ai/mcp`, not the catalog primary `https://mcp.api.harmonic.ai/`. The issue reports that both challenge for the same OAuth resource. From the agent container, the release URL answered HTTP 403 `WWW-Authenticate: Key realm="kong"` ("Include either an api key or a JWT") and served no protected-resource metadata. The primary returned HTTP 401 with metadata for `https://mcp.api.harmonic.ai/` on `login.harmonic.ai`. The listing is attributed to the existing record, and the release URL is not recorded as an alternative endpoint.
+- **Salesloft.** ChatGPT `plugin_asdk_app_6a988345a05c819190cdcd213b2f86dc` declares the Streamable HTTP endpoint `https://mcp.salesloft.com/mcp`, which is now recorded as an alternative. It returned HTTP 401 with its own protected-resource metadata. The Claude listing stays on the legacy SSE primary `https://mcp.salesloft.com/sse`. The listing source changed from `client-directory` to the publisher's [ChatGPT setup article](https://help.salesloft.com/s/article/Connect-Salesloft-MCP-Server-in-ChatGPT). Relevance 79 is unchanged.
+
+### Validation and endpoint provenance
+
+- All 30 new primaries are `online` in `src/data/catalogValidation.json`. 29 returned HTTP 401 with an OAuth challenge and are recorded with `requiresOAuth: true`. Authenticated tool inventories are unverified, and `src/data/catalogCapabilities.json` gained no snapshots. Revalidating Lacuna Research refreshed only the timestamp of its existing anonymous snapshot.
+- **Tesseract.** `https://mcp.mirage.app/mcp` completed an anonymous Streamable HTTP handshake as Mirage 0.1.0. It listed `tesseract_viewer`, `list_skills` and `read_skill`, each declaring a `noauth` security scheme, and an anonymous `list_skills` call returned 64 skills. Mirage's protected-resource metadata names `auth-mcp.mirage.app`, and the ChatGPT release declares mixed authentication. Anonymous `prompts/list` returned JSON-RPC error -32001 "Authentication required", so the validator stored no capability snapshot, because it keeps one only when every discovery method succeeds. The three tools are named in the record's description and caveat instead. The record uses `authType: none`, `requiresOAuth: false` and `alternativeAuthTypes: ["oauth"]`.
+- **Vaisala Xweather** answered HTTP 401 without a `WWW-Authenticate` header. The validator keeps the declared OAuth type. The [publisher's authentication page](https://www.xweather.com/docs/mcp-server/authentication) names the endpoint, OAuth with dynamic client registration, and two key-based options: `Authorization: Bearer <client_id>_<client_secret>` or an `api_key` query parameter.
+- **SignNow.** The enabled ChatGPT release omits the endpoint URL. The endpoint comes from the publisher guide and matches the Claude connector.
+- **Client-specific endpoints.** Macaly Cloud's Claude connector uses `https://www.macaly.com/api/cloud/claude/mcp`, and its ChatGPT release declares `https://www.macaly.com/api/code-mcp/chatgpt/mcp`. Cardboard's Claude connector uses `https://mcp.cardboard.ai/claude`, which has different tool access, and its ChatGPT release declares the neutral primary. These records keep the neutral primaries, and the client endpoints are recorded as alternatives. Each alternative returned HTTP 401 with its own protected-resource metadata.
+- **Other alternatives.** The Ticket Tailor legacy SSE endpoint, the Listen Labs `mcp.listenlabs.ai` host, Omnisend v1 (`https://mcp.omnisend.com/mcp`, which also accepts an `X-Api-Key` header), the Ontra EU endpoint, and the Celigo EU, AU and CA endpoints all returned HTTP 401 without credentials. Each Celigo region names its own regional protected-resource metadata. The Omnisend Claude listing belongs to the v2 primary.
+- `exactEndpointOnly` is set for Alma, AfterShip Channels for TikTok Shop, Botify and Abacum. Solve Intelligence keeps its trailing slash, and Unblocked keeps `/api/mcpsse`, which Unblocked documents for Streamable HTTP clients.
+- **Optional credentials.** OAuth stays the primary `authType` for each of these records. The bearer option is recorded as an optional `requiredHeaders` entry with `alternativeAuthTypes: ["bearer-token"]`:
+  - LetsFG accepts the access token from its connect flow as `Authorization: Bearer <token>` ([llms.txt](https://letsfg.co/llms.txt)).
+  - The DHS Program documents a static `Authorization: Bearer <token>` header for clients that do not use OAuth.
+  - Fastmail documents an API token as an alternative to OAuth.
+  - Vaisala Xweather accepts the combined client ID and secret as a bearer token.
+  - Unblocked accepts personal and team API tokens as `Authorization: Bearer <token>` ([Install: Other](https://docs.getunblocked.com/unblocked-mcp/install-other#token-based)).
+
+Other candidates and holds, including Lawstronaut, remain queued. Partial ChatGPT coverage is not evidence for removals, and the 24 unlisted, unscored entries are unchanged because there is no new adoption evidence for them.

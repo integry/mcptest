@@ -86689,7 +86689,7 @@
   },
   "lacuna-research": {
     "version": 1,
-    "observedAt": "2026-11-23T18:16:46.167Z",
+    "observedAt": "2026-11-26T10:17:31.021Z",
     "provenance": {
       "testedEndpoint": "https://lacuna.tiptreesystems.com/api/mcp",
       "route": "direct"
