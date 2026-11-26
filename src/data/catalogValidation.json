@@ -14476,7 +14476,7 @@
     "authType": "oauth",
     "requiresOAuth": true,
     "protocolEra": "unknown",
-    "checkedAt": "2026-11-26T16:16:18.913Z",
+    "checkedAt": "2026-11-26T18:07:16.450Z",
     "message": "Authentication challenge at https://attentive-ui-mcp.attentivemobile.com/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
     "validatedUrl": "https://attentive-ui-mcp.attentivemobile.com/mcp",
     "authorizationServers": [
@@ -14879,7 +14879,7 @@
     "authType": "oauth",
     "requiresOAuth": true,
     "protocolEra": "unknown",
-    "checkedAt": "2026-11-26T16:17:23.765Z",
+    "checkedAt": "2026-11-26T18:07:13.967Z",
     "message": "Authentication challenge at https://mcp.geotab.com/mygeotab returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
     "validatedUrl": "https://mcp.geotab.com/mygeotab",
     "authorizationServers": [

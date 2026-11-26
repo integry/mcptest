@@ -50197,7 +50197,7 @@
     "id": "attentive",
     "name": "Attentive",
     "url": "https://attentive-ui-mcp.attentivemobile.com/mcp",
-    "description": "Analyze and manage Attentive SMS and email marketing: subscribers, campaigns, journeys and performance. Read-only by default. Sign in with OAuth to connect.",
+    "description": "Analyze and manage Attentive SMS and email marketing: subscribers, campaigns, journeys and performance. Choose read-only or read/write access. Sign in with OAuth to connect.",
     "category": "Communication",
     "tags": [
       "sms-marketing",
@@ -50223,11 +50223,12 @@
       {
         "url": "https://attentive-ui-mcp.attentivemobile.com/mcp?readOnly=false",
         "authType": "oauth",
-        "description": "Write-enabled route used by the Claude and ChatGPT listings. Writes are subject to the signed-in account's permissions. It returned HTTP 401 with its own protected-resource metadata (scope mcp)."
+        "description": "Read/write option for custom MCP connections, per the publisher's installation guide. Writes are subject to the signed-in account's access and the features enabled for the selected company. It returned HTTP 401 with its own protected-resource metadata (scope mcp)."
       }
     ],
     "caveats": [
-      "The primary defaults to read-only access. The Claude and ChatGPT listings both connect to the write-enabled ?readOnly=false route, recorded as an alternative endpoint; writes are subject to account permissions."
+      "For custom MCP connections, the primary URL defaults to read-only access (readOnly=true); append ?readOnly=false for read/write access, recorded as an alternative endpoint. Reconnect after changing the mode.",
+      "Native Claude and ChatGPT connectors manage their own connection configuration. In the native Claude connector, users choose Read Only or Read + Write during setup."
     ],
     "listingSource": {
       "kind": "publisher",
@@ -51783,13 +51784,13 @@
     ],
     "homepageUrl": "https://www.geotab.com/",
     "caveats": [
-      "The publisher documents SSE for this endpoint. It returned HTTP 401 to a Streamable HTTP initialize; transport negotiation after sign-in is unverified."
+      "Transport follows the publisher's setup guide, which documents server-sent events (SSE) for this URL. The endpoint returned an HTTP 401 OAuth challenge, which confirms reachability; the authenticated handshake and transport negotiation after sign-in are unverified."
     ],
     "listingSource": {
       "kind": "publisher",
       "url": "https://support.geotab.com/help/mygeotab/access-and-administration/mygeotab-mcp/getting-started-with-mygeotab-mcp"
     },
-    "transport": "streamable-http",
+    "transport": "legacy-sse",
     "authType": "oauth",
     "requiresOAuth": true,
     "oauthRegistration": {
