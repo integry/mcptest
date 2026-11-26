@@ -553,3 +553,32 @@ awk -F'\t' '$1 == "connector.4bf06559-36bf-4aab-b7f7-360af4e2db86" { print NR, i
   - Unblocked accepts personal and team API tokens as `Authorization: Bearer <token>` ([Install: Other](https://docs.getunblocked.com/unblocked-mcp/install-other#token-based)).
 
 Other candidates and holds, including Lawstronaut, remain queued. Partial ChatGPT coverage is not evidence for removals, and the 24 unlisted, unscored entries are unchanged because there is no new adoption evidence for them.
+
+## Batch 25 import
+
+GitHub issue [#767](https://github.com/integry/mcptest/issues/767) tracks this import under queue reference `ff14e799-4a20-42ec-9345-51b2c726d117`. It builds on batch 24 (`9a4c3eeccdbbe156093f4460938b84f619939c4e`). The catalog grew from 1,035 to 1,065 entries. The 30 candidates were matched first on directory and listing ID, then on the normalized primary and alternative URLs. Neither pass found an existing match. Synapse Social is a separate server from the existing `synapse` record (Sage Bionetworks' Synapse.org, `https://mcp.synapse.org/mcp`). Morningstar Credit Analytics is a separate server from the existing `morningstar` record. Claude Motion to Mirage is a separate OAuth resource from `tesseract` on the same host. The other 29 new records are internal, with a `publisher` listing source, a Streamable HTTP OAuth primary, every identified Claude and ChatGPT listing, and a generated monogram logo.
+
+### Relevance snapshot
+
+Scores use the [batch 23 ranking snapshot](catalog-batch-23-claude-ranking.tsv) (N = 1,222) and its formula, `Math.round(100 * (1222 - rank) / 1222)`. All 29 Claude connectors appear on the lines the issue gives: ranks 526 (Datarails FinanceOS) to 531 (Coinversa Pulse) give 57, ranks 533–540 give 56, ranks 545–556 give 55, ranks 557–567 give 54, and ranks 569–577 give 53. Every computed score matches the supplied value. Leadfeeder's Claude plugin (`directoryPlugin.4ed556d2-8a41-41fe-9587-5063de564e1c`) is not part of that index and does not affect its score. Synapse Social has only a ChatGPT listing and takes the supplied score of 50.
+
+```sh
+awk -F'\t' '$1 == "connector.ad38dac2-592c-4269-947a-ab44fe5c3f4f" { print NR, int(100 * (1222 - NR) / 1222 + 0.5) }' \
+  docs/catalog-batch-23-claude-ranking.tsv   # Datarails FinanceOS: 526 57
+```
+
+### Existing records
+
+- `alma`, `ticket-tailor`, `motion-so` and `vistaprint` each gained their ChatGPT listing. Their relevance (60, 60, 78 and 49) and listing sources are unchanged. Each public release comes from the expected developer. The Alma and Ticket Tailor releases name the catalog primary.
+- **Motion.** The ChatGPT release from FrameCut AI declares `https://mcp.motion.so/mcp/openai`, now recorded as an alternative. It returned HTTP 401 with its own protected-resource metadata, which requests session and automation scopes. The primary's metadata also advertises project, account, credit, asset and other scopes.
+- **VistaPrint.** The ChatGPT release declares `https://chatgpt.mcp-pod.es.vpsvc.com/mcp`, now recorded as an alternative. It answered an anonymous handshake as VistaPrint 0.1.1 and listed 19 tools. The Claude route (the catalog primary) lists 21, adding `begin_asset_upload` and `show_asset_upload_picker`. The client-neutral `mcp-pod.es.vpsvc.com` host answers as "VistaPrint Testing" with 16 tools. The record's caveat documents the client-specific production routes. ChatGPT capability discovery is incomplete: no snapshot is stored for the alternative.
+
+### Validation and endpoint provenance
+
+- All 30 new primaries are `online` in `src/data/catalogValidation.json`. 29 returned HTTP 401 with an OAuth challenge and are recorded with `requiresOAuth: true`. Authenticated tool inventories are unverified. Paxton's two hosts sent a Bearer challenge for the `legal_research` scope without a `resource_metadata` pointer; the validator keeps the declared OAuth type.
+- **Synapse Social.** `https://mcp.synapsesocial.com/chatgpt/mcp` is the route declared by the ChatGPT release from Synapse. It completed an anonymous Streamable HTTP handshake as Synapse 1.30.0 and listed `search`, `fetch`, `show_paper`, `find_guidelines`, `find_clinical_trials`, `trending_papers` and `find_expert_takes`. An anonymous `search` call returned papers. The validator stored the seven-tool snapshot in `src/data/catalogCapabilities.json`; its evidence note warns that the origin advertises OAuth authorization servers, which applies to the neutral route. The neutral `/mcp` returned HTTP 401 with protected-resource metadata for the `evidence:read` scope, and the host root returned 404; the record's caveat says so. The listing source is the ChatGPT listing (`client-directory`), and the record uses `authType: none` and `requiresOAuth: false`.
+- **Scribe Capture.** Claude is attributed only to `https://mcp.scribe.com/capture/mcp`, which requests the `capture` scope on the `https://mcp.scribe.com/capture` authorization server. The combined `https://mcp.scribe.com/mcp` advertises `capture` and `optimize` on `https://mcp.scribe.com/` and is recorded as a capability-distinct alternative.
+- **Claude Motion to Mirage.** `https://mcp.mirage.app/claude-motion` returned HTTP 401 with its own protected-resource metadata. The Claude listing names `import-claude-motion-from-url`, which is absent from Tesseract's anonymous inventory, so the route stays a separate record.
+- **Client and regional alternatives.** BlazeSQL's Claude connector uses `https://claude.blazesql.com/`; both roots challenged for `blazesql:query`. Paxton's Claude connector uses a Cloud Run host that serves the same guide and challenge. The Samsara EU and CA, SpotDraft EU, India and Middle East, and Sumsub sandbox endpoints each returned HTTP 401 with their own protected-resource metadata. The Sumsub listings belong to the production primary. Roboflow's ChatGPT URL `/openai/mcp` redirects with HTTP 307 to the primary, which returns the same OAuth challenge.
+- `exactEndpointOnly` is set for Scribe Capture, BlazeSQL, Loops and Unstructured Transform.
+- The BlazeSQL, Morningstar Credit Analytics, Datarails, Brand24, Jobber, Planning Center, Polar Analytics, Zite, Leadfeeder, Smartling, Sumsub and SPIEGEL ChatGPT releases omit endpoint URLs. Each comes from the expected developer. Robin has no ChatGPT listing; its ChatGPT instructions describe a custom connector setup.

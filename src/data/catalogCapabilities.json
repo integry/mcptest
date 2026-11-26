@@ -139785,6 +139785,205 @@
       ]
     }
   },
+  "synapse-social": {
+    "version": 1,
+    "observedAt": "2026-11-26T12:21:20.381Z",
+    "provenance": {
+      "testedEndpoint": "https://mcp.synapsesocial.com/chatgpt/mcp",
+      "route": "direct"
+    },
+    "authentication": "unauthenticated",
+    "tools": {
+      "status": "complete",
+      "observedCount": 7,
+      "retainedCount": 7,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "fetch",
+          "description": "Read one paper: bibliographic details, abstract, and for Synapse papers the generated key points, plain-language explanation and structured evidence (PICO, effect size, limitations). Accepts an id from `search`, or a DOI, PMID, PMCID, arXiv id or paper URL. Use before summarizing, critiquing or quoting a specific paper.",
+          "input": [
+            {
+              "name": "id",
+              "type": "string",
+              "description": "A paper id from `search` (e.g. \"synapse:…\", \"pmid:…\", \"doi:…\", \"arxiv:…\"), or a DOI, PMID, PMCID, arXiv id or paper URL.",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "find_clinical_trials",
+          "description": "Find registered clinical trials on ClinicalTrials.gov for a condition or intervention: status, phase, enrollment, sponsor and dates, filterable by status (e.g. recruiting) and phase. Registry records describe study design and status, not published results; use `search` for results.",
+          "input": [
+            {
+              "name": "condition",
+              "description": "Disease or clinical state, e.g. \"atrial fibrillation\".",
+              "required": false
+            },
+            {
+              "name": "intervention",
+              "description": "Drug, device or procedure, e.g. \"apixaban\".",
+              "required": false
+            },
+            {
+              "name": "phase",
+              "description": "Trial phase, e.g. \"3\".",
+              "required": false
+            },
+            {
+              "name": "status",
+              "description": "Recruitment status, e.g. \"recruiting\" or \"completed\".",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "find_expert_takes",
+          "description": "Find what credentialed experts (clinicians and researchers) are saying about a topic, trial, drug or one paper: their quotes with name, credential, date, the paper discussed and a link to the expert's Synapse profile. Covers the Synapse corpus (deepest in cardiology). Pass a `topic` (e.g. \"SELECT trial semaglutide\"), a `paper_id` from `search`, or both. Commentary, not medical advice.",
+          "input": [
+            {
+              "name": "limit",
+              "type": "integer",
+              "description": "Number of takes to return, 1-10.",
+              "required": false
+            },
+            {
+              "name": "paper_id",
+              "description": "One paper: an id from `search`, or a DOI, PMID or Synapse paper URL.",
+              "required": false
+            },
+            {
+              "name": "topic",
+              "description": "Trial, drug, procedure or question, e.g. \"TAVR in low-risk patients\".",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "find_guidelines",
+          "description": "Find clinical practice guidelines for a condition or intervention in any specialty: structured recommendations with class of recommendation and level of evidence (COR/LOE) where Synapse has them, plus guideline, consensus and scientific-statement documents from PubMed. Research information, not medical advice.",
+          "input": [
+            {
+              "name": "condition",
+              "description": "Disease or clinical state, e.g. \"atrial fibrillation\".",
+              "required": false
+            },
+            {
+              "name": "intervention",
+              "description": "Drug, device or procedure, e.g. \"apixaban\".",
+              "required": false
+            },
+            {
+              "name": "society",
+              "description": "Issuing society, e.g. \"ACC/AHA\" or \"ESC\".",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "search",
+          "description": "Search scientific and medical research papers. Covers the Synapse clinical corpus (deepest in cardiology), all of PubMed ranked by Best Match, and OpenAlex for physics, math, computer science, engineering and every other field (set `field`). Use for any request to find, list or compare studies, trials, reviews or evidence on a topic. Returns papers with ids that `fetch` accepts. Does not return full text.",
+          "input": [
+            {
+              "name": "field",
+              "type": "string",
+              "description": "Research area. biomedical: medicine and life sciences (Synapse + PubMed). physical_computational: physics, math, computer science, engineering, economics (OpenAlex, arXiv). auto: decide from the query.",
+              "required": false
+            },
+            {
+              "name": "limit",
+              "type": "integer",
+              "description": "Number of papers to return, 1-10.",
+              "required": false
+            },
+            {
+              "name": "query",
+              "type": "string",
+              "description": "Topic or question in natural language, e.g. \"SGLT2 inhibitors in HFpEF\".",
+              "required": true
+            },
+            {
+              "name": "year_from",
+              "description": "Earliest publication year.",
+              "required": false
+            },
+            {
+              "name": "year_to",
+              "description": "Latest publication year.",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "show_paper",
+          "description": "Show one paper in Synapse's full view: explainer video or graphical abstract, plain-language summary, key points, implications, limitations, expert perspectives and similar papers. Use when the user wants to see, open or dig into a specific paper. Accepts the same ids as `fetch`, or a paper title or trial name. Papers outside the Synapse corpus show their abstract and links.",
+          "input": [
+            {
+              "name": "id",
+              "type": "string",
+              "description": "A paper id from `search` (e.g. \"synapse:…\", \"pmid:…\", \"doi:…\", \"arxiv:…\"), or a DOI, PMID, PMCID, arXiv id or paper URL.",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "trending_papers",
+          "description": "Show the papers clinicians and researchers are discussing now, ranked from editorial, press and social signals. Defaults to cardiology. category is one of top_trials, guidelines, editorials, most_discussed. subfield is an optional OpenAlex subfield name, e.g. \"Oncology\" or \"Endocrinology, Diabetes and Metabolism\".",
+          "input": [
+            {
+              "name": "category",
+              "type": "string",
+              "description": "Which trending list to show.",
+              "required": false
+            },
+            {
+              "name": "subfield",
+              "description": "OpenAlex subfield name; defaults to cardiology.",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        }
+      ]
+    },
+    "resources": {
+      "status": "partial",
+      "observedCount": 1,
+      "retainedCount": 1,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "synapse-research-results",
+          "title": "Synapse research results",
+          "description": "Inline paper list for Synapse search and trending results."
+        }
+      ]
+    },
+    "resourceTemplates": {
+      "status": "complete",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "prompts": {
+      "status": "complete",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    }
+  },
   "synthflow-docs": {
     "version": 1,
     "observedAt": "2026-11-24T18:12:00.494Z",
