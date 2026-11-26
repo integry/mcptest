@@ -482,3 +482,37 @@ awk -F'\t' '$1 == "connector.d4b6d94e-8fd7-4936-a525-a1852acd3bb4" { print NR, i
 - Every new record uses a generated monogram logo.
 
 No candidates were deferred.
+
+## Batch 23 import
+
+GitHub issue [#763](https://github.com/integry/mcptest/issues/763) tracks this import under queue reference `ff14e799-4a20-42ec-9345-51b2c726d117`. It builds on batch 22 (`ae8fc5ae8008dfc47d56ed3f86242e113bb41bf5`). The catalog grew from 976 to 1,005 entries. The 30 candidates were matched first on directory and listing ID, then on the normalized primary and alternative URLs. GLG matched the existing `glg` record on its Claude connector, its ChatGPT listing and its URL. Batch 22 had already imported it with the same publisher source and relevance 65, so it was left unchanged. The other 29 candidates had no match. Each one is internal, with a `publisher` listing source, a Streamable HTTP OAuth primary, every identified Claude and ChatGPT listing, and a generated monogram logo.
+
+### Relevance snapshot
+
+The [Claude connector index](https://claude.com/marketplace/connectors-plugins) was retrieved at 04:12 UTC on November 26, 2026. It returned 1,226 records, of which 1,222 had numeric popularity scores. The source HTML SHA-256 was `fcd058a595d7e21b1d82234721de37eb97d10d51ed41a14a93afe91f3a930753`. The [ranking snapshot](catalog-batch-23-claude-ranking.tsv) uses the batch 22 format: scores descending, ties in source order, one `id<TAB>score` line each, with no header. Its SHA-256 is `3896b54f35188dcd1cbe8ac306c356bb56ebd1e6d5fda9dedd344466c8b93802`.
+
+For an entry with exactly one ranked Claude listing, the score is `Math.round(100 * (1222 - rank) / 1222)`, where `rank` is the one-based line number. Every rank supplied in the issue matches the snapshot line. The nine existing corrections in the issue are exactly the catalog entries whose stored score differed from the snapshot: `tripadvisor`, `brighthire`, `activecampaign`, `airops`, `circleci`, `courtroom5`, `all-accor`, `military-veteran-family-assistant` and `community-funding-nz`. After the import, no catalog entry's score differs from the snapshot.
+
+The formula gives two values that differ from the issue's figures. Attention ranks 446, so `100 * 776 / 1222 = 63.50` rounds to 64, not 63. Sent ranks 458, so `100 * 764 / 1222 = 62.52` rounds to 63, not the 62 given for rows #458–466. Both issue values match the batch 22 denominator of 1,221. The catalog records the 1,222-denominator values, so a later reconciliation against this snapshot does not change them again. Stack Overflow for Agents has only a ChatGPT listing and takes the supplied score of 65. The publisher's dashboard reported 11,543 registered agents, 23,019 posts and replies, and 16,888 verifications.
+
+```sh
+sha256sum docs/catalog-batch-23-claude-ranking.tsv
+awk -F'\t' '$1 == "connector.352baac0-d2ab-4458-ba9a-85bf162f0980" { print NR, int(100 * (1222 - NR) / 1222 + 0.5) }' \
+  docs/catalog-batch-23-claude-ranking.tsv   # Attention: 446 64
+```
+
+### Existing records
+
+- `graphify`, `b12`, `rootly` and `thunderphone` each gained their ChatGPT listing. Each public release names the catalog primary. Their relevance (77, 70, 62 and 47) is unchanged.
+- `b12` now uses a `publisher` listing source, B12's [guide to connecting an AI agent](https://support.b12.io/en/v3/connecting-an-ai-agent-to-b12s-mcp-server). The caveat saying the publisher did not document the endpoint was removed. B12 still completes an anonymous handshake. Revalidation refreshed its tool snapshot because the `generate_website` description changed upstream.
+
+### Validation and endpoint provenance
+
+- All 29 new primaries are `online` in `src/data/catalogValidation.json` with OAuth challenges. Authenticated tool inventories are unverified, and `src/data/catalogCapabilities.json` gained no snapshots. DevRev, Rillet and Reclaim.ai answered HTTP 401 without a `WWW-Authenticate` header. Jasper, ThoughtSpot Spotter and Stack Overflow sent a Bearer challenge without a `resource_metadata` pointer. The validator keeps the declared OAuth type for all six. Rillet, Reclaim.ai and Jasper publish protected-resource metadata at the origin.
+- Each ChatGPT listing resolves to a public release from the expected developer. The Enterpret, Stack Overflow for Agents, Rippit, Rillet, DataHub and Payhawk releases name the catalog primary. The other releases omit endpoint URLs.
+- **RingCentral Chat.** The versioned primary and the unversioned `/ringex/team-chat` alternative both returned HTTP 401. Each has its own protected-resource metadata and requests the same `ReadAccounts TeamMessaging` scopes. The publisher labels the service beta.
+- **Chargebee.** The US primary and the EU and AU alternatives each returned HTTP 401. Their protected-resource metadata names the matching regional authorization server (`app.chargebee.com`, `app.eu.chargebee.com`, `app.au.chargebee.com`). The US, EU and AU ChatGPT listings are recorded on the one record.
+- **ThoughtSpot Spotter.** Claude's connector configures `https://agent.thoughtspot.app/mcp?api-version=latest`, and ThoughtSpot documents the bare URL as the latest version. The bearer-token alternative `https://agent.thoughtspot.app/token/mcp` answered HTTP 400 "Bearer token is required" without credentials. With a placeholder token, it asked for the ThoughtSpot host as `token@ts-host` or in an `x-ts-host` header.
+- DevRev accepts a personal access token as `Authorization: Bearer <token>`, and Hive accepts an `api-key` request header. Both are recorded as optional `requiredHeaders` with the matching `alternativeAuthTypes`.
+- Webex Suite (`/mcp/webex-suite`) is separate from the existing `webex-meetings` record. Stack Overflow (`mcp.stackoverflow.com`) is separate from Stack Overflow for Agents (`agents.stackoverflow.com/mcp`).
+- The Candid, Brisk and Flourish help centers returned HTTP 403 to the container. Flourish's Zendesk article API confirms its endpoint. Candid's and Brisk's protected-resource metadata name the exact catalog primaries. The Mentimeter, Chargebee and MT Newswires pages did not include the endpoint in their server-rendered HTML. Their protected-resource metadata names the catalog primary as its resource.

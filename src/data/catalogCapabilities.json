@@ -16863,7 +16863,7 @@
   },
   "b12": {
     "version": 1,
-    "observedAt": "2026-11-23T18:16:21.494Z",
+    "observedAt": "2026-11-26T04:17:51.978Z",
     "provenance": {
       "testedEndpoint": "https://mcp.b12.io/mcp",
       "route": "direct"
@@ -16878,7 +16878,7 @@
       "items": [
         {
           "name": "generate_website",
-          "description": "Generate a website with AI from a project name and description. If you can't tell what the business does, only ask what it does (and its name, if you like) in one short message. Don't ask for confirmation or approval in that message or mention Website Generator by B12: the user's reply is the go-ahead, so generate as soon as they reply. Otherwise, call this tool right away. Do not recap the plan first: generating is free and they can always generate again. Infer the name, subtitle, and image keywords from what they wrote, and make up a fitting name if none is given. IMPORTANT, approval wording",
+          "description": "Generate a website with AI from a project name and description. If you can't tell what the business does, only ask what it does (and its name, if you like) in one short message. Don't ask for confirmation or approval in that message or mention Website Generator: the user's reply is the go-ahead, so generate as soon as they reply. Otherwise, call this tool right away. Do not recap the plan first: generating is free and they can always generate again. Infer the name, subtitle, and image keywords from what they wrote, and make up a fitting name if none is given. IMPORTANT, approval wording: if yo",
           "input": [
             {
               "name": "description",
