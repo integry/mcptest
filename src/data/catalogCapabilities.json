@@ -38146,6 +38146,438 @@
       "items": []
     }
   },
+  "daily-tarot": {
+    "version": 1,
+    "observedAt": "2026-11-26T21:17:37.532Z",
+    "provenance": {
+      "testedEndpoint": "https://tarot.toolpipe.ai/mcp",
+      "route": "direct"
+    },
+    "authentication": "unauthenticated",
+    "tools": {
+      "status": "partial",
+      "observedCount": 13,
+      "retainedCount": 13,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "complete_tarot_reading",
+          "description": "Compatibility for older Tarot views explicitly requesting complete_tarot_reading. Call only AFTER writing their complete interpretation visibly in chat. Current views request show_tarot_reading or set_tarot_reading with the interpretation instead. Copy request_id and spread_id from the request. This legacy tool only signals completion.",
+          "input": [
+            {
+              "name": "request_id",
+              "type": "string",
+              "description": "Copy the reading request_id from the app background context or the reading message. Never invent or reuse an earlier request ID.",
+              "required": true
+            },
+            {
+              "name": "spread_id",
+              "type": "string",
+              "description": "Copy the spread_id from the same reading request. It identifies the cards being interpreted.",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "create_tarot_spread",
+          "description": "Initialize a tarot reading session by creating a 3-card spread based on the user's question. 【Language Rule】 ⚠️ ALL user-facing text (user_question, position names/meanings, opening_message) MUST be in the SAME language as user's input. If user asks in Spanish, output Spanish. If user asks in Chinese, output Chinese. English definition below is for structure only. 【When to Use】 • User requests tarot guidance explicitly • User seeks spiritual/intuitive insight on a decision or situation 【Core Function】 Analyze the question and select the most appropriate 3-card spread structure. Prioritize prov",
+          "input": [
+            {
+              "name": "card_count",
+              "type": "integer",
+              "description": "Number of cards. Defaults to 3 (only supported value currently). You can omit this parameter.",
+              "required": false
+            },
+            {
+              "name": "opening_message",
+              "type": "string",
+              "description": "Brief message above card interface (8-15 words, ONE line only). **Language**: Must match user's input language. **Structure**: [Optional: brief context] + [Action: draw 3 cards] **Rules**: ✅ Under 80 characters, ONE line ✅ Always include call-to-action for drawing 3 cards ✅ Warm but concise ❌ No multiple sentences",
+              "required": true
+            },
+            {
+              "name": "positions",
+              "type": "array",
+              "description": "Define what each of the 3 card positions represents. This is the core of spread design. **Language**: Position names and meanings must be in user's input language. ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 【DESIGN DECISION FLOW】 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ **Step 1: Match Classic Spread** ⭐ Do this first! ↓ Does the question clearly fit a proven pattern below? ├─ YES → Use that structure, adapt wording to context └─ NO → Go to Step 2 **Step 2: Adapt Classic** ↓ Can you modify a classic spread to fit? ├─ YES → Keep framework, customize semantics └─ NO → Go to Step 3 **Step 3: Crea",
+              "required": true
+            },
+            {
+              "name": "spread_name",
+              "type": "string",
+              "description": "Optional. Name for this spread configuration (5-30 words). **Language**: Must match user's input language. **Guidelines**: • Use classic names when using classic spreads • Add context if helpful",
+              "required": false
+            },
+            {
+              "name": "user_question",
+              "type": "string",
+              "description": "One-sentence summary of user's question (10-60 words). Extract core concern, remove filler. **Language**: Use user's input language. **Purpose**: Context recall after card drawing for accurate interpretation. **How to Summarize**: • Keep essential keywords and core concern • Remove redundant emotion and filler words • Make it specific and meaningful **Examples** (English shown; adapt to user's language): • \"Boyfriend and I keep fighting... should we continue?\" → \"Confusion about relationship status after frequent conflicts\" • \"Got promotion but must relocate, so torn\" → \"Decision about accepti",
+              "required": true
+            }
+          ],
+          "outputSchema": false
+        },
+        {
+          "name": "create_tarot_spread_v2",
+          "description": "Preferred tool for new Tarot readings. The unversioned create_tarot_spread is for legacy compatibility only. Open a Tarot drawing interface in the current conversation. Use set_tarot_spread instead when the app's background context requests it with a request_id; that updates the already-open question view. Set auto_start to true only when the question was already collected. Wait for the user to draw cards. Interpret drawn cards through the result tool specified by the app. Initialize a tarot reading session by creating a 3-card spread based on the user's question. 【Language Rule】 ⚠️ ALL user-f",
+          "input": [
+            {
+              "name": "auto_start",
+              "type": "boolean",
+              "description": "Set true when the question has already been collected. Skip the welcome screen and prepare the cards. For an existing view with a request_id, use set_tarot_spread instead.",
+              "required": false
+            },
+            {
+              "name": "card_count",
+              "type": "number",
+              "description": "Number of cards. Defaults to 3 (only supported value currently). You can omit this parameter.",
+              "required": false
+            },
+            {
+              "name": "opening_message",
+              "type": "string",
+              "description": "Brief message above card interface (8-15 words, ONE line only). **Language**: Must match user's input language. **Structure**: [Optional: brief context] + [Action: draw 3 cards] **Rules**: ✅ Under 80 characters, ONE line ✅ Always include call-to-action for drawing 3 cards ✅ Warm but concise ❌ No multiple sentences",
+              "required": true
+            },
+            {
+              "name": "positions",
+              "type": "array",
+              "description": "Define what each of the 3 card positions represents. This is the core of spread design. **Language**: Position names and meanings must be in user's input language. ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 【DESIGN DECISION FLOW】 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ **Step 1: Match Classic Spread** ⭐ Do this first! ↓ Does the question clearly fit a proven pattern below? ├─ YES → Use that structure, adapt wording to context └─ NO → Go to Step 2 **Step 2: Adapt Classic** ↓ Can you modify a classic spread to fit? ├─ YES → Keep framework, customize semantics └─ NO → Go to Step 3 **Step 3: Crea",
+              "required": true
+            },
+            {
+              "name": "spread_name",
+              "type": "string",
+              "description": "Optional. Name for this spread configuration (5-30 words). **Language**: Must match user's input language. **Guidelines**: • Use classic names when using classic spreads • Add context if helpful",
+              "required": false
+            },
+            {
+              "name": "user_question",
+              "type": "string",
+              "description": "One-sentence summary of user's question (10-60 words). Extract core concern, remove filler. **Language**: Use user's input language. **Purpose**: Context recall after card drawing for accurate interpretation. **How to Summarize**: • Keep essential keywords and core concern • Remove redundant emotion and filler words • Make it specific and meaningful **Examples** (English shown; adapt to user's language): • \"Boyfriend and I keep fighting... should we continue?\" → \"Confusion about relationship status after frequent conflicts\" • \"Got promotion but must relocate, so torn\" → \"Decision about accepti",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "get_tarot_reading_preview",
+          "description": "Load the prepared cards for the separate result page while its tool arguments are streaming.",
+          "input": [
+            {
+              "name": "request_id",
+              "type": "string",
+              "description": "Copy the reading request_id from the app background context or the reading message. Never invent or reuse an earlier request ID.",
+              "required": true
+            },
+            {
+              "name": "spread_id",
+              "type": "string",
+              "description": "Copy the spread_id from the same reading request. It identifies the cards being interpreted.",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "get_tarot_reading_result",
+          "description": "Receive the interpretation for the existing global Tarot view. Thread results are displayed by show_tarot_reading instead.",
+          "input": [
+            {
+              "name": "request_id",
+              "type": "string",
+              "description": "Copy the reading request_id from the app background context or the reading message. Never invent or reuse an earlier request ID.",
+              "required": true
+            },
+            {
+              "name": "spread_id",
+              "type": "string",
+              "description": "Copy the spread_id from the same reading request. It identifies the cards being interpreted.",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "get_tarot_reading_status",
+          "description": "Check whether the interpretation for this exact reading request and spread is complete.",
+          "input": [
+            {
+              "name": "request_id",
+              "type": "string",
+              "description": "Copy the reading request_id from the app background context or the reading message. Never invent or reuse an earlier request ID.",
+              "required": true
+            },
+            {
+              "name": "spread_id",
+              "type": "string",
+              "description": "Copy the spread_id from the same reading request. It identifies the cards being interpreted.",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "get_tarot_spread",
+          "description": "Receive the spread prepared by set_tarot_spread for the open view and exact request_id.",
+          "input": [
+            {
+              "name": "request_id",
+              "type": "string",
+              "description": "Copy request_id from the app background context or question request. Never invent or reuse a request ID.",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "open_tarot",
+          "description": "Open Daily Tarot to ask a question, draw cards, and read the result in this view, using the current conversation.",
+          "outputSchema": true
+        },
+        {
+          "name": "prepare_tarot_reading",
+          "description": "Record the actual drawn cards for this reading request before asking for an interpretation.",
+          "input": [
+            {
+              "name": "cards",
+              "type": "array",
+              "required": true
+            },
+            {
+              "name": "destination",
+              "type": "string",
+              "required": true
+            },
+            {
+              "name": "request_id",
+              "type": "string",
+              "description": "Copy the reading request_id from the app background context or the reading message. Never invent or reuse an earlier request ID.",
+              "required": true
+            },
+            {
+              "name": "spread",
+              "type": "object",
+              "required": true
+            },
+            {
+              "name": "spread_id",
+              "type": "string",
+              "description": "Copy the spread_id from the same reading request. It identifies the cards being interpreted.",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "set_tarot_reading",
+          "description": "Deliver the complete interpretation to the already-open global Tarot view without opening another page. Compatibility for older views; current views request show_tarot_reading. Use only when the app requests this tool. Copy request_id and spread_id from its reading context. Write the interpretation directly in the tool arguments, in the user's language; do not prewrite or repeat it as a chat answer. The result page displays the original drawn cards and the interpretation. Do not choose, replace, or redraw cards.",
+          "input": [
+            {
+              "name": "guidance",
+              "type": "string",
+              "description": "Practical guidance and reflection that answers the question. Plain text, no Markdown or HTML.",
+              "required": true
+            },
+            {
+              "name": "interpretations",
+              "type": "array",
+              "description": "One interpretation per drawn card, in the exact drawn order. Respect its position and orientation. Plain text; separate paragraphs with blank lines. Start each card interpretation directly with prose. Do not prefix it with a heading, position name, card name or orientation label; the page already displays these. You may refer to the card naturally within the prose.",
+              "required": true
+            },
+            {
+              "name": "request_id",
+              "type": "string",
+              "description": "Copy the reading request_id from the app background context or the reading message. Never invent or reuse an earlier request ID.",
+              "required": true
+            },
+            {
+              "name": "spread_id",
+              "type": "string",
+              "description": "Copy the spread_id from the same reading request. It identifies the cards being interpreted.",
+              "required": true
+            },
+            {
+              "name": "summary",
+              "type": "string",
+              "description": "An overview connecting all three cards to the question. Plain text, no Markdown or HTML.",
+              "required": true
+            },
+            {
+              "name": "title",
+              "type": "string",
+              "description": "A short title in the user's language.",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "set_tarot_spread",
+          "description": "Prepare a spread for the already-open Tarot view. Copy request_id from the app background context or question request. Return the spread here without opening another page or conversation. Do not call create_tarot_spread or create_tarot_spread_v2 for this request. Wait for the user to draw cards before interpreting.",
+          "input": [
+            {
+              "name": "card_count",
+              "type": "number",
+              "description": "Number of cards. Defaults to 3 (only supported value currently). You can omit this parameter.",
+              "required": false
+            },
+            {
+              "name": "opening_message",
+              "type": "string",
+              "description": "Brief message above card interface (8-15 words, ONE line only). **Language**: Must match user's input language. **Structure**: [Optional: brief context] + [Action: draw 3 cards] **Rules**: ✅ Under 80 characters, ONE line ✅ Always include call-to-action for drawing 3 cards ✅ Warm but concise ❌ No multiple sentences",
+              "required": true
+            },
+            {
+              "name": "positions",
+              "type": "array",
+              "description": "Define what each of the 3 card positions represents. This is the core of spread design. **Language**: Position names and meanings must be in user's input language. ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 【DESIGN DECISION FLOW】 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ **Step 1: Match Classic Spread** ⭐ Do this first! ↓ Does the question clearly fit a proven pattern below? ├─ YES → Use that structure, adapt wording to context └─ NO → Go to Step 2 **Step 2: Adapt Classic** ↓ Can you modify a classic spread to fit? ├─ YES → Keep framework, customize semantics └─ NO → Go to Step 3 **Step 3: Crea",
+              "required": true
+            },
+            {
+              "name": "request_id",
+              "type": "string",
+              "description": "Copy request_id from the app background context or question request. Never invent or reuse a request ID.",
+              "required": true
+            },
+            {
+              "name": "spread_name",
+              "type": "string",
+              "description": "Optional. Name for this spread configuration (5-30 words). **Language**: Must match user's input language. **Guidelines**: • Use classic names when using classic spreads • Add context if helpful",
+              "required": false
+            },
+            {
+              "name": "user_question",
+              "type": "string",
+              "description": "One-sentence summary of user's question (10-60 words). Extract core concern, remove filler. **Language**: Use user's input language. **Purpose**: Context recall after card drawing for accurate interpretation. **How to Summarize**: • Keep essential keywords and core concern • Remove redundant emotion and filler words • Make it specific and meaningful **Examples** (English shown; adapt to user's language): • \"Boyfriend and I keep fighting... should we continue?\" → \"Confusion about relationship status after frequent conflicts\" • \"Got promotion but must relocate, so torn\" → \"Decision about accepti",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "show_tarot_reading",
+          "description": "Deliver the complete interpretation in a separate Tarot reading result page in the current conversation, for both global and thread entrypoints. Begin this tool call immediately, writing request_id and spread_id first, then title, summary, interpretations, guidance. Hosts can display these arguments while they stream. Use only when the app requests this tool. Copy request_id and spread_id from its reading context. Write the interpretation directly in the tool arguments, in the user's language; do not prewrite or repeat it as a chat answer. The result page displays the original drawn cards and",
+          "input": [
+            {
+              "name": "guidance",
+              "type": "string",
+              "description": "Practical guidance and reflection that answers the question. Plain text, no Markdown or HTML.",
+              "required": true
+            },
+            {
+              "name": "interpretations",
+              "type": "array",
+              "description": "One interpretation per drawn card, in the exact drawn order. Respect its position and orientation. Plain text; separate paragraphs with blank lines. Start each card interpretation directly with prose. Do not prefix it with a heading, position name, card name or orientation label; the page already displays these. You may refer to the card naturally within the prose.",
+              "required": true
+            },
+            {
+              "name": "request_id",
+              "type": "string",
+              "description": "Copy the reading request_id from the app background context or the reading message. Never invent or reuse an earlier request ID.",
+              "required": true
+            },
+            {
+              "name": "spread_id",
+              "type": "string",
+              "description": "Copy the spread_id from the same reading request. It identifies the cards being interpreted.",
+              "required": true
+            },
+            {
+              "name": "summary",
+              "type": "string",
+              "description": "An overview connecting all three cards to the question. Plain text, no Markdown or HTML.",
+              "required": true
+            },
+            {
+              "name": "title",
+              "type": "string",
+              "description": "A short title in the user's language.",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "stream_tarot_reading",
+          "description": "Compatibility for older global Tarot views explicitly requesting stream_tarot_reading; current views request show_tarot_reading. Deliver each section as soon as you write it. Call separately for title, summary, card_1, card_2, card_3, guidance in that order. Each call displays real content immediately; the reading completes only after all six sections. Copy request_id and spread_id from the app context. Use the actual drawn cards in order and the question language. Plain text only. Do not write the reading in chat, open another page, or buffer all sections before sending. Retry an identical se",
+          "input": [
+            {
+              "name": "request_id",
+              "type": "string",
+              "description": "Copy the reading request_id from the app background context or the reading message. Never invent or reuse an earlier request ID.",
+              "required": true
+            },
+            {
+              "name": "section",
+              "type": "string",
+              "required": true
+            },
+            {
+              "name": "spread_id",
+              "type": "string",
+              "description": "Copy the spread_id from the same reading request. It identifies the cards being interpreted.",
+              "required": true
+            },
+            {
+              "name": "text",
+              "type": "string",
+              "description": "Plain text for this section. For card_1, card_2 and card_3: Start each card interpretation directly with prose. Do not prefix it with a heading, position name, card name or orientation label; the page already displays these. You may refer to the card naturally within the prose.",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        }
+      ]
+    },
+    "resources": {
+      "status": "partial",
+      "observedCount": 3,
+      "retainedCount": 3,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "create_tarot_spread_v2",
+          "title": "Create a tarot spread",
+          "description": "Create a tarot spread widget markup"
+        },
+        {
+          "name": "tarot_reading_result",
+          "title": "Tarot reading result",
+          "description": "Tarot reading result widget markup"
+        },
+        {
+          "name": "tarot_reading_result_v1",
+          "title": "Tarot reading result",
+          "description": "Tarot reading result widget markup"
+        }
+      ]
+    },
+    "resourceTemplates": {
+      "status": "partial",
+      "observedCount": 1,
+      "retainedCount": 1,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "create_tarot_spread",
+          "title": "Initialize a tarot reading session by creating a 3-card spread based on the user's question. 【Language Rule】 ⚠️ ALL user-facing text (user_question, position names/meanings, opening_message) MUST be i",
+          "description": "Initialize a tarot reading session by creating a 3-card spread based on the user's question. 【Language Rule】 ⚠️ ALL user-facing text (user_question, position names/meanings, opening_message) MUST be in the SAME language as user's input. If user asks in Spanish, output Spanish. If user asks in Chinese, output Chinese. English definition below is for structure only. 【When to Use】 • User requests tarot guidance explicitly • User seeks spiritual/intuitive insight on a decision or situation 【Core Function】 Analyze the question and select the most appropriate 3-card spread structure. Prioritize prov",
+          "mimeType": "text/html+skybridge"
+        }
+      ]
+    },
+    "prompts": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    }
+  },
   "datacamp": {
     "version": 1,
     "observedAt": "2026-11-23T18:16:38.974Z",
@@ -131398,7 +131830,7 @@
   },
   "slidesgpt": {
     "version": 1,
-    "observedAt": "2026-11-23T18:16:15.223Z",
+    "observedAt": "2026-11-26T21:18:47.655Z",
     "provenance": {
       "testedEndpoint": "https://mcp.slidesgpt.com/mcp",
       "route": "direct"
