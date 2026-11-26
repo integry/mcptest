@@ -5322,7 +5322,7 @@
     "authType": "none",
     "requiresOAuth": false,
     "protocolEra": "stateless",
-    "checkedAt": "2026-11-23T18:16:46.948Z",
+    "checkedAt": "2026-11-26T10:17:31.306Z",
     "message": "Negotiated stateless MCP 2026-07-28 at https://lacuna.tiptreesystems.com/api/mcp; detected transport streamable-http; authentication none",
     "validatedUrl": "https://lacuna.tiptreesystems.com/api/mcp",
     "protocolVersion": "2026-07-28"
@@ -7434,7 +7434,7 @@
     "authType": "oauth",
     "requiresOAuth": true,
     "protocolEra": "unknown",
-    "checkedAt": "2026-11-23T18:17:38.127Z",
+    "checkedAt": "2026-11-26T10:17:32.873Z",
     "message": "Authentication challenge at https://mcp.salesloft.com/sse returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
     "validatedUrl": "https://mcp.salesloft.com/sse",
     "authorizationServers": [
@@ -7645,7 +7645,7 @@
     "authType": "oauth",
     "requiresOAuth": true,
     "protocolEra": "unknown",
-    "checkedAt": "2026-11-23T18:17:41.676Z",
+    "checkedAt": "2026-11-26T10:17:10.696Z",
     "message": "Authentication challenge at https://mcp.athletedata.health/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
     "validatedUrl": "https://mcp.athletedata.health/mcp",
     "authorizationServers": [
@@ -12093,7 +12093,7 @@
     "authType": "oauth",
     "requiresOAuth": true,
     "protocolEra": "unknown",
-    "checkedAt": "2026-11-24T22:16:22.306Z",
+    "checkedAt": "2026-11-26T10:17:13.804Z",
     "message": "Authentication challenge at https://mcp.drata.com/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
     "validatedUrl": "https://mcp.drata.com/mcp",
     "authorizationServers": [
@@ -12303,7 +12303,7 @@
     "authType": "oauth",
     "requiresOAuth": true,
     "protocolEra": "unknown",
-    "checkedAt": "2026-11-24T22:16:24.555Z",
+    "checkedAt": "2026-11-26T10:17:15.549Z",
     "message": "Authentication challenge at https://mcp.coupler.io/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
     "validatedUrl": "https://mcp.coupler.io/mcp",
     "authorizationServers": [
@@ -12415,7 +12415,7 @@
     "authType": "oauth",
     "requiresOAuth": true,
     "protocolEra": "unknown",
-    "checkedAt": "2026-11-24T22:16:25.509Z",
+    "checkedAt": "2026-11-26T10:17:17.540Z",
     "message": "Authentication challenge at https://services.oxfordeconomics.com/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
     "validatedUrl": "https://services.oxfordeconomics.com/mcp",
     "authorizationServers": [
@@ -12827,7 +12827,7 @@
     "authType": "oauth",
     "requiresOAuth": true,
     "protocolEra": "unknown",
-    "checkedAt": "2026-11-25T23:15:37.436Z",
+    "checkedAt": "2026-11-26T10:17:19.808Z",
     "message": "Authentication challenge at https://mcp.api.harmonic.ai/ returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
     "validatedUrl": "https://mcp.api.harmonic.ai/",
     "authorizationServers": [
@@ -12841,7 +12841,7 @@
     "authType": "oauth",
     "requiresOAuth": true,
     "protocolEra": "unknown",
-    "checkedAt": "2026-11-25T23:15:40.296Z",
+    "checkedAt": "2026-11-26T10:17:22.465Z",
     "message": "Authentication challenge at https://www.send.co/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
     "validatedUrl": "https://www.send.co/mcp",
     "authorizationServers": [
@@ -12897,7 +12897,7 @@
     "authType": "oauth",
     "requiresOAuth": true,
     "protocolEra": "unknown",
-    "checkedAt": "2026-11-25T23:15:48.713Z",
+    "checkedAt": "2026-11-26T10:17:25.211Z",
     "message": "Authentication challenge at https://mcp.moodys.com/genai-ready-data/Credit/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
     "validatedUrl": "https://mcp.moodys.com/genai-ready-data/Credit/mcp",
     "authorizationServers": [
@@ -13345,7 +13345,7 @@
     "authType": "oauth",
     "requiresOAuth": true,
     "protocolEra": "unknown",
-    "checkedAt": "2026-11-26T04:17:03.439Z",
+    "checkedAt": "2026-11-26T10:17:27.891Z",
     "message": "Authentication challenge at https://api.attention.tech/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
     "validatedUrl": "https://api.attention.tech/mcp",
     "authorizationServers": [
@@ -13485,7 +13485,7 @@
     "authType": "oauth",
     "requiresOAuth": true,
     "protocolEra": "unknown",
-    "checkedAt": "2026-11-26T04:17:27.359Z",
+    "checkedAt": "2026-11-26T10:17:29.346Z",
     "message": "Authentication challenge at https://api.devrev.ai/mcp/v1 returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
     "validatedUrl": "https://api.devrev.ai/mcp/v1",
     "authorizationServers": [
@@ -13625,5 +13625,427 @@
     "checkedAt": "2026-11-26T04:17:48.712Z",
     "message": "Authentication challenge at https://mcp.stackoverflow.com/ returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
     "validatedUrl": "https://mcp.stackoverflow.com/"
+  },
+  {
+    "serverId": "tesseract",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateful",
+    "checkedAt": "2026-11-26T10:15:54.356Z",
+    "message": "Negotiated stateful MCP 2025-11-25 at https://mcp.mirage.app/mcp; detected transport streamable-http; authentication none; WARNING: OAuth authorization servers advertised; an anonymous MCP handshake does not establish anonymous tool access",
+    "validatedUrl": "https://mcp.mirage.app/mcp",
+    "protocolVersion": "2025-11-25",
+    "authorizationServers": [
+      "https://auth-mcp.mirage.app"
+    ]
+  },
+  {
+    "serverId": "signnow",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-26T10:15:56.624Z",
+    "message": "Authentication challenge at https://mcp-server.signnow.com/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://mcp-server.signnow.com/mcp",
+    "authorizationServers": [
+      "https://mcp-server.signnow.com/"
+    ]
+  },
+  {
+    "serverId": "remote-com",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-26T10:15:59.195Z",
+    "message": "Authentication challenge at https://mcp.remote.com/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://mcp.remote.com/mcp",
+    "authorizationServers": [
+      "https://api.employ.remote.com"
+    ]
+  },
+  {
+    "serverId": "unwrap",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-26T10:16:02.109Z",
+    "message": "Authentication challenge at https://nlp.api.production.unwrap.ai/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://nlp.api.production.unwrap.ai/mcp",
+    "authorizationServers": [
+      "https://nlp.api.production.unwrap.ai"
+    ]
+  },
+  {
+    "serverId": "macaly-cloud",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-26T10:16:04.685Z",
+    "message": "Authentication challenge at https://www.macaly.com/api/cloud/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://www.macaly.com/api/cloud/mcp",
+    "authorizationServers": [
+      "https://clerk.macaly.com"
+    ]
+  },
+  {
+    "serverId": "intuit-developer",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-26T10:16:08.939Z",
+    "message": "Authentication challenge at https://ai-inc-developer.intuit.com/v1/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://ai-inc-developer.intuit.com/v1/mcp",
+    "authorizationServers": [
+      "https://oauth.platform.intuit.com/v1/assets/4546401417164830418"
+    ]
+  },
+  {
+    "serverId": "ticket-tailor",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-26T10:16:11.119Z",
+    "message": "Authentication challenge at https://mcp.tickettailor.ai/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://mcp.tickettailor.ai/mcp",
+    "authorizationServers": [
+      "https://mcp.tickettailor.ai"
+    ]
+  },
+  {
+    "serverId": "alma",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-26T10:16:13.234Z",
+    "message": "Authentication challenge at https://mcp.alma.food/ returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://mcp.alma.food/",
+    "authorizationServers": [
+      "https://mcp.alma.food"
+    ]
+  },
+  {
+    "serverId": "aftership-channels-for-tiktok-shop",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-26T10:16:15.383Z",
+    "message": "Authentication challenge at https://mcp.aftership.com/channels returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://mcp.aftership.com/channels",
+    "authorizationServers": [
+      "https://accounts.aftership.com/auth/realms/business"
+    ]
+  },
+  {
+    "serverId": "letsfg",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-26T10:16:17.523Z",
+    "message": "Authentication challenge at https://letsfg.co/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://letsfg.co/mcp",
+    "authorizationServers": [
+      "https://letsfg.co/developers/api"
+    ]
+  },
+  {
+    "serverId": "morning-consult",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-26T10:16:20.100Z",
+    "message": "Authentication challenge at https://api.morningconsult.com/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://api.morningconsult.com/mcp",
+    "authorizationServers": [
+      "https://api.morningconsult.com/mcp"
+    ]
+  },
+  {
+    "serverId": "botify",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-26T10:16:21.833Z",
+    "message": "Authentication challenge at https://mcp.botify.com/ returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://mcp.botify.com/",
+    "authorizationServers": [
+      "https://app.botify.com/"
+    ]
+  },
+  {
+    "serverId": "cardboard",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-26T10:16:24.700Z",
+    "message": "Authentication challenge at https://mcp.cardboard.ai/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://mcp.cardboard.ai/mcp",
+    "authorizationServers": [
+      "https://clerk.cardboard.ai",
+      "https://www.cardboard.ai"
+    ]
+  },
+  {
+    "serverId": "felt-maps",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-26T10:16:28.140Z",
+    "message": "Authentication challenge at https://felt.com/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://felt.com/mcp",
+    "authorizationServers": [
+      "https://felt.com"
+    ]
+  },
+  {
+    "serverId": "dhs-program",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-26T10:16:31.211Z",
+    "message": "Authentication challenge at https://api.dhsprogram.com/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://api.dhsprogram.com/mcp",
+    "authorizationServers": [
+      "https://api.dhsprogram.com"
+    ]
+  },
+  {
+    "serverId": "klue",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-26T10:16:33.870Z",
+    "message": "Authentication challenge at https://mcp.app.klue.com/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://mcp.app.klue.com/mcp",
+    "authorizationServers": [
+      "https://app.klue.com"
+    ]
+  },
+  {
+    "serverId": "solve-intelligence",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-26T10:16:36.470Z",
+    "message": "Authentication challenge at https://api.solveintelligence.com/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://api.solveintelligence.com/mcp",
+    "authorizationServers": [
+      "https://api.solveintelligence.com/auth"
+    ]
+  },
+  {
+    "serverId": "listen-labs",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-26T10:16:39.057Z",
+    "message": "Authentication challenge at https://listenlabs.ai/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://listenlabs.ai/mcp",
+    "authorizationServers": [
+      "https://mcp.listenlabs.ai/"
+    ]
+  },
+  {
+    "serverId": "fastmail",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-26T10:16:43.193Z",
+    "message": "Authentication challenge at https://api.fastmail.com/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://api.fastmail.com/mcp",
+    "authorizationServers": [
+      "https://api.fastmail.com"
+    ]
+  },
+  {
+    "serverId": "juro-contracts",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-26T10:16:45.258Z",
+    "message": "Authentication challenge at https://integrations.app.juro.com/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://integrations.app.juro.com/mcp",
+    "authorizationServers": [
+      "https://integrations.app.juro.com/mcp"
+    ]
+  },
+  {
+    "serverId": "everlaw",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-26T10:16:47.677Z",
+    "message": "Authentication challenge at https://api.everlaw.com/v1/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://api.everlaw.com/v1/mcp",
+    "authorizationServers": [
+      "https://app.everlaw.com"
+    ]
+  },
+  {
+    "serverId": "dropbox-docsend",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-26T10:16:49.489Z",
+    "message": "Authentication challenge at https://docsend.com/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://docsend.com/mcp",
+    "authorizationServers": [
+      "https://docsend.com"
+    ]
+  },
+  {
+    "serverId": "vaisala-xweather",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-26T10:16:52.941Z",
+    "message": "Authentication challenge at https://mcp.api.xweather.com/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://mcp.api.xweather.com/mcp",
+    "authorizationServers": [
+      "https://oauth.api.xweather.com"
+    ]
+  },
+  {
+    "serverId": "unblocked",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-26T10:16:55.715Z",
+    "message": "Authentication challenge at https://getunblocked.com/api/mcpsse returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://getunblocked.com/api/mcpsse",
+    "authorizationServers": [
+      "https://getunblocked.com"
+    ]
+  },
+  {
+    "serverId": "omnisend-mcp-v2",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-26T10:16:57.735Z",
+    "message": "Authentication challenge at https://mcp.omnisend.com/v2/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://mcp.omnisend.com/v2/mcp",
+    "authorizationServers": [
+      "https://mcp.omnisend.com"
+    ]
+  },
+  {
+    "serverId": "abacum",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-26T10:16:59.277Z",
+    "message": "Authentication challenge at https://mcp.abacum.ai/ returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://mcp.abacum.ai/",
+    "authorizationServers": [
+      "https://mcp.abacum.ai/"
+    ]
+  },
+  {
+    "serverId": "gainsight-customer-communities",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-26T10:17:01.157Z",
+    "message": "Authentication challenge at https://mcp.insided.com/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://mcp.insided.com/mcp",
+    "authorizationServers": [
+      "https://mcp.insided.com"
+    ]
+  },
+  {
+    "serverId": "productive",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-26T10:17:03.009Z",
+    "message": "Authentication challenge at https://mcp.productive.io/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://mcp.productive.io/mcp",
+    "authorizationServers": [
+      "https://api.productive.io"
+    ]
+  },
+  {
+    "serverId": "celigo",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-26T10:17:05.422Z",
+    "message": "Authentication challenge at https://api.integrator.io/celigo-mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://api.integrator.io/celigo-mcp",
+    "authorizationServers": [
+      "https://integrator.io"
+    ]
+  },
+  {
+    "serverId": "ontra",
+    "status": "online",
+    "transport": "unknown",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "protocolEra": "unknown",
+    "checkedAt": "2026-11-26T10:17:08.251Z",
+    "message": "Authentication challenge at https://mcp.ontra.ai/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
+    "validatedUrl": "https://mcp.ontra.ai/mcp",
+    "authorizationServers": [
+      "https://mcp.ontra.ai/"
+    ]
   }
 ]
