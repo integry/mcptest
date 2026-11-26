@@ -44559,7 +44559,7 @@
     "oauthRegistration": {
       "mode": "unknown",
       "clientId": {
-        "required": false
+        "required": true
       },
       "clientSecret": {
         "required": false

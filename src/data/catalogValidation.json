@@ -13051,7 +13051,7 @@
     "authType": "oauth",
     "requiresOAuth": true,
     "protocolEra": "unknown",
-    "checkedAt": "2026-11-25T23:16:14.745Z",
+    "checkedAt": "2026-11-26T00:06:42.181Z",
     "message": "Authentication challenge at https://grounding.kensho.com/integrations/v2/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
     "validatedUrl": "https://grounding.kensho.com/integrations/v2/mcp",
     "authorizationServers": [
