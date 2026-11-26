@@ -45887,15 +45887,19 @@
     "id": "rillet",
     "name": "Rillet",
     "url": "https://api.rillet.com/mcp",
-    "description": "Query the Rillet general ledger and work with invoices, bills and journal entries. Sign in with OAuth to connect.",
+    "description": "Query the Rillet general ledger and work with invoices, bills and journal entries. Sign in with OAuth, or send a Rillet API key as a bearer token.",
     "category": "Finance",
     "tags": [
       "accounting",
       "general-ledger",
       "invoices",
-      "oauth"
+      "oauth",
+      "bearer-token"
     ],
     "relevance": 63,
+    "alternativeAuthTypes": [
+      "bearer-token"
+    ],
     "directoryListings": [
       {
         "directory": "claude",
@@ -45930,6 +45934,15 @@
       "reviewedAt": "2026-11-26",
       "evidenceUrl": "https://docs.api.rillet.com/docs/mcp"
     },
+    "requiredHeaders": [
+      {
+        "name": "Authorization",
+        "description": "Optional Rillet API key alternative: Bearer <RILLET_API_KEY>",
+        "valueTemplate": "Bearer <RILLET_API_KEY>",
+        "required": false,
+        "secret": true
+      }
+    ],
     "logoUrl": "/server-logos/rillet.svg",
     "logoSourceKind": "generated-fallback",
     "logoRetrievedAt": "2026-11-26",

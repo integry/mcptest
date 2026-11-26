@@ -13401,7 +13401,7 @@
     "authType": "oauth",
     "requiresOAuth": true,
     "protocolEra": "unknown",
-    "checkedAt": "2026-11-26T04:17:12.996Z",
+    "checkedAt": "2026-11-26T06:07:34.560Z",
     "message": "Authentication challenge at https://api.rillet.com/mcp returned HTTP 401; endpoint was reachable but did not complete an MCP probe; authentication oauth",
     "validatedUrl": "https://api.rillet.com/mcp",
     "authorizationServers": [
