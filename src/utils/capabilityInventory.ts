@@ -154,7 +154,16 @@ const record = (value: unknown): Record<string, unknown> | undefined => (
 );
 
 const safeType = (value: unknown): string | undefined => {
-  if (typeof value === 'string' && SCHEMA_TYPES.has(value)) return value;
+  if (typeof value === 'string') {
+    if (SCHEMA_TYPES.has(value)) return value;
+    // Accept the canonical union form this function emits for type arrays
+    // (sorted, de-duplicated, " | "-joined) so stored inventories round-trip.
+    const parts = value.split(' | ');
+    const canonical = [...new Set(parts)].sort().join(' | ');
+    return parts.length > 1 && parts.every((part) => SCHEMA_TYPES.has(part)) && canonical === value
+      ? value
+      : undefined;
+  }
   if (Array.isArray(value)) {
     const types = [...new Set(value.filter((item): item is string => (
       typeof item === 'string' && SCHEMA_TYPES.has(item)
