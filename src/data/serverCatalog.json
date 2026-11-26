@@ -19110,6 +19110,11 @@
         "directory": "claude",
         "id": "connector.2e3d5f3c-6c8d-46bc-85f0-33efca4f0e59",
         "url": "https://claude.com/marketplace/connectors/vistaprint"
+      },
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6ad99e226f248191b0d686ff2a6d6e56",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6ad99e226f248191b0d686ff2a6d6e56"
       }
     ],
     "relevance": 49,
@@ -19121,7 +19126,7 @@
     ],
     "caveats": [
       "Only the tool list is public: tools/list answers without credentials, but tool calls return 401 until the user signs in to VistaPrint with OAuth (the server publishes OAuth protected-resource metadata).",
-      "The endpoint is on a Claude-specific host (claude.mcp-pod.es.vpsvc.com). The host without the claude prefix answers as a different, smaller server named \"VistaPrint Testing\", so the catalog keeps the Claude URL.",
+      "VistaPrint runs client-specific production routes: Claude uses this claude.mcp-pod.es.vpsvc.com host (21 tools) and ChatGPT uses chatgpt.mcp-pod.es.vpsvc.com (19 tools). The host without a client prefix answers as a different, smaller server named \"VistaPrint Testing\" (16 tools), so the catalog keeps the Claude URL. Full capability discovery for the ChatGPT route is incomplete.",
       "The publisher does not document this endpoint; the listing source is the Claude directory entry. VistaPrint's AI connector guide (https://www.vistaprint.com/ai-connector-guide) does not state the endpoint URL and still says the connector is not yet in Claude's directory."
     ],
     "logoUrl": "/server-logos/vistaprint.svg",
@@ -19129,7 +19134,14 @@
     "logoSourceKind": "official-site",
     "logoRetrievedAt": "2026-11-20",
     "logoLicenseNote": "Official VistaPrint stacked colour logo served on vistaprint.com; trademark rights remain with the publisher.",
-    "homepageUrl": "https://www.vistaprint.com"
+    "homepageUrl": "https://www.vistaprint.com",
+    "alternativeEndpoints": [
+      {
+        "url": "https://chatgpt.mcp-pod.es.vpsvc.com/mcp",
+        "authType": "none",
+        "description": "ChatGPT production route declared by the ChatGPT release. It answers anonymously as VistaPrint 0.1.1 with 19 tools (the Claude route lists 21; the asset-upload picker tools are absent). Tool calls return 401 until the user signs in with OAuth."
+      }
+    ]
   },
   {
     "id": "airfield-directory",
@@ -28017,6 +28029,11 @@
         "directory": "claude",
         "id": "connector.fc444ece-ad9b-4854-a244-4dcb9abfde6f",
         "url": "https://claude.com/marketplace/connectors/motion-so"
+      },
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6af782b143548191bc8b7696512cba28",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6af782b143548191bc8b7696512cba28"
       }
     ],
     "relevance": 78,
@@ -28038,13 +28055,20 @@
       "evidenceUrl": "https://motion.so/templates"
     },
     "caveats": [
-      "This is the client-neutral endpoint. Tool parity with the Claude-specific /mcp/anthropic endpoint is unverified."
+      "This is the client-neutral endpoint. Tool parity with the Claude-specific /mcp/anthropic endpoint and the ChatGPT-specific /mcp/openai endpoint is unverified."
     ],
     "logoUrl": "/server-logos/motion-so.svg",
     "logoSourceKind": "generated-fallback",
     "logoRetrievedAt": "2026-11-21",
     "logoLicenseNote": "Unofficial, locally generated MO monogram. Trademark rights remain with the publisher.",
-    "homepageUrl": "https://motion.so/"
+    "homepageUrl": "https://motion.so/",
+    "alternativeEndpoints": [
+      {
+        "url": "https://mcp.motion.so/mcp/openai",
+        "authType": "oauth",
+        "description": "ChatGPT-specific endpoint declared by the ChatGPT release. It returned HTTP 401 with its own OAuth metadata requesting session and automation scopes; the primary also advertises project, account, credit, asset and other scopes."
+      }
+    ]
   },
   {
     "id": "craft",
@@ -47247,6 +47271,11 @@
         "directory": "claude",
         "id": "wf.68c4a4971d255ece5ed2a9c0",
         "url": "https://claude.com/marketplace/connectors/ticket-tailor"
+      },
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6ad1d24bf9148191badc571e791073a3",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6ad1d24bf9148191badc571e791073a3"
       }
     ],
     "homepageUrl": "https://www.tickettailor.com/",
@@ -47301,6 +47330,11 @@
         "directory": "claude",
         "id": "connector.d7df1c09-82a2-4ce9-9442-a9f0e58f9a36",
         "url": "https://claude.com/marketplace/connectors/alma"
+      },
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6a5147955d948191be10fbe2c5b78581",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6a5147955d948191be10fbe2c5b78581"
       }
     ],
     "homepageUrl": "https://www.alma.food/",
@@ -48550,5 +48584,1583 @@
     "logoSourceKind": "generated-fallback",
     "logoRetrievedAt": "2026-11-26",
     "logoLicenseNote": "Locally generated monogram for Ontra. This monogram is not an official mark."
+  },
+  {
+    "id": "synapse-social",
+    "name": "Synapse Social",
+    "url": "https://mcp.synapsesocial.com/chatgpt/mcp",
+    "description": "Find and understand research papers, clinical guidelines and trials with search, fetch, show_paper, find_guidelines, find_clinical_trials, trending_papers and find_expert_takes. Works without sign-in. Not related to Sage Bionetworks' Synapse.org.",
+    "category": "Reference",
+    "tags": [
+      "research",
+      "papers",
+      "medicine",
+      "clinical-trials",
+      "no-auth"
+    ],
+    "relevance": 50,
+    "directoryListings": [
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6ac50ea5c0108191a1797178b38efeda",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6ac50ea5c0108191a1797178b38efeda"
+      }
+    ],
+    "homepageUrl": "https://synapsesocial.com/",
+    "caveats": [
+      "This is the ChatGPT-specific route declared by the ChatGPT release. The neutral https://mcp.synapsesocial.com/mcp returned HTTP 401 with OAuth protected-resource metadata (scope evidence:read), and the host root returned 404."
+    ],
+    "listingSource": {
+      "kind": "client-directory",
+      "url": "https://chatgpt.com/plugins/plugin_asdk_app_6ac50ea5c0108191a1797178b38efeda"
+    },
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "logoUrl": "/server-logos/synapse-social.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-26",
+    "logoLicenseNote": "Locally generated monogram for Synapse Social. This monogram is not an official mark."
+  },
+  {
+    "id": "datarails-financeos",
+    "name": "Datarails FinanceOS",
+    "url": "https://mcp.datarails.com/mcp",
+    "description": "Read consolidated financial data from Datarails FinanceOS for analysis and reporting. Sign in with OAuth to connect.",
+    "category": "Finance",
+    "tags": [
+      "fp-and-a",
+      "financial-reporting",
+      "consolidation",
+      "oauth"
+    ],
+    "relevance": 57,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.ad38dac2-592c-4269-947a-ab44fe5c3f4f",
+        "url": "https://claude.com/marketplace/connectors/datarails-financeos"
+      },
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_69a68ed9c74c8191945c08fc0d9ace1f",
+        "url": "https://chatgpt.com/apps/datarails-financeos/asdk_app_69a68ed9c74c8191945c08fc0d9ace1f"
+      }
+    ],
+    "homepageUrl": "https://www.datarails.com/",
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://support.datarails.com/hc/en-us/articles/25849710214556-Datarails-AI-Connector-Technical-documentation"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-26",
+      "evidenceUrl": "https://support.datarails.com/hc/en-us/articles/25849710214556-Datarails-AI-Connector-Technical-documentation"
+    },
+    "logoUrl": "/server-logos/datarails-financeos.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-26",
+    "logoLicenseNote": "Locally generated monogram for Datarails FinanceOS. This monogram is not an official mark."
+  },
+  {
+    "id": "scribe-capture",
+    "name": "Scribe Capture",
+    "url": "https://mcp.scribe.com/capture/mcp",
+    "description": "Access Scribe Capture documents, workflows and insights. Sign in with OAuth to connect.",
+    "category": "Productivity",
+    "tags": [
+      "documentation",
+      "workflows",
+      "how-to-guides",
+      "oauth"
+    ],
+    "relevance": 57,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.b9b34cf6-ab05-48aa-a3cf-ca81e6b4e8d0",
+        "url": "https://claude.com/marketplace/connectors/scribemcp"
+      }
+    ],
+    "homepageUrl": "https://scribe.com/",
+    "alternativeEndpoints": [
+      {
+        "url": "https://mcp.scribe.com/mcp",
+        "authType": "oauth",
+        "description": "Combined Scribe MCP server advertising both capture and optimize scopes, with its own authorization server (https://mcp.scribe.com/). It returned HTTP 401 with separate OAuth metadata. The Claude connector uses the capture path, not this endpoint."
+      }
+    ],
+    "caveats": [
+      "Scribe documents the MCP server at https://support.scribehow.com/hc/en-us/articles/35221245251485-Scribe-MCP-Server. The capture endpoint requests only the capture scope; the combined /mcp endpoint also requests optimize and is a different OAuth resource."
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://mcp.scribe.com/.well-known/oauth-protected-resource/capture/mcp"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-26",
+      "evidenceUrl": "https://mcp.scribe.com/.well-known/oauth-protected-resource/capture/mcp"
+    },
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/scribe-capture.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-26",
+    "logoLicenseNote": "Locally generated monogram for Scribe Capture. This monogram is not an official mark."
+  },
+  {
+    "id": "brand24",
+    "name": "Brand24",
+    "url": "https://mcp.brand24.com/v1/mcp",
+    "description": "Analyze mentions, sentiment and discussion trends in authorized Brand24 projects. Sign in with OAuth to connect.",
+    "category": "Analytics",
+    "tags": [
+      "social-listening",
+      "media-monitoring",
+      "sentiment",
+      "oauth"
+    ],
+    "relevance": 57,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.ce78766e-a1de-44b5-b928-49ec48d4a479",
+        "url": "https://claude.com/marketplace/connectors/pending-brand24"
+      },
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_695ba18f3294819196bbe3bdc5630bf3",
+        "url": "https://chatgpt.com/apps/brand24/asdk_app_695ba18f3294819196bbe3bdc5630bf3"
+      }
+    ],
+    "homepageUrl": "https://brand24.com/",
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://help.brand24.com/en/articles/13011375-brand24-mcp"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-26",
+      "evidenceUrl": "https://help.brand24.com/en/articles/13011375-brand24-mcp"
+    },
+    "logoUrl": "/server-logos/brand24.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-26",
+    "logoLicenseNote": "Locally generated monogram for Brand24. This monogram is not an official mark."
+  },
+  {
+    "id": "coinversa-pulse",
+    "name": "Coinversa Pulse",
+    "url": "https://mcp.coinversa.ai/mcp",
+    "description": "Hyperliquid wallet, positioning and risk analytics, including what top traders and whales hold. Sign in with OAuth to connect.",
+    "category": "Finance",
+    "tags": [
+      "crypto",
+      "hyperliquid",
+      "trading-analytics",
+      "oauth"
+    ],
+    "relevance": 57,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.4f5d3539-79ae-4f8b-8011-356259b4dff6",
+        "url": "https://claude.com/marketplace/connectors/coinversa-pulse"
+      }
+    ],
+    "homepageUrl": "https://coinversa.ai/",
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://docs.coinversa.ai/mcp/setup"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-26",
+      "evidenceUrl": "https://docs.coinversa.ai/mcp/setup"
+    },
+    "logoUrl": "/server-logos/coinversa-pulse.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-26",
+    "logoLicenseNote": "Locally generated monogram for Coinversa Pulse. This monogram is not an official mark."
+  },
+  {
+    "id": "jobber",
+    "name": "Jobber",
+    "url": "https://mcp.getjobber.com/mcp",
+    "description": "Query Jobber field-service records such as clients, jobs, quotes and invoices, and create selected records. Sign in with OAuth to connect.",
+    "category": "CRM",
+    "tags": [
+      "field-service",
+      "scheduling",
+      "invoicing",
+      "oauth"
+    ],
+    "relevance": 56,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.d53b3c4b-c4c7-4886-8698-786cfaff70f2",
+        "url": "https://claude.com/marketplace/connectors/jobber"
+      },
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6a7a4428a3b08191a880934cf874b88f",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6a7a4428a3b08191a880934cf874b88f"
+      }
+    ],
+    "homepageUrl": "https://www.getjobber.com/",
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://help.getjobber.com/en/articles/connect-jobber-to-claude-and-chatgpt/"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-26",
+      "evidenceUrl": "https://help.getjobber.com/en/articles/connect-jobber-to-claude-and-chatgpt/"
+    },
+    "logoUrl": "/server-logos/jobber.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-26",
+    "logoLicenseNote": "Locally generated monogram for Jobber. This monogram is not an official mark."
+  },
+  {
+    "id": "robin-workplace",
+    "name": "Robin (Workplace)",
+    "url": "https://mcp.robinpowered.com/mcp",
+    "description": "Book desks and rooms and manage Robin workplace resources and hybrid office schedules. Sign in with OAuth to connect.",
+    "category": "Productivity",
+    "tags": [
+      "workplace",
+      "desk-booking",
+      "room-booking",
+      "oauth"
+    ],
+    "relevance": 56,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.b955cf44-cd8f-4551-8730-cbc5a31d2003",
+        "url": "https://claude.com/marketplace/connectors/robin-powered"
+      }
+    ],
+    "homepageUrl": "https://robinpowered.com/",
+    "caveats": [
+      "Robin has no public ChatGPT directory listing. Its ChatGPT instructions describe adding the server as a custom connector."
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://mcp.robinpowered.com/"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-26",
+      "evidenceUrl": "https://mcp.robinpowered.com/"
+    },
+    "logoUrl": "/server-logos/robin-workplace.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-26",
+    "logoLicenseNote": "Locally generated monogram for Robin (Workplace). This monogram is not an official mark."
+  },
+  {
+    "id": "spiegel-nsdap-archiv",
+    "name": "NSDAP Archiv - DER SPIEGEL",
+    "url": "https://nsdap-mcp.prod.ki.spiegel.de/mcp",
+    "description": "Search the historical Nazi Party (NSDAP) membership records that DER SPIEGEL made searchable. Sign in with OAuth to connect.",
+    "category": "Reference",
+    "tags": [
+      "history",
+      "archives",
+      "genealogy",
+      "oauth"
+    ],
+    "relevance": 56,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.238fd796-571a-4d3f-8f82-c68f54b34e81",
+        "url": "https://claude.com/marketplace/connectors/nsdap-archiv-der-spiegel"
+      },
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6a9d17485b7c8191b557119c20e4c9bd",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6a9d17485b7c8191b557119c20e4c9bd"
+      }
+    ],
+    "homepageUrl": "https://www.spiegel.de/",
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://www.spiegel.de/geschichte/nsdap-kartei-sie-wollen-mit-der-nazi-kartei-chatten-probieren-sie-es-hier-aus-a-7f50cb81-3987-47bc-9072-7788bf95e8db"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-26",
+      "evidenceUrl": "https://www.spiegel.de/geschichte/nsdap-kartei-sie-wollen-mit-der-nazi-kartei-chatten-probieren-sie-es-hier-aus-a-7f50cb81-3987-47bc-9072-7788bf95e8db"
+    },
+    "logoUrl": "/server-logos/spiegel-nsdap-archiv.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-26",
+    "logoLicenseNote": "Locally generated monogram for NSDAP Archiv - DER SPIEGEL. This monogram is not an official mark."
+  },
+  {
+    "id": "blazesql",
+    "name": "BlazeSQL",
+    "url": "https://mcp.blazesql.com/",
+    "description": "Query connected databases and warehouses through BlazeSQL with shared context and governance. Sign in with OAuth to connect.",
+    "category": "Analytics",
+    "tags": [
+      "sql",
+      "databases",
+      "business-intelligence",
+      "oauth"
+    ],
+    "relevance": 56,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.a6a88aa0-b038-43ba-ac83-912f459bf576",
+        "url": "https://claude.com/marketplace/connectors/blaze-sql"
+      },
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_69a2327e44fc8191ace64618746edc84",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_69a2327e44fc8191ace64618746edc84"
+      }
+    ],
+    "homepageUrl": "https://www.blazesql.com/",
+    "alternativeEndpoints": [
+      {
+        "url": "https://claude.blazesql.com/",
+        "authType": "oauth",
+        "description": "Endpoint configured by the Claude connector. It returned HTTP 401 with its own OAuth metadata and the same blazesql:query scope as the primary."
+      }
+    ],
+    "caveats": [
+      "The ChatGPT release does not name its endpoint URL."
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://help.blazesql.com/en/articles/13901955-blazesql-mcp-server-documentation"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-26",
+      "evidenceUrl": "https://help.blazesql.com/en/articles/13901955-blazesql-mcp-server-documentation"
+    },
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/blazesql.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-26",
+    "logoLicenseNote": "Locally generated monogram for BlazeSQL. This monogram is not an official mark."
+  },
+  {
+    "id": "samsara",
+    "name": "Samsara",
+    "url": "https://mcp.samsara.com/v2/mcp",
+    "description": "Read-only access to Samsara fleet, safety and compliance data. Sign in with OAuth to connect.",
+    "category": "Analytics",
+    "tags": [
+      "fleet-management",
+      "telematics",
+      "safety",
+      "oauth"
+    ],
+    "relevance": 56,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.aec2fc68-effc-48c1-9648-ea22c87a8313",
+        "url": "https://claude.com/marketplace/connectors/samsara-mcp"
+      }
+    ],
+    "homepageUrl": "https://www.samsara.com/",
+    "alternativeEndpoints": [
+      {
+        "url": "https://mcp.eu.samsara.com/v2/mcp",
+        "authType": "oauth",
+        "description": "EU region endpoint for EU Samsara accounts. It returned HTTP 401 with its own regional OAuth metadata."
+      },
+      {
+        "url": "https://mcp.ca.samsara.com/v2/mcp",
+        "authType": "oauth",
+        "description": "CA region endpoint for Canadian Samsara accounts. It returned HTTP 401 with its own regional OAuth metadata."
+      }
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://kb.samsara.com/hc/en-us/articles/48597600073357-Samsara-MCP"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-26",
+      "evidenceUrl": "https://kb.samsara.com/hc/en-us/articles/48597600073357-Samsara-MCP"
+    },
+    "logoUrl": "/server-logos/samsara.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-26",
+    "logoLicenseNote": "Locally generated monogram for Samsara. This monogram is not an official mark."
+  },
+  {
+    "id": "planning-center",
+    "name": "Planning Center",
+    "url": "https://mcp.planningcenteronline.com/mcp",
+    "description": "Work with Planning Center church management data, such as people, groups, services and giving. Sign in with OAuth to connect.",
+    "category": "Productivity",
+    "tags": [
+      "church-management",
+      "nonprofit",
+      "scheduling",
+      "oauth"
+    ],
+    "relevance": 55,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.edfb7283-0e7b-4366-9e55-899a53ef0036",
+        "url": "https://claude.com/marketplace/connectors/planning-center"
+      },
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6a31848e72408191abad3ee216d63940",
+        "url": "https://chatgpt.com/apps/planning-center/asdk_app_6a31848e72408191abad3ee216d63940"
+      }
+    ],
+    "homepageUrl": "https://www.planningcenter.com/",
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://help.planningcenter.com/en/151880-connect-ai-tools-to-planning-center.html"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-26",
+      "evidenceUrl": "https://help.planningcenter.com/en/151880-connect-ai-tools-to-planning-center.html"
+    },
+    "logoUrl": "/server-logos/planning-center.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-26",
+    "logoLicenseNote": "Locally generated monogram for Planning Center. This monogram is not an official mark."
+  },
+  {
+    "id": "polar-analytics",
+    "name": "Polar Analytics",
+    "url": "https://api.polaranalytics.com/mcp",
+    "description": "Ask questions about ecommerce and marketing data unified in Polar Analytics, such as Shopify and ad platforms. Sign in with OAuth to connect.",
+    "category": "Analytics",
+    "tags": [
+      "ecommerce",
+      "marketing-analytics",
+      "shopify",
+      "oauth"
+    ],
+    "relevance": 55,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.b9b882ab-aa77-4fb3-b554-0d2f3b0335cc",
+        "url": "https://claude.com/marketplace/connectors/polar-analytics"
+      },
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_69ecca09a4f88191804893914eb08f1a",
+        "url": "https://chatgpt.com/apps/polar-analytics/asdk_app_69ecca09a4f88191804893914eb08f1a"
+      }
+    ],
+    "homepageUrl": "https://www.polaranalytics.com/",
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://support.polaranalytics.com/articles/8432442750-using-mcp-tools-as-an-api"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-26",
+      "evidenceUrl": "https://support.polaranalytics.com/articles/8432442750-using-mcp-tools-as-an-api"
+    },
+    "logoUrl": "/server-logos/polar-analytics.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-26",
+    "logoLicenseNote": "Locally generated monogram for Polar Analytics. This monogram is not an official mark."
+  },
+  {
+    "id": "claude-motion-to-mirage",
+    "name": "Claude Motion to Mirage",
+    "url": "https://mcp.mirage.app/claude-motion",
+    "description": "Import a Claude Motion video into Mirage from a URL. This is a Claude-specific Mirage route. Sign in with OAuth to connect.",
+    "category": "Design",
+    "tags": [
+      "video",
+      "motion-graphics",
+      "import",
+      "oauth"
+    ],
+    "relevance": 55,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.8963b081-41e4-41cb-a97a-d22922793b8d",
+        "url": "https://claude.com/marketplace/connectors/claude-motion-to-mirage"
+      }
+    ],
+    "homepageUrl": "https://mirage.app/",
+    "caveats": [
+      "This client-specific route is a separate OAuth resource from Tesseract (https://mcp.mirage.app/mcp). The Claude listing names an import-claude-motion-from-url tool, which is absent from Tesseract's anonymous tool list."
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://mcp.mirage.app/.well-known/oauth-protected-resource/claude-motion"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-26",
+      "evidenceUrl": "https://mcp.mirage.app/.well-known/oauth-protected-resource/claude-motion"
+    },
+    "logoUrl": "/server-logos/claude-motion-to-mirage.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-26",
+    "logoLicenseNote": "Locally generated monogram for Claude Motion to Mirage. This monogram is not an official mark."
+  },
+  {
+    "id": "general-legal",
+    "name": "General Legal",
+    "url": "https://mcp.general.legal/mcp",
+    "description": "Submit contracts for attorney review, answer reviewer questions and get redlined documents back. Sign in with OAuth to connect.",
+    "category": "Productivity",
+    "tags": [
+      "legal",
+      "contracts",
+      "contract-review",
+      "oauth"
+    ],
+    "relevance": 55,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.dba73da3-6015-4b3e-8acc-0ff38e2c511b",
+        "url": "https://claude.com/marketplace/connectors/general-legal"
+      },
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6abd3e3c4ce081919d9b13d7e3cea373",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6abd3e3c4ce081919d9b13d7e3cea373"
+      }
+    ],
+    "homepageUrl": "https://general.legal/",
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://github.com/General-Legal/general-legal-mcp"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-26",
+      "evidenceUrl": "https://github.com/General-Legal/general-legal-mcp"
+    },
+    "logoUrl": "/server-logos/general-legal.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-26",
+    "logoLicenseNote": "Locally generated monogram for General Legal. This monogram is not an official mark."
+  },
+  {
+    "id": "morningstar-credit-analytics",
+    "name": "Morningstar Credit Analytics",
+    "url": "https://mcp.analytics.credit.morningstar.com/mcp",
+    "description": "Structured credit insights, including CMBS and CRE CLO surveillance data, from Morningstar Credit Analytics. Sign in with OAuth to connect.",
+    "category": "Finance",
+    "tags": [
+      "structured-credit",
+      "cmbs",
+      "credit-analytics",
+      "oauth"
+    ],
+    "relevance": 55,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.740dd9b1-b6ea-46b2-936f-6b9c6f19a366",
+        "url": "https://claude.com/marketplace/connectors/morningstar-credit-analytics"
+      },
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6a84635f0e7c8191af1ccc4ecd178533",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6a84635f0e7c8191af1ccc4ecd178533"
+      }
+    ],
+    "homepageUrl": "https://credit.morningstar.com/",
+    "caveats": [
+      "This is a separate server from the Morningstar research connector (https://mcp.morningstar.com/mcp). The ChatGPT release names the product and Morningstar Credit Analytics LLC as developer but omits its endpoint URL."
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://mcp.analytics.credit.morningstar.com/.well-known/oauth-protected-resource/mcp"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-26",
+      "evidenceUrl": "https://mcp.analytics.credit.morningstar.com/.well-known/oauth-protected-resource/mcp"
+    },
+    "logoUrl": "/server-logos/morningstar-credit-analytics.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-26",
+    "logoLicenseNote": "Locally generated monogram for Morningstar Credit Analytics. This monogram is not an official mark."
+  },
+  {
+    "id": "zite",
+    "name": "Zite",
+    "url": "https://mcp.zite.com/mcp",
+    "description": "Inspect, query, analyze and update the data in a private Zite workspace. Sign in with OAuth to connect.",
+    "category": "Productivity",
+    "tags": [
+      "no-code",
+      "app-builder",
+      "databases",
+      "oauth"
+    ],
+    "relevance": 55,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.dbc52c7f-cbc6-49f4-be8d-ca58126b85ed",
+        "url": "https://claude.com/marketplace/connectors/zite"
+      },
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6a0dfddea830819180d3eaf355793e42",
+        "url": "https://chatgpt.com/apps/zite/asdk_app_6a0dfddea830819180d3eaf355793e42"
+      }
+    ],
+    "homepageUrl": "https://www.zite.com/",
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://developers.zite.com/mcp/connect"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-26",
+      "evidenceUrl": "https://developers.zite.com/mcp/connect"
+    },
+    "logoUrl": "/server-logos/zite.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-26",
+    "logoLicenseNote": "Locally generated monogram for Zite. This monogram is not an official mark."
+  },
+  {
+    "id": "roboflow",
+    "name": "Roboflow",
+    "url": "https://mcp.roboflow.com/mcp",
+    "description": "Build, search and run computer vision with Roboflow datasets, annotation, training, inference and workflows. Sign in with OAuth to connect.",
+    "category": "AI Infrastructure",
+    "tags": [
+      "computer-vision",
+      "machine-learning",
+      "datasets",
+      "oauth"
+    ],
+    "relevance": 55,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.dbbc26cf-80b0-4a85-9877-f85874282794",
+        "url": "https://claude.com/marketplace/connectors/roboflow"
+      },
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6ac2713d52dc8191913b283379e39840",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6ac2713d52dc8191913b283379e39840"
+      }
+    ],
+    "homepageUrl": "https://roboflow.com/",
+    "alternativeEndpoints": [
+      {
+        "url": "https://mcp.roboflow.com/openai/mcp",
+        "authType": "oauth",
+        "description": "URL declared by the ChatGPT release. It redirects with HTTP 307 to the primary /mcp, which returns the same OAuth challenge."
+      }
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://docs.roboflow.com/developer/mcp-server"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-26",
+      "evidenceUrl": "https://docs.roboflow.com/developer/mcp-server"
+    },
+    "logoUrl": "/server-logos/roboflow.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-26",
+    "logoLicenseNote": "Locally generated monogram for Roboflow. This monogram is not an official mark."
+  },
+  {
+    "id": "ice-data-services",
+    "name": "ICE Data Services",
+    "url": "https://fids-mcp.ice.com/mcp",
+    "description": "Analyze U.S. fixed income trade and reference data from ICE Data Services. Sign in with OAuth to connect.",
+    "category": "Finance",
+    "tags": [
+      "fixed-income",
+      "bonds",
+      "market-data",
+      "oauth"
+    ],
+    "relevance": 54,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.78e4dd7b-229c-4ca6-a469-b12d6bbef434",
+        "url": "https://claude.com/marketplace/connectors/ice-data-services"
+      }
+    ],
+    "homepageUrl": "https://www.ice.com/fixed-income-data-services",
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://fids-mcp.ice.com/.well-known/oauth-protected-resource"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-26",
+      "evidenceUrl": "https://fids-mcp.ice.com/.well-known/oauth-protected-resource"
+    },
+    "logoUrl": "/server-logos/ice-data-services.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-26",
+    "logoLicenseNote": "Locally generated monogram for ICE Data Services. This monogram is not an official mark."
+  },
+  {
+    "id": "bloomberg-law",
+    "name": "Bloomberg Law",
+    "url": "https://gw.mcp.bindg.ai/blaw/mcp",
+    "description": "Legal research and intelligence from Bloomberg Law, powered by Bloomberg AI. Sign in with OAuth to connect.",
+    "category": "Reference",
+    "tags": [
+      "legal",
+      "legal-research",
+      "case-law",
+      "oauth"
+    ],
+    "relevance": 54,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.7975e863-730c-46f3-8196-105257ba4e6d",
+        "url": "https://claude.com/marketplace/connectors/bloomberg-law"
+      }
+    ],
+    "homepageUrl": "https://pro.bloomberglaw.com/",
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://gw.mcp.bindg.ai/.well-known/oauth-protected-resource/blaw/mcp"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-26",
+      "evidenceUrl": "https://gw.mcp.bindg.ai/.well-known/oauth-protected-resource/blaw/mcp"
+    },
+    "logoUrl": "/server-logos/bloomberg-law.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-26",
+    "logoLicenseNote": "Locally generated monogram for Bloomberg Law. This monogram is not an official mark."
+  },
+  {
+    "id": "paxton-legal-research",
+    "name": "Paxton Legal Research",
+    "url": "https://mcp.paxton.ai/mcp",
+    "description": "Research U.S. statutes, regulations, rules and case law in Paxton, with citations you can open and verify. Sign in with OAuth to connect.",
+    "category": "Reference",
+    "tags": [
+      "legal",
+      "legal-research",
+      "case-law",
+      "oauth"
+    ],
+    "relevance": 54,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.4285c08a-451c-46e7-a320-7ccc0d6447b1",
+        "url": "https://claude.com/marketplace/connectors/paxton-legal-research"
+      },
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6aced1f7ac388191814330871cc0ccd7",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6aced1f7ac388191814330871cc0ccd7"
+      }
+    ],
+    "homepageUrl": "https://www.paxton.ai/",
+    "alternativeEndpoints": [
+      {
+        "url": "https://paxton-mcp-connector-xmfvvq3waa-uc.a.run.app/mcp",
+        "authType": "oauth",
+        "description": "Endpoint configured by the Claude connector. Like the primary, it serves the guide and returned HTTP 401 with a Bearer challenge for the legal_research scope."
+      }
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://mcp.paxton.ai/docs"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-26",
+      "evidenceUrl": "https://mcp.paxton.ai/docs"
+    },
+    "logoUrl": "/server-logos/paxton-legal-research.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-26",
+    "logoLicenseNote": "Locally generated monogram for Paxton Legal Research. This monogram is not an official mark."
+  },
+  {
+    "id": "corraldata",
+    "name": "CorralData",
+    "url": "https://mcp.corraldata.com/mcp",
+    "description": "Query CorralData, build dashboards and manage boards and data apps. Sign in with OAuth to connect.",
+    "category": "Analytics",
+    "tags": [
+      "business-intelligence",
+      "dashboards",
+      "analytics",
+      "oauth"
+    ],
+    "relevance": 54,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.002c551b-caa1-488c-8be9-a807a7cc835c",
+        "url": "https://claude.com/marketplace/connectors/corraldata"
+      }
+    ],
+    "homepageUrl": "https://corraldata.com/",
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://docs.corraldata.com/kb/mcp/"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-26",
+      "evidenceUrl": "https://docs.corraldata.com/kb/mcp/"
+    },
+    "logoUrl": "/server-logos/corraldata.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-26",
+    "logoLicenseNote": "Locally generated monogram for CorralData. This monogram is not an official mark."
+  },
+  {
+    "id": "sybill",
+    "name": "Sybill",
+    "url": "https://mcp.sybill.ai/mcp",
+    "description": "Use Sybill's understanding of sales calls, deals and pipeline to prepare meetings and draft follow-ups. Sign in with OAuth to connect.",
+    "category": "CRM",
+    "tags": [
+      "sales",
+      "call-recording",
+      "pipeline",
+      "oauth"
+    ],
+    "relevance": 54,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.2273f645-4b1d-4842-a52f-c0032296ccad",
+        "url": "https://claude.com/marketplace/connectors/sybill"
+      },
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6ac54ade5a108191a9dc369083b2e40a",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6ac54ade5a108191a9dc369083b2e40a"
+      }
+    ],
+    "homepageUrl": "https://www.sybill.ai/",
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://api.sybill.ai/docs/mcp.html"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-26",
+      "evidenceUrl": "https://api.sybill.ai/docs/mcp.html"
+    },
+    "logoUrl": "/server-logos/sybill.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-26",
+    "logoLicenseNote": "Locally generated monogram for Sybill. This monogram is not an official mark."
+  },
+  {
+    "id": "leadfeeder",
+    "name": "Leadfeeder",
+    "url": "https://mcp.leadfeeder.com/mcp",
+    "description": "Find, enrich and act on the B2B companies visiting your website. Sign in with OAuth to connect.",
+    "category": "CRM",
+    "tags": [
+      "lead-generation",
+      "website-visitors",
+      "sales",
+      "oauth"
+    ],
+    "relevance": 54,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.e51d4ae7-2cba-4c80-b8db-1cfd48894c82",
+        "url": "https://claude.com/marketplace/connectors/leadfeeder"
+      },
+      {
+        "directory": "claude",
+        "id": "directoryPlugin.4ed556d2-8a41-41fe-9587-5063de564e1c",
+        "url": "https://claude.com/marketplace/plugins/leadfeeder"
+      },
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6a3cee9650608191918a0a4773e892b1",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6a3cee9650608191918a0a4773e892b1"
+      }
+    ],
+    "homepageUrl": "https://www.leadfeeder.com/",
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://help.leadfeeder.com/en/articles/15532431-connect-leadfeeder-to-your-ai-tool-with-the-mcp-server"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-26",
+      "evidenceUrl": "https://help.leadfeeder.com/en/articles/15532431-connect-leadfeeder-to-your-ai-tool-with-the-mcp-server"
+    },
+    "logoUrl": "/server-logos/leadfeeder.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-26",
+    "logoLicenseNote": "Locally generated monogram for Leadfeeder. This monogram is not an official mark."
+  },
+  {
+    "id": "loops",
+    "name": "Loops",
+    "url": "https://mcp.loops.so/",
+    "description": "Manage Loops email marketing, transactional email and automations for SaaS products. Sign in with OAuth to connect.",
+    "category": "Communication",
+    "tags": [
+      "email-marketing",
+      "transactional-email",
+      "automation",
+      "oauth"
+    ],
+    "relevance": 54,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.dd7a3d28-a4b4-44da-a235-a667268968ec",
+        "url": "https://claude.com/marketplace/connectors/loops"
+      },
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6a76060a3cbc81919eaaca7e37e830fe",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6a76060a3cbc81919eaaca7e37e830fe"
+      }
+    ],
+    "homepageUrl": "https://loops.so/",
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://loops.so/agents/mcp"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-26",
+      "evidenceUrl": "https://loops.so/agents/mcp"
+    },
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/loops.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-26",
+    "logoLicenseNote": "Locally generated monogram for Loops. This monogram is not an official mark."
+  },
+  {
+    "id": "smartling",
+    "name": "Smartling",
+    "url": "https://mcp.smartling.com/mcp",
+    "description": "Translate content and manage Smartling projects, jobs and quality issues. Sign in with OAuth to connect.",
+    "category": "Productivity",
+    "tags": [
+      "translation",
+      "localization",
+      "content",
+      "oauth"
+    ],
+    "relevance": 54,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.493d699b-dd21-43ae-afec-c47c914bae9c",
+        "url": "https://claude.com/marketplace/connectors/smartling"
+      },
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6a7da2b1c32881919265c2a68e2e6a1c",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6a7da2b1c32881919265c2a68e2e6a1c"
+      }
+    ],
+    "homepageUrl": "https://www.smartling.com/",
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://help.smartling.com/en-us/articles/16965748-smartling-mcp-server-connect-your-ai-chat-tools-to-smartling"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-26",
+      "evidenceUrl": "https://help.smartling.com/en-us/articles/16965748-smartling-mcp-server-connect-your-ai-chat-tools-to-smartling"
+    },
+    "logoUrl": "/server-logos/smartling.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-26",
+    "logoLicenseNote": "Locally generated monogram for Smartling. This monogram is not an official mark."
+  },
+  {
+    "id": "rally-mcp",
+    "name": "Rally",
+    "url": "https://mcp.rallyuxr.com/mcp",
+    "description": "Find research participants, pull study data and create studies in Rally UX research operations. Sign in with OAuth to connect.",
+    "category": "Productivity",
+    "tags": [
+      "ux-research",
+      "research-ops",
+      "participants",
+      "oauth"
+    ],
+    "relevance": 54,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.60e9305c-793b-4791-8085-1d2470bcaf9e",
+        "url": "https://claude.com/marketplace/connectors/rally-mcp"
+      }
+    ],
+    "homepageUrl": "https://www.rallyuxr.com/",
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://help.rallyuxr.com/articles/5139669410-rally-mcp?lang=en"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-26",
+      "evidenceUrl": "https://help.rallyuxr.com/articles/5139669410-rally-mcp?lang=en"
+    },
+    "logoUrl": "/server-logos/rally-mcp.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-26",
+    "logoLicenseNote": "Locally generated monogram for Rally. This monogram is not an official mark."
+  },
+  {
+    "id": "fibery",
+    "name": "Fibery",
+    "url": "https://mcp.fibery.io/mcp",
+    "description": "Build and work in a Fibery workspace, from roadmaps and CRM to hiring and OKRs. Sign in with OAuth to connect.",
+    "category": "Project Management",
+    "tags": [
+      "work-management",
+      "knowledge-base",
+      "roadmaps",
+      "oauth"
+    ],
+    "relevance": 53,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.446b6256-cdd8-4ef8-be10-203ebc22d1d7",
+        "url": "https://claude.com/marketplace/connectors/fibery"
+      },
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6a2ab6b4009c8191b74cb3b2c70025e3",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6a2ab6b4009c8191b74cb3b2c70025e3"
+      }
+    ],
+    "homepageUrl": "https://fibery.com/",
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://fibery.com/features/mcp-server"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-26",
+      "evidenceUrl": "https://fibery.com/features/mcp-server"
+    },
+    "logoUrl": "/server-logos/fibery.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-26",
+    "logoLicenseNote": "Locally generated monogram for Fibery. This monogram is not an official mark."
+  },
+  {
+    "id": "unstructured-transform",
+    "name": "Unstructured Transform",
+    "url": "https://mcp.transform.unstructured.io/",
+    "description": "Turn documents into AI-ready structured data with Unstructured Transform. Sign in with OAuth to connect.",
+    "category": "AI Infrastructure",
+    "tags": [
+      "document-parsing",
+      "etl",
+      "rag",
+      "oauth"
+    ],
+    "relevance": 53,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.8fb2ce1a-a838-4844-b01c-ac67797da538",
+        "url": "https://claude.com/marketplace/connectors/unstructured-transform"
+      }
+    ],
+    "homepageUrl": "https://unstructured.io/",
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://docs.unstructured.io/transform/get-started/claude-code"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-26",
+      "evidenceUrl": "https://docs.unstructured.io/transform/get-started/claude-code"
+    },
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/unstructured-transform.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-26",
+    "logoLicenseNote": "Locally generated monogram for Unstructured Transform. This monogram is not an official mark."
+  },
+  {
+    "id": "spotdraft",
+    "name": "SpotDraft",
+    "url": "https://mcp.us.spotdraft.com/mcp",
+    "description": "Search, review and manage contracts in a SpotDraft workspace. Sign in with OAuth to connect.",
+    "category": "Productivity",
+    "tags": [
+      "legal",
+      "contracts",
+      "clm",
+      "oauth"
+    ],
+    "relevance": 53,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.8eb75b0f-ac15-46a5-9a1f-f099575eef03",
+        "url": "https://claude.com/marketplace/connectors/spotdraft"
+      }
+    ],
+    "homepageUrl": "https://www.spotdraft.com/",
+    "alternativeEndpoints": [
+      {
+        "url": "https://mcp.eu.spotdraft.com/mcp",
+        "authType": "oauth",
+        "description": "EU region endpoint for EU SpotDraft workspaces. It returned HTTP 401 with its own regional OAuth metadata."
+      },
+      {
+        "url": "https://mcp.in.spotdraft.com/mcp",
+        "authType": "oauth",
+        "description": "India region endpoint for India SpotDraft workspaces. It returned HTTP 401 with its own regional OAuth metadata."
+      },
+      {
+        "url": "https://mcp.me.spotdraft.com/mcp",
+        "authType": "oauth",
+        "description": "Middle East region endpoint for Middle East SpotDraft workspaces. It returned HTTP 401 with its own regional OAuth metadata."
+      }
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://help.spotdraft.com/articles/1598618120"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-26",
+      "evidenceUrl": "https://help.spotdraft.com/articles/1598618120"
+    },
+    "logoUrl": "/server-logos/spotdraft.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-26",
+    "logoLicenseNote": "Locally generated monogram for SpotDraft. This monogram is not an official mark."
+  },
+  {
+    "id": "sumsub",
+    "name": "Sumsub",
+    "url": "https://api.sumsub.com/mcp/",
+    "description": "Verify identities and businesses, review applicants and prevent fraud in a Sumsub account. Sign in with OAuth to connect.",
+    "category": "Security",
+    "tags": [
+      "kyc",
+      "identity-verification",
+      "compliance",
+      "oauth"
+    ],
+    "relevance": 53,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.72396321-bc37-4407-88e5-c07339b80704",
+        "url": "https://claude.com/marketplace/connectors/sumsub"
+      },
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6a2a81a02bb88191b90bbecdf780591e",
+        "url": "https://chatgpt.com/apps/sumsub/asdk_app_6a2a81a02bb88191b90bbecdf780591e"
+      }
+    ],
+    "homepageUrl": "https://sumsub.com/",
+    "alternativeEndpoints": [
+      {
+        "url": "https://api.sumsub.com/mcp/sandbox/",
+        "authType": "oauth",
+        "description": "Sandbox endpoint for Sumsub test environments. It returned HTTP 401 with its own OAuth metadata. The directory listings use the production primary."
+      }
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://docs.sumsub.com/docs/mcp-server"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-26",
+      "evidenceUrl": "https://docs.sumsub.com/docs/mcp-server"
+    },
+    "logoUrl": "/server-logos/sumsub.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-26",
+    "logoLicenseNote": "Locally generated monogram for Sumsub. This monogram is not an official mark."
   }
 ]
