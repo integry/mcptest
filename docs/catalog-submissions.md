@@ -638,7 +638,7 @@ awk -F'\t' '$1 == "connector.69feb637-7aa9-48f1-9443-71b881c0167c" { print NR }'
 ### Existing records
 
 - **Score reconciliation.** The 70 supplied scores were applied. Each one matches the snapshot formula for the record's Claude listing; Webex Suite (rank 459) rounds half up to 63. The 32 unscored records stay unset: 24 have no directory listing, and 8 have only Claude plugin or `wf.*` listings that are not in the index. Windsor.ai has three Claude listings and keeps its current score. Directory memberships are unchanged.
-- **SlidesGPT.** The listing source is now the publisher's neutral [MCP guide](https://slidesgpt.com/products/mcp), which documents the primary `https://mcp.slidesgpt.com/mcp` and describes five tools; it listed two tools anonymously. The ChatGPT listing `plugin_asdk_app_695bd06f20d88191b873f501a7dd6620` was added. Its enabled release declares `https://slidesgpt-server-uojeu24xoq-uc.a.run.app/mcp`, now a third alternative, which initialized anonymously as SlidesGPT 1.2.0 and listed three tools. Relevance 84 and publisher attribution are kept.
+- **SlidesGPT.** The listing source is now the publisher's neutral [MCP guide](https://slidesgpt.com/products/mcp), which documents the primary `https://mcp.slidesgpt.com/mcp` and describes five tools; it listed two tools anonymously. The ChatGPT listing `plugin_asdk_app_695bd06f20d88191b873f501a7dd6620` was added. Its enabled release declares `https://slidesgpt-server-uojeu24xoq-uc.a.run.app/mcp`, now the second alternative and the third endpoint overall, which initialized anonymously as SlidesGPT 1.2.0 and listed three tools. Relevance 84 and publisher attribution are kept.
 
 ### Validation and endpoint provenance
 

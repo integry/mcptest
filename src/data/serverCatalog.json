@@ -16517,7 +16517,7 @@
     "id": "slidesgpt",
     "name": "SlidesGPT",
     "url": "https://mcp.slidesgpt.com/mcp",
-    "description": "Creates presentation decks with a PowerPoint download and re-themes them. Anonymous and stateless; no authentication.",
+    "description": "Creates presentation decks with a PowerPoint download and re-themes them. Anonymous stateful Streamable HTTP; no authentication.",
     "category": "Productivity",
     "tags": [
       "official",
