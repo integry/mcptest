@@ -145,5 +145,8 @@ describe('catalog search deferred handoff', () => {
       await act(async () => app.unmount());
       document.body.innerHTML = '';
     }
-  });
+    // Each case mounts the full catalog (~1,000 rows) in jsdom, which takes
+    // 2-3 s locally and more on CI. A timed-out case keeps running and clears
+    // the DOM under the next case, so leave headroom as the catalog grows.
+  }, 30_000);
 });

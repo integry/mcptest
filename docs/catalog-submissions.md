@@ -448,3 +448,37 @@ assert(!sitemap.includes(`/servers/${legacy}/`));
 assert(!sitemap.includes(`/servers/${deferred}/`));
 assert(!existsSync(`dist/servers/${deferred}/index.html`));
 ```
+
+## Batch 22 import
+
+GitHub issue [#761](https://github.com/integry/mcptest/issues/761) tracks this import under queue reference `ff14e799-4a20-42ec-9345-51b2c726d117`. It builds on batch 21 (`699058e59a5707c624b5e9adbbbef4c76c01b1f5`). The catalog grew from 946 to 976 entries. The 30 candidates were matched first on directory and listing ID, then on the normalized primary and alternative URLs. Neither pass found an existing match. Each new record is internal, with a `publisher` listing source, a Streamable HTTP OAuth primary, and every identified Claude and ChatGPT listing.
+
+### Relevance snapshot
+
+The [Claude connector index](https://claude.com/marketplace/connectors-plugins) was retrieved at 23:15 UTC on November 25, 2026. It returned 1,224 records, of which 1,221 had numeric popularity scores. The [ranking snapshot](catalog-batch-22-claude-ranking.tsv) lists those 1,221 connector IDs and scores in rank order: scores descending, ties in source order, one `id<TAB>score` line each, with no header. Its SHA-256 is `c4a84ba4ba1e2e1e82f47d4e7c2801dfa2b2fb6f2c9b1ef96b8448f7b27c4ca4`, which matches the hash supplied in the issue.
+
+For an entry with exactly one ranked Claude listing, the score is `Math.round(100 * (1221 - rank) / 1221)`, where `rank` is the one-based line number. The snapshot reproduces all 29 supplied scores for new records and the five supplied scores for existing records with Claude listings. No other catalog entry's score differs from the snapshot. ThoughtSpot SpotterCode has only an unranked Claude plugin and stays unscored. HYPD AI has no Claude listing and gets its first score of 50.
+
+```sh
+sha256sum docs/catalog-batch-22-claude-ranking.tsv
+awk -F'\t' '$1 == "connector.d4b6d94e-8fd7-4936-a525-a1852acd3bb4" { print NR, int(100 * (1221 - NR) / 1221 + 0.5) }' \
+  docs/catalog-batch-22-claude-ranking.tsv   # Send: 381 69
+```
+
+### Existing records
+
+- `nooks`, `highspot`, `midpage` and `hypd-ai` each gained their ChatGPT listing. Their earlier listings and publisher sources are unchanged.
+- `aws` gained ChatGPT `plugin_asdk_app_6a0b1644959c8191a6ecd016190651cd`. The AWS Core release configures the existing primary. The publisher source, regional alternatives and relevance 88 are unchanged.
+- `datadog` gained ChatGPT `plugin_asdk_app_69e8c7f174a08191a28b6da96c8062c4` (Datadog Legacy, US1) and the `?toolsets=core,visualizations` US1 alternative. The primary, publisher source and relevance 97 are unchanged. The primary and the new alternative both returned HTTP 401 without credentials. [Datadog Legacy release](https://chatgpt.com/backend-anon/ps/plugins/plugin_asdk_app_69e8c7f174a08191a28b6da96c8062c4)
+
+### Validation and endpoint provenance
+
+- All 30 primaries are `online` in `src/data/catalogValidation.json` with OAuth authentication challenges. Authenticated tool inventories are unverified, and `src/data/catalogCapabilities.json` gained no snapshots. Revalidating AWS refreshed only the timestamp of its existing anonymous snapshot.
+- **ThoughtSpot SpotterCode.** The primary `https://spottercode.thoughtspot.app/mcp` returned an OAuth challenge. The read-only alternative `https://spottercode.thoughtspot.app/mcp/docs` negotiated Streamable HTTP MCP `2025-03-26` without credentials as "Thoughtspot Embed SDK Docs Helper" 1.0.0. It listed `get-rest-api-reference` and `get-developer-docs-reference`. That tool list is recorded only on the alternative. The Claude plugin and ChatGPT listing are attributed to the primary.
+- Alternatives are recorded as separate endpoints with their own evidence: Harmonic legacy SSE, Local Falcon `/mcp`, Conductor `/mcp/v3` (indexed by Claude and serving a different tool set), the PocketSmith read-only server, and the Brightflag EU and AU regions. All returned HTTP 401 without credentials.
+- MyChatBot and Eraser also accept publisher-issued bearer tokens, so `alternativeAuthTypes` lists `bearer-token` for both. MyChatBot's listings are attributed only to the sales endpoint.
+- BILL's ChatGPT listing points to [OpenAI's BILL plugin page](https://openai.com/business/plugins/bill/). The public ChatGPT release lookup returned "Plugin not found." The ChatGPT LP and GP releases for Chronograph omit endpoint URLs. Both are attributed to the shared Chronograph endpoint, together with its two Claude plugins.
+- Cortellis CMC Intelligence is separate from the existing Cortellis Regulatory Intelligence entry. S&P Global Adaptive Retrieval is separate from `sp-global-kensho`.
+- Every new record uses a generated monogram logo.
+
+No candidates were deferred.

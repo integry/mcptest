@@ -5322,6 +5322,11 @@
         "directory": "claude",
         "id": "directoryPlugin.16a00a8b-f142-4e33-9ced-ab00611aedce",
         "url": "https://claude.com/marketplace/plugins/datadog"
+      },
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_69e8c7f174a08191a28b6da96c8062c4",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_69e8c7f174a08191a28b6da96c8062c4"
       }
     ],
     "relevance": 97,
@@ -5355,6 +5360,11 @@
         "url": "https://mcp.datadoghq.com/v1/mcp?toolsets=chatgpt",
         "authType": "oauth",
         "description": "ChatGPT toolset selector for the US1 site. Both URLs challenge for OAuth. Authenticated capability comparison remains unverified."
+      },
+      {
+        "url": "https://mcp.datadoghq.com/v1/mcp?toolsets=core,visualizations",
+        "authType": "oauth",
+        "description": "Legacy US1 toolset selector used by the Datadog Legacy (US1) ChatGPT plugin. Both this URL and the primary returned authentication challenges. Authenticated inventories remain unverified."
       }
     ],
     "logoUrl": "/server-logos/datadog.svg",
@@ -6381,6 +6391,11 @@
         "directory": "claude",
         "id": "connector.0a14ad3c-54c3-4adf-8a43-90539a225509",
         "url": "https://claude.com/marketplace/connectors/aws-mcp"
+      },
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6a0b1644959c8191a6ecd016190651cd",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6a0b1644959c8191a6ecd016190651cd"
       }
     ],
     "relevance": 88,
@@ -39344,6 +39359,11 @@
         "directory": "claude",
         "id": "connector.57d3169d-032d-4bcc-b03c-ef0a91043e6a",
         "url": "https://claude.com/marketplace/connectors/nooks"
+      },
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6a4ee75119e48191b0832dc73a65400d",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6a4ee75119e48191b0832dc73a65400d"
       }
     ],
     "relevance": 75,
@@ -40137,6 +40157,11 @@
         "directory": "claude",
         "id": "connector.9c052ba1-9319-48bf-8ccd-adb042a24dc2",
         "url": "https://claude.com/marketplace/connectors/highspot"
+      },
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_69f0ffe2c6008191aaf507e1d354b284",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_69f0ffe2c6008191aaf507e1d354b284"
       }
     ],
     "relevance": 73,
@@ -41218,6 +41243,11 @@
         "directory": "claude",
         "id": "wf.699a54bd1a0e09933d0e817d",
         "url": "https://claude.com/marketplace/connectors/midpage"
+      },
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_699cc1a043688191a3ee44e6a2c2ebc1",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_699cc1a043688191a3ee44e6a2c2ebc1"
       }
     ]
   },
@@ -43552,6 +43582,7 @@
       "oauth"
     ],
     "homepageUrl": "https://www.hypd.ai/",
+    "relevance": 50,
     "listingSource": {
       "kind": "publisher",
       "url": "https://www.hypd.ai/resources/tutorials/getting-started-with-claude-hypd"
@@ -43577,6 +43608,1644 @@
     "logoUrl": "/server-logos/hypd-ai.svg",
     "logoSourceKind": "generated-fallback",
     "logoRetrievedAt": "2026-11-25",
-    "logoLicenseNote": "Unofficial, locally generated fallback monogram for HYPD AI."
+    "logoLicenseNote": "Unofficial, locally generated fallback monogram for HYPD AI.",
+    "directoryListings": [
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6a3170ea7fc88191be6c0b9ff250a4b4",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6a3170ea7fc88191be6c0b9ff250a4b4"
+      }
+    ]
+  },
+  {
+    "id": "thoughtspot-spottercode",
+    "name": "ThoughtSpot SpotterCode",
+    "url": "https://spottercode.thoughtspot.app/mcp",
+    "description": "Helps developers build ThoughtSpot embedded analytics with REST API and developer documentation references. Sign in with OAuth to connect; a read-only documentation endpoint works without sign-in.",
+    "category": "Developer Tools",
+    "tags": [
+      "thoughtspot",
+      "embedded-analytics",
+      "developer-docs",
+      "oauth"
+    ],
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "directoryPlugin.4b85aab0-a8f6-4b7f-ba4a-70faf6335728",
+        "url": "https://claude.com/marketplace/plugins/thoughtspot-spottercode"
+      },
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6aa240082b3c81919f204960ce7e0dc0",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6aa240082b3c81919f204960ce7e0dc0"
+      }
+    ],
+    "homepageUrl": "https://www.thoughtspot.com/",
+    "alternativeEndpoints": [
+      {
+        "url": "https://spottercode.thoughtspot.app/mcp/docs",
+        "authType": "none",
+        "description": "Read-only documentation endpoint. It negotiated Streamable HTTP MCP 2025-03-26 without credentials and listed get-rest-api-reference and get-developer-docs-reference."
+      }
+    ],
+    "caveats": [
+      "The Claude plugin and ChatGPT listings use the OAuth endpoint. Its authenticated tool inventory is unverified; the anonymous tool list applies only to the /mcp/docs endpoint."
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://developers.thoughtspot.com/docs/SpotterCode"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-25",
+      "evidenceUrl": "https://developers.thoughtspot.com/docs/SpotterCode"
+    },
+    "logoUrl": "/server-logos/thoughtspot-spottercode.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-25",
+    "logoLicenseNote": "Locally generated monogram for ThoughtSpot SpotterCode. This monogram is not an official mark."
+  },
+  {
+    "id": "harmonic",
+    "name": "Harmonic",
+    "url": "https://mcp.api.harmonic.ai/",
+    "description": "Research companies and people with Harmonic data. Sign in with OAuth to connect.",
+    "category": "Analytics",
+    "tags": [
+      "company-research",
+      "people-search",
+      "startups",
+      "oauth"
+    ],
+    "relevance": 69,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "wf.697d4928e6eb94e0b40351e1",
+        "url": "https://claude.com/marketplace/connectors/harmonic"
+      }
+    ],
+    "homepageUrl": "https://harmonic.ai/",
+    "alternativeEndpoints": [
+      {
+        "url": "https://mcp.api.harmonic.ai/sse",
+        "authType": "oauth",
+        "description": "Legacy SSE endpoint. It returned HTTP 401 without credentials."
+      }
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://support.harmonic.ai/en/articles/12785899-harmonic-mcp-server-getting-started-guide"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-25",
+      "evidenceUrl": "https://support.harmonic.ai/en/articles/12785899-harmonic-mcp-server-getting-started-guide"
+    },
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/harmonic.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-25",
+    "logoLicenseNote": "Locally generated monogram for Harmonic. This monogram is not an official mark."
+  },
+  {
+    "id": "send",
+    "name": "Send",
+    "url": "https://www.send.co/mcp",
+    "description": "Create, edit and share HTML documents with trackable links. Sign in with OAuth to connect.",
+    "category": "Communication",
+    "tags": [
+      "documents",
+      "link-tracking",
+      "sharing",
+      "oauth"
+    ],
+    "relevance": 69,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.d4b6d94e-8fd7-4936-a525-a1852acd3bb4",
+        "url": "https://claude.com/marketplace/connectors/send"
+      }
+    ],
+    "homepageUrl": "https://www.send.co/",
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://www.send.co/mcp/docs"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-25",
+      "evidenceUrl": "https://www.send.co/mcp/docs"
+    },
+    "logoUrl": "/server-logos/send.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-25",
+    "logoLicenseNote": "Locally generated monogram for Send. This monogram is not an official mark."
+  },
+  {
+    "id": "kahoot",
+    "name": "Kahoot!",
+    "url": "https://mcp.kahoot.it/mcp",
+    "description": "Create, edit and translate quizzes in a Kahoot! workspace. Sign in with OAuth to connect.",
+    "category": "Productivity",
+    "tags": [
+      "quizzes",
+      "education",
+      "oauth"
+    ],
+    "relevance": 69,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.c3c0c4f4-3c14-4105-93c9-031384607814",
+        "url": "https://claude.com/marketplace/connectors/kahoot"
+      },
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6992711879b48191b818f44be2767fbe",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6992711879b48191b818f44be2767fbe"
+      }
+    ],
+    "homepageUrl": "https://kahoot.com/",
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://support.kahoot.com/hc/en-us/articles/36770398743581-How-to-connect-ChatGPT-Claude-and-other-AI-Assistants-to-Kahoot-using-the-MCP-Server"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-25",
+      "evidenceUrl": "https://support.kahoot.com/hc/en-us/articles/36770398743581-How-to-connect-ChatGPT-Claude-and-other-AI-Assistants-to-Kahoot-using-the-MCP-Server"
+    },
+    "logoUrl": "/server-logos/kahoot.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-25",
+    "logoLicenseNote": "Locally generated monogram for Kahoot!. This monogram is not an official mark."
+  },
+  {
+    "id": "magic-patterns",
+    "name": "Magic Patterns",
+    "url": "https://mcp.magicpatterns.com/mcp",
+    "description": "Prototype interfaces and bring existing designs into development workflows. Sign in with OAuth to connect.",
+    "category": "Design",
+    "tags": [
+      "prototyping",
+      "ui-design",
+      "oauth"
+    ],
+    "relevance": 69,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "wf.6982abb7ef31ff6089aeb5c2",
+        "url": "https://claude.com/marketplace/connectors/magic-patterns"
+      },
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6a585f804ad08191931907c9dc46a985",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6a585f804ad08191931907c9dc46a985"
+      }
+    ],
+    "homepageUrl": "https://www.magicpatterns.com/",
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://www.magicpatterns.com/product/mcp"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-25",
+      "evidenceUrl": "https://www.magicpatterns.com/product/mcp"
+    },
+    "logoUrl": "/server-logos/magic-patterns.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-25",
+    "logoLicenseNote": "Locally generated monogram for Magic Patterns. This monogram is not an official mark."
+  },
+  {
+    "id": "crunchbase",
+    "name": "Crunchbase",
+    "url": "https://mcp.crunchbase.com/",
+    "description": "Research companies and market signals with Crunchbase data. Sign in with OAuth to connect.",
+    "category": "Analytics",
+    "tags": [
+      "company-research",
+      "market-intelligence",
+      "funding",
+      "oauth"
+    ],
+    "relevance": 69,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.81b11acd-1115-4354-9142-91e2a2c13b0b",
+        "url": "https://claude.com/marketplace/connectors/crunchbase-mcp"
+      },
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6a6163dea5748191a30a64726391acd5",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6a6163dea5748191a30a64726391acd5"
+      }
+    ],
+    "homepageUrl": "https://www.crunchbase.com/",
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://data.crunchbase.com/docs/connecting-ai-tools"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-25",
+      "evidenceUrl": "https://data.crunchbase.com/docs/connecting-ai-tools"
+    },
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/crunchbase.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-25",
+    "logoLicenseNote": "Locally generated monogram for Crunchbase. This monogram is not an official mark."
+  },
+  {
+    "id": "moodys-credit",
+    "name": "Moody’s Credit",
+    "url": "https://mcp.moodys.com/genai-ready-data/Credit/mcp",
+    "description": "Query licensed Moody’s credit ratings, research and entity intelligence. Sign in with OAuth to connect.",
+    "category": "Finance",
+    "tags": [
+      "credit-ratings",
+      "research",
+      "entity-data",
+      "oauth"
+    ],
+    "relevance": 68,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "wf.68fbd8599adacd33c5049997",
+        "url": "https://claude.com/marketplace/connectors/moodys-analytics"
+      }
+    ],
+    "homepageUrl": "https://www.moodys.com/",
+    "caveats": [
+      "Access to ratings and research data requires a Moody’s license."
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://www.moodys.com/web/en/us/genai/model-context-protocol.html"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-25",
+      "evidenceUrl": "https://www.moodys.com/web/en/us/genai/model-context-protocol.html"
+    },
+    "logoUrl": "/server-logos/moodys-credit.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-25",
+    "logoLicenseNote": "Locally generated monogram for Moody’s Credit. This monogram is not an official mark."
+  },
+  {
+    "id": "mychatbot",
+    "name": "MyChatBot",
+    "url": "https://connector.mychatbot.app/mcp",
+    "description": "Work with the MyChatBot sales assistant, orders and conversations. Sign in with OAuth, or use a publisher-issued bearer token.",
+    "category": "CRM",
+    "tags": [
+      "sales",
+      "orders",
+      "conversations",
+      "oauth"
+    ],
+    "relevance": 68,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.3341d9da-dda5-4581-a64b-93322dfc6ce2",
+        "url": "https://claude.com/marketplace/connectors/mychatbot"
+      },
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6ac2441d843c8191895874f2047a3b32",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6ac2441d843c8191895874f2047a3b32"
+      }
+    ],
+    "homepageUrl": "https://connector.mychatbot.app/en",
+    "caveats": [
+      "The directory listings are attributed only to this sales endpoint.",
+      "MyChatBot also issues bearer tokens for this endpoint."
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://connector.mychatbot.app/en"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "alternativeAuthTypes": [
+      "bearer-token"
+    ],
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-25",
+      "evidenceUrl": "https://connector.mychatbot.app/en"
+    },
+    "logoUrl": "/server-logos/mychatbot.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-25",
+    "logoLicenseNote": "Locally generated monogram for MyChatBot. This monogram is not an official mark."
+  },
+  {
+    "id": "texttoquant",
+    "name": "TextToQuant",
+    "url": "https://www.texttoquant.com/api/mcp",
+    "description": "Build and backtest trading strategies with TextToQuant. Sign in with OAuth to connect.",
+    "category": "Finance",
+    "tags": [
+      "trading",
+      "backtesting",
+      "quant",
+      "oauth"
+    ],
+    "relevance": 68,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.85a9449d-5331-4bec-8219-1fd94823c94d",
+        "url": "https://claude.com/marketplace/connectors/texttoquant"
+      }
+    ],
+    "homepageUrl": "https://www.texttoquant.com/",
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://docs.texttoquant.com/api/mcp"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-25",
+      "evidenceUrl": "https://docs.texttoquant.com/api/mcp"
+    },
+    "logoUrl": "/server-logos/texttoquant.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-25",
+    "logoLicenseNote": "Locally generated monogram for TextToQuant. This monogram is not an official mark."
+  },
+  {
+    "id": "harvest",
+    "name": "Harvest",
+    "url": "https://api.harvestapp.com/mcp",
+    "description": "Track time, review project budgets and draft invoices in Harvest. Sign in with OAuth to connect.",
+    "category": "Productivity",
+    "tags": [
+      "time-tracking",
+      "invoicing",
+      "budgets",
+      "oauth"
+    ],
+    "relevance": 68,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.a913fcb9-e63d-4667-a677-c9bb0fc236cb",
+        "url": "https://claude.com/marketplace/connectors/harvest-mcp"
+      },
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6ad9ea61c1648191a22371cf6263e5c2",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6ad9ea61c1648191a22371cf6263e5c2"
+      }
+    ],
+    "homepageUrl": "https://www.getharvest.com/",
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://support.getharvest.com/hc/en-us/articles/46293697226381-Harvest-MCP"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-25",
+      "evidenceUrl": "https://support.getharvest.com/hc/en-us/articles/46293697226381-Harvest-MCP"
+    },
+    "logoUrl": "/server-logos/harvest.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-25",
+    "logoLicenseNote": "Locally generated monogram for Harvest. This monogram is not an official mark."
+  },
+  {
+    "id": "monte-carlo",
+    "name": "Monte Carlo",
+    "url": "https://mcp.getmontecarlo.com/mcp",
+    "description": "Investigate data alerts, trace asset lineage and manage monitors in Monte Carlo. Sign in with OAuth to connect.",
+    "category": "Observability",
+    "tags": [
+      "data-observability",
+      "lineage",
+      "monitors",
+      "oauth"
+    ],
+    "relevance": 68,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.54c8ca93-5e6e-4f30-89ca-207c3d3a438b",
+        "url": "https://claude.com/marketplace/connectors/monte-carlo"
+      }
+    ],
+    "homepageUrl": "https://www.montecarlodata.com/",
+    "caveats": [
+      "Requires the Editor role or above in Monte Carlo."
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://docs.getmontecarlo.com/docs/mcp-server"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-25",
+      "evidenceUrl": "https://docs.getmontecarlo.com/docs/mcp-server"
+    },
+    "logoUrl": "/server-logos/monte-carlo.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-25",
+    "logoLicenseNote": "Locally generated monogram for Monte Carlo. This monogram is not an official mark."
+  },
+  {
+    "id": "readwise",
+    "name": "Readwise",
+    "url": "https://mcp2.readwise.io/mcp",
+    "description": "Search highlights and Reader documents, organize the library and triage the inbox. Sign in with OAuth to connect.",
+    "category": "Productivity",
+    "tags": [
+      "highlights",
+      "reading",
+      "knowledge-management",
+      "oauth"
+    ],
+    "relevance": 68,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.1bdc2099-1cf5-4b5e-bf03-76ca9c6c6248",
+        "url": "https://claude.com/marketplace/connectors/readwise"
+      },
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_69a0d0b83b5881919dd5f0e53b525d31",
+        "url": "https://chatgpt.com/apps/readwise/asdk_app_69a0d0b83b5881919dd5f0e53b525d31"
+      }
+    ],
+    "homepageUrl": "https://readwise.io/",
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://docs.readwise.io/tools/mcp"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-25",
+      "evidenceUrl": "https://docs.readwise.io/tools/mcp"
+    },
+    "logoUrl": "/server-logos/readwise.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-25",
+    "logoLicenseNote": "Locally generated monogram for Readwise. This monogram is not an official mark."
+  },
+  {
+    "id": "eraser",
+    "name": "Eraser",
+    "url": "https://app.eraser.io/api/mcp",
+    "description": "Create, edit, search and export workspace diagrams and documents in Eraser. Sign in with OAuth, or use a team API key as a bearer token.",
+    "category": "Developer Tools",
+    "tags": [
+      "diagrams",
+      "documentation",
+      "architecture",
+      "oauth"
+    ],
+    "relevance": 68,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.7643fc71-6be5-4bc1-8001-10d45239078d",
+        "url": "https://claude.com/marketplace/connectors/eraser"
+      },
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6a2b2378d5d08191a60062007d30f178",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6a2b2378d5d08191a60062007d30f178"
+      }
+    ],
+    "homepageUrl": "https://www.eraser.io/",
+    "caveats": [
+      "Eraser also accepts team API keys sent as bearer tokens."
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://docs.eraser.io/mcp"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "alternativeAuthTypes": [
+      "bearer-token"
+    ],
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-25",
+      "evidenceUrl": "https://docs.eraser.io/mcp"
+    },
+    "logoUrl": "/server-logos/eraser.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-25",
+    "logoLicenseNote": "Locally generated monogram for Eraser. This monogram is not an official mark."
+  },
+  {
+    "id": "cortellis-cmc-intelligence",
+    "name": "Cortellis CMC Intelligence",
+    "url": "https://api.clarivate.com/lifesciences/mcp-cmc/mcp",
+    "description": "Search pharmaceutical chemistry, manufacturing and controls (CMC) requirements from Clarivate Cortellis. Sign in with OAuth to connect.",
+    "category": "Reference",
+    "tags": [
+      "pharmaceutical",
+      "regulatory",
+      "life-sciences",
+      "oauth"
+    ],
+    "relevance": 68,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.6d85e32b-e41b-44bc-b451-aa020b7640b1",
+        "url": "https://claude.com/marketplace/connectors/cortellis-cmc-intelligence"
+      }
+    ],
+    "homepageUrl": "https://clarivate.com/",
+    "caveats": [
+      "Requires a Cortellis subscription.",
+      "The Cortellis Regulatory plugin is a separate listing and is not attributed to this endpoint."
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://api.clarivate.com/lifesciences/mcp-cmc/documentation"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-25",
+      "evidenceUrl": "https://api.clarivate.com/lifesciences/mcp-cmc/documentation"
+    },
+    "logoUrl": "/server-logos/cortellis-cmc-intelligence.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-25",
+    "logoLicenseNote": "Locally generated monogram for Cortellis CMC Intelligence. This monogram is not an official mark."
+  },
+  {
+    "id": "codewords",
+    "name": "CodeWords",
+    "url": "https://runtime.codewords.ai/run/devx_mcp/mcp",
+    "description": "Build, deploy and run hosted CodeWords workflows. Sign in with OAuth to connect.",
+    "category": "Developer Tools",
+    "tags": [
+      "workflows",
+      "automation",
+      "hosting",
+      "oauth"
+    ],
+    "relevance": 68,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.6232d9e5-10d2-4e64-baa2-c2c41c08c81c",
+        "url": "https://claude.com/marketplace/connectors/codewords"
+      },
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6a7449c8406c81919fd7446dd525be72",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6a7449c8406c81919fd7446dd525be72"
+      }
+    ],
+    "homepageUrl": "https://www.codewords.ai/",
+    "caveats": [
+      "CodeWords confirms both the Claude and ChatGPT installations: https://www.codewords.ai/blog/build-automations-from-inside-claude-and-chatgpt"
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://www.codewords.ai/mcp"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-25",
+      "evidenceUrl": "https://www.codewords.ai/mcp"
+    },
+    "logoUrl": "/server-logos/codewords.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-25",
+    "logoLicenseNote": "Locally generated monogram for CodeWords. This monogram is not an official mark."
+  },
+  {
+    "id": "fullenrich",
+    "name": "FullEnrich",
+    "url": "https://mcp.fullenrich.com/mcp",
+    "description": "Search companies and contacts, enrich contact details and export results with FullEnrich. Sign in with OAuth to connect.",
+    "category": "CRM",
+    "tags": [
+      "contact-enrichment",
+      "prospecting",
+      "oauth"
+    ],
+    "relevance": 67,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.255de707-a50c-4788-b8d4-2e78ced354f3",
+        "url": "https://claude.com/marketplace/connectors/fullenrich-mcp"
+      },
+      {
+        "directory": "claude",
+        "id": "directoryPlugin.b6f58603-f016-40c1-9c15-fcd22e418efe",
+        "url": "https://claude.com/marketplace/plugins/fullenrich"
+      },
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_69c3f942260c8191b27411bd57ece14d",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_69c3f942260c8191b27411bd57ece14d"
+      }
+    ],
+    "homepageUrl": "https://fullenrich.com/",
+    "caveats": [
+      "The FullEnrich Claude plugin configures this endpoint: https://github.com/FullEnrich/fullenrich-skills/blob/main/.mcp.json"
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://help.fullenrich.com/en/articles/14190120-mcp-server"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-25",
+      "evidenceUrl": "https://help.fullenrich.com/en/articles/14190120-mcp-server"
+    },
+    "logoUrl": "/server-logos/fullenrich.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-25",
+    "logoLicenseNote": "Locally generated monogram for FullEnrich. This monogram is not an official mark."
+  },
+  {
+    "id": "meridian-quickbooks",
+    "name": "Meridian QuickBooks",
+    "url": "https://qbo-connector.meridian.pilot.com/mcp",
+    "description": "Read QuickBooks Online records and post transactions through Pilot’s Meridian connector. Sign in with OAuth; posting needs company write access.",
+    "category": "Finance",
+    "tags": [
+      "quickbooks",
+      "accounting",
+      "bookkeeping",
+      "oauth"
+    ],
+    "relevance": 67,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.72e8740e-8922-4d91-a850-d4d47d3f8ab4",
+        "url": "https://claude.com/marketplace/connectors/meridian-connector-for-quickbooks"
+      },
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6a59480048788191838477826d4ee97a",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6a59480048788191838477826d4ee97a"
+      }
+    ],
+    "homepageUrl": "https://pilot.com/",
+    "caveats": [
+      "Pilot’s listed ChatGPT release identifies the product. The Claude listing and the protected-resource metadata at https://qbo-connector.meridian.pilot.com/.well-known/oauth-protected-resource/mcp identify the endpoint."
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://starter.meridian.pilot.com/help/qbo"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-25",
+      "evidenceUrl": "https://starter.meridian.pilot.com/help/qbo"
+    },
+    "logoUrl": "/server-logos/meridian-quickbooks.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-25",
+    "logoLicenseNote": "Locally generated monogram for Meridian QuickBooks. This monogram is not an official mark."
+  },
+  {
+    "id": "sp-global-adaptive-retrieval",
+    "name": "S&P Global Adaptive Retrieval",
+    "url": "https://grounding.kensho.com/integrations/v2/mcp",
+    "description": "Search S&P Global datasets that the signed-in account is authorized to use. Sign in with OAuth to connect.",
+    "category": "Finance",
+    "tags": [
+      "s-and-p-global",
+      "kensho",
+      "financial-data",
+      "retrieval",
+      "oauth"
+    ],
+    "relevance": 67,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.8c7d2d59-39e6-4013-a88c-93daea04d49c",
+        "url": "https://claude.com/marketplace/connectors/s-p-global-adaptive-retrieval"
+      }
+    ],
+    "homepageUrl": "https://kensho.com/",
+    "caveats": [
+      "Access is licensed through S&P Global.",
+      "This is a separate server from the S&P Global (Kensho) LLM-ready API entry."
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://docs.kensho.com/adaptive-retrieval/mcp"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": true
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-25",
+      "evidenceUrl": "https://docs.kensho.com/adaptive-retrieval/mcp"
+    },
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/sp-global-adaptive-retrieval.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-25",
+    "logoLicenseNote": "Locally generated monogram for S&P Global Adaptive Retrieval. This monogram is not an official mark."
+  },
+  {
+    "id": "local-falcon",
+    "name": "Local Falcon",
+    "url": "https://mcp.localfalcon.com/",
+    "description": "Measure local search and AI search visibility with Local Falcon. Sign in with OAuth to connect.",
+    "category": "Analytics",
+    "tags": [
+      "local-seo",
+      "search-visibility",
+      "oauth"
+    ],
+    "relevance": 67,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.30b72fda-c127-4a95-b7a3-f18476e0a06f",
+        "url": "https://claude.com/marketplace/connectors/local-falcon"
+      },
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_69baa555a9e88191a108cf53834995c2",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_69baa555a9e88191a108cf53834995c2"
+      }
+    ],
+    "homepageUrl": "https://www.localfalcon.com/",
+    "alternativeEndpoints": [
+      {
+        "url": "https://mcp.localfalcon.com/mcp",
+        "authType": "oauth",
+        "description": "Streamable HTTP path on the same host. It returned HTTP 401 without credentials and shares the primary’s OAuth metadata."
+      }
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://docs.localfalcon.com/"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-25",
+      "evidenceUrl": "https://docs.localfalcon.com/"
+    },
+    "exactEndpointOnly": true,
+    "logoUrl": "/server-logos/local-falcon.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-25",
+    "logoLicenseNote": "Locally generated monogram for Local Falcon. This monogram is not an official mark."
+  },
+  {
+    "id": "brightdeck",
+    "name": "Brightdeck",
+    "url": "https://api.brightdeck.ai/mcp",
+    "description": "Create editable presentation decks and export them as PPTX or PDF. Sign in with OAuth to connect.",
+    "category": "Design",
+    "tags": [
+      "presentations",
+      "slides",
+      "oauth"
+    ],
+    "relevance": 67,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.c0a11a21-c9c7-4b10-9118-629035443c7b",
+        "url": "https://claude.com/marketplace/connectors/brightdeck-ai"
+      },
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6a090196cf008191b1333063eea54038",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6a090196cf008191b1333063eea54038"
+      }
+    ],
+    "homepageUrl": "https://brightdeck.ai/",
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://brightdeck.ai/integrations/mcp"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-25",
+      "evidenceUrl": "https://brightdeck.ai/integrations/mcp"
+    },
+    "logoUrl": "/server-logos/brightdeck.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-25",
+    "logoLicenseNote": "Locally generated monogram for Brightdeck. This monogram is not an official mark."
+  },
+  {
+    "id": "tropic",
+    "name": "Tropic",
+    "url": "https://app.tropicapp.io/mcp",
+    "description": "Benchmark software costs and review suppliers and contracts in Tropic. Sign in with OAuth to connect.",
+    "category": "Analytics",
+    "tags": [
+      "procurement",
+      "spend-management",
+      "contracts",
+      "oauth"
+    ],
+    "relevance": 67,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.1561bc95-0862-4c90-8720-6ac8d683340e",
+        "url": "https://claude.com/marketplace/connectors/tropic"
+      },
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_69680cd25f3c81918d933557ca79d8fa",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_69680cd25f3c81918d933557ca79d8fa"
+      }
+    ],
+    "homepageUrl": "https://www.tropicapp.io/",
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://help.tropicapp.io/hc/en-us/articles/45502083594267-Using-Model-Context-Protocol-MCP-with-Tropic"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-25",
+      "evidenceUrl": "https://help.tropicapp.io/hc/en-us/articles/45502083594267-Using-Model-Context-Protocol-MCP-with-Tropic"
+    },
+    "logoUrl": "/server-logos/tropic.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-25",
+    "logoLicenseNote": "Locally generated monogram for Tropic. This monogram is not an official mark."
+  },
+  {
+    "id": "bill",
+    "name": "BILL",
+    "url": "https://gateway.prod.bill.com/ai-mcp-server/v1",
+    "description": "Read company payables, receivables and spend in BILL. Sign in with OAuth to connect.",
+    "category": "Finance",
+    "tags": [
+      "accounts-payable",
+      "accounts-receivable",
+      "spend-management",
+      "oauth"
+    ],
+    "relevance": 67,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.15d44cf2-b1c7-4109-93c6-bab471ab5f33",
+        "url": "https://claude.com/marketplace/connectors/bill"
+      },
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6ae242a4b220819185dfe6a08c2be5b2",
+        "url": "https://openai.com/business/plugins/bill/"
+      }
+    ],
+    "homepageUrl": "https://www.bill.com/",
+    "caveats": [
+      "This is the production endpoint.",
+      "OpenAI’s BILL plugin page confirms the ChatGPT listing; the public ChatGPT release lookup returned “Plugin not found”."
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://developer.bill.com/docs/bill-mcp-server"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-25",
+      "evidenceUrl": "https://developer.bill.com/docs/bill-mcp-server"
+    },
+    "logoUrl": "/server-logos/bill.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-25",
+    "logoLicenseNote": "Locally generated monogram for BILL. This monogram is not an official mark."
+  },
+  {
+    "id": "conductor",
+    "name": "Conductor",
+    "url": "https://mcp-universal.conductor.com/mcp/v4",
+    "description": "Analyze brand visibility, citations and search performance in Conductor. Sign in with OAuth to connect.",
+    "category": "Analytics",
+    "tags": [
+      "seo",
+      "ai-search-visibility",
+      "content-marketing",
+      "oauth"
+    ],
+    "relevance": 67,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.cd4afca5-534c-4794-a3fb-d7b81cde7c4e",
+        "url": "https://claude.com/marketplace/connectors/conductor"
+      },
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6a6a413007988191a083457966e3ff4f",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6a6a413007988191a083457966e3ff4f"
+      }
+    ],
+    "homepageUrl": "https://www.conductor.com/",
+    "alternativeEndpoints": [
+      {
+        "url": "https://mcp-universal.conductor.com/mcp/v3",
+        "authType": "oauth",
+        "description": "Earlier version indexed by the Claude directory, with a different tool set. It returned HTTP 401 without credentials."
+      }
+    ],
+    "caveats": [
+      "Conductor identifies v4 for native apps: https://www.conductor.com/docs/mcp/chatgpt-codex/"
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://www.conductor.com/docs/mcp/custom-connectors/"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-25",
+      "evidenceUrl": "https://www.conductor.com/docs/mcp/custom-connectors/"
+    },
+    "logoUrl": "/server-logos/conductor.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-25",
+    "logoLicenseNote": "Locally generated monogram for Conductor. This monogram is not an official mark."
+  },
+  {
+    "id": "kit",
+    "name": "Kit",
+    "url": "https://app.kit.com/mcp",
+    "description": "Analyze email audiences, review campaign performance and draft content in Kit. Sign in with OAuth to connect.",
+    "category": "Communication",
+    "tags": [
+      "email-marketing",
+      "newsletters",
+      "creators",
+      "oauth"
+    ],
+    "relevance": 66,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.700d102e-5a17-44c8-b715-5db9cca82105",
+        "url": "https://claude.com/marketplace/connectors/kit-mcp"
+      }
+    ],
+    "homepageUrl": "https://kit.com/",
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://help.kit.com/en/articles/14827557-how-to-connect-the-ai-connectors-to-your-ai-tools"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-25",
+      "evidenceUrl": "https://help.kit.com/en/articles/14827557-how-to-connect-the-ai-connectors-to-your-ai-tools"
+    },
+    "logoUrl": "/server-logos/kit.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-25",
+    "logoLicenseNote": "Locally generated monogram for Kit. This monogram is not an official mark."
+  },
+  {
+    "id": "splice",
+    "name": "Splice",
+    "url": "https://mcp.splice.com/mcp",
+    "description": "Search Splice samples and build layered arrangements. Sign in with OAuth to connect.",
+    "category": "Design",
+    "tags": [
+      "music",
+      "audio-samples",
+      "oauth"
+    ],
+    "relevance": 66,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.0c501c77-e4a2-40a6-8fe9-f386595a7976",
+        "url": "https://claude.com/marketplace/connectors/splice"
+      }
+    ],
+    "homepageUrl": "https://splice.com/",
+    "caveats": [
+      "Downloading samples requires an eligible Splice subscription."
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://support.splice.com/en/articles/14442749-getting-started-with-the-splice-mcp-server-beta"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-25",
+      "evidenceUrl": "https://support.splice.com/en/articles/14442749-getting-started-with-the-splice-mcp-server-beta"
+    },
+    "logoUrl": "/server-logos/splice.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-25",
+    "logoLicenseNote": "Locally generated monogram for Splice. This monogram is not an official mark."
+  },
+  {
+    "id": "pitch",
+    "name": "Pitch",
+    "url": "https://mcp.pitch.com/mcp",
+    "description": "Create and share Pitch decks and check engagement. Sign in with OAuth to connect.",
+    "category": "Design",
+    "tags": [
+      "presentations",
+      "slides",
+      "analytics",
+      "oauth"
+    ],
+    "relevance": 66,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.d959d963-dafc-4609-9ec9-9a87ad7acd11",
+        "url": "https://claude.com/marketplace/connectors/pitch"
+      },
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6aad311433008191b8b47c37cad44937",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6aad311433008191b8b47c37cad44937"
+      }
+    ],
+    "homepageUrl": "https://pitch.com/",
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://help.pitch.com/en/articles/16849368-an-overview-of-pitch-s-mcp"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-25",
+      "evidenceUrl": "https://help.pitch.com/en/articles/16849368-an-overview-of-pitch-s-mcp"
+    },
+    "logoUrl": "/server-logos/pitch.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-25",
+    "logoLicenseNote": "Locally generated monogram for Pitch. This monogram is not an official mark."
+  },
+  {
+    "id": "pocketsmith-complete-access",
+    "name": "PocketSmith Complete Access",
+    "url": "https://mcp.pocketsmith.com/mcp",
+    "description": "Analyze personal finances and create or update authorized PocketSmith records. Sign in with OAuth to connect.",
+    "category": "Finance",
+    "tags": [
+      "personal-finance",
+      "budgeting",
+      "oauth"
+    ],
+    "relevance": 65,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.11ae9243-340e-4122-9a47-9c2555b52ff2",
+        "url": "https://claude.com/marketplace/connectors/pocketsmith-complete-access"
+      },
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6a8b8b0fdcd481919f5a5ccb21cc32a4",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6a8b8b0fdcd481919f5a5ccb21cc32a4"
+      }
+    ],
+    "homepageUrl": "https://www.pocketsmith.com/",
+    "alternativeEndpoints": [
+      {
+        "url": "https://mcp-readonly.pocketsmith.com/mcp",
+        "authType": "oauth",
+        "description": "Read-only server. It returned HTTP 401 without credentials. The directory listings belong to Complete Access."
+      }
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://developers.pocketsmith.com/docs/pocketsmith-mcp-server"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-25",
+      "evidenceUrl": "https://developers.pocketsmith.com/docs/pocketsmith-mcp-server"
+    },
+    "logoUrl": "/server-logos/pocketsmith-complete-access.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-25",
+    "logoLicenseNote": "Locally generated monogram for PocketSmith Complete Access. This monogram is not an official mark."
+  },
+  {
+    "id": "chronograph",
+    "name": "Chronograph",
+    "url": "https://ai.chronograph.pe/mcp",
+    "description": "Query private-capital portfolio data that the signed-in Chronograph account is authorized to see. Sign in with OAuth to connect.",
+    "category": "Finance",
+    "tags": [
+      "private-equity",
+      "portfolio-monitoring",
+      "oauth"
+    ],
+    "relevance": 65,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "wf.68fbd81a3d569c900eca5a2f",
+        "url": "https://claude.com/marketplace/connectors/chronograph"
+      },
+      {
+        "directory": "claude",
+        "id": "directoryPlugin.827b85dc-d556-4db3-b709-af6335a3f6c5",
+        "url": "https://claude.com/marketplace/plugins/chronograph-lp"
+      },
+      {
+        "directory": "claude",
+        "id": "directoryPlugin.1c24108b-43cb-4a46-a6ac-35af26c29fcf",
+        "url": "https://claude.com/marketplace/plugins/chronograph-gp"
+      },
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6a15c452ae04819187569784a47f7243",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6a15c452ae04819187569784a47f7243"
+      },
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6a1a374657a88191bc1e22f3e9862dc6",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6a1a374657a88191bc1e22f3e9862dc6"
+      }
+    ],
+    "homepageUrl": "https://www.chronograph.pe/",
+    "caveats": [
+      "Chronograph publishes separate LP and GP plugins. The public ChatGPT LP and GP releases omit their endpoint URLs."
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://www.chronograph.pe/mcp-connectors/"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-25",
+      "evidenceUrl": "https://www.chronograph.pe/mcp-connectors/"
+    },
+    "logoUrl": "/server-logos/chronograph.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-25",
+    "logoLicenseNote": "Locally generated monogram for Chronograph. This monogram is not an official mark."
+  },
+  {
+    "id": "brightflag",
+    "name": "Brightflag",
+    "url": "https://mcp-us.brightflag.com/mcp",
+    "description": "Read Brightflag legal matters, invoices, vendors and spend. Sign in with OAuth to connect.",
+    "category": "Analytics",
+    "tags": [
+      "legal-operations",
+      "e-billing",
+      "spend-management",
+      "oauth"
+    ],
+    "relevance": 65,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.707aed89-3a32-4fe9-a8e2-7d44232ac160",
+        "url": "https://claude.com/marketplace/connectors/brightflag"
+      }
+    ],
+    "homepageUrl": "https://brightflag.com/",
+    "alternativeEndpoints": [
+      {
+        "url": "https://mcp-eu.brightflag.com/mcp",
+        "authType": "oauth",
+        "description": "Use for a Brightflag account hosted in Europe."
+      },
+      {
+        "url": "https://mcp-au.brightflag.com/mcp",
+        "authType": "oauth",
+        "description": "Use for a Brightflag account hosted in Australia."
+      }
+    ],
+    "caveats": [
+      "The primary endpoint is for US-hosted accounts. An administrator must enable MCP access."
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://help.brightflag.com/en/articles/817989-connecting-to-brightflag-in-claude"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-25",
+      "evidenceUrl": "https://help.brightflag.com/en/articles/817989-connecting-to-brightflag-in-claude"
+    },
+    "logoUrl": "/server-logos/brightflag.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-25",
+    "logoLicenseNote": "Locally generated monogram for Brightflag. This monogram is not an official mark."
+  },
+  {
+    "id": "glg",
+    "name": "GLG",
+    "url": "https://mcp.glgresearch.com/myglg/mcp",
+    "description": "Search GLG expert call transcripts and review authorized projects. Sign in with OAuth to connect.",
+    "category": "Reference",
+    "tags": [
+      "expert-network",
+      "transcripts",
+      "research",
+      "oauth"
+    ],
+    "relevance": 65,
+    "directoryListings": [
+      {
+        "directory": "claude",
+        "id": "connector.e6b925d6-dee4-4f11-baa8-0248a7830f94",
+        "url": "https://claude.com/marketplace/connectors/glg"
+      },
+      {
+        "directory": "chatgpt",
+        "id": "plugin_asdk_app_6a5922fc7f10819181f41752979eb0a2",
+        "url": "https://chatgpt.com/plugins/plugin_asdk_app_6a5922fc7f10819181f41752979eb0a2"
+      }
+    ],
+    "homepageUrl": "https://glg.com/",
+    "caveats": [
+      "Transcript search requires a GLG subscription."
+    ],
+    "listingSource": {
+      "kind": "publisher",
+      "url": "https://glg.com/how-we-help/myglg/mcp-docs"
+    },
+    "transport": "streamable-http",
+    "authType": "oauth",
+    "requiresOAuth": true,
+    "oauthRegistration": {
+      "mode": "unknown",
+      "clientId": {
+        "required": false
+      },
+      "clientSecret": {
+        "required": false
+      },
+      "callback": {
+        "required": false
+      },
+      "reviewedAt": "2026-11-25",
+      "evidenceUrl": "https://glg.com/how-we-help/myglg/mcp-docs"
+    },
+    "logoUrl": "/server-logos/glg.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-25",
+    "logoLicenseNote": "Locally generated monogram for GLG. This monogram is not an official mark."
   }
 ]
