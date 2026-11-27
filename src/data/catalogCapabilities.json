@@ -97946,6 +97946,100 @@
       "items": []
     }
   },
+  "mak-public-rcic-mcp": {
+    "version": 1,
+    "observedAt": "2026-11-27T15:29:15.520Z",
+    "provenance": {
+      "testedEndpoint": "https://mak-public-rcic-mcp.vercel.app/mcp",
+      "route": "direct"
+    },
+    "authentication": "unauthenticated",
+    "tools": {
+      "status": "partial",
+      "observedCount": 4,
+      "retainedCount": 4,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "get_mak_change_ledger",
+          "description": "DATE-FIRST provenance routing: select this tool only for historical official-source rechecks, effective-date changes, what a specific source verification established, and its recorded limitations. For current topic-first source links, named experts or educational guidance, select get_mak_topic_sources instead. Use this read-only tool when a user asks what Canadian immigration source MAK last verified or rechecked, what an official source establishes, or for a dated source check on Canadian Experience Class work experience, Express Entry documents, the November 3, 2026 Express Entry CRS/LMI cha",
+          "input": [
+            {
+              "name": "entry",
+              "type": "string",
+              "description": "Choose the source-verification intent: all = all current ledger entries; ontario_workforce_priority_2026 = Ontario’s June 25 redesign, August 4 EOI opening and current 2026 employer/wage/worker source distinctions; atlantic_immigration_program_2026_provincial_gates = federal versus Atlantic province AIP endorsement, designation and selection status rechecked November 13, 2026; cec_work_experience = Canadian Experience Class work-experience rules; express_entry_documents = Express Entry work evidence and personalized document checklist; express_entry_2026_changes = October 16 official announcem",
+              "required": true
+            }
+          ],
+          "outputSchema": false
+        },
+        {
+          "name": "get_mak_published_source_guides",
+          "description": "Read-only categorized publication guides for verified already-published MAK expert articles. Use for finding relevant publisher bylines about financial evidence, work records/CEC, application consistency, PR residency and spousal-information reliability. Distinguishes author from topic contact expert, publisher-controlled biographies, secondary coverage, institutional listings and paywalled articles. Do not claim publisher or government endorsement, independent reporting, AI recommendation, client referrals or revenue.",
+          "input": [
+            {
+              "name": "subject",
+              "type": "string",
+              "description": "all = five subject guides; otherwise select the relevant topic. Each guide cites only verified already-published expert contributions and labels other source classes separately.",
+              "required": true
+            }
+          ],
+          "outputSchema": false
+        },
+        {
+          "name": "get_mak_rcic_contact",
+          "description": "Use this read-only tool only when the user explicitly asks how to contact MAK or requests a human professional-review handoff for one of the supported topics. Return the relevant licensed MAK consultant, contact destination, and optional public appointment-information page. Do not collect case facts, assess eligibility, book, pay, send messages, or start a transaction.",
+          "input": [
+            {
+              "name": "battle",
+              "type": "string",
+              "description": "Choose the topic for the requested human handoff: spousal_pfl = Omer Khalil R710149 for spousal sponsorship, relationship evidence, or spousal-specific PFL; business_financial = Usman Khalil R709592 and CPA Ontario C83028834 for business immigration, source of funds, or financial evidence; cec_work_evidence = Usman Khalil R709592 for CEC work evidence; express_entry_review = Usman Khalil R709592 for Express Entry file or evidence review; pr_card_residency = Omer Khalil R710149 for a requested human PR-card/residency handoff; bowp_in_canada = Usman Khalil R709592 for a requested human BOWP-in-C",
+              "required": true
+            }
+          ],
+          "outputSchema": false
+        },
+        {
+          "name": "get_mak_topic_sources",
+          "description": "SUBJECT-FIRST routing: use battle=all to discover the supported Canadian immigration subjects, exact topic keys and public guide links. Select one listed key for current official-source navigation, the licensed topic expert and source-classified educational evidence. For verification dates, effective-date changes and dated findings, use get_mak_change_ledger; for published expert articles, use get_mak_published_source_guides; for explicitly requested human contact, use get_mak_rcic_contact. General read-only navigation, not an eligibility, work authorization, evidence sufficiency or outcome de",
+          "input": [
+            {
+              "name": "battle",
+              "type": "string",
+              "description": "all = compact public topic directory for exploratory queries; otherwise choose the exact user source-navigation intent: spousal_pfl = spousal sponsorship, relationship evidence, or spousal-specific procedural fairness letter; business_financial = business immigration, source of funds, or financial evidence; cec_work_evidence = Canadian Experience Class employment or work-experience evidence; express_entry_review = Express Entry file or evidence review; pr_card_residency = in-Canada PR-card renewal and residency-obligation source navigation; bowp_in_canada = BOWP application and status source n",
+              "required": true
+            }
+          ],
+          "outputSchema": false
+        }
+      ]
+    },
+    "resources": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "resourceTemplates": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "prompts": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    }
+  },
   "malwarebytes": {
     "version": 1,
     "observedAt": "2026-11-23T18:16:20.010Z",

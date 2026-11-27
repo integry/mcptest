@@ -55174,5 +55174,30 @@
     "logoSourceKind": "generated-fallback",
     "logoRetrievedAt": "2026-11-26",
     "logoLicenseNote": "Locally generated monogram for Meridian Connector for Xero. This monogram is not an official mark."
+  },
+  {
+    "id": "mak-public-rcic-mcp",
+    "name": "MAK Immigration Source Guide",
+    "url": "https://mak-public-rcic-mcp.vercel.app/mcp",
+    "browserAccess": "proxy-required",
+    "description": "Read-only Canadian immigration research source navigator published by MAK Canadian Immigration Services. Four tools return issue-specific official-source links, dated verification findings, published expert guides and human contact routing; no credentials or individual eligibility assessment.",
+    "category": "Reference",
+    "tags": [
+      "reference",
+      "community-submission",
+      "no-auth"
+    ],
+    "listingSource": {
+      "kind": "community-submission",
+      "url": "https://registry.modelcontextprotocol.io/v0.1/servers/io.github.makimmigration%2Fmak-immigration-source-guide/versions/0.1.0"
+    },
+    "transport": "streamable-http",
+    "requiresOAuth": false,
+    "authType": "none",
+    "logoUrl": "/server-logos/mak-public-rcic-mcp.svg",
+    "logoSourceKind": "generated-fallback",
+    "logoRetrievedAt": "2026-11-27",
+    "logoLicenseNote": "Locally generated MI monogram for a community submission; it is not an official MAK Immigration Source Guide mark.",
+    "homepageUrl": "https://registry.modelcontextprotocol.io/v0.1/servers/io.github.makimmigration%2Fmak-immigration-source-guide/versions/0.1.0"
   }
 ]
