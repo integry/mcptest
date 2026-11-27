@@ -1,3 +1,4 @@
+export { FixtureState } from "./FixtureState";
 import { UserState } from "./UserState";
 import { PublishedReports } from "./PublishedReports";
 import { handleBadgeRequest } from "./badges";
@@ -26,8 +27,8 @@ export default {
     // Public catalog badges are served before authentication and never reach the Durable Object.
     const badgeResponse = handleBadgeRequest(request);
     if (badgeResponse) return badgeResponse;
-    // Public deterministic MCP fixture servers (/fixtures/<name>/mcp): stateless, no storage.
-    const fixtureResponse = await handleFixtureRequest(request);
+    // Public deterministic MCP fixture servers and their session and OAuth endpoints.
+    const fixtureResponse = await handleFixtureRequest(request, { env });
     if (fixtureResponse) return fixtureResponse;
     // Public read-only catalog MCP server (/mcp/catalog): bundled data, per-IP rate limit.
     const catalogMcpResponse = await handleCatalogMcpRequest(request, env);

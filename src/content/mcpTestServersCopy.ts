@@ -21,8 +21,8 @@ import {
 
 export const MCP_TEST_SERVERS_COPY = {
   heading: 'Public MCP test servers',
-  lede: 'Free, deterministic MCP servers you can point any client at: an echo server, a bearer-auth server, an errors server, a slow server and a schemas server. No sign-up, no API key, and the same answer every time.',
-  intro: 'Use them to check that an MCP client, SDK or proxy connects, lists tools and handles failures before you test against a real server. Each endpoint speaks Streamable HTTP and supports both the stateless 2026 and the stateful 2025 protocol revisions.',
+  lede: 'Free, deterministic MCP servers you can point any client at: echo, bearer auth, OAuth, errors, delays and schema validation. No sign-up, no API key, and the same answer every time.',
+  intro: 'Use them to check that an MCP client, SDK or proxy connects, lists tools and handles failures before you test against a real server. Use echo for protocol negotiation or choose a fixed stateful or stateless endpoint.',
   pageViewTitle: 'Public MCP test servers',
 } as const;
 
@@ -212,11 +212,11 @@ export const MCP_TEST_SERVERS_FAQ: readonly FaqEntry[] = [
   },
   {
     question: 'Do the test servers store anything?',
-    answer: 'No. The fixture code has no database or key-value storage and makes no outbound requests. Session IDs are checked by their signature rather than looked up, and the whoami and headers tools never echo Authorization, Cookie or other credential values.',
+    answer: 'The fixtures store temporary session counters and OAuth grants. GET /fixtures/<name>/sessions/<id> reports requestCount, initialized, deleteReceived and protocolVersion to anyone holding the session ID. Diagnostics remain available after expiry or DELETE for up to a day.',
   },
   {
     question: 'Which MCP protocol versions do they support?',
-    answer: `Each endpoint supports the stateless ${PUBLIC_FIXTURE_STATELESS_VERSION} revision (server/discover, no session) and the stateful ${PUBLIC_FIXTURE_STATEFUL_VERSIONS.join(', ')} revisions (initialize plus an Mcp-Session-Id), over Streamable HTTP. There is no deprecated HTTP+SSE endpoint; GET and DELETE answer 405.`,
+    answer: `The negotiating endpoints support the stateless ${PUBLIC_FIXTURE_STATELESS_VERSION} revision (server/discover, no session) and the stateful ${PUBLIC_FIXTURE_STATEFUL_VERSIONS.join(', ')} revisions (initialize plus an Mcp-Session-Id), over Streamable HTTP. There is no deprecated HTTP+SSE endpoint; DELETE ends a stateful session.`,
   },
   {
     question: 'Can I use them in CI?',

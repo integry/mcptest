@@ -30,6 +30,10 @@ describe('/mcp-test-servers build outputs', () => {
     expect(getSitemapEntries([], articles).map(entry => entry.pathname)).toContain(MCP_TEST_SERVERS_PATH);
     const llms = renderLlmsTxt(articles);
     expect(llms).toContain('- [Public MCP test servers](https://mcptest.io/mcp-test-servers): ');
+    expect(llms).toContain('Authorization: Bearer mcptest-public-token');
+    for (const signature of ['echo(message)', 'add(a, b)', 'whoami()', 'progress(steps, intervalMs)', 'create_order(customer, items, shipping, notes)']) {
+      expect(llms).toContain(signature);
+    }
     for (const fixture of PUBLIC_FIXTURES) expect(llms).toContain(`(${fixture.url})`);
   });
 

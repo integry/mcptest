@@ -2,11 +2,14 @@
 // End-to-end: the app's own MCP client code, release-gate CLI and session
 // probes connect to the fixture servers on a local HTTP instance of this worker.
 import { createServer } from 'node:http';
+import { createServer as createHttp2Server, connect as connectHttp2 } from "node:http2";
+import { once } from "node:events";
 import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
+import { fixtureTestEnv } from './fixtureTestEnv.js';
 import worker from './index.js';
 import { PUBLIC_BEARER_TOKEN } from './fixtureServers.js';
 import { runCli } from '../../src/cli/runCli';
@@ -18,6 +21,7 @@ import { checkSessionResilience } from '../../src/utils/sessionResilience';
 let server;
 let base;
 const requests = [];
+const env = fixtureTestEnv();
 
 beforeAll(async () => {
   server = createServer(async (incoming, outgoing) => {
@@ -33,7 +37,7 @@ beforeAll(async () => {
       method: incoming.method,
       headers,
       body: hasBody ? Buffer.concat(chunks) : undefined,
-    }), {}, {});
+    }), env, {});
     outgoing.writeHead(response.status, Object.fromEntries(response.headers));
     if (response.body) {
       for await (const chunk of response.body) outgoing.write(chunk);
@@ -91,6 +95,14 @@ describe('release gate CLI against the echo fixture', () => {
 });
 
 describe('app MCP client against the fixtures', () => {
+  it.each([['echo-stateful', 'legacy'], ['echo-stateless', 'modern']])('negotiates %s', async (name, era) => {
+    const client = await connect(name);
+    try {
+      expect(getProtocolDetails(client).era).toBe(era);
+      expect((await client.callTool({ name: 'echo', arguments: { message: 'ok' } })).content[0].text).toBe('ok');
+    } finally { await client.close(); }
+  });
+
   it.each([
     ['auto negotiation', createNegotiatingMcpClient, { era: 'modern', version: '2026-07-28' }],
     ['the legacy stateful flow', createLegacyMcpClient, { era: 'legacy', version: '2025-11-25' }],
@@ -166,7 +178,7 @@ describe('app MCP client against the fixtures', () => {
 });
 
 describe('session resilience probes against the stateful flow', () => {
-  it('passes unknown-id, re-initialize and stickiness, and treats DELETE 405 as informational', async () => {
+  it('passes unknown-id, re-initialize and stickiness, and accepts DELETE', async () => {
     const findings = await checkSessionResilience({ endpoint: `${base}/echo/mcp`, fetch: globalThis.fetch.bind(globalThis) });
     const outcomes = Object.fromEntries(findings.map((finding) => [finding.id, finding.outcome]));
     expect(outcomes).toMatchObject({
@@ -176,4 +188,44 @@ describe('session resilience probes against the stateful flow', () => {
     });
     expect(findings.find((finding) => finding.id === 'session.delete').severity).not.toBe('error');
   }, 30_000);
+});
+
+it('serves known sessions across HTTP/2 connections before and after initialized', async () => {
+  const h2 = createHttp2Server(async (req, res) => {
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    const headers = Object.fromEntries(Object.entries(req.headers).filter(([key]) => !key.startsWith(':')));
+    const reply = await worker.fetch(new Request('http://localhost' + req.url, {
+      method: req.method, headers, body: chunks.length ? Buffer.concat(chunks) : undefined,
+    }), env, {});
+    res.writeHead(reply.status, Object.fromEntries(reply.headers));
+    res.end(Buffer.from(await reply.arrayBuffer()));
+  });
+  await new Promise(resolve => h2.listen(0, '127.0.0.1', resolve));
+  const exchange = async (method, payload, session, path = '/fixtures/echo/mcp') => {
+    const conn = connectHttp2('http://127.0.0.1:' + h2.address().port);
+    try {
+      const stream = conn.request({ ':method': method, ':path': path, 'content-type': 'application/json',
+        ...(session && { 'mcp-session-id': session, 'mcp-protocol-version': '2025-06-18' }) });
+      const received = once(stream, 'response');
+      stream.end(payload && JSON.stringify({ jsonrpc: '2.0', ...payload }));
+      const [headers] = await received;
+      const chunks = [];
+      for await (const chunk of stream) chunks.push(chunk);
+      return { status: headers[':status'], session: headers['mcp-session-id'], body: Buffer.concat(chunks).toString() };
+    } finally { conn.close(); }
+  };
+  try {
+    const { session } = await exchange('POST', { method: 'initialize', id: 1, params: {
+      protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'http2', version: '1' },
+    } });
+    expect(session).toBeTruthy();
+    const info = async () => JSON.parse((await exchange('GET', undefined, undefined, '/fixtures/echo/sessions/' + session)).body);
+    expect((await exchange('POST', { method: 'tools/list', id: 2 }, session)).status).toBe(200);
+    expect(await info()).toMatchObject({ requestCount: 2, initialized: false });
+    expect(await exchange('POST', { method: 'notifications/initialized' }, session)).toMatchObject({ status: 202, body: '' });
+    expect((await exchange('DELETE', undefined, session)).status).toBe(204);
+    expect((await exchange('POST', { method: 'ping', id: 3 }, session)).status).toBe(404);
+    expect(await info()).toMatchObject({ requestCount: 4, initialized: true, deleteReceived: true, protocolVersion: '2025-06-18' });
+  } finally { await new Promise(resolve => h2.close(resolve)); }
 });

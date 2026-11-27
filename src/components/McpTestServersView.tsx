@@ -80,7 +80,7 @@ export default function McpTestServersView() {
                 <Link className="btn btn-primary btn-sm" to={getServerUrl(fixture.url)} data-test-fixture={fixture.id}>
                   Test in mcptest.io
                 </Link>
-                {fixture.auth && (
+                {fixture.auth?.type === 'bearer' && (
                   <span className="mcp-test-server-note">
                     {' '}The tester reports the 401 first; enter <code>{PUBLIC_FIXTURE_BEARER_TOKEN}</code> as the bearer token and connect again.
                   </span>

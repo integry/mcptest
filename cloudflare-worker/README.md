@@ -19,8 +19,8 @@ This Cloudflare Worker provides data persistence for the MCP Test application us
 
 `src/fixtures.js` serves small, deterministic MCP test servers that any client or tester
 (including mcptest.io itself, from the browser) can point at. They are public, need no
-account, and are stateless: no Durable Object or KV access, no outbound fetches, no
-user-controlled URLs.
+account, and make no outbound fetches. Each fixture uses a SQLite Durable Object for
+session diagnostics and temporary OAuth grants.
 
 | Endpoint | Auth | What it does |
 | --- | --- | --- |
@@ -29,19 +29,36 @@ user-controlled URLs.
 | `https://mcptest.io/fixtures/errors/mcp` | none | `protocol_error` (JSON-RPC error `-32603`), `tool_error` (result with `isError: true`), `invalid_params` (`-32602`), `http_500` (HTTP 500 with a JSON-RPC error body). |
 | `https://mcptest.io/fixtures/slow/mcp` | none | `sleep` (`ms`, capped at 10 000) and `progress` (`steps` 1–10, `intervalMs` 0–1000; streams `notifications/progress` over SSE when the request has a `progressToken` and accepts `text/event-stream`). |
 | `https://mcptest.io/fixtures/schemas/mcp` | none | `create_order` (nested objects, enums, arrays, optional fields) and `classify`, both with `outputSchema` and `structuredContent`. |
+| `https://mcptest.io/fixtures/echo-stateful/mcp` | none | Echo with stateful revisions only. |
+| `https://mcptest.io/fixtures/echo-stateless/mcp` | none | Echo with the stateless 2026 revision only. |
+| `https://mcptest.io/fixtures/oauth/mcp` | OAuth | Echo in both modes with public client registration, auto-approval, S256 PKCE and rotating refresh tokens. |
 
-Any other `/fixtures/...` path answers `404` with the list of endpoints.
+For OAuth, follow the 401 challenge to protected resource metadata and discover
+the issuer at `/.well-known/oauth-authorization-server/fixtures/oauth`. Register
+an HTTPS or loopback callback and exchange the returned code at the token endpoint.
+Use the full MCP URL (including `?access_ttl=5`) as the OAuth resource parameter.
+Access tokens default to 300 seconds. POST a form field `token=<refresh token>` to
+the advertised revocation endpoint to force reauthorization on the next refresh.
 
-**Protocol revisions.** Every endpoint speaks both revisions the app's client negotiates:
+**Protocol revisions.** The unpinned endpoints negotiate both eras:
 
 - Stateless `2026-07-28`: probe with `server/discover`; each request carries the `_meta`
   envelope (`io.modelcontextprotocol/protocolVersion`, `io.modelcontextprotocol/clientCapabilities`)
   and matching `MCP-Protocol-Version` / `Mcp-Method` (and `Mcp-Name`) headers. A mismatch is
   `400` with `-32020`; an unsupported revision is `400` with `-32022` and the supported list.
 - Stateful `2025-11-25` (and `2025-06-18`, `2025-03-26`, `2024-11-05`): `initialize` returns an
-  `Mcp-Session-Id`, which later requests must send (`400` without it). The id is self-validating
-  rather than stored, so an id this worker did not issue answers `404`, and a fresh `initialize`
-  always works. `GET` (standalone SSE stream) and `DELETE` answer the permitted `405`.
+  `Mcp-Session-Id`, which later requests must send (`400` without it). The session is usable immediately.
+  DELETE terminates it with 204. Unknown, expired and deleted IDs answer 404.
+  Set `?session_ttl=5` at initialize to expire the session after five seconds
+  (default one hour). Both TTL parameters accept whole seconds from 1 to 3600.
+
+`GET /fixtures/<name>/sessions/<id>` shows the accepted stateful request count
+(including initialize, notifications and DELETE), initialized and delete flags,
+negotiated version and expiration time. Read-outs remain available for a day
+after the last accepted request. OAuth sessions also include the owning client's
+refresh count and the timestamp of its last attributable 401. For stateless OAuth
+calls, use the registration's `client_id` in place of the session ID. A browser navigation
+to the MCP URL shows a JSON description. A standalone SSE GET answers 405.
 
 **Limits.** Request bodies are capped at 16 KiB (`413`), JSON-RPC batches are rejected, delays
 are capped at 10 s, and `Authorization`, `Cookie` and other credential-shaped header values are

@@ -22,7 +22,7 @@ export const PUBLIC_FIXTURE_STATELESS_VERSION = '2026-07-28';
 /** Stateful revisions `initialize` accepts, newest first; the first is the default. */
 export const PUBLIC_FIXTURE_STATEFUL_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'] as const;
 
-export type PublicFixtureId = 'echo' | 'auth-bearer' | 'errors' | 'slow' | 'schemas';
+export type PublicFixtureId = 'echo' | 'auth-bearer' | 'errors' | 'slow' | 'schemas' | 'echo-stateful' | 'echo-stateless' | 'oauth';
 
 export interface PublicFixtureTool {
   name: string;
@@ -42,7 +42,7 @@ export interface PublicFixture {
   prompts: readonly string[];
   /** What a client should observe; one sentence each. */
   behavior: readonly string[];
-  auth?: { type: 'bearer'; token: string };
+  auth?: { type: 'bearer'; token: string } | { type: 'oauth' };
 }
 
 export const getPublicFixtureUrl = (id: PublicFixtureId): string => `${PUBLIC_FIXTURE_ORIGIN}/fixtures/${id}/mcp`;
@@ -54,15 +54,15 @@ const BASIC_TOOLS: readonly PublicFixtureTool[] = [
   { name: 'headers', summary: 'Lists the request header names the server received. Credentials and cookies are never echoed.' },
 ];
 
+const ECHO_FEATURES = { tools: BASIC_TOOLS, resources: ['mcptest://fixtures/readme'], prompts: ['greeting'] };
+
 export const PUBLIC_FIXTURES: readonly PublicFixture[] = [
   {
     id: 'echo',
     name: 'Echo',
     url: getPublicFixtureUrl('echo'),
     purpose: 'A no-auth MCP server with tools, a resource and a prompt: the quickest way to check that a client connects, lists and calls tools.',
-    tools: BASIC_TOOLS,
-    resources: ['mcptest://fixtures/readme'],
-    prompts: ['greeting'],
+    ...ECHO_FEATURES,
     behavior: [
       'Connects without credentials over Streamable HTTP.',
       'echo returns exactly the text you send; add {"a": 2, "b": 3} returns 5 with structuredContent {"sum": 5}.',
@@ -75,9 +75,7 @@ export const PUBLIC_FIXTURES: readonly PublicFixture[] = [
     name: 'Bearer auth',
     url: getPublicFixtureUrl('auth-bearer'),
     purpose: `The echo tools behind a fixed bearer token, for testing how a client sends static headers and handles a 401.`,
-    tools: BASIC_TOOLS,
-    resources: ['mcptest://fixtures/readme'],
-    prompts: ['greeting'],
+    ...ECHO_FEATURES,
     behavior: [
       `Send Authorization: Bearer ${PUBLIC_FIXTURE_BEARER_TOKEN}. The token is public and documented here; it protects nothing.`,
       'Without the header the server answers 401 with WWW-Authenticate: Bearer realm="mcptest.io fixtures".',
@@ -138,6 +136,25 @@ export const PUBLIC_FIXTURES: readonly PublicFixture[] = [
       'Valid calls return structuredContent that matches the advertised outputSchema, plus the same JSON as text.',
       'The same input always produces the same quote, so results can be compared in tests.',
     ],
+  },
+  {
+    ...ECHO_FEATURES, id: 'echo-stateful', url: getPublicFixtureUrl('echo-stateful'),
+    name: 'Stateful echo', purpose: 'Exercise the initialize and session lifecycle with a fixed stateful endpoint.',
+    behavior: ['Send initialize to obtain a session. Set ?session_ttl=5 to expire it after five seconds.',
+      'Read GET /fixtures/echo-stateful/sessions/<id> before or after DELETE to inspect the request count, handshake and termination.'],
+  },
+  {
+    ...ECHO_FEATURES, id: 'echo-stateless', url: getPublicFixtureUrl('echo-stateless'),
+    name: 'Stateless echo', purpose: 'Exercise the 2026 protocol with a fixed stateless endpoint.',
+    behavior: ['Use server/discover and include the 2026-07-28 metadata envelope in subsequent requests.'],
+  },
+  {
+    ...ECHO_FEATURES, id: 'oauth', url: getPublicFixtureUrl('oauth'),
+    name: 'OAuth echo', purpose: 'Exercise OAuth discovery, S256 PKCE, token refresh and reauthorization in either protocol mode.',
+    auth: { type: 'oauth' },
+    behavior: ['Register a public client using the advertised registration endpoint. Authorization automatically redirects to the registered callback.',
+      'Use ?access_ttl=5 on the MCP resource URL and send that URL as the OAuth resource parameter to get five-second access tokens.',
+      'POST the refresh token as a form field named token to the advertised revocation endpoint. Read /fixtures/oauth/sessions/<id> for refreshCount and last401. Use the session ID for stateful calls or the registration client_id for stateless calls.'],
   },
 ];
 

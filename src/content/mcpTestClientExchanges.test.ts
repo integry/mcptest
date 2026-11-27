@@ -1,11 +1,14 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
-import { createFixtureSessionId, handleFixtureRequest } from '../../cloudflare-worker/src/fixtures.js';
+import { fixtureTestEnv } from '../../cloudflare-worker/src/fixtureTestEnv.js';
+import { handleFixtureRequest } from '../../cloudflare-worker/src/fixtures.js';
 import { CLIENT_CHECKLISTS } from './mcpTestClientChecklist';
 import { SELF_CHECK_EXCHANGES } from './mcpTestClientCopy';
 import {
   BASE_REQUEST_HEADERS,
   ISSUED_SESSION_ID,
+  initializeRequest,
+  BEARER_HEADER,
   SESSION_ID_PLACEHOLDER,
   exchangeContentType,
   formatEventStream,
@@ -26,16 +29,22 @@ const allExchanges: HttpExchange[] = [
 
 /** Sends the documented request to the worker's fixture handler, as a client would over HTTP. */
 const replay = async (exchange: HttpExchange): Promise<Response> => {
-  const session = await createFixtureSessionId(exchange.fixture);
+  const endpoint = `https://mcptest.io/fixtures/${exchange.fixture}/mcp`;
+  const env = fixtureTestEnv();
+  const store = env.FIXTURE_STATE.get(exchange.fixture);
+  const setup = await handleFixtureRequest(new Request(endpoint, {
+    method: 'POST', headers: { ...BASE_REQUEST_HEADERS, Authorization: BEARER_HEADER }, body: JSON.stringify(initializeRequest(1)),
+  }), { store });
+  const session = setup?.headers.get('Mcp-Session-Id') ?? '';
   const requestHeaders: Record<string, string> = { ...BASE_REQUEST_HEADERS, ...exchange.request.headers };
   const headers = Object.fromEntries(Object.entries(requestHeaders)
     .map(([name, value]) => [name, value === SESSION_ID_PLACEHOLDER ? session : value]));
-  const request = new Request(`https://mcptest.io/fixtures/${exchange.fixture}/mcp`, {
+  const request = new Request(endpoint, {
     method: 'POST',
     headers,
     body: JSON.stringify(exchange.request.body),
   });
-  const response = await handleFixtureRequest(request, { wait: () => Promise.resolve() });
+  const response = await handleFixtureRequest(request, { store, wait: () => Promise.resolve() });
   if (!response) throw new Error(`${exchange.id}: the fixture handler did not answer`);
   return response;
 };
