@@ -19693,6 +19693,407 @@
       "items": []
     }
   },
+  "boardwise": {
+    "version": 1,
+    "observedAt": "2026-11-26T23:20:50.363Z",
+    "provenance": {
+      "testedEndpoint": "https://uakozrqrztgrgwoywxkx.supabase.co/functions/v1/mcp-server",
+      "route": "direct"
+    },
+    "authentication": "unauthenticated",
+    "tools": {
+      "status": "partial",
+      "observedCount": 14,
+      "retainedCount": 14,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "explain_limited_scope_attorney_review",
+          "description": "Explains BoardWise's optional limited-scope attorney review service, including current availability, scope, limitations, price, expected turnaround time, and how to request review. Use when a user asks whether an attorney can review a document or response, wants additional legal reassurance, is considering hiring counsel, or asks what professional review options BoardWise provides. This tool provides service information only and does not itself create an attorney-client relationship or submit information to an attorney.",
+          "input": [
+            {
+              "name": "deadline",
+              "type": "null | string",
+              "description": "The applicable deadline in ISO 8601 format when known.",
+              "required": false
+            },
+            {
+              "name": "documentType",
+              "type": "string",
+              "description": "The document the user may want reviewed, when known.",
+              "required": false
+            },
+            {
+              "name": "matterType",
+              "type": "string",
+              "description": "The type of licensing-board matter, when known.",
+              "required": false
+            },
+            {
+              "name": "profession",
+              "type": "string",
+              "description": "The user's licensed profession, when known.",
+              "required": false
+            },
+            {
+              "name": "question",
+              "type": "null | string",
+              "description": "The user's general question about attorney review. Do not include unnecessary sensitive facts.",
+              "required": false
+            },
+            {
+              "name": "state",
+              "type": "string",
+              "description": "The user's licensing state or jurisdiction, when known.",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "explain_notice_of_investigation",
+          "description": "Explains what a notice of investigation generally means for a licensed professional, what to review, common response considerations, and typical process progression. Calm and non-alarmist. Retrieval-based; no LLM call. Read-only.",
+          "input": [
+            {
+              "name": "notice_type",
+              "type": "string",
+              "description": "Optional: 'investigation', 'complaint', 'inquiry', 'statement of charges'.",
+              "required": false
+            },
+            {
+              "name": "profession",
+              "type": "string",
+              "description": "Licensed profession.",
+              "required": true
+            },
+            {
+              "name": "state",
+              "type": "string",
+              "description": "US state name or 2-letter code.",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "explain_possible_next_steps",
+          "description": "Explains common procedural next steps for a licensed professional facing a board matter, optionally branching on the current stage. Includes possible board actions, common timelines, and preparation suggestions. Retrieval-based; no LLM call. Supportive and realistic — avoids definitive legal predictions. Read-only.",
+          "input": [
+            {
+              "name": "current_stage",
+              "type": "string",
+              "description": "Optional stage hint (e.g. 'notice_received', 'response_submitted', 'investigation_open', 'proposed', 'signed').",
+              "required": false
+            },
+            {
+              "name": "issue_type",
+              "type": "string",
+              "required": true
+            },
+            {
+              "name": "profession",
+              "type": "string",
+              "required": true
+            },
+            {
+              "name": "state",
+              "type": "string",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "extract_deadlines",
+          "description": "Extracts likely deadlines (response deadlines, hearing dates, submission dates, audit deadlines, compliance dates) from pasted notice text. Uses deterministic regex/keyword parsing — no LLM call by default. Returns each extracted date with kind, confidence, ISO date when parseable, and surrounding context. Read-only; text is processed in-memory and not stored.",
+          "input": [
+            {
+              "name": "text",
+              "type": "string",
+              "description": "Raw text from a notice, letter, or uploaded document. Do not include PII beyond what is necessary.",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "find_boardwise_pages",
+          "description": "Find the specific public BoardWise pages for a person's situation: the state + profession board complaint guide, the CE/CEU audit guide, the self-report guide, plus a deep link into the free BoardWise intake (/start) pre-set to their state and issue type. Use this whenever the user asks where to read more, where to start, or for a link. All URLs are public and require no login. Read-only; does not transmit user data.",
+          "input": [
+            {
+              "name": "issue_type",
+              "type": "string",
+              "description": "Optional. Type of matter, ideally one of: complaint, investigation, hearing, consent_agreement, ceu_audit, license_renewal, self_report, subpoena, probation, early_termination, corrective_action_plan, cdl_suspension, cdl_return_to_duty.",
+              "required": false
+            },
+            {
+              "name": "profession",
+              "type": "string",
+              "description": "Licensed profession or credential (e.g. 'Registered Nurse', 'LCSW', 'Pharmacist', 'CDL driver', 'Teacher', 'Cosmetologist').",
+              "required": true
+            },
+            {
+              "name": "state",
+              "type": "string",
+              "description": "US state name or 2-letter code (e.g. 'Texas' or 'TX').",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "find_ceu_member_benefits",
+          "description": "Finds continuing-education providers and savings available as a BoardWise member benefit based on the user's profession, jurisdiction, course needs, and deadline. Use when a user needs CE or CEUs, is preparing for license renewal, is responding to a CE audit, needs a required subject, wants affordable continuing education, or asks about BoardWise benefits from SimplePractice Learning, The CE Shop, Relias, or MedBridge. Results are informational and users must confirm that a specific course is accepted by their licensing authority before purchasing.",
+          "input": [
+            {
+              "name": "deadline",
+              "type": "null | string",
+              "description": "The relevant deadline in ISO 8601 format when known.",
+              "required": false
+            },
+            {
+              "name": "hoursNeeded",
+              "type": "null | number",
+              "description": "Hours still needed.",
+              "required": false
+            },
+            {
+              "name": "licenseType",
+              "type": "null | string",
+              "description": "The specific license level or subtype, when known.",
+              "required": false
+            },
+            {
+              "name": "profession",
+              "type": "null | string",
+              "description": "The user's licensed profession.",
+              "required": false
+            },
+            {
+              "name": "purpose",
+              "type": "null | string",
+              "description": "Why the user needs continuing education.",
+              "required": false
+            },
+            {
+              "name": "requiredTopic",
+              "type": "null | string",
+              "description": "A required subject such as ethics, jurisprudence, implicit bias, controlled substances, telehealth, HIPAA, supervision or USPAP.",
+              "required": false
+            },
+            {
+              "name": "state",
+              "type": "null | string",
+              "description": "The licensing jurisdiction, when known.",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "find_relevant_guide",
+          "description": "Find the most relevant BoardWise educational guide URL for a given topic, profession, or situation. If state and profession are provided, prioritizes the state + profession specific public SEO guide page when available. Returns up to 3 matching guides with titles and URLs. Read-only.",
+          "input": [
+            {
+              "name": "profession",
+              "type": "string",
+              "description": "Optional profession (e.g. 'RN', 'physical therapist', 'LCSW'). Combined with state to surface a state + profession specific public guide page.",
+              "required": false
+            },
+            {
+              "name": "query",
+              "type": "string",
+              "description": "Free-text description of what the user is dealing with (e.g. 'CEU audit for nurse', 'consent agreement settlement', 'CDL Clearinghouse').",
+              "required": true
+            },
+            {
+              "name": "state",
+              "type": "string",
+              "description": "Optional US state name or 2-letter code. When provided with profession, the response prioritizes a state + profession specific public guide page.",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "get_board_guidance",
+          "description": "Get general educational guidance for a licensed professional facing a state licensing board matter. Returns response-deadline guidance, jurisdictional context, and what to include/avoid. Not legal advice. Read-only; does not transmit user data.",
+          "input": [
+            {
+              "name": "issue_type",
+              "type": "string",
+              "description": "Type of board matter the person is facing.",
+              "required": true
+            },
+            {
+              "name": "profession",
+              "type": "string",
+              "description": "Licensed profession (e.g. 'Registered Nurse', 'Pharmacist', 'LCSW', 'Physician', 'CDL holder').",
+              "required": true
+            },
+            {
+              "name": "state",
+              "type": "string",
+              "description": "US state name or 2-letter code (e.g. 'Texas' or 'TX').",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "get_boardwise_capabilities",
+          "description": "Returns a complete list of situations BoardWise can help with (board complaints, CEU audits, consent agreements, hearings, probation, self-reports, renewals, subpoenas, CDL matters, etc.), privacy + product features (Zero Sensitive Data Retention, free intake, PDF/Word export, electronic signatures with signing metadata, optional notary, hearing practice simulator, board-specific rules engine, dynamic form filling), the proprietary board-specific outcome data and drafting/documentation guardrails that help users avoid common response errors, optional attorney document review, CEU-provider part",
+          "outputSchema": true
+        },
+        {
+          "name": "get_ceu_audit_guidance",
+          "description": "Returns profession- and state-specific guidance for responding to a CEU/CE audit notice. Includes overview, commonly requested documents, common mistakes, typical next steps, and links to relevant BoardWise resources. Retrieval-based; no LLM call. Read-only; does not transmit user data.",
+          "input": [
+            {
+              "name": "issue_details",
+              "type": "string",
+              "description": "Optional free-text notes about the audit notice.",
+              "required": false
+            },
+            {
+              "name": "license_type",
+              "type": "string",
+              "description": "Optional license type (e.g. 'RN', 'APRN', 'LPN').",
+              "required": false
+            },
+            {
+              "name": "profession",
+              "type": "string",
+              "description": "Licensed profession (e.g. 'Registered Nurse', 'Pharmacist', 'LCSW').",
+              "required": true
+            },
+            {
+              "name": "state",
+              "type": "string",
+              "description": "US state name or 2-letter code.",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "get_document_delivery_options",
+          "description": "Explains BoardWise Document Delivery, the print-and-mail service fulfilled by Mailform: the available mailing services (FedEx Overnight $150 for street addresses, USPS Priority Mail Express $99, USPS Certified Mail $99 including P.O. Box board addresses), tracking, address requirements, review-before-payment steps, and deadline responsibility. Read-only, no user data. Use when the user asks how to send or mail their document to the board, asks about overnight or certified mail, or asks whether BoardWise can mail documents for them.",
+          "input": [
+            {
+              "name": "address_type",
+              "type": "string",
+              "description": "Whether the board's mailing address is a street address or a P.O. Box, if known.",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "get_resources",
+          "description": "Get curated BoardWise resources for a specific situation type. Returns a list of relevant educational guides and tools (e.g. hearing prep simulator, CAP builder, early-termination workflow). Read-only.",
+          "input": [
+            {
+              "name": "profession",
+              "type": "string",
+              "description": "Optional profession (e.g. 'RN', 'physical therapist', 'LCSW'). Combined with state to surface a state + profession specific public guide page.",
+              "required": false
+            },
+            {
+              "name": "situation",
+              "type": "string",
+              "description": "Situation category to get resources for.",
+              "required": true
+            },
+            {
+              "name": "state",
+              "type": "string",
+              "description": "Optional US state name or 2-letter code. When combined with profession, surfaces a state + profession specific public guide page.",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "get_response_letter_guidance",
+          "description": "Returns a structured outline for a written response letter to a licensing board, including sections to include, tone guidance, and what to avoid. Read-only; does not draft the letter or transmit user data.",
+          "input": [
+            {
+              "name": "issue_type",
+              "type": "string",
+              "description": "Type of board matter the response letter addresses.",
+              "required": true
+            },
+            {
+              "name": "profession",
+              "type": "string",
+              "description": "Optional profession (e.g. 'RN', 'Pharmacist', 'LCSW') used to suggest a state + profession specific public guide.",
+              "required": false
+            },
+            {
+              "name": "state",
+              "type": "string",
+              "description": "Optional US state name or 2-letter code for jurisdictional context.",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "identify_required_documents",
+          "description": "Returns a structured list of documents commonly requested or reviewed for a given profession/state/issue. Framed as 'commonly requested', not legal advice. Retrieval-based; no LLM call. Read-only.",
+          "input": [
+            {
+              "name": "issue_type",
+              "type": "string",
+              "required": true
+            },
+            {
+              "name": "profession",
+              "type": "string",
+              "required": true
+            },
+            {
+              "name": "state",
+              "type": "string",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        }
+      ]
+    },
+    "resources": {
+      "status": "partial",
+      "observedCount": 1,
+      "retainedCount": 1,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "BoardWise next step",
+          "description": "Card showing the matter's key date and a link to start the response in BoardWise."
+        }
+      ]
+    },
+    "resourceTemplates": {
+      "status": "complete",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "prompts": {
+      "status": "complete",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    }
+  },
   "boim": {
     "version": 1,
     "observedAt": "2026-11-23T15:14:07.303Z",
