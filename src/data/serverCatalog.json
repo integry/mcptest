@@ -55179,7 +55179,7 @@
     "id": "boldtrail",
     "name": "BoldTrail",
     "url": "https://api.boldtrail.com/crm/mcp",
-    "description": "Find, add and update contacts, notes, tasks and transactions in the BoldTrail real estate CRM. Sign in with OAuth to connect.",
+    "description": "Find, add and update contacts, log notes and tasks, book appointments and draft emails and texts in the BoldTrail real estate CRM. Sign in with OAuth to connect.",
     "category": "CRM",
     "tags": [
       "real-estate",
@@ -55197,11 +55197,11 @@
     ],
     "homepageUrl": "https://boldtrail.com/",
     "caveats": [
-      "Only listed in ChatGPT. The protected-resource metadata lists CRM scopes for contacts, users, entities and transactions. The primary returned HTTP 401 with OAuth protected-resource metadata; the signed-in handshake and tool list are unverified."
+      "Only listed in ChatGPT. Inside Real Estate's help center documents this endpoint and says the connector does not work with transactions, which stay in BoldTrail, although the protected-resource metadata lists transaction scopes. The primary returned HTTP 401 with OAuth protected-resource metadata; the signed-in handshake and tool list are unverified."
     ],
     "listingSource": {
       "kind": "publisher",
-      "url": "https://api.boldtrail.com/.well-known/oauth-protected-resource/crm/mcp"
+      "url": "https://help.insiderealestate.com/en/articles/17589328-boldtrail-connect-to-claude-or-chatgpt-with-boldtrail-mcp"
     },
     "transport": "streamable-http",
     "authType": "oauth",
@@ -55229,7 +55229,7 @@
     "id": "boldtrail-backoffice",
     "name": "BoldTrail BackOffice",
     "url": "https://my.brokermint.com/api/v1/mcp",
-    "description": "Track real estate transactions, checklists and commissions and send documents for e-signature in BoldTrail BackOffice (formerly Brokermint). Sign in with OAuth to connect.",
+    "description": "Work with real estate transactions and back-office data in BoldTrail BackOffice (formerly Brokermint); Inside Real Estate describes preparing offers and paperwork for e-signature from an AI assistant. Sign in with OAuth to connect.",
     "category": "Productivity",
     "tags": [
       "real-estate",
@@ -55248,7 +55248,7 @@
     ],
     "homepageUrl": "https://boldtrail.com/backoffice/",
     "caveats": [
-      "Only listed in ChatGPT. BackOffice runs on the my.brokermint.com host, separate from the BoldTrail CRM record. The primary returned HTTP 401 with OAuth protected-resource metadata; the signed-in handshake and tool list are unverified."
+      "Only listed in ChatGPT. BackOffice runs on the my.brokermint.com host, separate from the BoldTrail CRM record. Inside Real Estate announced BackOffice MCP as early access in August 2026 and its integrations page lists it as live, but no publisher page found names this endpoint, which comes from the ChatGPT release and its protected-resource metadata. The primary returned HTTP 401 with OAuth protected-resource metadata; the signed-in handshake and tool list are unverified."
     ],
     "listingSource": {
       "kind": "publisher",
@@ -55298,7 +55298,7 @@
     ],
     "homepageUrl": "https://www.followupboss.com/",
     "caveats": [
-      "Only listed in ChatGPT. The documented endpoint is the origin root, so exactEndpointOnly is set; the protected-resource metadata names the same root as resource and authorization server. The primary returned HTTP 401 with OAuth protected-resource metadata; the signed-in handshake and tool list are unverified."
+      "Only listed in ChatGPT. The Follow Up Boss developer docs describe the MCP App's workflows, with changes confirmed on a review card and sending texts or emails only after an administrator turns sending on, but do not name this endpoint, which comes from the ChatGPT release. The endpoint is the origin root, so exactEndpointOnly is set; the protected-resource metadata names the same root as resource and authorization server. The primary returned HTTP 401 with OAuth protected-resource metadata; the signed-in handshake and tool list are unverified."
     ],
     "listingSource": {
       "kind": "publisher",
@@ -55349,7 +55349,7 @@
     ],
     "homepageUrl": "https://www.mailopoly.com/",
     "caveats": [
-      "Only listed in ChatGPT. Messaging apps need a Pro or Business plan or a paid App Connection add-on. The primary returned HTTP 401 with OAuth protected-resource metadata; the signed-in handshake and tool list are unverified."
+      "Listed in ChatGPT. Mailopoly says it is also in the Claude directory, but the Claude index retrieved on November 27, 2026 has no Mailopoly entry, so no Claude listing is recorded. Messaging apps need a Pro or Business plan or a paid App Connection add-on. The primary returned HTTP 401 with OAuth protected-resource metadata; the signed-in handshake and tool list are unverified."
     ],
     "listingSource": {
       "kind": "publisher",
@@ -55432,7 +55432,7 @@
     "id": "privacyhawk",
     "name": "PrivacyHawk",
     "url": "https://ai.privacyhawk.com/mcp",
-    "description": "Review which businesses hold your personal data and request its deletion with PrivacyHawk. Sign in with OAuth to connect.",
+    "description": "See which companies hold your personal data, your data broker records and your Privacy Score, and ask specific companies to delete your data, stop selling it or stop emailing you with PrivacyHawk. Sign in with OAuth to connect.",
     "category": "Security",
     "tags": [
       "privacy",
@@ -55450,11 +55450,11 @@
     ],
     "homepageUrl": "https://privacyhawk.com/",
     "caveats": [
-      "Only listed in ChatGPT. The primary returned HTTP 401 with OAuth protected-resource metadata; the signed-in handshake and tool list are unverified."
+      "Only listed in ChatGPT. PrivacyHawk's support articles say the assistant cannot connect email accounts, run inbox or data broker scans, or start data broker removals; those stay in the PrivacyHawk app. The primary returned HTTP 401 with OAuth protected-resource metadata; the signed-in handshake and tool list are unverified."
     ],
     "listingSource": {
       "kind": "publisher",
-      "url": "https://ai.privacyhawk.com/.well-known/oauth-protected-resource"
+      "url": "https://support.privacyhawk.com/en/articles/17180161-how-to-connect-privacyhawk-to-claude"
     },
     "transport": "streamable-http",
     "authType": "oauth",
@@ -55550,11 +55550,11 @@
     ],
     "homepageUrl": "https://www.undermind.ai/",
     "caveats": [
-      "Only listed in ChatGPT. Undermind documents OAuth with PKCE and scope mcp; clients identify with a Client ID Metadata Document or a pre-registered client ID, with no client secret, and there is no API-key access. The primary returned HTTP 401 with OAuth protected-resource metadata; the signed-in handshake and tool list are unverified."
+      "Listed in ChatGPT. Undermind links a Claude directory entry, but the Claude index retrieved on November 27, 2026 has no Undermind entry, so no Claude listing is recorded. Undermind documents OAuth with PKCE and scope mcp; clients identify with a Client ID Metadata Document or a pre-registered client ID, with no client secret, and there is no API-key access. The primary returned HTTP 401 with OAuth protected-resource metadata; the signed-in handshake and tool list are unverified."
     ],
     "listingSource": {
       "kind": "publisher",
-      "url": "https://www.undermind.ai/mcp/reference"
+      "url": "https://www.undermind.ai/mcp"
     },
     "transport": "streamable-http",
     "authType": "oauth",
@@ -55582,7 +55582,7 @@
     "id": "werify",
     "name": "Werify",
     "url": "https://werify.app/mcp",
-    "description": "Search and read your captured WhatsApp archive, including voice-note transcripts and attachments, and control which chats Werify captures. Sign in with OAuth to connect.",
+    "description": "Search and read your captured WhatsApp conversations, including voice notes transcribed to text and shared media, and with your approval capture chats or send messages through Werify. Sign in with OAuth to connect.",
     "category": "Communication",
     "tags": [
       "whatsapp",
@@ -55600,7 +55600,7 @@
     ],
     "homepageUrl": "https://werify.app/",
     "caveats": [
-      "Only listed in ChatGPT. The protected-resource metadata lists conversations:read and conversations:write scopes. The primary returned HTTP 401 with OAuth protected-resource metadata; the signed-in handshake and tool list are unverified."
+      "Only listed in ChatGPT. Werify's site describes the connector but no Werify page found names this endpoint, which comes from the ChatGPT release; the protected-resource metadata lists conversations:read and conversations:write scopes. Werify documents MCP request limits. The primary returned HTTP 401 with OAuth protected-resource metadata; the signed-in handshake and tool list are unverified."
     ],
     "listingSource": {
       "kind": "publisher",
@@ -55709,7 +55709,7 @@
       }
     ],
     "caveats": [
-      "Only listed in ChatGPT. HeyGen documents https://mcp.heygen.com/mcp/v1/ for every client; the ChatGPT listing declares https://mcp.heygen.com/mcp, recorded as an alternative. This general video server is separate from the hyperframes record. The primary returned HTTP 401 with OAuth protected-resource metadata; the signed-in handshake and tool list are unverified."
+      "Only listed in ChatGPT. HeyGen documents https://mcp.heygen.com/mcp/v1/ for manually configured clients such as Claude Code, Cursor and Gemini CLI; the ChatGPT listing declares https://mcp.heygen.com/mcp, recorded as an alternative. This general video server is separate from the hyperframes record. The primary returned HTTP 401 with OAuth protected-resource metadata; the signed-in handshake and tool list are unverified."
     ],
     "listingSource": {
       "kind": "publisher",
@@ -55820,7 +55820,7 @@
     ],
     "listingSource": {
       "kind": "publisher",
-      "url": "https://desktopcommander.app/help/getting-started/connect-to-gemini"
+      "url": "https://desktopcommander.app/help/getting-started/what-is-desktop-commander"
     },
     "transport": "streamable-http",
     "authType": "oauth",
@@ -55866,7 +55866,7 @@
     ],
     "homepageUrl": "https://steer.coach/",
     "caveats": [
-      "Only listed in ChatGPT. The primary returned HTTP 401 with a bare Bearer challenge; the protected-resource metadata at /.well-known/oauth-protected-resource names the primary as its resource. The signed-in handshake and tool list are unverified."
+      "Only listed in ChatGPT. Steer's ChatGPT page describes the birth chart, dasha, transit and panchang features but does not name this endpoint, which comes from the ChatGPT release. The primary returned HTTP 401 with a bare Bearer challenge; the protected-resource metadata at /.well-known/oauth-protected-resource names the primary as its resource. The signed-in handshake and tool list are unverified."
     ],
     "listingSource": {
       "kind": "publisher",
@@ -55916,7 +55916,7 @@
     ],
     "homepageUrl": "https://deepnote.com/",
     "caveats": [
-      "Only listed in ChatGPT. Deepnote documents OAuth for clients such as Claude and Cursor, and a workspace API key sent as a Bearer token. Tools are annotated as read-only or state-changing. The primary returned HTTP 401 with OAuth protected-resource metadata; the signed-in handshake and tool list are unverified."
+      "Only listed in ChatGPT. Deepnote documents OAuth for clients such as Claude and Cursor, and a workspace API key sent as a Bearer token. Deepnote documents which tools are read-only and which change the workspace; write tools need edit access. The primary returned HTTP 401 with OAuth protected-resource metadata; the signed-in handshake and tool list are unverified."
     ],
     "listingSource": {
       "kind": "publisher",
@@ -55951,7 +55951,7 @@
     "id": "ringcentral-phone",
     "name": "RingCentral Phone",
     "url": "https://mcp.labs.ringcentral.com/ringex/phone",
-    "description": "Review calls, AI call insights, voicemail, SMS and faxes, draft follow-ups, send texts and look up colleagues in RingCentral RingEX. Sign in with OAuth to connect.",
+    "description": "Review calls, AI call insights, voicemail, SMS and faxes, send texts and look up colleagues and contacts in RingCentral RingEX. Sign in with OAuth to connect.",
     "category": "Communication",
     "tags": [
       "telephony",
@@ -56012,7 +56012,7 @@
     "id": "subtext",
     "name": "Subtext",
     "url": "https://api.fullstory.com/mcp/subtext",
-    "description": "Investigate Fullstory production sessions from a session link, with DOM, screenshots, console and network data, and manage privacy rules. Sign in with OAuth to connect.",
+    "description": "Investigate Fullstory production sessions from a session link or search, with screenshots, component trees, console and network data, and manage capture privacy rules. Sign in with OAuth to connect.",
     "category": "Observability",
     "tags": [
       "session-replay",
@@ -56067,7 +56067,7 @@
     "id": "actively",
     "name": "Actively",
     "url": "https://api.actively.ai/mcp",
-    "description": "Look up accounts and read the memory, decisions and next actions from Actively per-account GTM agents; public tools are read-only. Sign in with OAuth to connect.",
+    "description": "Look up accounts, recent account activity and the memory and strategic recommendations of Actively per-account agents, and discover skills; public tools are read-only. Sign in with OAuth to connect.",
     "category": "CRM",
     "tags": [
       "sales",
@@ -56122,7 +56122,7 @@
     "id": "lilt",
     "name": "LILT",
     "url": "https://mcp.lilt.com/mcp",
-    "description": "Request translations with optional human verification from LILT. Sign in with OAuth to connect.",
+    "description": "Translate text and files with LILT instantly or as human-verified jobs, check job status and translation credits, and download finished jobs. Sign in with OAuth to connect.",
     "category": "Productivity",
     "tags": [
       "translation",
@@ -56140,11 +56140,11 @@
     ],
     "homepageUrl": "https://lilt.com/",
     "caveats": [
-      "LILT enterprise hosts request different scopes; the Claude listing is attributed to this primary only. The primary returned HTTP 401 with OAuth protected-resource metadata; the signed-in handshake and tool list are unverified."
+      "LILT documents https://mcp.lilt.com/mcp for Claude, with LILT MCP accounts separate from lilt.com accounts; its separate enterprise host requests different scopes, and the Claude listing is attributed to this primary only. The primary returned HTTP 401 with OAuth protected-resource metadata; the signed-in handshake and tool list are unverified."
     ],
     "listingSource": {
       "kind": "publisher",
-      "url": "https://mcp.lilt.com/.well-known/oauth-protected-resource/mcp"
+      "url": "https://support.lilt.com/lilt-for-claude-marketplace"
     },
     "transport": "streamable-http",
     "authType": "oauth",
@@ -56234,7 +56234,7 @@
     "id": "loomi-connect",
     "name": "Loomi Connect",
     "url": "https://us.connect.loomi.ai/mcp",
-    "description": "Work with Bloomreach marketing, customer profiles, campaigns, automation scenarios, analytics and product search through Loomi Connect. Sign in with OAuth to connect.",
+    "description": "Work with Bloomreach marketing, customer profiles, campaigns, automation scenarios, analytics, Discovery search configuration and Data hub through Loomi Connect, including tools that change configuration. Sign in with OAuth to connect.",
     "category": "Analytics",
     "tags": [
       "bloomreach",
@@ -56326,7 +56326,7 @@
     ],
     "homepageUrl": "https://www.rockhopper.co/",
     "caveats": [
-      "The challenge requests the read-only scope. Rockhopper also publishes a local package (@rockhopper-co/mcp-server) that uses a personal access token. The primary returned HTTP 401 with OAuth protected-resource metadata; the signed-in handshake and tool list are unverified."
+      "Rockhopper describes MCP access as early access, rolling out by request. The challenge requests the read-only scope. Rockhopper also publishes a local package (@rockhopper-co/mcp-server) that uses a personal access token. The primary returned HTTP 401 with OAuth protected-resource metadata; the signed-in handshake and tool list are unverified."
     ],
     "listingSource": {
       "kind": "publisher",
@@ -56358,7 +56358,7 @@
     "id": "salesflare",
     "name": "Salesflare",
     "url": "https://mcp.salesflare.com/mcp",
-    "description": "List, create and update Salesflare accounts, contacts, opportunities, pipelines, tags and tasks. Sign in with OAuth to connect.",
+    "description": "Look up Salesflare accounts, contacts, opportunities, tasks, pipelines, tags and team members, create accounts, contacts, opportunities and tasks, update records and complete tasks. Sign in with OAuth to connect.",
     "category": "CRM",
     "tags": [
       "crm",
@@ -56413,7 +56413,7 @@
     "id": "fitch-solutions",
     "name": "Fitch Solutions",
     "url": "https://api.fitch.group/nexus/mcp",
-    "description": "Query Fitch Ratings credit research and data, CreditSights intelligence and BMI country and sector risk analysis through one governed connection. Sign in with OAuth to connect.",
+    "description": "Query Fitch Ratings research and data, CreditSights research on companies and deals, and BMI macroeconomic, industry and ESG data and forecasts through Fitch's governed API gateway; read-only and scoped to your licensed packages. Sign in with OAuth to connect.",
     "category": "Finance",
     "tags": [
       "credit-ratings",
@@ -56468,7 +56468,7 @@
     "id": "blackthorn-beacon",
     "name": "Blackthorn Forge",
     "url": "https://forge.blackthorn.io/api/mcp",
-    "description": "Create, query and report on Salesforce events, attendees, tickets, sessions, forms and email campaigns with Blackthorn Forge, within your own Salesforce permissions. Sign in with OAuth to connect.",
+    "description": "Create, query and report on Salesforce events, attendees, tickets, sessions, forms and scheduled emails with Blackthorn Forge, within your own Salesforce permissions. Sign in with OAuth to connect.",
     "category": "Productivity",
     "tags": [
       "salesforce",
@@ -56486,11 +56486,11 @@
     ],
     "homepageUrl": "https://blackthorn.io/",
     "caveats": [
-      "The primary returned HTTP 401 without a WWW-Authenticate challenge. The Forge guide documents OAuth, a static Bearer token and manual ChatGPT setup; writes need a preview and signed approval first. The signed-in handshake and tool list are unverified."
+      "The primary returned HTTP 401 without a WWW-Authenticate challenge. The Forge guide documents OAuth, a static Bearer token and manual ChatGPT setup; an admin must first connect the Salesforce org in Forge. Deletes need a preview and a signed approval token, and email sends to more than 50 recipients need a fresh preview. The signed-in handshake and tool list are unverified."
     ],
     "listingSource": {
       "kind": "publisher",
-      "url": "https://forge.blackthorn.io/about"
+      "url": "https://forge.blackthorn.io/guide"
     },
     "transport": "streamable-http",
     "authType": "oauth",
@@ -56510,7 +56510,7 @@
         "required": false
       },
       "reviewedAt": "2026-11-27",
-      "evidenceUrl": "https://forge.blackthorn.io/about"
+      "evidenceUrl": "https://forge.blackthorn.io/guide"
     },
     "logoUrl": "/server-logos/blackthorn-beacon.svg",
     "logoSourceKind": "generated-fallback",
@@ -56540,7 +56540,7 @@
     ],
     "homepageUrl": "https://www.kpler.com/",
     "caveats": [
-      "This is the Claude-specific host the Claude listing uses; keep the trailing slash. The neutral mcp.kpler.com returned no HTTP response. The primary returned HTTP 401 with a Bearer challenge and OAuth protected-resource metadata; the signed-in handshake and tool list are unverified."
+      "Kpler describes its MCP access on its Kpler AI product page, offered by request, but no Kpler page found names this endpoint. This is the Claude-specific host the Claude listing uses; keep the trailing slash. The neutral mcp.kpler.com returned no HTTP response. The primary returned HTTP 401 with a Bearer challenge and OAuth protected-resource metadata; the signed-in handshake and tool list are unverified."
     ],
     "listingSource": {
       "kind": "client-directory",
@@ -56595,7 +56595,7 @@
     ],
     "homepageUrl": "https://legora.com/",
     "caveats": [
-      "The challenge requests the agent:invoke scope. The ChatGPT release omits the endpoint URL; the listing is attributed at product level. The primary returned HTTP 401 with OAuth protected-resource metadata; the signed-in handshake and tool list are unverified."
+      "Legora's announcement says the MCP server answers legal and jurisdiction-scoped research questions with citations, while creating, editing or exporting documents happens in Legora itself, and that it is for existing Legora customers; it does not name this endpoint. The challenge requests the agent:invoke scope. The ChatGPT release omits the endpoint URL; the listing is attributed at product level. The primary returned HTTP 401 with OAuth protected-resource metadata; the signed-in handshake and tool list are unverified."
     ],
     "listingSource": {
       "kind": "publisher",
@@ -56645,7 +56645,7 @@
     ],
     "homepageUrl": "https://clarivate.com/",
     "caveats": [
-      "The protected-resource metadata is served from an AWS Bedrock AgentCore gateway host. The primary returned HTTP 401 with OAuth protected-resource metadata; the signed-in handshake and tool list are unverified."
+      "The protected-resource metadata is served from an AWS Bedrock AgentCore gateway host. Clarivate's page labels the protocol \"MCP over SSE\"; without credentials the endpoint answered POST with HTTP 401 and GET with HTTP 400 rather than opening a legacy SSE stream, so the declared Streamable HTTP transport is kept but unverified. The primary returned HTTP 401 with OAuth protected-resource metadata; the signed-in handshake and tool list are unverified."
     ],
     "listingSource": {
       "kind": "publisher",
@@ -56677,7 +56677,7 @@
     "id": "isolved",
     "name": "isolved People Cloud",
     "url": "https://api.myisolved.com/restmcp-prod/mcp",
-    "description": "Work with your isolved People Cloud HR and payroll data. Sign in with OAuth to connect.",
+    "description": "Check time off, time cards, pay and benefits, submit time-off requests and missed punches, and update personal information in isolved People Cloud as an employee; changes are confirmed before submission. Sign in with OAuth to connect.",
     "category": "Productivity",
     "tags": [
       "hr",
@@ -56695,7 +56695,7 @@
     ],
     "homepageUrl": "https://www.isolvedhcm.com/",
     "caveats": [
-      "The protected-resource metadata lists isolved-mcp and perfect-payroll-api scopes. The primary returned HTTP 401 with OAuth protected-resource metadata; the signed-in handshake and tool list are unverified."
+      "isolved documents an employee self-service connector for Claude: pay and benefits are read-only, and manager, HR and administrator capabilities are planned. No isolved page found names this endpoint. The protected-resource metadata lists isolved-mcp and perfect-payroll-api scopes. The primary returned HTTP 401 with OAuth protected-resource metadata; the signed-in handshake and tool list are unverified."
     ],
     "listingSource": {
       "kind": "publisher",
