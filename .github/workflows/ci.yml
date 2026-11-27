@@ -73,7 +73,9 @@ jobs:
     name: End-to-end smoke and Lighthouse budgets
     needs: verify
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # Master already needs 19-20 minutes (desktop /catalog Lighthouse runs take
+    # about 75 s each), so 20 left no headroom as the catalog grows.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
 
