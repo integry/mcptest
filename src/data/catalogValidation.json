@@ -15301,5 +15301,17 @@
     "authorizationServers": [
       "https://auth.freshbooks.com"
     ]
+  },
+  {
+    "serverId": "mak-public-rcic-mcp",
+    "status": "online",
+    "transport": "streamable-http",
+    "authType": "none",
+    "requiresOAuth": false,
+    "protocolEra": "stateful",
+    "checkedAt": "2026-11-27T15:29:15.600Z",
+    "message": "Negotiated stateful MCP 2025-11-25 at https://mak-public-rcic-mcp.vercel.app/mcp; detected transport streamable-http; authentication none",
+    "validatedUrl": "https://mak-public-rcic-mcp.vercel.app/mcp",
+    "protocolVersion": "2025-11-25"
   }
 ]
