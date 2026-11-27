@@ -26,7 +26,7 @@ const envelope = {
 const env = fixtureTestEnv();
 const send = (path, init = {}, options) => {
   const request = new Request(`${ORIGIN}${path}`, init);
-  const store = options && env.FIXTURE_STATE.get(ORIGIN + '/' + path.split('/')[2]);
+  const store = options && env.SUBMISSION_RATE_LIMITER.get('fixture:' + ORIGIN + '/' + path.split('/')[2]).fixture;
   return options ? handleFixtureRequest(request, { ...options, store }) : worker.fetch(request, env, {});
 };
 
@@ -773,7 +773,7 @@ describe('fixture test hooks', () => {
       'X-Hop': 'internal', 'Content-Length': '17', 'MCP-Protocol-Version': LEGACY_PROTOCOL_VERSION,
     } }) };
     const response = await worker.fetch(new Request(ORIGIN + '/fixtures/echo/mcp'), {
-      FIXTURE_STATE: { idFromName: name => name, get: () => stub },
+      SUBMISSION_RATE_LIMITER: { idFromName: name => name, get: () => stub },
     }, {});
     for (const name of ['Connection', 'Keep-Alive', 'Transfer-Encoding', 'X-Hop', 'Content-Length']) {
       expect(response.headers.has(name)).toBe(false);

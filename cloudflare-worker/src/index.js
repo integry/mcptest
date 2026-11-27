@@ -1,4 +1,3 @@
-export { FixtureState } from "./FixtureState";
 import { UserState } from "./UserState";
 import { PublishedReports } from "./PublishedReports";
 import { handleBadgeRequest } from "./badges";

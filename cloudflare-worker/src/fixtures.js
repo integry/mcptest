@@ -9,6 +9,7 @@ import {
   FixtureRpcError,
 } from './fixtureServers.js';
 
+export const FIXTURE_OBJECT_PREFIX = 'fixture:';
 export const FIXTURE_PATH = /^\/fixtures\/([^/]+)\/mcp\/?$/;
 export const MAX_FIXTURE_BODY_BYTES = 16 * 1024;
 export const MODERN_PROTOCOL_VERSION = '2026-07-28';
@@ -555,8 +556,8 @@ export const handleFixtureRequest = async (request, options = {}) => {
   }
   const { store } = options;
   if (!store) {
-    const ns = options.env.FIXTURE_STATE;
-    const response = await ns.get(ns.idFromName(url.origin + '/' + name)).fetch(request);
+    const ns = options.env.SUBMISSION_RATE_LIMITER;
+    const response = await ns.get(ns.idFromName(FIXTURE_OBJECT_PREFIX + url.origin + '/' + name)).fetch(request);
     // The object binding is an internal HTTP hop. Only forward the fixture's
     // end-to-end headers, and let the edge frame the body for HTTP/1 or HTTP/2.
     const headers = new Headers();
