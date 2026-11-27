@@ -648,3 +648,55 @@ awk -F'\t' '$1 == "connector.69feb637-7aa9-48f1-9443-71b881c0167c" { print NR }'
 - **Client and regional alternatives.** Tango's Claude listing uses `https://govcon.dev/mcp`, and Roam Research's uses `https://mcp.roamresearch.com/mcp/claude`. Both returned authentication challenges. Also recorded as alternatives, each returning HTTP 401 with its own protected-resource metadata: the LlamaParse EU endpoint, the nine Zoho Mail regional endpoints (`eu`, `in`, `jp`, `ca`, `com.au`, `uk`, `ae`, `sa`, `sg`) listed by the Claude connector, and ShipBob's labeled sandbox.
 - `exactEndpointOnly` is set for the documented roots of Blackbaud, Cube and Process Street. Blackbaud's 401 carries a bare `Bearer` challenge.
 - Directory listings are record-level, so listings tied to an alternative route are named in that alternative's description and in the caveat. The Cube ChatGPT listing keeps the supplied `chatgpt.com/apps/…` entry URL. Each ChatGPT release is listed, enabled and from the expected developer (Daily Tarot's developer is Sider). The D&B, LlamaParse, Blackbaud, Cube, Ideals, Fever, Unify, Roam Research, WeTransfer and Fyxer releases omit endpoint URLs. The Daily Tarot, Ample Computer, Wonder, Kuliko AI, Process Street, iubenda and FreshBooks releases name the primary.
+
+## Batch 28 import
+
+GitHub issue [#773](https://github.com/integry/mcptest/issues/773) tracks this import. It builds on batch 27 (`d3c03aeac9ab859a3a4e9f81d082081da2141c56`, PR [#772](https://github.com/integry/mcptest/pull/772)). The catalog grew from 1,125 to 1,155 entries. The 30 candidates were matched first on `directoryListings.id`, then on the normalized primary and alternative URLs. Neither pass found an existing match. Each new record is internal, with the supplied `publisher` listing source, a Streamable HTTP primary, every identified Claude and ChatGPT listing, and a generated monogram logo. Runway (`runway-generation`, runwayml.com media generation) is separate from the existing `runway-team` record; D&B Finance Analytics is separate from `dnb-risk-analytics`; Bigin is separate from `zoho-crm`; and the Meridian Connector for Xero (Pilot) is separate from the Xero-operated `xero` and `xero-connector` records.
+
+### Relevance snapshot
+
+The Claude index retrieved on November 26, 2026 (1,228 records, 1,224 scored) is byte-identical to the [batch 27 ranking snapshot](catalog-batch-27-claude-ranking.tsv) (SHA-256 `7a5c5af3233359f60b32f0b5cba6e96a61f19c8e5e92eb5ec9eadd8d4ee5a9a8`), so scores use it with `Math.round(100 * (1224 - rank) / 1224)` and 1-based ranks. All 22 ranked Claude candidates reproduce the supplied ranks and scores: BoardWise 844 → 31; MindMeister 657 to HighQ 666 → 46; GIS Cloud 668 to CargoAi 678 → 45; Anrok 680, Abency 686, dot. 687 and Meridian 688 → 44. The eight ChatGPT-only records (Calories Club, GSC Wizard, Microsoft Fabric IQ, Runway, Hevy, FantasyBot, Metal, Otter A/B testing) get 50.
+
+```sh
+awk -F'\t' '$1 == "connector.ab14fdd2-6e9c-41f5-982b-cb1f02eb5fd8" { print NR, int(100 * (1224 - NR) / 1224 + 0.5) }' \
+  docs/catalog-batch-27-claude-ranking.tsv   # BoardWise: 844 31
+```
+
+### Existing records
+
+Relevance and primaries are unchanged.
+
+- **ChatGPT routes recorded as alternatives.** Three ChatGPT releases declare their own endpoints, now alternatives whose descriptions name the listing. Each returned HTTP 401 with a Bearer challenge: `vibe-prospecting` (`plugin_asdk_app_6947c583d8308191844af6213ceabe16`, `https://vibeprospecting-gpt.explorium.ai/mcp`, no protected-resource metadata), `speko` (`plugin_asdk_app_6a88aa7070e88191b5825453492c5cf5`, `https://chatgpt.speko.ai/mcp`) and `tldraw` (`plugin_asdk_app_6ab242dbeb5c8191ba5277534ef0c570`, `https://codex-app.tldraw.xyz/mcp`, OAuth, unlike tldraw's anonymous primary).
+- **Product-level ChatGPT listings.** The releases for `plaud`, `deel`, `wiley-scholar-gateway`, `brighthire`, `adobe-experience-manager`, `frontify`, `metaview`, `swagger`, `adobe-cja` and `planetscale` omit endpoint URLs; each listing is attributed at product level with a caveat. Each release is enabled and from the expected developer.
+- **Wiley Scholar Gateway.** The listing source moves from the Claude directory page to the publisher's [protected-resource metadata](https://connector.scholargateway.ai/.well-known/oauth-protected-resource/v2/mcp), which names the `/v2/mcp` primary as its resource.
+
+### Validation and endpoint provenance
+
+- All 30 new primaries are `online` in `src/data/catalogValidation.json`.
+- **BoardWise** completed an anonymous handshake on its shared Supabase deployment (boardwise 1.0.0, stateful MCP 2025-03-26), which the [BoardWise MCP page](https://boardwise.online/mcp-server) documents. Its capability snapshot (14 read-only tools, one MCP App resource) is stored in `src/data/catalogCapabilities.json`; no tool was invoked. The branded `https://boardwise.online/mcp` route initialized the same way with the same 14 tools and is an alternative. The claimed ChatGPT release could not be verified, so BoardWise is Claude-only.
+- **Validator fix.** BoardWise first failed as `unexpected_response` because the capability inventory rendered JSON Schema type arrays such as `["string", "null"]` as `null | string` but then rejected that string when it re-checked the stored inventory. `safeType` in `src/utils/capabilityInventory.ts` now accepts its own canonical union form, and `capabilityInventory.test.ts` covers the round trip and rejects non-canonical unions.
+- The other 29 returned HTTP 401 and are recorded with `requiresOAuth: true`. For these, the signed-in handshake, transport and tool inventory are unverified; descriptions follow the publisher's documented capabilities and authentication. Addepar's root returned 401 without a `WWW-Authenticate` header; its root protected-resource metadata names the same origin. QuickNode's 401 carried a bare Bearer challenge; QuickNode documents OAuth and an API key sent as a bearer token (`alternativeAuthTypes: bearer-token`). Light documents an `lmcp_` MCP token (`bearer-token`). CargoAi documents an optional `x-api-key` header (`api-key`, optional `requiredHeaders`). Otter documents Bearer API-key and legacy key-in-URL routes besides OAuth at `/mcp`, named in its caveat.
+- **Alternatives.** Microsoft Fabric IQ: `https://api.fabric.microsoft.com/v1/mcp/fabriciq`, which [Microsoft Learn](https://learn.microsoft.com/en-us/fabric/iq/connectors/fabric-iq-mcp) documents for private links and which the ChatGPT release declares. Hevy: the root `https://mcp.hevy.com/` that Hevy's docs allow for Claude connectors. FantasyBot: `https://api.fantasybot.ai/claude/mcp`, documented at [fantasybot.ai/mcp/docs](https://www.fantasybot.ai/mcp/docs). Bigin: the seven regional endpoints (`eu`, `in`, `jp`, `ca`, `com.au`, `ae`, `sa`), which share the primary's Claude listing. Each returned HTTP 401 with OAuth protected-resource metadata. Manual setup gives Hevy and FantasyBot no Claude directory attribution.
+- `exactEndpointOnly` is set for the documented roots of Addepar and Hubstaff; Hubstaff's root challenged for `hubstaff:read`. Reprise's slashless `/mcp` returned HTTP 307 to the trailing-slash primary.
+- The QuickNode listing keeps the supplied `chatgpt.com/apps/quicknode/…` URL, and D&B Finance Analytics keeps `https://chatgpt.com/plugins/dnb-finance-analytics`. Each ChatGPT release is listed, enabled and from the expected developer. The Calories Club, GSC Wizard, Runway, Hevy, FantasyBot, Metal, Otter, Dext and Abency releases name the primary, and Fabric IQ's names the private-link alternative. The Orion, QuickNode, D&B, HighQ, GIS Cloud, Hubstaff and Meridian releases omit endpoint URLs. The D&B and GIS Cloud releases establish product membership only. Reprise, MyCase, CargoAi and AngelList document custom ChatGPT installation only, with no directory listing.
+
+### Queued for later batches
+
+These rows are not imported. Each has a publisher source and internal attribution, and each returned HTTP 401 during anonymous initialization, with a Bearer challenge except Cashfree. Deepnote (`https://deepnote.com/mcp`, ChatGPT `plugin_asdk_app_69fb51f9519081919c1f3e44ea9a5a05`) stays queued per #771. Parqet and Shipt are held after HTTP 403. Pega Blueprint (`connector.c8359a84-9d5c-4c6e-857a-e30ec41abc8b`, rank 853, relevance 30) is queued with publisher source `https://mcp.pega.com/prweb/api/oauth2/v1/.well-known/oauth-protected-resource/service/v1/dcoai/default`. The 24 unlisted, unscored entries are unchanged.
+
+| Rank / relevance | Candidate | Primary | Claude connector | Notes |
+| --- | --- | --- | --- | --- |
+| 837 / 32 | Schwab Advisor Services | `https://agent.schwabinstitutional.com/mcp` | `connector.135037c6-28e5-43a2-af33-866014d9f449` | Source: protected-resource metadata |
+| 838 / 32 | Prefect | `https://prefect.fastmcp.app/mcp` | `connector.a278dc29-a087-4ddd-9fb9-66390bc06543` | Source: PrefectHQ/prefect-mcp-server README |
+| 839 / 31 | Ninout | `https://mcp.svy.ooo/mcp` | `connector.d6c4eff2-695f-4696-a10a-9341a1cccd34` | |
+| 840 / 31 | Productised | `https://mcp.productised.ai/mcp` | `connector.f9efc548-1533-4b9d-b498-e34727caf3ef` | |
+| 842 / 31 | LSEG AI | `https://mcp.lseg.com/` | `connector.1195d151-ccdb-4f4b-bf57-2b4ce425055c` | `exactEndpointOnly`; root has LSE24 tools; analytics manifest and ChatGPT listing stay on `lseg` |
+| 843 / 31 | Pi Security | `https://mcp.pi.security/mcp` | `connector.c703ddc2-743d-4677-b37e-4f58476c6a60` | ChatGPT `plugin_asdk_app_6a85ce4e2e20819185c9bc88d5d99503` (product) |
+| 845 / 31 | Bolna | `https://mcp.bolna.ai/api/mcp` | `connector.fa067f0c-abcb-4a3c-8228-171a83b2e03a` | Alternative `https://mcp.bolna.ai/api/connector/mcp` (Claude); both 401 |
+| 847 / 31 | Cashfree | `https://mcp.cashfree.com/mcp` | `connector.003f921f-d0e6-4dd9-a1c1-38af9bc831d2` | 401 without challenge; publisher documents merchant OAuth |
+| 848 / 31 | Zoho CRM tool discovery | `https://crm.zohomcp.com/mcp/message` | `connector.6931befd-bf61-4bf3-92e1-f96c8d2904ac` | Four tools vs `zoho-crm`'s 41, separate OAuth; `zoho-crm` keeps 90; ChatGPT routing unresolved |
+| 849 / 31 | Rocket Lawyer | `https://api.rocketlawyer.com/mcp-du/mcp` | `connector.c67ec61e-2669-4917-85f3-88a8c29a9451` | Source: protected-resource metadata |
+| 851 / 30 | Valuecase | `https://mcp.valuecase.com/mcp` | `connector.e49222d4-ea6f-4f0a-b7ad-5635bf3bde38` | ChatGPT `plugin_asdk_app_6a4c0124dce4819180dd36a67ad256d4` (product) |
+| 852 / 30 | Papermark | `https://mcp.papermark.com/mcp` | `connector.4b0cc0a6-8e58-413f-820e-b00f9c96b7c4` | |
+| 854 / 30 | Chatbase | `https://mcp.chatbase.co/api/mcp` | `connector.48ba489e-160f-4965-913b-667cce063da2` | ChatGPT `plugin_asdk_app_6ab2ab7ec7d881919fd92d2a248f4e0f` (product) |
+| 855 / 30 | Chamelio | `https://mcp.chamelio.ai/mcp` | `connector.75ba10c2-a62f-4fd3-b2ab-39af1fe9911b` | |

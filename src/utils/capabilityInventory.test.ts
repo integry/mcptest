@@ -237,6 +237,43 @@ describe('public-safe capability inventory', () => {
     expect(validateCapabilityInventory(JSON.parse(JSON.stringify(inventory)))).toEqual(inventory);
   });
 
+  it('round-trips nullable union argument types through validation', () => {
+    const inventory = createCapabilityInventory({
+      observedAt: '2026-11-26T23:30:00.000Z',
+      testedEndpoint: 'https://example.com/mcp',
+      route: 'direct',
+      authentication: 'unauthenticated',
+      statuses,
+      discovered: {
+        tools: [{
+          name: 'nullable_arguments',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              deadline: { type: ['string', 'null'] },
+              hours: { type: ['number', 'null'] },
+            },
+          },
+        }],
+        resources: [],
+        resourceTemplates: [],
+        prompts: [],
+      },
+    });
+
+    expect(inventory.tools.items[0].input).toEqual([
+      { name: 'deadline', type: 'null | string', required: false },
+      { name: 'hours', type: 'null | number', required: false },
+    ]);
+    expect(validateCapabilityInventory(JSON.parse(JSON.stringify(inventory)))).toEqual(inventory);
+
+    for (const type of ['string | null', 'null | null', 'null | secret', 'null |  string']) {
+      const tampered = JSON.parse(JSON.stringify(inventory));
+      tampered.tools.items[0].input[0].type = type;
+      expect(() => validateCapabilityInventory(tampered)).toThrow(/non-canonical/);
+    }
+  });
+
   it('deduplicates argument names case-insensitively for canonical consumers', () => {
     const inventory = createCapabilityInventory({
       observedAt: '2026-08-17T22:00:00.000Z',
