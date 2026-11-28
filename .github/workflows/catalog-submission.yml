@@ -96,6 +96,7 @@ jobs:
             src/data/serverCatalog.json
             src/data/catalogValidation.json
             src/data/catalogCapabilities.json
+            src/data/workerCatalogCapabilities.json
             src/utils/catalogUtils.test.ts
             public/server-logos/${{ steps.apply.outputs.id }}.*
           commit-message: 'Add ${{ steps.apply.outputs.id }} to the catalog (community submission)'

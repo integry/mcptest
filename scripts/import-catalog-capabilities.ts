@@ -6,6 +6,7 @@ import { PublicReportSchema } from '../src/utils/reportArtifact';
 import { validateCapabilityInventory } from '../src/utils/capabilityInventory';
 import type { CatalogServerSeed, CatalogValidationResult } from '../src/types/catalog';
 import type { CapabilityInventoryV1 } from '../src/types/capabilityInventory';
+import { writeWorkerCapabilities } from './worker-capabilities.cjs';
 
 const projectRoot = path.join(__dirname, '..');
 const catalogPath = path.join(projectRoot, 'src', 'data', 'serverCatalog.json');
@@ -32,6 +33,7 @@ const writeCapabilities = (snapshots: Record<string, CapabilityInventoryV1>): vo
   const next = Object.fromEntries(Object.entries(snapshots)
     .sort(([left], [right]) => left.localeCompare(right)));
   fs.writeFileSync(capabilitiesPath, `${JSON.stringify(next, null, 2)}\n`, 'utf8');
+  writeWorkerCapabilities(next);
 };
 
 // Scheduled revalidation mode: re-checks every stored snapshot (including imported

@@ -3,12 +3,15 @@
 //
 // The catalog, its latest validation run and the observed capability inventories
 // are bundled at build time (the same files the badge route and the site read),
-// and this module keeps only the public fields the catalog tools return. Nothing
+// and this module keeps only the public fields the catalog tools return. The
+// inventories come from workerCatalogCapabilities.json, a projection of
+// catalogCapabilities.json without tool descriptions or schemas (see
+// scripts/worker-capabilities.cjs), which keeps the deployed bundle small. Nothing
 // here contacts a listed server: every tool call is a lookup in this index, so a
 // redeploy after `npm run validate-catalog` publishes fresh results.
 import serverCatalog from "../../src/data/serverCatalog.json";
 import catalogValidation from "../../src/data/catalogValidation.json";
-import catalogCapabilities from "../../src/data/catalogCapabilities.json";
+import catalogCapabilities from "../../src/data/workerCatalogCapabilities.json";
 import { getCatalogBadgeVariant } from "../../src/utils/badges.ts";
 import { getCatalogCategoryPath } from "../../src/utils/catalogCategories.ts";
 import { SITE_URL, getCatalogServerPath } from "../../src/utils/catalogSeo.ts";
