@@ -57550,11 +57550,11 @@
     ],
     "homepageUrl": "https://www.zillow.com/",
     "caveats": [
-      "Zillow's connector page says the connector is read-only, is not tied to a Zillow account and cannot save homes or contact agents; it does not name the endpoint. The Claude listing confirms the /api/v2 path: the origin root failed and /api/v1 returned 404. Initialization and discovery completed anonymously (nine tools, three resources); no tool was invoked. The ChatGPT entry is a product-level app listing whose release could not be read anonymously (HTTP 451)."
+      "Listed from the Claude directory: Zillow's publisher guide (https://www.zillow.com/connect-claude-to-zillow/) says the connector is read-only, is not tied to a Zillow account and cannot save homes or contact agents, but it does not state the endpoint URL. The /api/v2 URL comes from the Claude directory; the origin root failed and /api/v1 returned 404. Initialization and discovery completed anonymously (nine tools, three resources); no tool was invoked. The ChatGPT entry is a product-level app listing whose release could not be read anonymously (HTTP 451)."
     ],
     "listingSource": {
-      "kind": "publisher",
-      "url": "https://www.zillow.com/connect-claude-to-zillow/"
+      "kind": "client-directory",
+      "url": "https://claude.com/marketplace/connectors/zillow"
     },
     "transport": "streamable-http",
     "authType": "none",
