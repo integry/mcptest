@@ -21,6 +21,7 @@ const rawDiscoveryPageSchema = z.unknown();
 const catalogPath = path.join(__dirname, '..', 'src', 'data', 'serverCatalog.json');
 const outputPath = path.join(__dirname, '..', 'src', 'data', 'catalogValidation.json');
 const capabilitiesPath = path.join(__dirname, '..', 'src', 'data', 'catalogCapabilities.json');
+const { workerCapabilitiesPath, writeWorkerCapabilities } = require('./worker-capabilities.cjs');
 
 let responseClassifierPromise;
 // Shared with the browser checkers, so a catalog run judges a challenge page,
@@ -1148,7 +1149,7 @@ function readJsonFile(filePath, fallback) {
 
 async function writeResults(
   results,
-  paths = { validation: outputPath, capabilities: capabilitiesPath }
+  paths = { validation: outputPath, capabilities: capabilitiesPath, workerCapabilities: workerCapabilitiesPath }
 ) {
   // Every result was observed in this run, so its checkedAt is kept as observed.
   const validationResults = results.map(
@@ -1166,6 +1167,7 @@ async function writeResults(
   const capabilitiesJson = `${JSON.stringify(capabilities, null, 2)}\n`;
   fs.writeFileSync(paths.validation, validationJson, 'utf-8');
   fs.writeFileSync(paths.capabilities, capabilitiesJson, 'utf8');
+  if (paths.workerCapabilities) writeWorkerCapabilities(capabilities, paths.workerCapabilities);
 }
 
 async function main() {

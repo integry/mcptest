@@ -120,7 +120,7 @@ To list a server by hand, open a pull request against `master` that changes the 
    - Optional fields: `requiredHeaders` (header templates with exactly one `<PLACEHOLDER>` and never a real credential), `alternativeAuthTypes`, `alternativeEndpoints`, `exactEndpointOnly` (set this when the documented URL is an origin root or a non-standard path that must not be rewritten to `/mcp` or `/sse`), `caveats`, `homepageUrl`, and `sourceUrl`.
    - Use an existing category where one fits. Propose a new category only when several servers need it.
 2. **`public/server-logos/<id>.svg` or `.png`**: the logo file. See the logo rules below.
-3. **`src/data/catalogValidation.json`** and **`src/data/catalogCapabilities.json`**: regenerate these with `npm run validate-catalog`. Do not edit them by hand.
+3. **`src/data/catalogValidation.json`** and **`src/data/catalogCapabilities.json`**: regenerate these with `npm run validate-catalog`. Do not edit them by hand. The same command rewrites `src/data/workerCatalogCapabilities.json`, the slim copy of the capabilities the Cloudflare worker bundles (names, counts and timestamps only). After any other change to `catalogCapabilities.json`, run `npm run generate-worker-capabilities`; a worker test fails while the two differ.
 
 Catalog tests in **`src/utils/catalogUtils.test.ts`** derive expected membership from the seed. No exact catalog-size update is needed for a submission. A separate size guard only checks a lower bound: it fails if the catalog shrinks more than 10% below a reviewed baseline of 297 entries, to catch accidental truncation. Growth is never capped, so ordinary submissions do not need to touch it; if a deliberate bulk removal goes below that bound, review the removals and update the baseline in the same PR.
 
@@ -842,3 +842,86 @@ Descriptions and caveats state only what these publisher references document. Pr
 ### Queued for later batches
 
 The batch 29 queue is unchanged. The issue defers nine lower-ranked candidates from investigation `bce86dc7-a3ff-4db5-ac09-1725730d205e` to later batches. Global ChatGPT discovery was incomplete (HTTP 451), so no memberships were removed.
+
+## Batch 31 import
+
+GitHub issue [#782](https://github.com/integry/mcptest/issues/782) tracks this import. Its baseline is `3b6bd4de` (after PR [#781](https://github.com/integry/mcptest/pull/781)), and the catalog grows from 1,216 to 1,246 entries. Master already has the fields the import needs: `directoryListings`, an integer `relevance` and `client-directory` provenance. The 30 candidates were matched first on `directoryListings.id`, then on normalized primary and alternative URLs, and none matched an existing record. Jotform App Builder (`jotform-apps`) is a separate server from the combined `jotform` MCP App and `jotform-sign`. Adspirer Search Ads and Adspirer Marketing Analytics are separate from `adspirer-social-ads`. Each new record is internal, with a Streamable HTTP primary, the issue's listings and a generated monogram logo. PDF.net uses a `client-directory` source (its Claude directory page); the other 29 use `publisher` sources. For Guidepoint, Adspirer Search Ads, NetDocuments, Health Data Avatar, Moneytree, MYOB, Adspirer Marketing Analytics, Jus Mundi and Instrumentl, that source is the endpoint's OAuth protected-resource metadata. `exactEndpointOnly` is set on the seven origin-root primaries: Aiera, IBISWorld, PineGap, GoCardless, Jus Mundi, Lukka and Instrumentl.
+
+### Relevance snapshot
+
+The Claude index retrieved on November 28, 2026 (1,228 records, 1,225 scored) is byte-identical to the [batch 29 ranking snapshot](catalog-batch-29-claude-ranking.tsv) (SHA-256 `5d4590e1065ea0bcb0d37617ac3b3d384ded8337b30f98a704b084881e051fd1`), so no new snapshot is saved. Scores use `Math.round(100 * (1225 - rank) / 1225)`, where the rank is the 1-based line number in the snapshot, and reproduce all 29 Claude-ranked values in the issue. Jotform App Builder is on line 423 with the same score (14,334) as line 422, so its line rank gives 65, as the issue says; a shared tie rank would give 66. Sprouts' Claude entry is a workflow ID (`wf.69965ce9f832a543d3b24f92`) ranked like any connector. Draup for Talent is ChatGPT-only and gets 50. Zoho Projects (77) and Zoho Desk (83) keep their scores.
+
+### Validation and endpoint provenance
+
+- All 30 new primaries are `online` in `src/data/catalogValidation.json`. Each returned HTTP 401 to initialization and was recorded as OAuth, so signed-in initialization, transport and tool inventories are unverified and no capability snapshot was stored. Jotform App Builder, PineGap, LZ Virtual Mail and Atlar sent no `WWW-Authenticate` header to a hand probe, but the validator found their OAuth metadata.
+- **Other sign-in methods** (`alternativeAuthTypes: bearer-token`): Fiscal.ai (API key), PineGap (`pgap_sk_` key issued by PineGap) and LZ Virtual Mail (Earth Class Mail API key). Unthread's API-key route is a separate alternative. HG Insights' API-key routes and Aiera's `?api_key=` SDK URL are named in caveats only.
+- **Anonymous alternatives.** Sprouts' Claude route `https://claude.mcpsprouts.ai/mcp` completed initialization and `tools/list` anonymously (`sprouts-ai-remote-mcp-server` 1.0.0, 22 tools). Revnu's public documentation server `https://revnu.com/api/docs-mcp` did the same with three tools (`search_docs`, `read_page`, `list_pages`). Each inventory is described only on the route where it was observed. No tool was called. The Sprouts Claude listing declares a `workers.dev` host, which is not listed because Sprouts documents only its own hosts.
+- **Challenged alternatives** (all HTTP 401):
+  - Revnu's full account server `https://revnu.com/api/mcp` (ChatGPT).
+  - Fiscal.ai's legacy `https://api.fiscal.ai/mcp/sse`. The Fiscal.ai Claude plugin configures the primary, while the Claude connector and the ChatGPT release use this route.
+  - Jotform App Builder's ChatGPT route `…/mcp-jotform-apps-v2`.
+  - LZ Virtual Mail's `/readonly`, `/claude` and `/chatgpt` routes.
+  - Draup for Talent's ChatGPT route `https://mcp.draup.com/mcp?product-id=4`.
+  - Unthread's API-key route `https://api.unthread.io/api/mcp`.
+  - NetDocuments' `ca`, `uk`, `de` and `au` regional equivalents of the US primary.
+- **PDF.net.** The publisher's setup pages omit the endpoint, and the origin root returned HTTP 404 (`Cannot POST /`). Both directory listings give `/mcp`.
+- **Listings.**
+  - All 15 `plugin_asdk_app_*` ChatGPT releases were read at `chatgpt.com/backend-anon/ps/plugins/<id>`. They are enabled and come from the expected developers.
+  - NetDocuments' template release is `LISTED` but `DISABLED_BY_ADMIN` (`required_app_unavailable`). It is recorded with OpenAI's public plugin page.
+  - Six releases omit endpoints and are attributed at product level only: Sprouts, Guidepoint, Aiera, Instrumentl, Patlytics and Unthread.
+  - Phoenix and GoCardless have no ChatGPT attribution; it is left unresolved.
+  - The Claude plugin memberships `directoryPlugin.af3e1b6a-c403-456e-8c95-14f80dc3bca7` (Fiscal.ai) and `directoryPlugin.c89bf732-963d-4ece-bf41-7fd56254bf06` (Wealthbox) were checked against the live plugin index.
+  - Bubble's Claude page is `bubble-mcp`, and Adspirer Marketing Analytics' page is `adspirer-marketing-analytics-attribution`.
+  - The global ChatGPT listing returned HTTP 451, so no removals are inferred.
+
+### Existing records
+
+Zoho Projects and Zoho Desk are amended per queue TODO `8abc9926-0255-4885-8838-df8497bd345e`. Their Claude-prefixed primaries, existing listings, relevance and Claude-prefixed regional alternatives are unchanged.
+
+- **Listing source.** Each `listingSource` is upgraded from `client-directory` to `publisher`, using the primary's OAuth protected-resource metadata: [`claude-zohoprojects`](https://claude-zohoprojects.zohomcp.com/.well-known/oauth-protected-resource) and [`claude-zohodesk`](https://claude-zohodesk.zohomcp.com/.well-known/oauth-protected-resource).
+- **Second Claude listings.** Each record gets a second Claude listing for the shared, unprefixed route: `connector.97a04d2f-4f35-42d1-9bb1-f823fdfa76d4` (`zohoprojects`) for `https://projects.zohomcp.com/mcp/message`, and `connector.f95cb702-657e-4ff1-8773-c72746294310` (`zohodesk`) for `https://desk.zohomcp.com/mcp/message`. The shared routes' metadata lists 11 scopes for Projects (16 on the primary) and 7 for Desk (24 on the primary).
+- **Shared regional alternatives.** Each record gets the US shared route plus `.eu`, `.in`, `.com.au`, `.ca`, `.sa`, `.jp`, `.ae` and `.uk` equivalents. Desk also gets `.sg`. Every one returned HTTP 401 with OAuth metadata, while Projects `.sg` returned HTTP 400 (`Invalid server url.`) and is left out.
+- **Unresolved.** Authenticated equivalence of the shared and prefixed routes, and Desk's ChatGPT membership, are unresolved and stated in the caveats.
+
+<a id="batch-31-capability-sources"></a>
+
+### Capability sources
+
+Descriptions and caveats state only what these publisher references document. Protected-resource metadata and directory listings were used for authentication and endpoint provenance only. The exceptions are PDF.net, whose endpoint comes from its directory listings, and Health Data Avatar, whose only publisher reference is a release note. "Names primary" says whether the reference gives the catalog URL.
+
+| Record | Publisher capability reference | Names primary |
+|---|---|---|
+| `sprouts` | [Sprouts MCP](https://sprouts.ai/mcp) | Yes |
+| `revnu` | [Revnu MCP](https://revnu.com/docs/mcp) | Yes |
+| `fiscal-ai` | [MCP integration](https://docs.fiscal.ai/docs/guides/mcp-integration) | Yes |
+| `guidepoint` | [Guidepoint MCP](https://www.guidepoint.com/mcp/) | No |
+| `adspirer-search-ads` | [Search Ads plugin](https://www.adspirer.com/docs/plugins/search-ads) · [Cursor plugin](https://github.com/Adspirer/adspirer-search-ads-cursor-plugin) | Plugin repo only |
+| `netdocuments` | [ndConnect](https://www.netdocuments.com/ndconnect) | No |
+| `health-data-avatar-hda` | [HDA releases](https://www.healthdataavatar.com/releases) | No |
+| `jotform-apps` | [Jotform MCP: App Builder](https://www.jotform.com/developers/mcp/?tab=mcp-app) | Yes |
+| `pdf-net` | [pdf.net MCP server](https://pdf.net/mcp-server) (endpoint from the [Claude directory page](https://claude.com/marketplace/connectors/pdf-net)) | No |
+| `aiera` | [MCP SDKs](https://rest.aiera.com/docs/mcp-sdks) · [MCP tools](https://rest.aiera.com/docs/mcp-tools) | Yes (root, with `?api_key=`) |
+| `ibisworld` | [IBISWorld API: MCP overview](https://api.ibisworld.com/docs/overview-2533077m0) | Yes (root) |
+| `eddie-ai` | [Eddie API quickstart](https://www.heyeddie.ai/apidocs/quickstart) · [MCP](https://www.heyeddie.ai/apidocs/mcp) | Yes |
+| `pinegap` | [PineGap MCP](https://www.pinegap.ai/docs/mcp) | Yes (root) |
+| `phoenix` | [Getting started](https://phoenix.hginsights.com/docs/getting-started) · [MCP tools](https://phoenix.hginsights.com/docs/mcp-tools/overview) | Yes |
+| `gocardless` | [GoCardless MCP](https://docs.gocardless.com/docs/developer-resources/mcp) | Yes (root) |
+| `moneytree` | [Moneytree MCP docs](https://mcp.getmoneytree.com/docs/) (Japanese) | Yes |
+| `digits` | [Digits MCP](https://help.digits.com/business-connections/digits-mcp) | Yes |
+| `draup-for-talent` | [Draup and Anthropic](https://draup.com/partners/anthropic) | Screenshot only |
+| `lz-virtual-mail` | [Connect to the MCP server](https://reference.earthclassmail.com/v2/mcp/connect/) | Yes |
+| `myob` | [Connecting Claude to MYOB](https://www.myob.com/au/support/myob-business/product-account/connecting-claude-to-myob) | No |
+| `adspirer-analytics` | [Analytics plugin README](https://github.com/Adspirer/adspirer-analytics-claude-plugin) | Yes |
+| `jus-mundi` | [Jus AI MCP server reference](https://jusmundi.notion.site/jus-ai-mcp-reference) | Yes (root) |
+| `wealth-com` | [Wealth.com MCP](https://developer.wealth.com/mcp) · [tools](https://developer.wealth.com/mcp/tools) | Yes |
+| `lukka-predmar` | [Lukka Prediction Markets README](https://github.com/lukkatech/lukka-mcps/blob/main/docs/lukka-predmar-mcp/README.md) | Yes (no trailing slash) |
+| `wealthbox` | [wealthbox-plugin](https://github.com/starburstlabs/wealthbox-plugin) | Yes |
+| `instrumentl` | [Instrumentl MCP server](https://help.instrumentl.com/en/articles/17180822-instrumentl-mcp-server) | No |
+| `patlytics` | [Patlytics MCP docs](https://mcp.patlytics.ai/docs) | Yes |
+| `bubble` | [bubble-for-agents](https://github.com/bubblegroup/bubble-for-agents) · [Bubble MCP manual](https://manual.bubble.io/help-guides/ai/bubble-mcp) | Yes |
+| `unthread` | [Unthread MCP](https://docs.unthread.io/docs/unthread-ai/unthread-mcp) | Yes |
+| `atlar` | [Atlar MCP](https://docs.atlar.com/docs/mcp) | Yes |
+
+### Queued for later batches
+
+The batch 29 and batch 30 queues are unchanged. Earlier queued additions and corrections, including the queued Zoho CRM hold, stay outside this batch.

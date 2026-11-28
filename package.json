@@ -25,6 +25,7 @@
     "oauth-sweep": "vite-node scripts/oauth-sweep.ts",
     "import-catalog-capabilities": "vite-node scripts/import-catalog-capabilities.ts",
     "validate-catalog-assets": "node scripts/validate-catalog-assets.js",
+    "generate-worker-capabilities": "node scripts/worker-capabilities.cjs",
     "summarize-catalog-diff": "vite-node scripts/run-summarize-catalog-diff.ts",
     "apply-catalog-submission": "vite-node scripts/run-apply-catalog-submission.ts",
     "generate-badges": "vite-node scripts/generate-badges.ts",

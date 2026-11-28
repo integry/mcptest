@@ -88,6 +88,7 @@ jobs:
           add-paths: |
             src/data/catalogValidation.json
             src/data/catalogCapabilities.json
+            src/data/workerCatalogCapabilities.json
           commit-message: 'Refresh catalog validation evidence'
           title: 'Refresh catalog validation evidence'
           body-path: ${{ runner.temp }}/pr-body.md
