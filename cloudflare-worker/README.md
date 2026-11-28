@@ -19,8 +19,10 @@ This Cloudflare Worker provides data persistence for the MCP Test application us
 
 `src/fixtures.js` serves small, deterministic MCP test servers that any client or tester
 (including mcptest.io itself, from the browser) can point at. They are public, need no
-account, and make no outbound fetches. Each fixture uses a SQLite Durable Object for
-session diagnostics and temporary OAuth grants.
+account, and make no outbound fetches. Each fixture on a given origin shares one SQLite Durable Object worldwide
+for session diagnostics and temporary OAuth grants. Plan for smoke-test traffic
+of a few requests per second per fixture across all clients. This is an
+intended workload, not a measured throughput ceiling.
 
 | Endpoint | Auth | What it does |
 | --- | --- | --- |
@@ -35,7 +37,10 @@ session diagnostics and temporary OAuth grants.
 
 For OAuth, follow the 401 challenge to protected resource metadata and discover
 the issuer at `/.well-known/oauth-authorization-server/fixtures/oauth`. Register
-an HTTPS or loopback callback and exchange the returned code at the token endpoint.
+an HTTP loopback callback (localhost, 127.0.0.1 or [::1]) or the inspector's exact
+`https://mcptest.io/oauth/callback` URI and exchange the returned code at the token endpoint.
+Per IP, the fixture accepts 36 registration requests, 240 authorization requests and
+360 token requests per rolling hour. A 429 response includes `Retry-After` in seconds.
 Use the full MCP URL (including `?access_ttl=5`) as the OAuth resource parameter.
 Access tokens default to 300 seconds. POST a form field `token=<refresh token>` to
 the advertised revocation endpoint to force reauthorization on the next refresh.

@@ -355,4 +355,5 @@ function extractPublicKeyFromCertificate(certDer) {
 }
 
 // Export the Durable Object classes
+export { FixtureState } from "./FixtureState.js";
 export { UserState, PublishedReports, SubmissionRateLimiter };

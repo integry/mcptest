@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import { fixtureTestEnv } from '../../cloudflare-worker/src/fixtureTestEnv.js';
-import { FIXTURE_OBJECT_PREFIX, handleFixtureRequest } from '../../cloudflare-worker/src/fixtures.js';
+import { handleFixtureRequest } from '../../cloudflare-worker/src/fixtures.js';
 import { CLIENT_CHECKLISTS } from './mcpTestClientChecklist';
 import { SELF_CHECK_EXCHANGES } from './mcpTestClientCopy';
 import {
@@ -31,9 +31,9 @@ const allExchanges: HttpExchange[] = [
 const replay = async (exchange: HttpExchange): Promise<Response> => {
   const origin = 'https://mcptest.io';
   const endpoint = `${origin}/fixtures/${exchange.fixture}/mcp`;
-  const { SUBMISSION_RATE_LIMITER } = fixtureTestEnv();
-  const fixtureId = SUBMISSION_RATE_LIMITER.idFromName(`${FIXTURE_OBJECT_PREFIX}${origin}/${exchange.fixture}`);
-  const store = SUBMISSION_RATE_LIMITER.get(fixtureId).fixture;
+  const { FIXTURE_STATE } = fixtureTestEnv();
+  const fixtureId = FIXTURE_STATE.idFromName(`${origin}/${exchange.fixture}`);
+  const store = FIXTURE_STATE.get(fixtureId);
   const setup = await handleFixtureRequest(new Request(endpoint, {
     method: 'POST', headers: { ...BASE_REQUEST_HEADERS, Authorization: BEARER_HEADER }, body: JSON.stringify(initializeRequest(1)),
   }), { store });

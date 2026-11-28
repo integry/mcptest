@@ -26,7 +26,7 @@ const envelope = {
 const env = fixtureTestEnv();
 const send = (path, init = {}, options) => {
   const request = new Request(`${ORIGIN}${path}`, init);
-  const store = options && env.SUBMISSION_RATE_LIMITER.get('fixture:' + ORIGIN + '/' + path.split('/')[2]).fixture;
+  const store = options && env.FIXTURE_STATE.get(ORIGIN + '/' + path.split('/')[2]);
   return options ? handleFixtureRequest(request, { ...options, store }) : worker.fetch(request, env, {});
 };
 
@@ -773,7 +773,7 @@ describe('fixture test hooks', () => {
       'X-Hop': 'internal', 'Content-Length': '17', 'MCP-Protocol-Version': LEGACY_PROTOCOL_VERSION,
     } }) };
     const response = await worker.fetch(new Request(ORIGIN + '/fixtures/echo/mcp'), {
-      SUBMISSION_RATE_LIMITER: { idFromName: name => name, get: () => stub },
+      FIXTURE_STATE: { idFromName: name => name, get: () => stub },
     }, {});
     for (const name of ['Connection', 'Keep-Alive', 'Transfer-Encoding', 'X-Hop', 'Content-Length']) {
       expect(response.headers.has(name)).toBe(false);
@@ -809,7 +809,40 @@ describe('fixture test hooks', () => {
     } finally { now.mockRestore(); }
   });
 
-  it('discovers OAuth, exchanges a one-use PKCE code, refreshes and revokes', async () => {
+  it('rejects unlisted HTTPS callbacks at registration and authorization', async () => {
+    const callback = 'https://callback.example/cb';
+    const response = await send('/fixtures/oauth/register', { method: 'POST',
+      body: JSON.stringify({ redirect_uris: [callback] }) });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: 'invalid_redirect_uri' });
+
+    // A registration made under an older policy cannot authorize this callback.
+    env.FIXTURE_STATE.get(ORIGIN + '/oauth').set('client:old', { redirects: [callback] });
+    const params = new URLSearchParams({ client_id: 'old', redirect_uri: callback,
+      code_challenge: 'x'.repeat(43), code_challenge_method: 'S256', response_type: 'code' });
+    const authorization = await send('/fixtures/oauth/authorize?' + params);
+    expect(authorization.status).toBe(400);
+    expect(authorization.headers.has('Location')).toBe(false);
+  });
+
+  it.each([
+    ['register', 'POST', 36], ['authorize', 'GET', 240], ['token', 'POST', 360],
+  ])('enforces the hourly %s quota per address before forwarding', async (endpoint, method, limit) => {
+    const isolated = fixtureTestEnv();
+    const forward = vi.spyOn(isolated.FIXTURE_STATE, 'get');
+    const call = ip => worker.fetch(new Request(ORIGIN + '/fixtures/oauth/' + endpoint, {
+      method, headers: { 'CF-Connecting-IP': ip },
+    }), isolated, {});
+    for (let i = 0; i < limit; i++) expect((await call('192.0.2.1')).status).toBe(400);
+    const limited = await call('192.0.2.1');
+    expect(limited.status).toBe(429);
+    expect(Number(limited.headers.get('Retry-After'))).toBeGreaterThan(0);
+    expect(forward).toHaveBeenCalledTimes(limit);
+    expect((await call('192.0.2.2')).status).toBe(400);
+  });
+
+  it.each(['http://localhost:7890/callback', 'http://127.0.0.1/callback', 'http://[::1]/callback',
+    'https://mcptest.io/oauth/callback'])('discovers OAuth, exchanges a one-use PKCE code, refreshes and revokes with %s', async callback => {
     const resource = ORIGIN + '/fixtures/oauth/mcp?access_ttl=1';
     const call = (url, init) => worker.fetch(new Request(url, init), env, {});
     const form = (url, fields) => call(url, { method: 'POST', body: new URLSearchParams(fields) });
@@ -821,7 +854,6 @@ describe('fixture test hooks', () => {
     const issuer = new URL(prm.authorization_servers[0]);
     const as = await (await call(issuer.origin + '/.well-known/oauth-authorization-server' + issuer.pathname)).json();
     expect(as.issuer).toBe(issuer.href);
-    const callback = 'http://localhost:7890/callback';
     const registration = await call(as.registration_endpoint, { method: 'POST',
       headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ redirect_uris: [callback] }) });
     expect(registration.status).toBe(201);

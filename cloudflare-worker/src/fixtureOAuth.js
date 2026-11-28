@@ -7,7 +7,7 @@ function safeRedirect(value) {
   if (typeof value !== 'string' || !URL.canParse(value)) return false;
   const url = new URL(value);
   return !url.username && !url.password && !value.includes('#') &&
-    (url.protocol === 'https:' || (url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)));
+    (value === 'https://mcptest.io/oauth/callback' || (url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)));
 }
 
 export function seconds(value, fallback) {
@@ -60,7 +60,7 @@ export async function oauthEndpoint(request, store, readBody, respond) {
     const clientId = p.get('client_id');
     const client = store.get('client:' + clientId);
     const redirect = p.get('redirect_uri');
-    if (!client?.redirects.includes(redirect)) return fail('invalid_request', 'Unregistered redirect URI');
+    if (!safeRedirect(redirect) || !client?.redirects.includes(redirect)) return fail('invalid_request', 'Unregistered redirect URI');
     const challenge = p.get('code_challenge') ?? '';
     if (p.get('response_type') !== 'code' || p.get('code_challenge_method') !== 'S256' || !/^[\w-]{43}$/.test(challenge)) {
       return fail('invalid_request', 'Authorization code with S256 PKCE required');
@@ -87,7 +87,7 @@ export async function oauthEndpoint(request, store, readBody, respond) {
     try { registration = JSON.parse(body); } catch { return fail('invalid_client_metadata', 'Expected JSON'); }
     const redirects = registration?.redirect_uris;
     if (!Array.isArray(redirects) || !redirects.length || !redirects.every(safeRedirect)) {
-      return fail('invalid_redirect_uri', 'Register HTTPS or loopback callback URLs');
+      return fail('invalid_redirect_uri', 'Use an HTTP loopback callback or https://mcptest.io/oauth/callback');
     }
     if ((registration.token_endpoint_auth_method ?? 'none') !== 'none') return fail('invalid_client_metadata', 'Public clients use none');
     const clientId = crypto.randomUUID();

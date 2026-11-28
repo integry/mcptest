@@ -1,6 +1,7 @@
 // Public MCP fixtures share method dispatch with the read-only catalog endpoint.
 // Fixture state lives in FixtureState. The catalog retains self-validating IDs.
 import { RESOURCE_METADATA, ISSUER_METADATA, oauthAccess, oauthEndpoint, seconds } from './fixtureOAuth.js';
+import { consumeRateLimit, sha256Hex } from './submissions.js';
 import { compileSchema } from './jsonSchema.js';
 import {
   FIXTURE_NAMES,
@@ -9,7 +10,11 @@ import {
   FixtureRpcError,
 } from './fixtureServers.js';
 
-export const FIXTURE_OBJECT_PREFIX = 'fixture:';
+const OAUTH_WRITE_LIMITS = new Map([
+  ['POST /fixtures/oauth/register', 36],
+  ['GET /fixtures/oauth/authorize', 240],
+  ['POST /fixtures/oauth/token', 360],
+]);
 export const FIXTURE_PATH = /^\/fixtures\/([^/]+)\/mcp\/?$/;
 export const MAX_FIXTURE_BODY_BYTES = 16 * 1024;
 export const MODERN_PROTOCOL_VERSION = '2026-07-28';
@@ -556,8 +561,17 @@ export const handleFixtureRequest = async (request, options = {}) => {
   }
   const { store } = options;
   if (!store) {
-    const ns = options.env.SUBMISSION_RATE_LIMITER;
-    const response = await ns.get(ns.idFromName(FIXTURE_OBJECT_PREFIX + url.origin + '/' + name)).fetch(request);
+    const limit = OAUTH_WRITE_LIMITS.get(request.method + ' ' + pathname);
+    if (limit) {
+      const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+      const key = 'fixture-oauth:' + pathname + ':' + await sha256Hex(ip);
+      const decision = await consumeRateLimit(options.env, key, { limit, windowMs: 3_600_000, expire: true });
+      if (!decision.allowed) {
+        return respond(429, { error: 'rate_limit_exceeded' }, { 'Retry-After': String(decision.retryAfterSeconds) });
+      }
+    }
+    const ns = options.env.FIXTURE_STATE;
+    const response = await ns.get(ns.idFromName(url.origin + '/' + name)).fetch(request);
     // The object binding is an internal HTTP hop. Only forward the fixture's
     // end-to-end headers, and let the edge frame the body for HTTP/1 or HTTP/2.
     const headers = new Headers();

@@ -25,8 +25,6 @@ import {
   deriveCatalogId,
   findCatalogDuplicate,
 } from "../../src/utils/catalogSubmission.ts";
-import { FixtureState } from "./FixtureState.js";
-import { FIXTURE_OBJECT_PREFIX } from "./fixtures.js";
 import { validateCatalogSubmission } from "../../src/utils/catalogSubmissionSchema.ts";
 
 export const SUBMISSION_RATE_LIMITS = {
@@ -273,9 +271,6 @@ const EXPIRING_WINDOW_KEY = "window";
 export class SubmissionRateLimiter {
   constructor(state) {
     this.storage = state.storage;
-    if (state.id?.name?.startsWith(FIXTURE_OBJECT_PREFIX)) {
-      this.fixture = new FixtureState(state);
-    }
   }
 
   async consumeExpiring({ limit, windowMs, now }) {
@@ -302,7 +297,6 @@ export class SubmissionRateLimiter {
   }
 
   async fetch(request) {
-    if (this.fixture) return this.fixture.fetch(request);
     if (new URL(request.url).pathname === "/release") {
       const stored = (await this.storage.get("hits")) || [];
       stored.pop();
