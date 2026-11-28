@@ -58072,16 +58072,16 @@
       {
         "directory": "chatgpt",
         "id": "plugin_asdk_app_69f8fe2bcac08191b6025acec161ce1e",
-        "url": "https://chatgpt.com/plugins/plugin_asdk_app_69f8fe2bcac08191b6025acec161ce1e"
+        "url": "https://openai.com/business/plugins/meticulate/"
       }
     ],
     "homepageUrl": "https://meticulate.ai/",
     "caveats": [
-      "Only listed in ChatGPT. Meticulate publishes no MCP documentation; the listing source is its protected-resource metadata for this endpoint and the description follows the ChatGPT release. The primary returned HTTP 401 with OAuth protected-resource metadata; the signed-in handshake and tool list are unverified."
+      "Only listed in ChatGPT. Meticulate publishes no MCP documentation, so the listing source is OpenAI's public ChatGPT plugin page and the description follows that listing. The endpoint's protected-resource metadata corroborates the URL and OAuth configuration. The primary returned HTTP 401 with OAuth protected-resource metadata; the signed-in handshake and tool list are unverified."
     ],
     "listingSource": {
-      "kind": "publisher",
-      "url": "https://brain.meticulate.ai/.well-known/oauth-protected-resource/new-mcp/mcp"
+      "kind": "client-directory",
+      "url": "https://openai.com/business/plugins/meticulate/"
     },
     "transport": "streamable-http",
     "authType": "oauth",
@@ -58183,7 +58183,7 @@
     ],
     "listingSource": {
       "kind": "publisher",
-      "url": "https://mcp.aws.roxai.dev/.well-known/oauth-protected-resource/data-mcp"
+      "url": "https://www.rox.com/docs/admin-guide/developer-tools-mcp"
     },
     "transport": "streamable-http",
     "authType": "oauth",
