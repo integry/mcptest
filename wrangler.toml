@@ -38,6 +38,18 @@ bindings = [
   { name = "SUBMISSION_RATE_LIMITER", class_name = "SubmissionRateLimiter" }
 ]
 
+# Worker Previews use isolated namespaces and apply the top-level migrations.
+[previews.durable_objects]
+bindings = [
+  { name = "USER_STATE", class_name = "UserState" },
+  { name = "PUBLISHED_REPORTS", class_name = "PublishedReports" },
+  { name = "FIXTURE_STATE", class_name = "FixtureState" },
+  { name = "SUBMISSION_RATE_LIMITER", class_name = "SubmissionRateLimiter" }
+]
+
+[previews.vars]
+FIREBASE_PROJECT_ID = "mcptest-a530d"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["UserState"]

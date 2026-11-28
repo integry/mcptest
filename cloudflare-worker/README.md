@@ -116,6 +116,11 @@ FIREBASE_PROJECT_ID = "your-actual-firebase-project-id"
 
 ## Deployment
 
+In the `mcptest-io` Worker’s **Settings → Build**, set the preview command to
+`npx wrangler preview` and the production deploy command to `npx wrangler deploy`.
+Branch previews apply pending Durable Object migrations to their own namespaces.
+The older `wrangler versions upload` command fails when a migration is pending.
+
 1. Install Wrangler CLI:
    ```bash
    npm install -g wrangler
