@@ -53,14 +53,14 @@ const ECHO_CAPABILITIES = {
 };
 const ECHO_SERVER_INFO = serverInfo('echo', 'mcptest.io echo fixture');
 const NO_ARGS = { type: 'object', properties: {}, additionalProperties: false };
-const UNAUTHORIZED_BODY = rpcError(null, -32001, `Unauthorized: send Authorization: Bearer ${PUBLIC_FIXTURE_BEARER_TOKEN}`);
+const UNAUTHORIZED_BODY = rpcError(null, -32001, `Unauthorized: send Authorization: Bearer ${PUBLIC_FIXTURE_BEARER_TOKEN}. See /mcp-test-servers`);
 const REALM = 'realm="mcptest.io fixtures"';
 
 const ECHO_ITEMS: readonly ChecklistItem[] = [
   {
     id: 'initialize',
     check: 'Completes initialize, then sends notifications/initialized',
-    detail: 'The 2025 handshake is an initialize request, its result, then the notifications/initialized notification before any other request. The fixture answers the notification with an empty 202. It keeps no state, so it cannot tell whether you sent it: check that the notification appears in your client\'s log.',
+    detail: 'The 2025 handshake is an initialize request, its result, then the notifications/initialized notification before any other request. The fixture answers the notification with an empty 202. Read GET /fixtures/echo/sessions/<id> to confirm that initialized is true.',
     exchanges: [
       {
         id: 'echo-initialize',
@@ -510,6 +510,28 @@ export const CLIENT_CHECKLISTS: readonly FixtureChecklist[] = [
     heading: 'Schemas: complex inputs and structuredContent',
     intro: 'Tools with nested, enum, array and optional fields, an outputSchema and structuredContent.',
     items: SCHEMAS_ITEMS,
+  },
+  {
+    fixture: 'echo-stateful', heading: 'Stateful echo', intro: 'Use this endpoint to exercise the session handshake.',
+    items: [{ id: 'pinned-stateful', check: 'Falls back to initialize after discovery', detail: 'The stateful fixture rejects the modern discovery probe.',
+      exchanges: [{ id: 'stateful-discover', fixture: 'echo-stateful', caption: 'Probe the stateful endpoint:',
+        request: { headers: {}, body: rpc(1, 'server/discover', { _meta: STATELESS_META }) },
+        response: { status: 400, body: rpcError(1, -32601, 'Stateful fixture: send initialize first') } }] }],
+  },
+  {
+    fixture: 'echo-stateless', heading: 'Stateless echo', intro: 'Use the 2026 protocol for every request.',
+    items: [{ id: 'pinned-stateless', check: 'Recognizes the supported revision', detail: 'A legacy handshake returns the supported revision.',
+      exchanges: [{ id: 'stateless-initialize', fixture: 'echo-stateless', caption: 'Send a legacy handshake:',
+        request: { headers: {}, body: initializeRequest(1) }, response: { status: 400,
+          body: rpcError(1, -32022, 'Stateless fixture requires ' + STATELESS_VERSION, { supported: [STATELESS_VERSION] }) } }] }],
+  },
+  {
+    fixture: 'oauth', heading: 'OAuth echo', intro: 'Use the challenge to discover the authorization server.',
+    items: [{ id: 'oauth-discovery', check: 'Reads the protected resource metadata URL', detail: 'Fetch the metadata, register a public client and use PKCE to obtain an access token.',
+      exchanges: [{ id: 'oauth-unauthorized', fixture: 'oauth', caption: 'Start without an access token:',
+        request: { headers: {}, body: initializeRequest(1) }, response: { status: 401,
+          headers: { 'WWW-Authenticate': 'Bearer resource_metadata="https://mcptest.io/.well-known/oauth-protected-resource/fixtures/oauth/mcp"' },
+          body: rpcError(null, -32001, 'OAuth authorization required. See /mcp-test-servers') } }] }],
   },
 ];
 

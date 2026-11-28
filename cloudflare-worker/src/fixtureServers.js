@@ -156,9 +156,12 @@ const README_RESOURCE = {
   text: [
     'mcptest.io public MCP fixture servers',
     '',
-    'Deterministic, stateless test endpoints for MCP clients and testers:',
+    'Deterministic test endpoints for MCP clients and testers:',
     '  https://mcptest.io/fixtures/echo/mcp         no auth',
     `  https://mcptest.io/fixtures/auth-bearer/mcp  Authorization: Bearer ${PUBLIC_BEARER_TOKEN}`,
+    '  https://mcptest.io/fixtures/echo-stateful/mcp   stateful only',
+    '  https://mcptest.io/fixtures/echo-stateless/mcp  stateless only',
+    '  https://mcptest.io/fixtures/oauth/mcp           OAuth with PKCE',
     '  https://mcptest.io/fixtures/errors/mcp       deterministic error modes',
     '  https://mcptest.io/fixtures/slow/mcp         bounded delays and progress',
     '  https://mcptest.io/fixtures/schemas/mcp      complex input and output schemas',
@@ -443,6 +446,13 @@ export const FIXTURE_SERVERS = Object.freeze({
   schemas: fixture('schemas', 'mcptest.io schemas fixture',
     'Tools with nested, enum, array and optional input fields and an outputSchema with structuredContent.',
     { tools: SCHEMA_TOOLS }),
+  ...Object.fromEntries(['stateful', 'stateless'].map(mode => {
+    const name = `echo-${mode}`;
+    return [name, { ...fixture(name, `Echo (${mode})`, `Echo tools, ${mode} protocol only.`,
+      { tools: BASIC_TOOLS, resources: [README_RESOURCE], prompts: [GREETING_PROMPT] }), mode }];
+  })),
+  oauth: fixture('oauth', 'OAuth echo', 'Auto-approved OAuth authorization code flow with S256 PKCE.',
+    { tools: BASIC_TOOLS, resources: [README_RESOURCE], prompts: [GREETING_PROMPT], auth: { type: 'oauth' } }),
 });
 
 export const FIXTURE_NAMES = Object.freeze(Object.keys(FIXTURE_SERVERS));

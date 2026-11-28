@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { fixtureTestEnv } from './fixtureTestEnv.js';
 import worker from './index.js';
 import { compileSchema } from './jsonSchema.js';
 import {
@@ -22,10 +23,11 @@ const envelope = {
 
 // Requests reach the fixtures through the worker entry point unless a test needs
 // to inject the delay function.
-const env = new Proxy({}, { get: (_target, key) => { throw new Error(`fixtures must not read env.${String(key)}`); } });
+const env = fixtureTestEnv();
 const send = (path, init = {}, options) => {
   const request = new Request(`${ORIGIN}${path}`, init);
-  return options ? handleFixtureRequest(request, options) : worker.fetch(request, env, {});
+  const store = options && env.FIXTURE_STATE.get(ORIGIN + '/' + path.split('/')[2]);
+  return options ? handleFixtureRequest(request, { ...options, store }) : worker.fetch(request, env, {});
 };
 
 let nextId = 1;
@@ -154,7 +156,7 @@ describe('fixture CORS', () => {
 });
 
 describe('fixture lifecycle', () => {
-  it.each(FIXTURE_NAMES)('%s: initialize negotiates the stateful 2025-11-25 revision and issues a session', async (name) => {
+  it.each(FIXTURE_NAMES.filter(n => !['oauth', 'echo-stateless'].includes(n)))('%s: initialize negotiates the stateful 2025-11-25 revision and issues a session', async (name) => {
     const { response, body, session } = await initialize(name);
     expect(response.status).toBe(200);
     expect(response.headers.get('Content-Type')).toBe('application/json');
@@ -172,14 +174,14 @@ describe('fixture lifecycle', () => {
     expect(await initialized.text()).toBe('');
   });
 
-  it.each(FIXTURE_NAMES)('%s: server/discover negotiates the stateless 2026-07-28 revision', async (name) => {
+  it.each(FIXTURE_NAMES.filter(n => !['oauth', 'echo-stateful'].includes(n)))('%s: server/discover negotiates the stateless 2026-07-28 revision', async (name) => {
     const response = await modern(name, 'server/discover');
     expect(response.status).toBe(200);
     expect(response.headers.get('Mcp-Session-Id')).toBeNull();
     const { result } = await response.json();
     expect(result).toMatchObject({
       resultType: 'complete',
-      supportedVersions: expect.arrayContaining([MODERN_PROTOCOL_VERSION, LEGACY_PROTOCOL_VERSION]),
+      supportedVersions: expect.arrayContaining(name === 'echo-stateless' ? [MODERN_PROTOCOL_VERSION] : [MODERN_PROTOCOL_VERSION, LEGACY_PROTOCOL_VERSION]),
       capabilities: { tools: { listChanged: false } },
       ttlMs: 0,
       cacheScope: 'public',
@@ -273,7 +275,7 @@ describe('fixture lifecycle', () => {
   });
 });
 
-describe('stateful session handling without storage', () => {
+describe('stateful session handling across requests', () => {
   it('requires the issued session id on later requests', async () => {
     const missing = await post('echo', { jsonrpc: '2.0', id: 1, method: 'tools/list' }, { 'MCP-Protocol-Version': LEGACY_PROTOCOL_VERSION });
     expect(missing.status).toBe(400);
@@ -298,12 +300,11 @@ describe('stateful session handling without storage', () => {
     }
   });
 
-  it('declines GET streams and DELETE with 405', async () => {
+  it('declines standalone streams and accepts session termination', async () => {
     const session = await legacySession('echo');
     for (const method of ['GET', 'DELETE']) {
       const response = await send('/fixtures/echo/mcp', { method, headers: { 'Mcp-Session-Id': session } });
-      expect(response.status).toBe(405);
-      expect(response.headers.get('Allow')).toBe('POST, OPTIONS');
+      expect(response.status).toBe(method === 'GET' ? 405 : 204);
     }
     expect((await send('/fixtures/echo/mcp', { method: 'PUT', body: '{}' })).status).toBe(405);
   });
@@ -365,7 +366,7 @@ describe('JSON-RPC and HTTP input bounds', () => {
     });
     const streamed = await handleFixtureRequest(new Request(`${ORIGIN}/fixtures/echo/mcp`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: stream, duplex: 'half',
-    }));
+    }), { env });
     expect(streamed.status).toBe(413);
   });
 
@@ -762,5 +763,138 @@ describe('schemas fixture', () => {
     const body = await (await modern('schemas', 'tools/call', { name: 'create_order', arguments: args })).json();
     expect(body.error.code).toBe(-32602);
     expect(body.error.data.errors.length).toBeGreaterThan(0);
+  });
+});
+
+describe('fixture test hooks', () => {
+  it('forwards only end-to-end headers from the internal object response', async () => {
+    const stub = { fetch: () => new Response('ok', { headers: {
+      Connection: 'keep-alive, x-hop', 'Keep-Alive': 'timeout=5', 'Transfer-Encoding': 'chunked',
+      'X-Hop': 'internal', 'Content-Length': '17', 'MCP-Protocol-Version': LEGACY_PROTOCOL_VERSION,
+    } }) };
+    const response = await worker.fetch(new Request(ORIGIN + '/fixtures/echo/mcp'), {
+      FIXTURE_STATE: { idFromName: name => name, get: () => stub },
+    }, {});
+    for (const name of ['Connection', 'Keep-Alive', 'Transfer-Encoding', 'X-Hop', 'Content-Length']) {
+      expect(response.headers.has(name)).toBe(false);
+    }
+    expect(response.headers.get('MCP-Protocol-Version')).toBe(LEGACY_PROTOCOL_VERSION);
+    expect(await response.text()).toBe('ok');
+  });
+
+  it('pins both protocol variants and describes them on browser navigation', async () => {
+    expect((await modern('echo-stateful', 'server/discover')).status).toBe(400);
+    expect((await initialize('echo-stateless')).response.status).toBe(400);
+    for (const mode of ['stateful', 'stateless']) {
+      const response = await send(`/fixtures/echo-${mode}/mcp`, { headers: { Accept: 'text/html' } });
+      expect(await response.json()).toMatchObject({ modes: [mode], tools: ['echo', 'add', 'whoami', 'headers'], docs: ORIGIN + '/mcp-test-servers' });
+    }
+  });
+
+  it('expires sessions at the requested deadline', async () => {
+    const now = vi.spyOn(Date, 'now');
+    try {
+      const start = Date.now();
+      now.mockReturnValue(start);
+      const response = await send('/fixtures/echo/mcp?session_ttl=5', { method: 'POST',
+        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize',
+          params: { protocolVersion: LEGACY_PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: 'ttl', version: '1' } } }) });
+      const session = response.headers.get('Mcp-Session-Id');
+      expect(session).toBeTruthy();
+      now.mockReturnValue(start + 4999);
+      expect((await legacy('echo', 'ping', {}, { session })).status).toBe(200);
+      now.mockReturnValue(start + 5000);
+      expect((await legacy('echo', 'ping', {}, { session })).status).toBe(404);
+      expect((await legacy('echo', 'ping')).status).toBe(200);
+    } finally { now.mockRestore(); }
+  });
+
+  it('rejects unlisted HTTPS callbacks at registration and authorization', async () => {
+    const callback = 'https://callback.example/cb';
+    const response = await send('/fixtures/oauth/register', { method: 'POST',
+      body: JSON.stringify({ redirect_uris: [callback] }) });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: 'invalid_redirect_uri' });
+
+    // A registration made under an older policy cannot authorize this callback.
+    env.FIXTURE_STATE.get(ORIGIN + '/oauth').set('client:old', { redirects: [callback] });
+    const params = new URLSearchParams({ client_id: 'old', redirect_uri: callback,
+      code_challenge: 'x'.repeat(43), code_challenge_method: 'S256', response_type: 'code' });
+    const authorization = await send('/fixtures/oauth/authorize?' + params);
+    expect(authorization.status).toBe(400);
+    expect(authorization.headers.has('Location')).toBe(false);
+  });
+
+  it.each([
+    ['register', 'POST', 36], ['authorize', 'GET', 240], ['token', 'POST', 360],
+  ])('enforces the hourly %s quota per address before forwarding', async (endpoint, method, limit) => {
+    const isolated = fixtureTestEnv();
+    const forward = vi.spyOn(isolated.FIXTURE_STATE, 'get');
+    const call = ip => worker.fetch(new Request(ORIGIN + '/fixtures/oauth/' + endpoint, {
+      method, headers: { 'CF-Connecting-IP': ip },
+    }), isolated, {});
+    for (let i = 0; i < limit; i++) expect((await call('192.0.2.1')).status).toBe(400);
+    const limited = await call('192.0.2.1');
+    expect(limited.status).toBe(429);
+    expect(Number(limited.headers.get('Retry-After'))).toBeGreaterThan(0);
+    expect(forward).toHaveBeenCalledTimes(limit);
+    expect((await call('192.0.2.2')).status).toBe(400);
+  });
+
+  it.each(['http://localhost:7890/callback', 'http://127.0.0.1/callback', 'http://[::1]/callback',
+    'https://mcptest.io/oauth/callback'])('discovers OAuth, exchanges a one-use PKCE code, refreshes and revokes with %s', async callback => {
+    const resource = ORIGIN + '/fixtures/oauth/mcp?access_ttl=1';
+    const call = (url, init) => worker.fetch(new Request(url, init), env, {});
+    const form = (url, fields) => call(url, { method: 'POST', body: new URLSearchParams(fields) });
+    const unauthorized = await call(resource, { method: 'POST' });
+    expect(unauthorized.status).toBe(401);
+    const metadata = unauthorized.headers.get('WWW-Authenticate').match(/resource_metadata="([^"]+)"/)[1];
+    const prm = await (await call(metadata)).json();
+    expect(prm.resource).toBe(resource);
+    const issuer = new URL(prm.authorization_servers[0]);
+    const as = await (await call(issuer.origin + '/.well-known/oauth-authorization-server' + issuer.pathname)).json();
+    expect(as.issuer).toBe(issuer.href);
+    const registration = await call(as.registration_endpoint, { method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ redirect_uris: [callback] }) });
+    expect(registration.status).toBe(201);
+    const { client_id } = await registration.json();
+    const verifier = 'a'.repeat(43);
+    const challenge = Buffer.from(await crypto.subtle.digest('SHA-256', Buffer.from(verifier))).toString('base64url');
+    const params = new URLSearchParams({ client_id, redirect_uri: callback, code_challenge: challenge,
+      code_challenge_method: 'S256', response_type: 'code', state: 'opaque', resource });
+    const redirect = await call(as.authorization_endpoint + '?' + params);
+    expect(redirect.status).toBe(302);
+    const location = new URL(redirect.headers.get('Location'));
+    expect(location.origin + location.pathname).toBe(callback);
+    expect(location.searchParams.get('state')).toBe('opaque');
+    const fields = { client_id, grant_type: 'authorization_code', redirect_uri: callback, resource,
+      code: location.searchParams.get('code'), code_verifier: verifier };
+    expect((await form(as.token_endpoint, { ...fields, code_verifier: 'b'.repeat(43) })).status).toBe(400);
+    const tokens = await (await form(as.token_endpoint, fields)).json();
+    expect(tokens.expires_in).toBe(1);
+    expect((await form(as.token_endpoint, fields)).status).toBe(400);
+    const headers = { Authorization: 'Bearer ' + tokens.access_token };
+    const session = (await post('oauth', { jsonrpc: '2.0', id: 1, method: 'initialize', params: {
+      protocolVersion: LEGACY_PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: 'oauth', version: '1' },
+    } }, headers)).headers.get('Mcp-Session-Id');
+    expect(session).toBeTruthy();
+    const now = vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 1100);
+    try {
+      expect((await legacy('oauth', 'ping', {}, { headers, session })).status).toBe(401);
+      const refresh = token => form(as.token_endpoint, { client_id, grant_type: 'refresh_token', refresh_token: token });
+      const rotated = await (await refresh(tokens.refresh_token)).json();
+      expect(rotated.expires_in).toBe(1);
+      expect((await refresh(tokens.refresh_token)).status).toBe(400);
+      const auth = { Authorization: 'Bearer ' + rotated.access_token };
+      expect((await legacy('oauth', 'ping', {}, { headers: auth, session })).status).toBe(200);
+      const echoed = await modern('oauth', 'tools/call', { name: 'echo', arguments: { message: 'ok' } }, auth);
+      expect((await echoed.json()).result.content[0].text).toBe('ok');
+      const stateless = await (await send('/fixtures/oauth/sessions/' + client_id)).json();
+      expect(stateless).toMatchObject({ requestCount: 1, refreshCount: 1, protocolVersion: MODERN_PROTOCOL_VERSION });
+      const info = await (await send('/fixtures/oauth/sessions/' + session)).json();
+      expect(info).toMatchObject({ requestCount: 2, refreshCount: 1, last401: new Date(Date.now()).toISOString() });
+      expect((await form(as.revocation_endpoint, { token: rotated.refresh_token })).status).toBe(200);
+      expect((await refresh(rotated.refresh_token)).status).toBe(400);
+    } finally { now.mockRestore(); }
   });
 });

@@ -1,21 +1,7 @@
-// Public deterministic MCP fixture servers: /fixtures/<name>/mcp (see
-// src/fixtureServers.js for the tools and README.md for the endpoint list).
-//
-// One endpoint speaks both protocol eras the app's own client negotiates
-// (src/utils/mcpClient.ts, versionNegotiation 'auto'):
-// - Stateless 2026-07-28: the client probes with `server/discover`; every later
-//   request carries the `_meta` envelope (io.modelcontextprotocol/protocolVersion,
-//   clientCapabilities) plus matching MCP-Protocol-Version and Mcp-Method headers.
-//   Results carry resultType, serverInfo in _meta and, for list/read methods,
-//   ttlMs/cacheScope. No session.
-// - Stateful 2025-11-25 (and older 2025/2024 revisions): `initialize` issues an
-//   Mcp-Session-Id; later requests must send it. The id is self-validating (a
-//   random part plus a digest of it), so no storage is needed: a missing id is a
-//   400, an id this worker did not issue is a 404, DELETE is the permitted 405.
-//
-// Constraints: no Durable Object or KV access, no outbound fetches, bounded
-// request bodies and delays, and Authorization/Cookie values are never echoed.
-
+// Public MCP fixtures share method dispatch with the read-only catalog endpoint.
+// Fixture state lives in FixtureState. The catalog retains self-validating IDs.
+import { RESOURCE_METADATA, ISSUER_METADATA, oauthAccess, oauthEndpoint, seconds } from './fixtureOAuth.js';
+import { consumeRateLimit, sha256Hex } from './submissions.js';
 import { compileSchema } from './jsonSchema.js';
 import {
   FIXTURE_NAMES,
@@ -24,6 +10,11 @@ import {
   FixtureRpcError,
 } from './fixtureServers.js';
 
+const OAUTH_WRITE_LIMITS = new Map([
+  ['POST /fixtures/oauth/register', 36],
+  ['GET /fixtures/oauth/authorize', 240],
+  ['POST /fixtures/oauth/token', 360],
+]);
 export const FIXTURE_PATH = /^\/fixtures\/([^/]+)\/mcp\/?$/;
 export const MAX_FIXTURE_BODY_BYTES = 16 * 1024;
 export const MODERN_PROTOCOL_VERSION = '2026-07-28';
@@ -76,7 +67,7 @@ const rpcError = (id, code, message, data) => ({
 });
 
 // ---------------------------------------------------------------------------
-// Stateless session ids
+// Session ID format shared with the catalog
 // ---------------------------------------------------------------------------
 
 const SESSION_PREFIX = 'mcptest-fx-';
@@ -91,7 +82,7 @@ export const createFixtureSessionId = async (fixtureName) => {
   return `${SESSION_PREFIX}${nonce}.${await sessionDigest(fixtureName, nonce)}`;
 };
 
-/** True for ids this worker issued for this fixture. Not a secret: there is no state behind it. */
+/** Checks the self-validating format used by the storage-free catalog endpoint. */
 export const isFixtureSessionId = async (fixtureName, value) => {
   const match = /^mcptest-fx-([0-9a-f]{32})\.([0-9a-f]{16})$/.exec(value ?? '');
   return Boolean(match) && match[2] === await sessionDigest(fixtureName, match[1]);
@@ -199,7 +190,7 @@ const authorizationFailure = (fixture, request) => {
   const challenge = header
     ? `Bearer ${realm}, error="invalid_token", error_description="Use the public token ${fixture.auth.token}"`
     : `Bearer ${realm}`;
-  return respond(401, rpcError(null, -32001, `Unauthorized: send Authorization: Bearer ${fixture.auth.token}`), {
+  return respond(401, rpcError(null, -32001, `Unauthorized: send Authorization: Bearer ${fixture.auth.token}. See /mcp-test-servers`), {
     'WWW-Authenticate': challenge,
   });
 };
@@ -208,7 +199,7 @@ const authorizationFailure = (fixture, request) => {
 // Era resolution and result encoding
 // ---------------------------------------------------------------------------
 
-const resolveModernEra = (message, request) => {
+const resolveModernEra = (message, request, fixture) => {
   const meta = isObject(message.params?._meta) ? message.params._meta : undefined;
   const version = meta?.[META_PROTOCOL_VERSION];
   const headerVersion = request.headers.get('mcp-protocol-version');
@@ -218,7 +209,7 @@ const resolveModernEra = (message, request) => {
   }
   if (!MODERN_PROTOCOL_VERSIONS.includes(version)) {
     throw new HttpFailure(400, rpcError(message.id, UNSUPPORTED_PROTOCOL_VERSION, `Unsupported protocol version ${version}`, {
-      supported: [...MODERN_PROTOCOL_VERSIONS, ...LEGACY_PROTOCOL_VERSIONS],
+      supported: fixture.mode === 'stateless' ? MODERN_PROTOCOL_VERSIONS : [...MODERN_PROTOCOL_VERSIONS, ...LEGACY_PROTOCOL_VERSIONS],
       requested: version,
     }));
   }
@@ -249,7 +240,7 @@ const resolveModernEra = (message, request) => {
 
 // \`id\` is the JSON-RPC id to echo in an error: the request id, or null for
 // notifications and client responses (whose id belongs to a server request).
-const resolveLegacyEra = async (request, fixture, id) => {
+const resolveLegacyEra = async (request, fixture, id, event) => {
   const headerVersion = request.headers.get('mcp-protocol-version');
   if (headerVersion !== null && !LEGACY_PROTOCOL_VERSIONS.includes(headerVersion)) {
     throw new HttpFailure(400, rpcError(id, INVALID_REQUEST, `Bad Request: unsupported MCP-Protocol-Version ${headerVersion}`));
@@ -259,10 +250,19 @@ const resolveLegacyEra = async (request, fixture, id) => {
     throw new HttpFailure(400, rpcError(id, INVALID_REQUEST,
       'Bad Request: Mcp-Session-Id header is required; send initialize first, or server/discover for the stateless revision'));
   }
-  if (!await isFixtureSessionId(fixture.name, sessionId)) {
-    throw new HttpFailure(404, rpcError(id, SESSION_NOT_FOUND, 'Session not found'));
+  const key = 'session:' + sessionId;
+  const session = fixture.store?.get(key);
+  const known = fixture.store
+    ? session && session.expiresAt > Date.now() && !session.deleteReceived && session.clientId === fixture.clientId
+    : await isFixtureSessionId(fixture.name, sessionId);
+  if (!known) throw new HttpFailure(404, rpcError(id, SESSION_NOT_FOUND, 'Session not found'));
+  if (session) {
+    session.requestCount++;
+    if (event === 'initialized') session.initialized = true;
+    if (event === 'delete') session.deleteReceived = true;
+    fixture.store.set(key, session);
   }
-  return { era: 'legacy', protocolVersion: headerVersion ?? LEGACY_PROTOCOL_VERSION };
+  return { era: 'legacy', protocolVersion: headerVersion ?? session?.protocolVersion ?? LEGACY_PROTOCOL_VERSION };
 };
 
 const isModernMessage = (message, request) => {
@@ -274,7 +274,7 @@ const isModernMessage = (message, request) => {
 };
 
 const resolveEra = (message, request, fixture) => (isModernMessage(message, request)
-  ? resolveModernEra(message, request)
+  ? resolveModernEra(message, request, fixture)
   : resolveLegacyEra(request, fixture, message.id));
 
 /**
@@ -285,7 +285,8 @@ const resolveEra = (message, request, fixture) => (isModernMessage(message, requ
  */
 const validateNonRequest = async (message, request, fixture) => {
   if (!isModernMessage(message, request)) {
-    await resolveLegacyEra(request, fixture, null);
+    await resolveLegacyEra(request, fixture, null,
+      !Object.hasOwn(message, 'id') && message.method === 'notifications/initialized' ? 'initialized' : undefined);
     return;
   }
   const headerVersion = request.headers.get('mcp-protocol-version');
@@ -294,7 +295,7 @@ const validateNonRequest = async (message, request, fixture) => {
   const version = typeof metaVersion === 'string' ? metaVersion : headerVersion;
   if (!MODERN_PROTOCOL_VERSIONS.includes(version)) {
     throw new HttpFailure(400, rpcError(null, UNSUPPORTED_PROTOCOL_VERSION, `Unsupported protocol version ${version}`, {
-      supported: [...MODERN_PROTOCOL_VERSIONS, ...LEGACY_PROTOCOL_VERSIONS],
+      supported: fixture.mode === 'stateless' ? MODERN_PROTOCOL_VERSIONS : [...MODERN_PROTOCOL_VERSIONS, ...LEGACY_PROTOCOL_VERSIONS],
       requested: version,
     }));
   }
@@ -348,7 +349,7 @@ const dispatch = async (message, fixture, context) => {
       return {};
     case 'server/discover':
       return {
-        supportedVersions: [...MODERN_PROTOCOL_VERSIONS, ...LEGACY_PROTOCOL_VERSIONS],
+        supportedVersions: fixture.mode === 'stateless' ? MODERN_PROTOCOL_VERSIONS : [...MODERN_PROTOCOL_VERSIONS, ...LEGACY_PROTOCOL_VERSIONS],
         capabilities: capabilities(fixture),
         instructions: fixture.instructions,
       };
@@ -413,7 +414,7 @@ const initializeParamsProblem = (params) => {
   return undefined;
 };
 
-const initialize = async (message, fixture) => {
+const initialize = async (message, fixture, request) => {
   const problem = initializeParamsProblem(message.params);
   if (problem) {
     // Rejected before any session is issued, so a broken handshake never
@@ -423,6 +424,14 @@ const initialize = async (message, fixture) => {
   const requested = message.params.protocolVersion;
   const protocolVersion = LEGACY_PROTOCOL_VERSIONS.includes(requested) ? requested : LEGACY_PROTOCOL_VERSION;
   const sessionId = await createFixtureSessionId(fixture.name);
+  if (fixture.store) {
+    const ttl = seconds(new URL(request.url).searchParams.get('session_ttl'), 3600);
+    if (!ttl) return respond(400, rpcError(message.id, INVALID_PARAMS, 'session_ttl must be 1 to 3600 seconds'));
+    fixture.store.set('session:' + sessionId, {
+      protocolVersion, initialized: false, deleteReceived: false, requestCount: 1,
+      expiresAt: Date.now() + 1000 * ttl, clientId: fixture.clientId,
+    });
+  }
   return respond(200, {
     jsonrpc: '2.0',
     id: message.id,
@@ -471,21 +480,43 @@ const streamToolCall = (message, fixture, context, protocolVersion) => {
   });
 };
 
+// Stateless OAuth traffic has no MCP session ID. Use its registration ID as
+// the diagnostics handle, so a harness can still observe a refresh and retry.
+function recordStatelessOAuth(fixture, protocolVersion) {
+  if (!fixture.clientId) return;
+  const key = 'session:' + fixture.clientId;
+  const previous = fixture.store.get(key);
+  fixture.store.set(key, {
+    clientId: fixture.clientId, protocolVersion, requestCount: (previous?.requestCount ?? 0) + 1,
+    initialized: false, deleteReceived: false, stateless: true,
+  });
+}
+
 const handlePost = async (request, fixture, options) => {
   const contentType = request.headers.get('content-type') ?? '';
   if (!/^application\/json\b/i.test(contentType)) {
     return respond(415, rpcError(null, INVALID_REQUEST, 'Unsupported Media Type: send Content-Type: application/json'));
   }
   const { message, kind } = parseMessage(await readBody(request));
+  const modern = message.method !== 'initialize' && isModernMessage(message, request);
+  if (fixture.mode === 'stateful' && modern) {
+    return respond(400, rpcError(message.id, METHOD_NOT_FOUND, 'Stateful fixture: send initialize first'));
+  }
+  if (fixture.mode === 'stateless' && !modern) {
+    return respond(400, rpcError(message.id, UNSUPPORTED_PROTOCOL_VERSION, 'Stateless fixture requires ' + MODERN_PROTOCOL_VERSION,
+      { supported: MODERN_PROTOCOL_VERSIONS }));
+  }
   if (kind !== 'request') {
     // Well-formed notifications (notifications/initialized, cancelled, ...) and
     // client responses, once their session or stateless revision checks out.
     await validateNonRequest(message, request, fixture);
+    if (modern) recordStatelessOAuth(fixture, MODERN_PROTOCOL_VERSION);
     return respond(202, undefined);
   }
-  if (message.method === 'initialize') return initialize(message, fixture);
+  if (message.method === 'initialize') return initialize(message, fixture, request);
 
   const eraContext = await resolveEra(message, request, fixture);
+  if (eraContext.era === 'modern') recordStatelessOAuth(fixture, eraContext.protocolVersion);
   const context = {
     ...eraContext,
     fixture: fixture.name,
@@ -517,22 +548,75 @@ const handlePost = async (request, fixture, options) => {
  * worker's other routes are untouched.
  */
 export const handleFixtureRequest = async (request, options = {}) => {
-  const { pathname } = new URL(request.url);
-  if (pathname !== '/fixtures' && !pathname.startsWith('/fixtures/')) return undefined;
-  if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: FIXTURE_CORS_HEADERS });
-
-  const name = FIXTURE_PATH.exec(pathname)?.[1];
-  const fixture = name && Object.hasOwn(FIXTURE_SERVERS, name) ? FIXTURE_SERVERS[name] : undefined;
-  if (!fixture) {
-    return respond(404, {
-      error: 'Unknown fixture',
-      fixtures: FIXTURE_NAMES.map((fixtureName) => `/fixtures/${fixtureName}/mcp`),
-    });
+  const url = new URL(request.url);
+  const { pathname } = url;
+  const metadata = [RESOURCE_METADATA, ISSUER_METADATA].includes(pathname);
+  if (!metadata && pathname !== '/fixtures' && !pathname.startsWith('/fixtures/')) return undefined;
+  if (request.method === 'OPTIONS') return respond(204);
+  const match = /^\/fixtures\/([^/]+)\/sessions\/([^/]+)$/.exec(pathname);
+  const oauth = metadata || /^\/fixtures\/oauth\/(register|authorize|token|revoke)$/.test(pathname);
+  const name = oauth ? 'oauth' : match?.[1] ?? FIXTURE_PATH.exec(pathname)?.[1];
+  if (!Object.hasOwn(FIXTURE_SERVERS, name)) {
+    return respond(404, { error: 'Unknown fixture', fixtures: FIXTURE_NAMES.map(n => `/fixtures/${n}/mcp`) });
   }
-
-  const unauthorized = authorizationFailure(fixture, request);
-  if (unauthorized) return unauthorized;
-  return serveMcpServer(request, fixture, options);
+  const { store } = options;
+  if (!store) {
+    const limit = OAUTH_WRITE_LIMITS.get(request.method + ' ' + pathname);
+    if (limit) {
+      const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+      const key = 'fixture-oauth:' + pathname + ':' + await sha256Hex(ip);
+      const decision = await consumeRateLimit(options.env, key, { limit, windowMs: 3_600_000, expire: true });
+      if (!decision.allowed) {
+        return respond(429, { error: 'rate_limit_exceeded' }, { 'Retry-After': String(decision.retryAfterSeconds) });
+      }
+    }
+    const ns = options.env.FIXTURE_STATE;
+    const response = await ns.get(ns.idFromName(url.origin + '/' + name)).fetch(request);
+    // The object binding is an internal HTTP hop. Only forward the fixture's
+    // end-to-end headers, and let the edge frame the body for HTTP/1 or HTTP/2.
+    const headers = new Headers();
+    for (const key of [...Object.keys(FIXTURE_CORS_HEADERS), 'Content-Type', 'Cache-Control', 'Allow',
+      'Location', 'WWW-Authenticate', 'Mcp-Session-Id', 'MCP-Protocol-Version']) {
+      if (response.headers.has(key)) headers.set(key, response.headers.get(key));
+    }
+    return new Response(response.body, { status: response.status, headers });
+  }
+  try {
+    if (oauth) return await oauthEndpoint(request, store, readBody, respond);
+    if (match) {
+      if (request.method !== 'GET') return respond(405, undefined, { Allow: 'GET, OPTIONS' });
+      const session = store.get('session:' + match[2]);
+      if (!session) return respond(404, rpcError(null, SESSION_NOT_FOUND, 'Session not found'));
+      const { clientId, ...info } = session;
+      const client = clientId && store.get('client:' + clientId);
+      return respond(200, { ...info, ...(clientId && { refreshCount: client?.refreshCount ?? 0, last401: client?.last401 ?? null }) });
+    }
+    const fixture = { ...FIXTURE_SERVERS[name], store };
+    if (request.method === 'GET' && /text\/html/i.test(request.headers.get('accept') ?? '') && !request.headers.has('mcp-session-id')) {
+      return respond(200, { name, tools: fixture.tools.map(t => t.definition.name), auth: fixture.auth?.type ?? 'none',
+        modes: fixture.mode ? [fixture.mode] : ['stateful', 'stateless'], docs: url.origin + '/mcp-test-servers' });
+    }
+    if (name === 'oauth') {
+      fixture.clientId = oauthAccess(request, store);
+      if (!fixture.clientId) {
+        const metadataUrl = new URL(RESOURCE_METADATA, url.origin);
+        metadataUrl.search = url.search;
+        return respond(401, rpcError(null, -32001, 'OAuth authorization required. See /mcp-test-servers'), {
+          'WWW-Authenticate': `Bearer resource_metadata="${metadataUrl.href}"${request.headers.has('Authorization') ? ', error="invalid_token"' : ''}`,
+        });
+      }
+    }
+    const unauthorized = authorizationFailure(fixture, request);
+    if (unauthorized) return unauthorized;
+    if (request.method === 'DELETE' && fixture.mode !== 'stateless' && request.headers.get('mcp-protocol-version') !== MODERN_PROTOCOL_VERSION) {
+      await resolveLegacyEra(request, fixture, null, 'delete');
+      return respond(204);
+    }
+    return serveMcpServer(request, fixture, options);
+  } catch (error) {
+    if (error instanceof HttpFailure) return error.response;
+    throw error;
+  }
 };
 
 /**
@@ -543,12 +627,12 @@ export const handleFixtureRequest = async (request, options = {}) => {
  */
 export const serveMcpServer = async (request, server, options = {}) => {
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: FIXTURE_CORS_HEADERS });
+  const allow = server.store ? (server.mode === 'stateless' ? 'GET, POST, OPTIONS' : 'GET, POST, DELETE, OPTIONS') : 'POST, OPTIONS';
   if (request.method === 'GET' || request.method === 'DELETE') {
-    // No standalone SSE stream and no session termination: both are permitted 405s.
-    return respond(405, undefined, { Allow: 'POST, OPTIONS' });
+    return respond(405, undefined, { Allow: allow });
   }
   if (request.method !== 'POST') {
-    return respond(405, rpcError(null, INVALID_REQUEST, 'Method Not Allowed'), { Allow: 'POST, OPTIONS' });
+    return respond(405, rpcError(null, INVALID_REQUEST, 'Method Not Allowed'), { Allow: allow });
   }
   try {
     return await handlePost(request, server, { wait: options.wait ?? defaultWait });
