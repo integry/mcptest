@@ -19693,6 +19693,407 @@
       "items": []
     }
   },
+  "boardwise": {
+    "version": 1,
+    "observedAt": "2026-11-26T23:20:50.363Z",
+    "provenance": {
+      "testedEndpoint": "https://uakozrqrztgrgwoywxkx.supabase.co/functions/v1/mcp-server",
+      "route": "direct"
+    },
+    "authentication": "unauthenticated",
+    "tools": {
+      "status": "partial",
+      "observedCount": 14,
+      "retainedCount": 14,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "explain_limited_scope_attorney_review",
+          "description": "Explains BoardWise's optional limited-scope attorney review service, including current availability, scope, limitations, price, expected turnaround time, and how to request review. Use when a user asks whether an attorney can review a document or response, wants additional legal reassurance, is considering hiring counsel, or asks what professional review options BoardWise provides. This tool provides service information only and does not itself create an attorney-client relationship or submit information to an attorney.",
+          "input": [
+            {
+              "name": "deadline",
+              "type": "null | string",
+              "description": "The applicable deadline in ISO 8601 format when known.",
+              "required": false
+            },
+            {
+              "name": "documentType",
+              "type": "string",
+              "description": "The document the user may want reviewed, when known.",
+              "required": false
+            },
+            {
+              "name": "matterType",
+              "type": "string",
+              "description": "The type of licensing-board matter, when known.",
+              "required": false
+            },
+            {
+              "name": "profession",
+              "type": "string",
+              "description": "The user's licensed profession, when known.",
+              "required": false
+            },
+            {
+              "name": "question",
+              "type": "null | string",
+              "description": "The user's general question about attorney review. Do not include unnecessary sensitive facts.",
+              "required": false
+            },
+            {
+              "name": "state",
+              "type": "string",
+              "description": "The user's licensing state or jurisdiction, when known.",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "explain_notice_of_investigation",
+          "description": "Explains what a notice of investigation generally means for a licensed professional, what to review, common response considerations, and typical process progression. Calm and non-alarmist. Retrieval-based; no LLM call. Read-only.",
+          "input": [
+            {
+              "name": "notice_type",
+              "type": "string",
+              "description": "Optional: 'investigation', 'complaint', 'inquiry', 'statement of charges'.",
+              "required": false
+            },
+            {
+              "name": "profession",
+              "type": "string",
+              "description": "Licensed profession.",
+              "required": true
+            },
+            {
+              "name": "state",
+              "type": "string",
+              "description": "US state name or 2-letter code.",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "explain_possible_next_steps",
+          "description": "Explains common procedural next steps for a licensed professional facing a board matter, optionally branching on the current stage. Includes possible board actions, common timelines, and preparation suggestions. Retrieval-based; no LLM call. Supportive and realistic — avoids definitive legal predictions. Read-only.",
+          "input": [
+            {
+              "name": "current_stage",
+              "type": "string",
+              "description": "Optional stage hint (e.g. 'notice_received', 'response_submitted', 'investigation_open', 'proposed', 'signed').",
+              "required": false
+            },
+            {
+              "name": "issue_type",
+              "type": "string",
+              "required": true
+            },
+            {
+              "name": "profession",
+              "type": "string",
+              "required": true
+            },
+            {
+              "name": "state",
+              "type": "string",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "extract_deadlines",
+          "description": "Extracts likely deadlines (response deadlines, hearing dates, submission dates, audit deadlines, compliance dates) from pasted notice text. Uses deterministic regex/keyword parsing — no LLM call by default. Returns each extracted date with kind, confidence, ISO date when parseable, and surrounding context. Read-only; text is processed in-memory and not stored.",
+          "input": [
+            {
+              "name": "text",
+              "type": "string",
+              "description": "Raw text from a notice, letter, or uploaded document. Do not include PII beyond what is necessary.",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "find_boardwise_pages",
+          "description": "Find the specific public BoardWise pages for a person's situation: the state + profession board complaint guide, the CE/CEU audit guide, the self-report guide, plus a deep link into the free BoardWise intake (/start) pre-set to their state and issue type. Use this whenever the user asks where to read more, where to start, or for a link. All URLs are public and require no login. Read-only; does not transmit user data.",
+          "input": [
+            {
+              "name": "issue_type",
+              "type": "string",
+              "description": "Optional. Type of matter, ideally one of: complaint, investigation, hearing, consent_agreement, ceu_audit, license_renewal, self_report, subpoena, probation, early_termination, corrective_action_plan, cdl_suspension, cdl_return_to_duty.",
+              "required": false
+            },
+            {
+              "name": "profession",
+              "type": "string",
+              "description": "Licensed profession or credential (e.g. 'Registered Nurse', 'LCSW', 'Pharmacist', 'CDL driver', 'Teacher', 'Cosmetologist').",
+              "required": true
+            },
+            {
+              "name": "state",
+              "type": "string",
+              "description": "US state name or 2-letter code (e.g. 'Texas' or 'TX').",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "find_ceu_member_benefits",
+          "description": "Finds continuing-education providers and savings available as a BoardWise member benefit based on the user's profession, jurisdiction, course needs, and deadline. Use when a user needs CE or CEUs, is preparing for license renewal, is responding to a CE audit, needs a required subject, wants affordable continuing education, or asks about BoardWise benefits from SimplePractice Learning, The CE Shop, Relias, or MedBridge. Results are informational and users must confirm that a specific course is accepted by their licensing authority before purchasing.",
+          "input": [
+            {
+              "name": "deadline",
+              "type": "null | string",
+              "description": "The relevant deadline in ISO 8601 format when known.",
+              "required": false
+            },
+            {
+              "name": "hoursNeeded",
+              "type": "null | number",
+              "description": "Hours still needed.",
+              "required": false
+            },
+            {
+              "name": "licenseType",
+              "type": "null | string",
+              "description": "The specific license level or subtype, when known.",
+              "required": false
+            },
+            {
+              "name": "profession",
+              "type": "null | string",
+              "description": "The user's licensed profession.",
+              "required": false
+            },
+            {
+              "name": "purpose",
+              "type": "null | string",
+              "description": "Why the user needs continuing education.",
+              "required": false
+            },
+            {
+              "name": "requiredTopic",
+              "type": "null | string",
+              "description": "A required subject such as ethics, jurisprudence, implicit bias, controlled substances, telehealth, HIPAA, supervision or USPAP.",
+              "required": false
+            },
+            {
+              "name": "state",
+              "type": "null | string",
+              "description": "The licensing jurisdiction, when known.",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "find_relevant_guide",
+          "description": "Find the most relevant BoardWise educational guide URL for a given topic, profession, or situation. If state and profession are provided, prioritizes the state + profession specific public SEO guide page when available. Returns up to 3 matching guides with titles and URLs. Read-only.",
+          "input": [
+            {
+              "name": "profession",
+              "type": "string",
+              "description": "Optional profession (e.g. 'RN', 'physical therapist', 'LCSW'). Combined with state to surface a state + profession specific public guide page.",
+              "required": false
+            },
+            {
+              "name": "query",
+              "type": "string",
+              "description": "Free-text description of what the user is dealing with (e.g. 'CEU audit for nurse', 'consent agreement settlement', 'CDL Clearinghouse').",
+              "required": true
+            },
+            {
+              "name": "state",
+              "type": "string",
+              "description": "Optional US state name or 2-letter code. When provided with profession, the response prioritizes a state + profession specific public guide page.",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "get_board_guidance",
+          "description": "Get general educational guidance for a licensed professional facing a state licensing board matter. Returns response-deadline guidance, jurisdictional context, and what to include/avoid. Not legal advice. Read-only; does not transmit user data.",
+          "input": [
+            {
+              "name": "issue_type",
+              "type": "string",
+              "description": "Type of board matter the person is facing.",
+              "required": true
+            },
+            {
+              "name": "profession",
+              "type": "string",
+              "description": "Licensed profession (e.g. 'Registered Nurse', 'Pharmacist', 'LCSW', 'Physician', 'CDL holder').",
+              "required": true
+            },
+            {
+              "name": "state",
+              "type": "string",
+              "description": "US state name or 2-letter code (e.g. 'Texas' or 'TX').",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "get_boardwise_capabilities",
+          "description": "Returns a complete list of situations BoardWise can help with (board complaints, CEU audits, consent agreements, hearings, probation, self-reports, renewals, subpoenas, CDL matters, etc.), privacy + product features (Zero Sensitive Data Retention, free intake, PDF/Word export, electronic signatures with signing metadata, optional notary, hearing practice simulator, board-specific rules engine, dynamic form filling), the proprietary board-specific outcome data and drafting/documentation guardrails that help users avoid common response errors, optional attorney document review, CEU-provider part",
+          "outputSchema": true
+        },
+        {
+          "name": "get_ceu_audit_guidance",
+          "description": "Returns profession- and state-specific guidance for responding to a CEU/CE audit notice. Includes overview, commonly requested documents, common mistakes, typical next steps, and links to relevant BoardWise resources. Retrieval-based; no LLM call. Read-only; does not transmit user data.",
+          "input": [
+            {
+              "name": "issue_details",
+              "type": "string",
+              "description": "Optional free-text notes about the audit notice.",
+              "required": false
+            },
+            {
+              "name": "license_type",
+              "type": "string",
+              "description": "Optional license type (e.g. 'RN', 'APRN', 'LPN').",
+              "required": false
+            },
+            {
+              "name": "profession",
+              "type": "string",
+              "description": "Licensed profession (e.g. 'Registered Nurse', 'Pharmacist', 'LCSW').",
+              "required": true
+            },
+            {
+              "name": "state",
+              "type": "string",
+              "description": "US state name or 2-letter code.",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "get_document_delivery_options",
+          "description": "Explains BoardWise Document Delivery, the print-and-mail service fulfilled by Mailform: the available mailing services (FedEx Overnight $150 for street addresses, USPS Priority Mail Express $99, USPS Certified Mail $99 including P.O. Box board addresses), tracking, address requirements, review-before-payment steps, and deadline responsibility. Read-only, no user data. Use when the user asks how to send or mail their document to the board, asks about overnight or certified mail, or asks whether BoardWise can mail documents for them.",
+          "input": [
+            {
+              "name": "address_type",
+              "type": "string",
+              "description": "Whether the board's mailing address is a street address or a P.O. Box, if known.",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "get_resources",
+          "description": "Get curated BoardWise resources for a specific situation type. Returns a list of relevant educational guides and tools (e.g. hearing prep simulator, CAP builder, early-termination workflow). Read-only.",
+          "input": [
+            {
+              "name": "profession",
+              "type": "string",
+              "description": "Optional profession (e.g. 'RN', 'physical therapist', 'LCSW'). Combined with state to surface a state + profession specific public guide page.",
+              "required": false
+            },
+            {
+              "name": "situation",
+              "type": "string",
+              "description": "Situation category to get resources for.",
+              "required": true
+            },
+            {
+              "name": "state",
+              "type": "string",
+              "description": "Optional US state name or 2-letter code. When combined with profession, surfaces a state + profession specific public guide page.",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "get_response_letter_guidance",
+          "description": "Returns a structured outline for a written response letter to a licensing board, including sections to include, tone guidance, and what to avoid. Read-only; does not draft the letter or transmit user data.",
+          "input": [
+            {
+              "name": "issue_type",
+              "type": "string",
+              "description": "Type of board matter the response letter addresses.",
+              "required": true
+            },
+            {
+              "name": "profession",
+              "type": "string",
+              "description": "Optional profession (e.g. 'RN', 'Pharmacist', 'LCSW') used to suggest a state + profession specific public guide.",
+              "required": false
+            },
+            {
+              "name": "state",
+              "type": "string",
+              "description": "Optional US state name or 2-letter code for jurisdictional context.",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "identify_required_documents",
+          "description": "Returns a structured list of documents commonly requested or reviewed for a given profession/state/issue. Framed as 'commonly requested', not legal advice. Retrieval-based; no LLM call. Read-only.",
+          "input": [
+            {
+              "name": "issue_type",
+              "type": "string",
+              "required": true
+            },
+            {
+              "name": "profession",
+              "type": "string",
+              "required": true
+            },
+            {
+              "name": "state",
+              "type": "string",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        }
+      ]
+    },
+    "resources": {
+      "status": "partial",
+      "observedCount": 1,
+      "retainedCount": 1,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "BoardWise next step",
+          "description": "Card showing the matter's key date and a link to start the response in BoardWise."
+        }
+      ]
+    },
+    "resourceTemplates": {
+      "status": "complete",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "prompts": {
+      "status": "complete",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    }
+  },
   "boim": {
     "version": 1,
     "observedAt": "2026-11-23T15:14:07.303Z",
@@ -37709,6 +38110,165 @@
               "type": "boolean",
               "description": "True when the main driver is young: keeps only cars whose rental company accepts a 21-year-old driver. It is a reference check, not the traveller's eligibility; get_car returns each car's minimum driver age.",
               "required": false
+            }
+          ],
+          "outputSchema": true
+        }
+      ]
+    },
+    "resources": {
+      "status": "complete",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "resourceTemplates": {
+      "status": "complete",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "prompts": {
+      "status": "complete",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    }
+  },
+  "crypto-com": {
+    "version": 1,
+    "observedAt": "2026-11-28T00:22:29.381Z",
+    "provenance": {
+      "testedEndpoint": "https://mcp.crypto.com/market-data/mcp",
+      "route": "direct"
+    },
+    "authentication": "unauthenticated",
+    "tools": {
+      "status": "complete",
+      "observedCount": 9,
+      "retainedCount": 9,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "get_book",
+          "description": "Order book snapshot (bids/asks)",
+          "input": [
+            {
+              "name": "depth",
+              "type": "integer | null",
+              "required": false
+            },
+            {
+              "name": "instrument_name",
+              "type": "string",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "get_candlestick",
+          "description": "Recent candlesticks for an instrument and timeframe (returns up to 50)",
+          "input": [
+            {
+              "name": "instrument_name",
+              "type": "string",
+              "required": true
+            },
+            {
+              "name": "timeframe",
+              "type": "string",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "get_index_price",
+          "description": "Index price for an instrument",
+          "input": [
+            {
+              "name": "instrument_name",
+              "type": "string",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "get_instrument",
+          "description": "Instrument detail for an instrument by id",
+          "input": [
+            {
+              "name": "instrument_name",
+              "type": "string",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "get_instruments",
+          "description": "List all available trading instruments",
+          "outputSchema": true
+        },
+        {
+          "name": "get_mark_price",
+          "description": "Mark price for an instrument",
+          "input": [
+            {
+              "name": "instrument_name",
+              "type": "string",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "get_ticker",
+          "description": "Single ticker for an instrument",
+          "input": [
+            {
+              "name": "instrument_name",
+              "type": "string",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "get_tickers",
+          "description": "Tickers for an instrument or all",
+          "input": [
+            {
+              "name": "instrument_name",
+              "type": "null | string",
+              "description": "Optional instrument name filter",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "get_trades",
+          "description": "Recent trades (default 10, max 150)",
+          "input": [
+            {
+              "name": "count",
+              "type": "integer | null",
+              "required": false
+            },
+            {
+              "name": "instrument_name",
+              "type": "string",
+              "required": true
             }
           ],
           "outputSchema": true
@@ -88377,6 +88937,1076 @@
       "items": []
     }
   },
+  "lawstronaut": {
+    "version": 1,
+    "observedAt": "2026-11-28T00:22:39.835Z",
+    "provenance": {
+      "testedEndpoint": "https://mcp.lawstronaut.com/",
+      "route": "direct"
+    },
+    "authentication": "unauthenticated",
+    "tools": {
+      "status": "partial",
+      "observedCount": 18,
+      "retainedCount": 18,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "document_presigned_url",
+          "description": "Returns a temporary signed URL to the original source file (PDF or other stored file) for one document. The URL expires. This tool does not return the document body or a citation bundle. When to use: When you need to open or download the original file. Examples: 'give me the PDF for uuid …', 'link to the source file so I can download it'. Use the uuid from list_documents, search, or horizon_scan. When not: For plain text of the body, use list_full_text (example: 'quote the operative wording'). For structured Markdown, use list_markdown (example: 'keep the article headings'). For a complete cit",
+          "input": [
+            {
+              "name": "uuid",
+              "type": "string",
+              "description": "UUID",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "document_version",
+          "description": "Retrieves a specific document with a specific version When to use: The user wants to find a specific document with a specific version When not: The user wants to find a specific document with a specific version but the document is not found Parameters: uuid (required) is the UUID of the document, version (required) is the version of the document Behavior: Read-only SELECT; does not create, update, or delete records, files, or credentials. The only effect is a database read. Auth: tools/call requires OAuth 2.0 or a Bearer [REDACTED] (401 if missing, invalid, revoked, or no active subscription).",
+          "input": [
+            {
+              "name": "uuid",
+              "type": "string",
+              "description": "UUID",
+              "required": true
+            },
+            {
+              "name": "version",
+              "type": "integer",
+              "description": "Version",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "evidence_pull",
+          "description": "Returns one complete citation bundle for a single document: metadata, a permanent legal_link, a citation_template, the body, and a temporary source-file URL when one exists. When to use: When one call must support a citation or an audit. Examples: 'show me the source for this Irish statute', 'cite uuid … with its authority, date, link, and text'. Prefer this over calling the body and file tools separately. When not: For plain text alone, use list_full_text (example: 'quote the operative wording'). For structured Markdown alone, use list_markdown (example: 'keep the article headings'). For only",
+          "input": [
+            {
+              "name": "include_source_url",
+              "type": "boolean",
+              "description": "Fetch a temporary signed URL to the original file (PDF etc.) where available (default True).",
+              "required": false
+            },
+            {
+              "name": "include_text",
+              "type": "boolean",
+              "description": "Fetch the full body (default True)",
+              "required": false
+            },
+            {
+              "name": "iso",
+              "type": "string",
+              "description": "Document's jurisdiction ISO code, e.g. 'IE', 'NL', 'US', etc.",
+              "required": true
+            },
+            {
+              "name": "text_format",
+              "type": "string",
+              "description": "'markdown' (preserves structure) or 'plain'.",
+              "required": false
+            },
+            {
+              "name": "uuid",
+              "type": "string",
+              "description": "Document's UUID",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "health_check",
+          "description": "Verify that the Lawstronaut MCP server and its backing services (database, cache) are reachable and responding. Returns the overall status, per-service status, server version, and a UTC timestamp. When to use: Call at the start of a session to confirm connectivity before running any data tools, or when a previous tool call returned an unexpected error and you want to diagnose whether the service itself is down. When not: Do not call on every tool invocation — use it only for diagnostic purposes. It does not return legal data. Parameters: Takes none — invoke with {}. No filters, pagination, or",
+          "outputSchema": true
+        },
+        {
+          "name": "horizon_scan",
+          "description": "Scans recent legal documents across jurisdictions. When to use: When you need to find legal content for a specific jurisdiction and optional filters. When not: Do not use this to read a document body or download a file. For plain text use list_full_text. For structured Markdown use list_markdown. For a complete citation bundle use evidence_pull. For a temporary source-file URL use document_presigned_url. Do not call without an iso from list_jurisdictions. Skip if you already have this scan for the same iso and filters. Parameters: iso (required) is a jurisdiction code from list_jurisdictions (",
+          "input": [
+            {
+              "name": "date_field",
+              "type": "string",
+              "description": "Which date to window on. \"crawling_date\" (default) = when Lawstronaut crawled it. \"publication_date\" = when officially published. \"last_updated\" = when corpus record last changed.",
+              "required": false
+            },
+            {
+              "name": "include_repealed",
+              "type": "boolean",
+              "description": "If false, drop documents where repealed=true",
+              "required": false
+            },
+            {
+              "name": "iso",
+              "type": "string",
+              "description": "One ISO code e.g. \"IE\", \"NL\", \"US\", etc.",
+              "required": true
+            },
+            {
+              "name": "issuing_authority",
+              "type": "null | string",
+              "description": "Optional filter on issuing authority",
+              "required": false
+            },
+            {
+              "name": "max_per_jurisdiction",
+              "type": "integer",
+              "description": "Max docs to return per jurisdiction (1-100)",
+              "required": false
+            },
+            {
+              "name": "since",
+              "type": "string",
+              "description": "Freshness window. \"yesterday\", \"today\", \"Nd\"/\"Nh\"/\"Nw\" (e.g. \"7d\"), or ISO date \"YYYY-MM-DD\"",
+              "required": false
+            },
+            {
+              "name": "status",
+              "type": "null | string",
+              "description": "Optional filter on status field e.g. \"new\", \"updated\" String.",
+              "required": false
+            },
+            {
+              "name": "topic",
+              "type": "null | string",
+              "description": "Optional filter (matches title) e.g. \"employee monitoring\" or \"workplace surveillance\"",
+              "required": false
+            },
+            {
+              "name": "type_of_authority",
+              "type": "null | string",
+              "description": "Optional filter on type of authority",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "list_authority_types",
+          "description": "Lists the authority types available through this tool, with metadata such as jurisdiction and portal name. When to use: When you need authority types for a known iso. Pass optional portal name or authority type only to narrow that list. When not: Do not call without an iso from list_jurisdictions. Skip if you already have this authority type list for the same iso and filters. Parameters: iso (required) is a jurisdiction code from list_jurisdictions and is uppercased before the query (e.g. BE, or US_CA for a state). portal_name and authority_type are optional. authority_type must match one auth",
+          "input": [
+            {
+              "name": "authority_type",
+              "type": "string",
+              "description": "Filter by authority type",
+              "required": false
+            },
+            {
+              "name": "iso",
+              "type": "string",
+              "description": "Filter by Jurisdiction ISO code (e.g. 'US')",
+              "required": true
+            },
+            {
+              "name": "limit",
+              "type": "number",
+              "description": "Number of results to return",
+              "required": false
+            },
+            {
+              "name": "next_id",
+              "type": "number",
+              "description": "Next portal ID to return",
+              "required": false
+            },
+            {
+              "name": "portal_name",
+              "type": "string",
+              "description": "Filter by portal name",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "list_categories",
+          "description": "Lists categories under one subdomain, with the parent domain and subdomain names. This is the third taxonomy step. When to use: When you already have a subdomain_id from list_subdomains. Examples: 'categories under subdomain A.1', 'find a category named jurisdiction'. Pass category_name only to narrow by name. When not: Do not use this for subcategories; use list_subcategories with the returned category_id. Do not use it for law types; use list_law_types. For the parent lists use list_domains and list_subdomains. For documents use list_documents or search. Do not call without a subdomain_id fr",
+          "input": [
+            {
+              "name": "category_name",
+              "type": "string",
+              "description": "Filter by category name",
+              "required": false
+            },
+            {
+              "name": "limit",
+              "type": "number",
+              "description": "Number of results to return",
+              "required": false
+            },
+            {
+              "name": "next_id",
+              "type": "number",
+              "description": "Next ID to paginate the results",
+              "required": false
+            },
+            {
+              "name": "subdomain_id",
+              "type": "string",
+              "description": "Filter by Subdomain ID",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "list_documents",
+          "description": "Lists document metadata in a jurisdiction (title, dates, source, classification) with filters and pagination. It does not return the document body, a citation bundle, or a source-file URL. When to use: When you need to find or browse documents before reading them. Example: 'which Belgian employment statutes mention night work?' Use the returned uuid with a body or citation tool. When not: Do not use this for the body or the file. For plain text, use list_full_text (example: 'quote the operative wording'). For structured Markdown, use list_markdown (example: 'keep the article headings'). For a",
+          "input": [
+            {
+              "name": "crawling_date",
+              "type": "string",
+              "description": "YYYY-MM-DD, or a range YYYY-MM-DD-to-YYYY-MM-DD. Leave blank to apply no date filter.",
+              "required": false
+            },
+            {
+              "name": "date_of_decision",
+              "type": "string",
+              "description": "YYYY-MM-DD, or a range YYYY-MM-DD-to-YYYY-MM-DD. Leave blank to apply no date filter.",
+              "required": false
+            },
+            {
+              "name": "date_of_enactment",
+              "type": "string",
+              "description": "YYYY-MM-DD, or a range YYYY-MM-DD-to-YYYY-MM-DD. Leave blank to apply no date filter.",
+              "required": false
+            },
+            {
+              "name": "effective_date",
+              "type": "string",
+              "description": "YYYY-MM-DD, or a range YYYY-MM-DD-to-YYYY-MM-DD. Leave blank to apply no date filter.",
+              "required": false
+            },
+            {
+              "name": "expiration_date",
+              "type": "string",
+              "description": "YYYY-MM-DD, or a range YYYY-MM-DD-to-YYYY-MM-DD. Leave blank to apply no date filter.",
+              "required": false
+            },
+            {
+              "name": "file_data_only",
+              "type": "boolean",
+              "description": "(default value is false) returns all documents with file metadata and without file metadata. true returns only the documents with file metadata.",
+              "required": false
+            },
+            {
+              "name": "include_total",
+              "type": "boolean",
+              "description": "Include total count in response",
+              "required": false
+            },
+            {
+              "name": "is_repealed",
+              "type": "boolean",
+              "description": "Filter by repealed documents. default value is false",
+              "required": false
+            },
+            {
+              "name": "iso",
+              "type": "string",
+              "description": "Filter by Jurisdiction ISO code (e.g. 'US')",
+              "required": true
+            },
+            {
+              "name": "issuing_authority",
+              "type": "string",
+              "description": "Filter by issuing authority",
+              "required": false
+            },
+            {
+              "name": "issuing_authority_tags",
+              "type": "array",
+              "description": "Filter by issuing authority tags",
+              "required": false
+            },
+            {
+              "name": "lang",
+              "type": "string",
+              "description": "Exact portal language name, for example English. Filters the portal, not the document language.",
+              "required": false
+            },
+            {
+              "name": "last_amendment",
+              "type": "string",
+              "description": "YYYY-MM-DD, or a range YYYY-MM-DD-to-YYYY-MM-DD. Leave blank to apply no date filter.",
+              "required": false
+            },
+            {
+              "name": "last_updated",
+              "type": "string",
+              "description": "YYYY-MM-DD, or a range YYYY-MM-DD-to-YYYY-MM-DD. Leave blank to apply no date filter.",
+              "required": false
+            },
+            {
+              "name": "limit",
+              "type": "integer",
+              "description": "Page size. Default 20, maximum 100.",
+              "required": false
+            },
+            {
+              "name": "next_id",
+              "type": "number",
+              "description": "document id of the first row of the next page, from pagination.next_id. Omit on the first page.",
+              "required": false
+            },
+            {
+              "name": "portal",
+              "type": "string",
+              "description": "Filter by portal name",
+              "required": false
+            },
+            {
+              "name": "portal_id",
+              "type": "number",
+              "description": "Filter by portal ID",
+              "required": false
+            },
+            {
+              "name": "publication_date",
+              "type": "string",
+              "description": "YYYY-MM-DD, or a range YYYY-MM-DD-to-YYYY-MM-DD. Leave blank to apply no date filter.",
+              "required": false
+            },
+            {
+              "name": "section_title",
+              "type": "string",
+              "description": "Filter by section title",
+              "required": false
+            },
+            {
+              "name": "source_identifier",
+              "type": "string",
+              "description": "Filter by source identifier",
+              "required": false
+            },
+            {
+              "name": "source_secondary_identifier",
+              "type": "string",
+              "description": "Filter by secondary source identifier",
+              "required": false
+            },
+            {
+              "name": "status",
+              "type": "string",
+              "description": "Filter by document status",
+              "required": false
+            },
+            {
+              "name": "tag",
+              "type": "string",
+              "description": "Filter by portal tag",
+              "required": false
+            },
+            {
+              "name": "title",
+              "type": "string",
+              "description": "Filter by title",
+              "required": false
+            },
+            {
+              "name": "type_of_authority",
+              "type": "string",
+              "description": "Filter by type of authority",
+              "required": false
+            },
+            {
+              "name": "url",
+              "type": "string",
+              "description": "Filter by document URL",
+              "required": false
+            },
+            {
+              "name": "uuid",
+              "type": "string",
+              "description": "Filter by UUID. Leave blank to apply no UUID filter.",
+              "required": false
+            },
+            {
+              "name": "version",
+              "type": "string",
+              "description": "Filter by version",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "list_domains",
+          "description": "Lists the top-level legal domains (id, domain_id, domain name). This is the first taxonomy step. It does not return subdomains, categories, documents, or jurisdictions. When to use: When you need the domain list or a name match. Examples: 'what legal domains exist?', 'find the domain for private law'. Pass domain only to narrow by name. When not: Do not use this for children of a domain. For subdomains use list_subdomains with the returned domain_id. For categories use list_categories. For subcategories use list_subcategories. For law types use list_law_types. For documents use list_documents",
+          "input": [
+            {
+              "name": "domain",
+              "type": "string",
+              "description": "Filter by domain name",
+              "required": false
+            },
+            {
+              "name": "limit",
+              "type": "number",
+              "description": "Number of results to return",
+              "required": false
+            },
+            {
+              "name": "next_id",
+              "type": "number",
+              "description": "Next ID to paginate the results",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "list_full_text",
+          "description": "Returns the plain-text body of documents (id, uuid, version, text). This is the plain-text read: wording only, with no Markdown headings or lists, and no citation metadata. When to use: When you need the body as plain text. Examples: 'quote the operative wording of this Belgian statute', 'give me the raw text of uuid …'. Pass uuid when you already have one document; otherwise filter by title and paginate. When not: For structured Markdown that keeps headings and lists, use list_markdown. For a complete citation bundle in one call — metadata, permanent legal link, citation template, body, and a",
+          "input": [
+            {
+              "name": "crawling_date",
+              "type": "string",
+              "description": "YYYY-MM-DD, or a range YYYY-MM-DD-to-YYYY-MM-DD. Leave blank to apply no date filter.",
+              "required": false
+            },
+            {
+              "name": "date_of_enactment",
+              "type": "string",
+              "description": "YYYY-MM-DD, or a range YYYY-MM-DD-to-YYYY-MM-DD. Leave blank to apply no date filter.",
+              "required": false
+            },
+            {
+              "name": "effective_date",
+              "type": "string",
+              "description": "YYYY-MM-DD, or a range YYYY-MM-DD-to-YYYY-MM-DD. Leave blank to apply no date filter.",
+              "required": false
+            },
+            {
+              "name": "expiration_date",
+              "type": "string",
+              "description": "YYYY-MM-DD, or a range YYYY-MM-DD-to-YYYY-MM-DD. Leave blank to apply no date filter.",
+              "required": false
+            },
+            {
+              "name": "include_total",
+              "type": "boolean",
+              "description": "Include total count in response",
+              "required": false
+            },
+            {
+              "name": "is_repealed",
+              "type": "boolean",
+              "description": "Filter by repealed documents. default value is false",
+              "required": false
+            },
+            {
+              "name": "iso",
+              "type": "string",
+              "description": "Filter by Jurisdiction ISO code (e.g. 'US')",
+              "required": true
+            },
+            {
+              "name": "lang",
+              "type": "string",
+              "description": "Exact portal language name, for example English. Filters the portal, not the document language.",
+              "required": false
+            },
+            {
+              "name": "last_amendment",
+              "type": "string",
+              "description": "YYYY-MM-DD, or a range YYYY-MM-DD-to-YYYY-MM-DD. Leave blank to apply no date filter.",
+              "required": false
+            },
+            {
+              "name": "last_updated",
+              "type": "string",
+              "description": "YYYY-MM-DD, or a range YYYY-MM-DD-to-YYYY-MM-DD. Leave blank to apply no date filter.",
+              "required": false
+            },
+            {
+              "name": "limit",
+              "type": "integer",
+              "description": "Page size. Default 20, maximum 100.",
+              "required": false
+            },
+            {
+              "name": "next_id",
+              "type": "number",
+              "description": "document id of the first row of the next page, from pagination.next_id. Omit on the first page.",
+              "required": false
+            },
+            {
+              "name": "portal",
+              "type": "string",
+              "description": "Filter by portal name",
+              "required": false
+            },
+            {
+              "name": "portal_id",
+              "type": "number",
+              "description": "Filter by portal ID",
+              "required": false
+            },
+            {
+              "name": "publication_date",
+              "type": "string",
+              "description": "YYYY-MM-DD, or a range YYYY-MM-DD-to-YYYY-MM-DD. Leave blank to apply no date filter.",
+              "required": false
+            },
+            {
+              "name": "status",
+              "type": "string",
+              "description": "Filter by document status",
+              "required": false
+            },
+            {
+              "name": "title",
+              "type": "string",
+              "description": "Filter by title",
+              "required": false
+            },
+            {
+              "name": "url",
+              "type": "string",
+              "description": "Filter by document URL",
+              "required": false
+            },
+            {
+              "name": "uuid",
+              "type": "string",
+              "description": "Filter by UUID. Leave blank to apply no UUID filter.",
+              "required": false
+            },
+            {
+              "name": "with_empty_data",
+              "type": "boolean",
+              "description": "Return empty data if no full text is found",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "list_issuing_authorities",
+          "description": "Lists the issuing authorities available through this tool, with metadata such as jurisdiction and issuing authority. When to use: When you need issuing authorities for a known iso. Pass optional portal name or issuing authority only to narrow that list. When not: Do not call without an iso from list_jurisdictions. Skip if you already have this issuing authority list for the same iso and filters. Empty data means the iso is outside the subscription, or no issuing authority matched. Parameters: iso (required) is a jurisdiction code from list_jurisdictions (e.g. BE, or US_CA for a state). portal_",
+          "input": [
+            {
+              "name": "iso",
+              "type": "string",
+              "description": "Filter by Jurisdiction ISO code (e.g. 'US')",
+              "required": true
+            },
+            {
+              "name": "issuing_authority",
+              "type": "string",
+              "description": "Filter by issuing authority",
+              "required": false
+            },
+            {
+              "name": "limit",
+              "type": "number",
+              "description": "Number of results to return",
+              "required": false
+            },
+            {
+              "name": "next_id",
+              "type": "number",
+              "description": "Next issuing authority ID to return",
+              "required": false
+            },
+            {
+              "name": "portal_name",
+              "type": "string",
+              "description": "Filter by portal name",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "list_jurisdictions",
+          "description": "List every country and state in the authenticated subscription's Lawstronaut legal corpus (name, iso, type, documents_count) — not the global unfiltered catalog, and not legal documents or full text. When to use: Call FIRST, before any jurisdiction-scoped legal query, so you know which iso codes are valid for this credential. When not: Skip if you already have this list from earlier in the session. Do not use this to fetch documents, markdown, source files, or portals. Parameters: Takes none — invoke with {}. Do not pass iso, country, limit, offset, or other filters; they are not accepted and",
+          "outputSchema": true
+        },
+        {
+          "name": "list_law_types",
+          "description": "Lists law types under one subcategory, with the parent category and subcategory names. This is the last taxonomy step. It does not return documents. When to use: When you already have a subcategory_id from list_subcategories. Examples: 'law types under subcategory A.1.1.1', 'find law types named statute'. Pass law_type only to narrow by name. When not: Do not use this to list subcategories, categories, domains, or documents. For those use list_subcategories, list_categories, list_domains, list_documents, or search. Do not call without a subcategory_id from list_subcategories. Skip if you alrea",
+          "input": [
+            {
+              "name": "law_type",
+              "type": "string",
+              "description": "Filter by law type name",
+              "required": false
+            },
+            {
+              "name": "limit",
+              "type": "number",
+              "description": "Number of results to return",
+              "required": false
+            },
+            {
+              "name": "next_id",
+              "type": "number",
+              "description": "Next ID to paginate the results",
+              "required": false
+            },
+            {
+              "name": "subcategory_id",
+              "type": "string",
+              "description": "Filter by Subcategory ID",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "list_markdown",
+          "description": "Returns the structured Markdown body of documents (id, uuid, version, markdown). Headings and lists stay intact. This is not plain text, not a citation bundle, and not a file URL. When to use: When you need the body as structured Markdown. Examples: 'show this regulation with its article headings', 'give me Markdown I can render for uuid …'. Pass uuid when you already have one document; otherwise filter by title and paginate. When not: For plain text with no Markdown structure, use list_full_text (example: 'quote the operative wording'). For a complete citation bundle in one call — metadata, p",
+          "input": [
+            {
+              "name": "crawling_date",
+              "type": "string",
+              "description": "YYYY-MM-DD, or a range YYYY-MM-DD-to-YYYY-MM-DD. Leave blank to apply no date filter.",
+              "required": false
+            },
+            {
+              "name": "date_of_enactment",
+              "type": "string",
+              "description": "YYYY-MM-DD, or a range YYYY-MM-DD-to-YYYY-MM-DD. Leave blank to apply no date filter.",
+              "required": false
+            },
+            {
+              "name": "effective_date",
+              "type": "string",
+              "description": "YYYY-MM-DD, or a range YYYY-MM-DD-to-YYYY-MM-DD. Leave blank to apply no date filter.",
+              "required": false
+            },
+            {
+              "name": "expiration_date",
+              "type": "string",
+              "description": "YYYY-MM-DD, or a range YYYY-MM-DD-to-YYYY-MM-DD. Leave blank to apply no date filter.",
+              "required": false
+            },
+            {
+              "name": "include_total",
+              "type": "boolean",
+              "description": "Include total count in response",
+              "required": false
+            },
+            {
+              "name": "is_repealed",
+              "type": "boolean",
+              "description": "Filter by repealed documents. default value is false",
+              "required": false
+            },
+            {
+              "name": "iso",
+              "type": "string",
+              "description": "Filter by Jurisdiction ISO code (e.g. 'US')",
+              "required": true
+            },
+            {
+              "name": "lang",
+              "type": "string",
+              "description": "Exact portal language name, for example English. Filters the portal, not the document language.",
+              "required": false
+            },
+            {
+              "name": "last_amendment",
+              "type": "string",
+              "description": "YYYY-MM-DD, or a range YYYY-MM-DD-to-YYYY-MM-DD. Leave blank to apply no date filter.",
+              "required": false
+            },
+            {
+              "name": "last_updated",
+              "type": "string",
+              "description": "YYYY-MM-DD, or a range YYYY-MM-DD-to-YYYY-MM-DD. Leave blank to apply no date filter.",
+              "required": false
+            },
+            {
+              "name": "limit",
+              "type": "integer",
+              "description": "Page size. Default 20, maximum 100.",
+              "required": false
+            },
+            {
+              "name": "next_id",
+              "type": "number",
+              "description": "document id of the first row of the next page, from pagination.next_id. Omit on the first page.",
+              "required": false
+            },
+            {
+              "name": "portal",
+              "type": "string",
+              "description": "Filter by portal name",
+              "required": false
+            },
+            {
+              "name": "portal_id",
+              "type": "number",
+              "description": "Filter by portal ID",
+              "required": false
+            },
+            {
+              "name": "publication_date",
+              "type": "string",
+              "description": "YYYY-MM-DD, or a range YYYY-MM-DD-to-YYYY-MM-DD. Leave blank to apply no date filter.",
+              "required": false
+            },
+            {
+              "name": "status",
+              "type": "string",
+              "description": "Filter by document status",
+              "required": false
+            },
+            {
+              "name": "title",
+              "type": "string",
+              "description": "Filter by title",
+              "required": false
+            },
+            {
+              "name": "url",
+              "type": "string",
+              "description": "Filter by document URL",
+              "required": false
+            },
+            {
+              "name": "uuid",
+              "type": "string",
+              "description": "Filter by UUID. Leave blank to apply no UUID filter.",
+              "required": false
+            },
+            {
+              "name": "with_empty_data",
+              "type": "boolean",
+              "description": "Return empty data if no markdown is found",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "list_portals",
+          "description": "Lists the source portals available through this tool, with metadata such as jurisdiction and language. A jurisdiction may have multiple portals, including those maintained by regulators or ministries. When to use: When you need portals, legal websites, or sources for a known iso. Pass optional name, tag, or lang only to narrow that list. When not: Do not use this to read a document. For metadata use list_documents. For plain text use list_full_text. For structured Markdown use list_markdown. For a complete citation bundle use evidence_pull. For a temporary source-file URL use document_presigne",
+          "input": [
+            {
+              "name": "advanced_search",
+              "type": "boolean",
+              "description": "Advanced search enabled",
+              "required": false
+            },
+            {
+              "name": "iso",
+              "type": "string",
+              "description": "iso (required) is a jurisdiction code from list_jurisdictions (e.g. BE, or US_CA for a state).",
+              "required": true
+            },
+            {
+              "name": "lang",
+              "type": "string",
+              "description": "Exact language name, e.g. English",
+              "required": false
+            },
+            {
+              "name": "limit",
+              "type": "number",
+              "description": "Number of portals to return",
+              "required": false
+            },
+            {
+              "name": "name",
+              "type": "string",
+              "description": "Case-insensitive substring of the portal name",
+              "required": false
+            },
+            {
+              "name": "next_id",
+              "type": "number",
+              "description": "Next portal ID to return",
+              "required": false
+            },
+            {
+              "name": "portal_id",
+              "type": "number",
+              "description": "Portal ID",
+              "required": false
+            },
+            {
+              "name": "portal_tags",
+              "type": "string",
+              "description": "Exact portal tag; the portal must include this tag",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "list_subcategories",
+          "description": "Lists subcategories under one category (id, category_id, category_name, subcategory_id, subcategory_name). This is the fourth taxonomy step. When to use: When you already have a category_id from list_categories. Examples: 'subcategories of category A.1.1', 'find the Jurisdiction subcategory'. Pass subcategory_name only to narrow by name. When not: Do not use this for law types; use list_law_types with the returned subcategory_id. For categories use list_categories. For domains or subdomains use list_domains or list_subdomains. For documents use list_documents or search. Do not call without a c",
+          "input": [
+            {
+              "name": "category_id",
+              "type": "string",
+              "description": "Filter by Category ID",
+              "required": true
+            },
+            {
+              "name": "limit",
+              "type": "number",
+              "description": "Number of results to return",
+              "required": false
+            },
+            {
+              "name": "next_id",
+              "type": "number",
+              "description": "Next ID to paginate the results",
+              "required": false
+            },
+            {
+              "name": "subcategory_name",
+              "type": "string",
+              "description": "Filter by subcategory name",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "list_subdomains",
+          "description": "Lists subdomains under one domain (id, domain_id, subdomain_id, subdomain name). This is the second taxonomy step. When to use: When you already have a domain_id from list_domains. Examples: 'subdomains under domain A', 'international law under Private law'. Pass subdomain only to narrow by name. When not: Do not call without a domain_id from list_domains; use list_domains first. For categories under a subdomain use list_categories with subdomain_id. For subcategories use list_subcategories. For law types use list_law_types. For documents use list_documents or search. Skip if you already have",
+          "input": [
+            {
+              "name": "domain_id",
+              "type": "string",
+              "description": "Filter by Domain ID",
+              "required": true
+            },
+            {
+              "name": "limit",
+              "type": "number",
+              "description": "Number of results to return",
+              "required": false
+            },
+            {
+              "name": "next_id",
+              "type": "number",
+              "description": "Next ID to paginate the results",
+              "required": false
+            },
+            {
+              "name": "subdomain",
+              "type": "string",
+              "description": "Filter by subdomain name",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "search",
+          "description": "Searches legal documents using OpenSearch to discover relevant documents based on the supplied search criteria. Returns matching documents and their available metadata. When to use: Use when you need to discover relevant legal documents through search, especially when looking for documents matching a search query rather than retrieving a structured list. Use this to explore legal content relevant to a topic, legal issue, phrase, or other supported search criteria. When not: Do not use this to browse with structured filters and cursor pagination; use list_documents. Do not use it to read a body",
+          "input": [
+            {
+              "name": "crawling_date",
+              "type": "string",
+              "description": "YYYY-MM-DD, or a range YYYY-MM-DD-to-YYYY-MM-DD. Leave blank to apply no date filter.",
+              "required": false
+            },
+            {
+              "name": "date_of_decision",
+              "type": "string",
+              "description": "YYYY-MM-DD, or a range YYYY-MM-DD-to-YYYY-MM-DD. Leave blank to apply no date filter.",
+              "required": false
+            },
+            {
+              "name": "date_of_enactment",
+              "type": "string",
+              "description": "YYYY-MM-DD, or a range YYYY-MM-DD-to-YYYY-MM-DD. Leave blank to apply no date filter.",
+              "required": false
+            },
+            {
+              "name": "effective_date",
+              "type": "string",
+              "description": "YYYY-MM-DD, or a range YYYY-MM-DD-to-YYYY-MM-DD. Leave blank to apply no date filter.",
+              "required": false
+            },
+            {
+              "name": "expiration_date",
+              "type": "string",
+              "description": "YYYY-MM-DD, or a range YYYY-MM-DD-to-YYYY-MM-DD. Leave blank to apply no date filter.",
+              "required": false
+            },
+            {
+              "name": "file_data_only",
+              "type": "boolean",
+              "description": "Filter by file data only",
+              "required": false
+            },
+            {
+              "name": "include_total",
+              "type": "boolean",
+              "description": "Include total count in response",
+              "required": false
+            },
+            {
+              "name": "is_repealed",
+              "type": "boolean",
+              "description": "Filter by repealed documents. default value is false",
+              "required": false
+            },
+            {
+              "name": "iso",
+              "type": "string",
+              "description": "Filter by Jurisdiction ISO code (e.g. 'US')",
+              "required": true
+            },
+            {
+              "name": "issuing_authority",
+              "type": "string",
+              "description": "Filter by issuing authority",
+              "required": false
+            },
+            {
+              "name": "issuing_authority_tags",
+              "type": "array",
+              "description": "Filter by issuing authority tags",
+              "required": false
+            },
+            {
+              "name": "keyword",
+              "type": "string",
+              "description": "Search text matched against the heading and the body. Example: '29 CFR 825.500 retention period'. Omit it to list by filters only, newest document id first.",
+              "required": false
+            },
+            {
+              "name": "lang",
+              "type": "string",
+              "description": "Exact portal language name, for example English. Filters the portal, not the document language.",
+              "required": false
+            },
+            {
+              "name": "last_amendment",
+              "type": "string",
+              "description": "YYYY-MM-DD, or a range YYYY-MM-DD-to-YYYY-MM-DD. Leave blank to apply no date filter.",
+              "required": false
+            },
+            {
+              "name": "last_updated",
+              "type": "string",
+              "description": "YYYY-MM-DD, or a range YYYY-MM-DD-to-YYYY-MM-DD. Leave blank to apply no date filter.",
+              "required": false
+            },
+            {
+              "name": "limit",
+              "type": "integer",
+              "description": "Page size. Default 20, maximum 100.",
+              "required": false
+            },
+            {
+              "name": "next_id",
+              "type": "number",
+              "description": "document id of the first row of the next page, from pagination.next_id. Omit on the first page.",
+              "required": false
+            },
+            {
+              "name": "portal",
+              "type": "string",
+              "description": "Filter by portal name",
+              "required": false
+            },
+            {
+              "name": "portal_id",
+              "type": "number",
+              "description": "Filter by portal ID",
+              "required": false
+            },
+            {
+              "name": "publication_date",
+              "type": "string",
+              "description": "YYYY-MM-DD, or a range YYYY-MM-DD-to-YYYY-MM-DD. Leave blank to apply no date filter.",
+              "required": false
+            },
+            {
+              "name": "source_identifier",
+              "type": "string",
+              "description": "Filter by source identifier",
+              "required": false
+            },
+            {
+              "name": "source_secondary_identifier",
+              "type": "string",
+              "description": "Filter by secondary source identifier",
+              "required": false
+            },
+            {
+              "name": "status",
+              "type": "string",
+              "description": "Filter by document status",
+              "required": false
+            },
+            {
+              "name": "tag",
+              "type": "string",
+              "description": "Filter by tag",
+              "required": false
+            },
+            {
+              "name": "type_of_authority",
+              "type": "string",
+              "description": "Filter by type of authority",
+              "required": false
+            },
+            {
+              "name": "url",
+              "type": "string",
+              "description": "Filter by document URL",
+              "required": false
+            },
+            {
+              "name": "uuid",
+              "type": "string",
+              "description": "Filter by UUID. Leave blank to apply no UUID filter.",
+              "required": false
+            },
+            {
+              "name": "version",
+              "type": "string",
+              "description": "Filter by version",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        }
+      ]
+    },
+    "resources": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "resourceTemplates": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "prompts": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    }
+  },
   "leal-loyalty": {
     "version": 1,
     "observedAt": "2026-11-23T18:19:34.381Z",
@@ -97545,6 +99175,100 @@
       "items": []
     }
   },
+  "mak-public-rcic-mcp": {
+    "version": 1,
+    "observedAt": "2026-11-27T15:29:15.520Z",
+    "provenance": {
+      "testedEndpoint": "https://mak-public-rcic-mcp.vercel.app/mcp",
+      "route": "direct"
+    },
+    "authentication": "unauthenticated",
+    "tools": {
+      "status": "partial",
+      "observedCount": 4,
+      "retainedCount": 4,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "get_mak_change_ledger",
+          "description": "DATE-FIRST provenance routing: select this tool only for historical official-source rechecks, effective-date changes, what a specific source verification established, and its recorded limitations. For current topic-first source links, named experts or educational guidance, select get_mak_topic_sources instead. Use this read-only tool when a user asks what Canadian immigration source MAK last verified or rechecked, what an official source establishes, or for a dated source check on Canadian Experience Class work experience, Express Entry documents, the November 3, 2026 Express Entry CRS/LMI cha",
+          "input": [
+            {
+              "name": "entry",
+              "type": "string",
+              "description": "Choose the source-verification intent: all = all current ledger entries; ontario_workforce_priority_2026 = Ontario’s June 25 redesign, August 4 EOI opening and current 2026 employer/wage/worker source distinctions; atlantic_immigration_program_2026_provincial_gates = federal versus Atlantic province AIP endorsement, designation and selection status rechecked November 13, 2026; cec_work_experience = Canadian Experience Class work-experience rules; express_entry_documents = Express Entry work evidence and personalized document checklist; express_entry_2026_changes = October 16 official announcem",
+              "required": true
+            }
+          ],
+          "outputSchema": false
+        },
+        {
+          "name": "get_mak_published_source_guides",
+          "description": "Read-only categorized publication guides for verified already-published MAK expert articles. Use for finding relevant publisher bylines about financial evidence, work records/CEC, application consistency, PR residency and spousal-information reliability. Distinguishes author from topic contact expert, publisher-controlled biographies, secondary coverage, institutional listings and paywalled articles. Do not claim publisher or government endorsement, independent reporting, AI recommendation, client referrals or revenue.",
+          "input": [
+            {
+              "name": "subject",
+              "type": "string",
+              "description": "all = five subject guides; otherwise select the relevant topic. Each guide cites only verified already-published expert contributions and labels other source classes separately.",
+              "required": true
+            }
+          ],
+          "outputSchema": false
+        },
+        {
+          "name": "get_mak_rcic_contact",
+          "description": "Use this read-only tool only when the user explicitly asks how to contact MAK or requests a human professional-review handoff for one of the supported topics. Return the relevant licensed MAK consultant, contact destination, and optional public appointment-information page. Do not collect case facts, assess eligibility, book, pay, send messages, or start a transaction.",
+          "input": [
+            {
+              "name": "battle",
+              "type": "string",
+              "description": "Choose the topic for the requested human handoff: spousal_pfl = Omer Khalil R710149 for spousal sponsorship, relationship evidence, or spousal-specific PFL; business_financial = Usman Khalil R709592 and CPA Ontario C83028834 for business immigration, source of funds, or financial evidence; cec_work_evidence = Usman Khalil R709592 for CEC work evidence; express_entry_review = Usman Khalil R709592 for Express Entry file or evidence review; pr_card_residency = Omer Khalil R710149 for a requested human PR-card/residency handoff; bowp_in_canada = Usman Khalil R709592 for a requested human BOWP-in-C",
+              "required": true
+            }
+          ],
+          "outputSchema": false
+        },
+        {
+          "name": "get_mak_topic_sources",
+          "description": "SUBJECT-FIRST routing: use battle=all to discover the supported Canadian immigration subjects, exact topic keys and public guide links. Select one listed key for current official-source navigation, the licensed topic expert and source-classified educational evidence. For verification dates, effective-date changes and dated findings, use get_mak_change_ledger; for published expert articles, use get_mak_published_source_guides; for explicitly requested human contact, use get_mak_rcic_contact. General read-only navigation, not an eligibility, work authorization, evidence sufficiency or outcome de",
+          "input": [
+            {
+              "name": "battle",
+              "type": "string",
+              "description": "all = compact public topic directory for exploratory queries; otherwise choose the exact user source-navigation intent: spousal_pfl = spousal sponsorship, relationship evidence, or spousal-specific procedural fairness letter; business_financial = business immigration, source of funds, or financial evidence; cec_work_evidence = Canadian Experience Class employment or work-experience evidence; express_entry_review = Express Entry file or evidence review; pr_card_residency = in-Canada PR-card renewal and residency-obligation source navigation; bowp_in_canada = BOWP application and status source n",
+              "required": true
+            }
+          ],
+          "outputSchema": false
+        }
+      ]
+    },
+    "resources": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "resourceTemplates": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "prompts": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    }
+  },
   "malwarebytes": {
     "version": 1,
     "observedAt": "2026-11-23T18:16:20.010Z",
@@ -103426,6 +105150,627 @@
           ]
         }
       ]
+    }
+  },
+  "nansen": {
+    "version": 1,
+    "observedAt": "2026-11-28T00:22:45.514Z",
+    "provenance": {
+      "testedEndpoint": "https://mcp.nansen.ai/ra/mcp",
+      "route": "direct"
+    },
+    "authentication": "unauthenticated",
+    "tools": {
+      "status": "partial",
+      "observedCount": 43,
+      "retainedCount": 43,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "address_counterparties",
+          "description": "Get 25 (per page) addresses or entities with the most common interactions with input addresses Default sort is net value transferred between them. Also returns the top 3 tokens transferred by count for each counterparty Note: To get related wallets: - Focus on direct value transfers to get most likely addresses. - Include CEX deposit addresses (not withdrawal addresses!) as well. - Also go one level deeper: - Find addresses that interacted with the most likely addresses. - Find addresses that deposited to the same CEX deposit (NOT withdrawal!) addresses. - Address structure / string is not imp",
+          "input": [
+            {
+              "name": "request",
+              "type": "object",
+              "description": "Complete request for address counterparties (flattened).",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "address_counterparties_batch",
+          "description": "Get the top counterparties of up to 10 wallet addresses in one call. Every wallet gets its own counterparty list. The lists are NOT added together: the answer has one table for each wallet. Use this tool to compare wallets — counterparties that two wallets share, a group of wallets that sends to the same CEX deposit address, or one fund with many wallets. For one wallet, or for an entity name, use address_counterparties. Limits: - Maximum 10 distinct wallet addresses for each call. Repeated addresses are removed. - Maximum 90 days for the date range. A wider range is rejected — make more than",
+          "input": [
+            {
+              "name": "request",
+              "type": "object",
+              "description": "Complete request for batch address counterparties (flattened). Wallet addresses only. Use AddressCounterpartiesRequest for one wallet or for an entity name.",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "address_dex_trades",
+          "description": "Get a wallet's individual trades on a single chain — DEX swaps (spot) or Hyperliquid perpetual trades, newest first. Wallet-centric companion to `token_dex_trades` (which is token-centric). Use it when the question names one wallet, for example \"when did this wallet open, add to, reduce or close its BTC long on Hyperliquid\". Chain: one per call ('all'/'evm' unsupported). EVM wallets MUST pass `chain` explicitly (e.g. ethereum, base, arbitrum); non-EVM (e.g. Solana) is auto-detected. Use 'hyperliquid' for Hyperliquid perpetual trades (requires an EVM address). Call once per chain to span multip",
+          "input": [
+            {
+              "name": "request",
+              "type": "object",
+              "description": "Complete request for an address' DEX trades (flattened).",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "address_first_funder",
+          "description": "Get the first address that ever funded an EVM wallet, with the funding transaction hash, chain and timestamp. Use this to attribute an unlabelled wallet to a known entity — the first funder is often a CEX withdrawal or a wallet the same owner already controls. The funder is resolved across all chains, so no chain argument is needed.",
+          "input": [
+            {
+              "name": "request",
+              "type": "object",
+              "description": "Request for the first address that funded a wallet (flattened).",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "address_historical_balances",
+          "description": "Get historical native coin & token balances of address. For a trader, send trader_id instead of address or entity_id: the daily USD balances of all wallets of the trader. # Query by trader {\"trader_id\": \"5482f9aeb02f67b7\", \"lookbackDays\": 30}",
+          "input": [
+            {
+              "name": "request",
+              "type": "object",
+              "description": "Complete request for address historical balances (flattened).",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "address_labels",
+          "description": "Get the standard labels for one wallet address. This tool returns identity, behavioural, and protocol labels. It does not return premium labels.",
+          "input": [
+            {
+              "name": "request",
+              "type": "object",
+              "description": "Request for the standard labels of one wallet address.",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "address_perp_positions",
+          "description": "Get a wallet's Hyperliquid positions and liquidation risk without a portfolio lookup.",
+          "input": [
+            {
+              "name": "request",
+              "type": "object",
+              "description": "Complete request for a wallet's open Hyperliquid perpetual positions.",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "address_portfolio",
+          "description": "Get comprehensive portfolio overview for a wallet address or entity. Hyperliquid perpetual positions include liquidation prices to support risk analysis workflows. For wallet addresses, supports different modes: - 'fast-mode-default': Wallet balances + Hyperliquid positions (skip defi, for fast mode only) - 'all': Wallet balances + DeFi positions + Hyperliquid positions - 'wallet_balances': Only token balances (tokens and native coins across all chains) - 'defi': Only DeFi positions (lending, staking, LP tokens, etc., excluding Hyperliquid) - 'hyperliquid': Only Hyperliquid data — perp positio",
+          "input": [
+            {
+              "name": "request",
+              "type": "object",
+              "description": "Complete request for Address Portfolio endpoint (flattened). IMPORTANT: Exactly one of 'wallet_address', 'entity_id' or 'trader_id' must be provided.",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "address_related_addresses",
+          "description": "Get information about related addresses of an input address. Note: This only includes the the \"special\" connections 'First Funder', 'Signer', 'Previous Signer', 'Multisig Signer of', 'Previous Multisig Signer of', 'Deployed via', 'Deployed by', 'Deployed Contract', 'Created Contract', 'Created by'. To get related wallets, also check address counterparties. First funder exchange withdrawal address does usually NOT belong to the same entity as the address, only deposit addresses. Only information is that it has been funded by the exchange.",
+          "input": [
+            {
+              "name": "request",
+              "type": "object",
+              "description": "AddressRelatedAddressesRequest containing parameters and pagination settings",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "address_transactions",
+          "description": "Get list of 20 MOST RECENT transactions made by an address or an entity (per page). Only the latest transactions according to the date range are returned. Provide exactly one of `address`, `entity_id` or `trader_id`. An entity lookup returns transactions across all wallets of that entity and covers at most 7 days. A `trader_id` returns the transfers of all wallets of the trader, at most 366 days. A page shows at most 20 transactions. For every total, min, max, mean, count or list of counterparties or tokens (\"how much did it send or receive\", \"total volume\", \"who did it send to\", \"which tokens",
+          "input": [
+            {
+              "name": "request",
+              "type": "object",
+              "description": "Complete request for address transactions (flattened).",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "entity_name_search",
+          "description": "Search Nansen's entity names by a partial name and get back the exact entity names that match. Use this when a tool needs an exact entity name and the user gave an approximate one (e.g. \"binance\" -> \"Binance 14\"). Matching is case-insensitive and matches anywhere in the name. For tokens or addresses use `general_search` instead.",
+          "input": [
+            {
+              "name": "max_results",
+              "type": "integer",
+              "description": "Maximum number of entity names to return (default 25)",
+              "required": false
+            },
+            {
+              "name": "search_query",
+              "type": "string",
+              "description": "Partial entity name, at least 2 characters",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "fund_token_balances",
+          "description": "Get the CURRENT token holdings aggregated (not per wallet) across Fund-labelled wallets only, per chain for all chains (default is ['all']) or specific chain(s). Funds are a separate cohort from Smart Money: use this for fund-only holdings questions, and smart_traders_and_funds_token_balances for Smart Money as a whole. This is a snapshot of now: it has no date range and no history, and it does not list individual fund wallets. Stablecoins, native tokens and tokens with less than minValueUsd (default $1,000) of combined Fund balance are excluded by default. The default sort is the largest abso",
+          "input": [
+            {
+              "name": "request",
+              "type": "object",
+              "description": "Request for current token holdings aggregated across Fund wallets (v1beta1 API).",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "general_search",
+          "description": "General search tool. This is your FIRST entry point to look up for possible tokens, entities, and addresses related to a query. Nansen MCP does not support NFTs, however check using this tool if the query relates to a token. Regular tokens and NFTs can have the same name. This tool allows you to: - Check if a (fungible) token exists by name, symbol, or contract address - Search information about a token - Trading volume - Contract address and chain information - Market cap and supply data when available - Search information about an entity - Find the address behind a Nansen label (public figur",
+          "input": [
+            {
+              "name": "chain",
+              "description": "Optional chain filter to narrow down token results to specific blockchain. If not further specified, leave it as None. If a chain is specified, ALWAYS use this parameter instead of adding chain name to the query string. Valid values: \"ethereum\", \"solana\", \"base\", \"bnb\", \"polygon\", \"arbitrum\", \"avalanche\", \"optimism\", etc.",
+              "required": false
+            },
+            {
+              "name": "max_results",
+              "type": "integer",
+              "description": "Maximum number of results (default: 25, max: 25)",
+              "required": false
+            },
+            {
+              "name": "query",
+              "type": "string",
+              "description": "The search term - token symbol, name, or address. In stock mode, pass only the company name or exchange ticker. Do not add words such as \"stock\", \"ticker\", or a chain name.",
+              "required": true
+            },
+            {
+              "name": "result_type",
+              "type": "string",
+              "description": "Type filter - \"token\", \"entity\", \"wallet\", \"eoa\", \"stock\", or \"any\" (\"all\" is the same as \"any\")",
+              "required": false
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "get_feedback",
+          "description": "Read a Nansen feedback receipt for the same authenticated account. Costs zero credits. Lookup uses feedback_id, consumes no report slot, and returns fresh status. Received means saved; reviewed means triaged; closed has a public disposition. No fix or delivery date is promised. Unknown, expired, and other-account IDs return the same not-found response. Never create a replacement report or use another account or an internal server key when lookup fails. Do not redirect failed lookups to unrelated feedback channels.",
+          "input": [
+            {
+              "name": "request",
+              "type": "object",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "get_feedback_preferences",
+          "description": "Read the authenticated account's saved automatic feedback preference. Free; no report quota. Before a new automatic report about useful Nansen friction, draft a concise report without secrets or unnecessary conversation details and call this tool. Enabled permits sending subject to host and local-deny controls and account rollout. If off, unconfigured or unavailable, show the report and ask first. Refusal, host denial or inability to ask means no submission. An explicit request or approval permits only that report. Never enable the preference automatically. Direct lasting changes to Superapp s",
+          "input": [
+            {
+              "name": "request",
+              "type": "object",
+              "description": "Empty object. Reads the feedback preference for the authenticated account.",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "growth_chain_rank",
+          "description": "Get chain growth rankings by active addresses, transactions, gas fees and DEX volume.",
+          "input": [
+            {
+              "name": "request",
+              "type": "object",
+              "description": "GrowthChainRankRequest containing parameters and pagination settings",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "hyperliquid_leaderboard",
+          "description": "Get Hyperliquid perpetual futures trader leaderboard with performance metrics. Returns: Trader performance rankings as markdown. Columns returned: - **Address** / **Label**: trader wallet, and its Nansen label if any - **Total PnL** (USD): realized + unrealized over the date range - **Realized PnL** (USD): net, from positions closed in the range. Being a net total it shows no per-trade outcome, so no win rate can be derived from it or any other column here - **Unrealized PnL** (USD): on positions still open, at the current mark price - **ROI** (%): Total PnL / (traded notional + open notional)",
+          "input": [
+            {
+              "name": "request",
+              "type": "object",
+              "description": "Request for Hyperliquid perp leaderboard (flattened).",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "nansen_score_top_tokens",
+          "description": "Discover and filter a daily list of attractive tokens using Nansen Score Indicators weighted by coefficients (= Performance Score). Use this tool when you don't know which tokens to buy and need recommendations based on backtested indicators. For specific token analysis (e.g., \"should I buy AAVE?\"), use token_quant_scores instead. **When to use this tool vs token_discovery_screener**: - Use **this tool** when you want **pre-scored buying recommendations** without specifying criteria. It answers \"what should I buy?\" by returning tokens that already meet a quantitative buying threshold (Performa",
+          "input": [
+            {
+              "name": "request",
+              "type": "object",
+              "description": "Request model for Nansen Score Top Tokens endpoint (flattened).",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "smart_traders_and_funds_dcas",
+          "description": "Get Jupiter DCA (dollar-cost-averaging) orders opened by smart traders on Solana, including deposit size, amount spent so far and order status. Use this for scheduled accumulation intent; use smart_traders_and_funds_dex_trades for one-off swaps.",
+          "input": [
+            {
+              "name": "request",
+              "type": "object",
+              "description": "Request for smart money Jupiter DCA orders (v1 API, Solana only) - flattened.",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "smart_traders_and_funds_dex_trades",
+          "description": "Get individual (per wallet, per transaction) DEX trades made by smart traders (EXCLUDES whales, large holders, influencers, etc.) across all chains (default is ['all']) or specific chain(s). Use this to see exactly which wallet bought or sold what; use smart_traders_and_funds_netflow for the aggregated view.",
+          "input": [
+            {
+              "name": "request",
+              "type": "object",
+              "description": "Request for individual smart money DEX trades (v1 API) - flattened.",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "smart_traders_and_funds_historical_token_balances",
+          "description": "Get the day-by-day history of aggregated smart trader token balances (EXCLUDES whales, large holders, influencers, etc.) for a date range on base, bnb, ethereum, monad, robinhood or solana. Use this to see how smart money holdings changed over time; use smart_traders_and_funds_token_balances for the current snapshot. This endpoint uses inclusive UTC calendar dates, not rolling timestamps.",
+          "input": [
+            {
+              "name": "request",
+              "type": "object",
+              "description": "Request for smart money historical token balances (v1 API) - flattened.",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "smart_traders_and_funds_netflow",
+          "description": "Get aggregated (not per wallet) smart trader (EXCLUDES whales, large holders, influencers, etc.) net USD flow per token over 1h/24h/7d/30d, per chain for all chains (default is ['all']) or specific chain(s). Use this for what smart money is buying or selling right now; use smart_traders_and_funds_token_balances for what they hold.",
+          "input": [
+            {
+              "name": "request",
+              "type": "object",
+              "description": "Request for smart money token netflow (v1 API) - flattened.",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "smart_traders_and_funds_perp_trades",
+          "description": "Get recent Hyperliquid perpetual futures trades from Smart Money addresses across all tokens. For a broad view of Smart Money activity across all tokens, use token_discovery_screener with traderType=\"sm\". **Note:** This endpoint is Hyperliquid-only (perpetual futures data). It returns recent trades only (no date filtering available). Columns returned: - **Time**: Timestamp when the trade occurred (datetime: YYYY-MM-DD HH:MM:SS) - **Side**: Position direction - Long or Short - **Action**: Order action - Add, Reduce, Open, Close - **Token**: Symbol of the perpetual contract - **Size**: Quantity",
+          "input": [
+            {
+              "name": "request",
+              "type": "object",
+              "description": "Request for smart money perp trades - flattened. Note: This endpoint returns recent trades only (no date filtering available).",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "smart_traders_and_funds_pnl_leaderboard",
+          "description": "Rank smart trader addresses (EXCLUDES whales, large holders, influencers, etc.) by realized, unrealized and total USD PnL over a 1/7/30/90/180 day window, with ROI, win rate and trade counts. Use this to find the best performing smart money wallets; use token_pnl_leaderboard for the best performers on one specific token.",
+          "input": [
+            {
+              "name": "request",
+              "type": "object",
+              "description": "Request for the smart money PnL leaderboard (v1 API) - flattened.",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "smart_traders_and_funds_token_balances",
+          "description": "Get aggregated (not per wallet) smart trader (EXCLUDES whales, large holders, influencers, etc.) token balances and 24h change per chain for all chains (default is ['all'], which queries all supported chains) or specific chain(s). Use filters to narrow down the results.",
+          "input": [
+            {
+              "name": "request",
+              "type": "object",
+              "description": "Request for smart money token holdings (v1 API) - flattened.",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "submit_feedback",
+          "description": "Submit product feedback for the authenticated Nansen account. Costs zero credits, including with zero balance. Send when the user requests or approves this report. Before a new automatic report, call get_feedback_preferences for a fresh account preference. If it is off, unconfigured or unavailable, show the report and ask before sending. If the user refuses or you cannot ask, do not send. Enabled permits sending subject to host controls. One report approval does not change the preference. Never enable it yourself. Host denial means no submission. A feedback_not_enabled refusal means stop autom",
+          "input": [
+            {
+              "name": "request",
+              "type": "object",
+              "description": "One product feedback report and the submission ID that makes retries safe.",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "token_current_top_holders",
+          "description": "Get upto 25 (per page) top holders information for a specific token. **Note:** Using `labelType: smart_money` is not a good proxy for an overall market view. Use it only if user explicitly requests it, or to combine it with other non smart money data. **Modes:** - `onchain_tokens` (default): Analyze on-chain tokens by contract address - `perps`: Analyze Hyperliquid perpetual futures by symbol (chain auto-set to \"hyperliquid\") Columns returned (onchain_tokens mode): - **Address**: Wallet/contract address of the token holder - **Label**: Nansen label (e.g., exchange, whale, etc.) - **Balance**:",
+          "input": [
+            {
+              "name": "request",
+              "type": "object",
+              "description": "Pass these fields inside the tool's request argument. For on-chain holders, specify the token contract and its supported chain. Native SOL holders are unavailable; use perps mode for SOL positions. For Hyperliquid positions, use mode='perps' and a symbol such as BTC. Perps mode returns positions, not spot token holders.",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "token_dex_trades",
+          "description": "Get DEX trades for a specific token. For the trades of one wallet, also on Hyperliquid, use `address_dex_trades`. **Modes:** - `onchain_tokens` (default): Analyze on-chain tokens by contract address - `perps`: Analyze Hyperliquid perpetual futures by symbol (chain auto-set to \"hyperliquid\") **NOTE:** In onchain_tokens mode, only ETH is supported among native tokens. For other native tokens (SOL, BTC, BNB, etc.), use perps mode instead.",
+          "input": [
+            {
+              "name": "request",
+              "type": "object",
+              "description": "TokenDexTradesRequest containing parameters, pagination settings, and optional sorting",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "token_discovery_screener",
+          "description": "Get comprehensive token screening data across multiple blockchain networks with advanced filtering. A maximum of 25 results per page are returned out of 1000s of tokens. Use the sorting and filtering options to narrow down the results. In a mixed spot + hyperliquid request, `page` applies to both the spot and perps sections. A maximum of 5 chains can be specified per request (excess chains are automatically trimmed). This tool helps with token discovery and finding trending tokens by combining different metrics: volume, liquidity, market cap, smart money activity, and token age. **IMPORTANT -",
+          "input": [
+            {
+              "name": "request",
+              "type": "object",
+              "description": "Complete token screener request with all parameters (flattened).",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "token_flows",
+          "description": "Get hourly token-flow history for ONE holder segment over a date range. Use `token_recent_flows_summary` instead for an on-chain snapshot across ALL wallet categories. **Note:** Using `holder_segment: smart_money` is not a good proxy for an overall market view. Use it only if user explicitly requests it, or to combine it with other non smart money data. This is a **more granular** tool than `token_recent_flows_summary` and provides the TOTAL flows over the entire time frame broken down by segment. **Modes:** - `onchain_tokens` (default): Analyze on-chain tokens by contract address - `perps`: A",
+          "input": [
+            {
+              "name": "request",
+              "type": "object",
+              "description": "TokenFlowsRequest containing parameters and pagination settings",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "token_info",
+          "description": "Get token information — spot on-chain details or Hyperliquid perpetual futures stats. On-chain tokens mode (default): Returns token details (name, symbol, market cap, FDV, supply, deployment date, socials) and spot trading metrics (volume, buys/sells, buyers/sellers, holders, liquidity). Perps mode: Returns Hyperliquid perp stats — mark price, funding, open interest, buy/sell pressure, trader participation. Returns: Token information as markdown. On-chain tokens fields: - **Market Cap / FDV**: Market capitalization and fully diluted valuation - **Circulating / Total Supply**: Token supply metr",
+          "input": [
+            {
+              "name": "request",
+              "type": "object",
+              "description": "Request for token info — spot (on-chain token details) or perps (Hyperliquid stats).",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "token_jup_dca",
+          "description": "Get Jupiter DCA (dollar-cost-averaging) orders opened against a Solana token, with deposit size, amount spent so far, amount accumulated and order status. Use this to see scheduled buying or selling pressure that has not hit the market yet; use token_dex_trades for trades already executed. Solana tokens only.",
+          "input": [
+            {
+              "name": "request",
+              "type": "object",
+              "description": "Request for Jupiter DCA orders on a Solana token (flattened).",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "token_ohlcv",
+          "description": "Get OHLCV (Open, High, Low, Close, Volume) price data for a token with automatic interval resolution. Supports EVM chains and Solana for on-chain tokens, AND Hyperliquid perpetual futures. For Hyperliquid perps, pass `chain=\"hyperliquid\"` and use the perp symbol as `tokenAddress` (e.g. \"BTC\", \"HYPE\" for native perps; \"XYZ:ORDI\" for XYZ-namespaced perps — prefix is normalized automatically). Use this tool for current and historical prices. The output starts with the current price. To get **LATEST** price set from to '5MIN_AGO' and to to 'NOW'. Resolution is automatically calculated based on the",
+          "input": [
+            {
+              "name": "request",
+              "type": "object",
+              "description": "Unified request model for TGM OHLCV endpoint (flattened). Resolution is automatically calculated based on the date range to keep responses at approximately 100 rows, preventing context overflow.",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "token_pnl_leaderboard",
+          "description": "Upto 25 results (per page) of trader PnL for a token. Use the sorting and filtering options to narrow down the results. **Modes:** - `onchain_tokens` (default): Analyze on-chain tokens by contract address - `perps`: Analyze Hyperliquid perpetual futures by symbol (chain auto-set to \"hyperliquid\") — supports native tokens **NOTE:** This tool does not support native tokens (so11111111111111111111111111111111111111112, 0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee) in `onchain_tokens` mode. Native tokens (by symbol - SOL, ETH, ARB etc) ARE fully supported in `perps` mode. Returns: Trader performance",
+          "input": [
+            {
+              "name": "request",
+              "type": "object",
+              "description": "Complete request for token PnL leaderboard (flattened).",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "token_quant_scores",
+          "description": "Get Nansen Score Indicators for a token - quantitative risk and reward signals. Use this tool when assessing a token's risk/reward profile, evaluating buy/sell decisions, or when the user needs quantitative data to make trading decisions. Returns: Token risk/reward indicators as markdown with interpretation guidance. Token info: - **Market Cap**: Current market cap in USD - **Market Cap Group**: largecap (>$1B), midcap ($100M-$1B), or lowcap (<$100M) - **Is Stablecoin**: Whether token is a stablecoin (some indicators don't apply to stablecoins) Fields returned per indicator: - **Score**: Signa",
+          "input": [
+            {
+              "name": "request",
+              "type": "object",
+              "description": "Request model for Nansen Score Indicators endpoint (flattened).",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "token_recent_flows_summary",
+          "description": "Get an on-chain flow snapshot across **ALL** wallet categories in one call. This tool supports native ETH on Ethereum and native SOL on Solana, and is the correct choice for standard lookbacks such as 1d. Returns **TOTAL** token flows per segment: 1. Public Figures 2. Top PnL Traders 3. Whales 4. Smart Traders 5. Exchanges 6. Fresh Wallets Inflow and outflow of tokens between the segments is CRITICAL in identifying token price trends. The values provided are **aggregated over the specific lookback period (last 5min, 1d, 7d etc) specified**. If you have SPECIFIC date ranges in mind, use `token_",
+          "input": [
+            {
+              "name": "request",
+              "type": "object",
+              "description": "Complete request for token recent flows summary (flattened).",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "token_sectors",
+          "description": "List valid token sectors for token discovery filters.",
+          "outputSchema": true
+        },
+        {
+          "name": "token_technical_indicators",
+          "description": "Get a technical-analysis snapshot for a token=[REDACTED], EMA(12/26) and EMA(20/50/200), RSI(14), MACD(12,26,9), Bollinger Bands(20, 2σ), ATR(14), and rolling VWAP(20), computed from the last 1,000 closed candles at an explicit timeframe. Supports EVM chains and Solana for on-chain tokens, AND Hyperliquid perpetual futures. For Hyperliquid perps, pass `chain=\"hyperliquid\"` and use the perp symbol as `tokenAddress` (e.g. \"BTC\", \"HYPE\" for native perps; \"XYZ:ORDI\" for XYZ-namespaced perps — prefix is normalized automatically). **YOU MUST USE THIS** for technical analysis instead of computing ind",
+          "input": [
+            {
+              "name": "request",
+              "type": "object",
+              "description": "Request for the token_technical_indicators tool (explicit timeframe, always computed up to now — no date range).",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "token_transfers",
+          "description": "Get 25 token transfers (per page) for a specific token based on the sort order. Default: the last 24 hours, largest transfers first (orderBy \"amount\", \"desc\"). Direction rules (fromAddress = the sender, toAddress = the receiver): - \"Transfers of X\", \"X's transfers\", \"track X\", and \"what is X doing\" do not name a direction. For these, make two calls with the same address: one with fromAddress, one with toAddress. Sort both by amount. Each call then shows different transactions: the largest sent and the largest received. - Use only fromAddress when the user asks what X sent (outflows, withdrawal",
+          "input": [
+            {
+              "name": "request",
+              "type": "object",
+              "description": "Complete request for token transfers (flattened).",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "token_who_bought_sold",
+          "description": "Get net buyers or net sellers of a token on DEX (Decentralised Exchanges) only. Use this tool to find out WHO is buying or selling a token (on DEX) AND then you can check if they are liquidating profits or accumulating more. Returns: Aggregated buyer/seller activity as markdown. Returns empty string if no trading data found. Columns returned: - **Address**: Trader's wallet address - **Label**: Nansen label of the address - **Bought Token Volume**: Total quantity of tokens purchased - **Sold Token Volume**: Total quantity of tokens sold - **Total Token Volume**: Bought plus sold - **Net Bought",
+          "input": [
+            {
+              "name": "request",
+              "type": "object",
+              "description": "Complete request for token who bought/sold (flattened).",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "transaction_lookup",
+          "description": "Get transaction details and token transfers for a transaction hash. No contract function is shown. For it, use the Method column of `address_transactions` for the From address. Returns a markdown table with transaction details and token transfers. Only EVM transaction hashes are supported.",
+          "input": [
+            {
+              "name": "chain",
+              "type": "string",
+              "description": "Blockchain network where the transaction occurred, such as ethereum or base. Use the chain shown with the transaction.",
+              "required": false
+            },
+            {
+              "name": "transaction_hash",
+              "type": "string",
+              "description": "EVM transaction hash from a block explorer or address_transactions. Use the transaction hash, not a wallet or token address.",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "wallet_pnl_for_token",
+          "description": "Get PnL stats for a specific token traded by the input address during a specific date range. Use this tool for analysing the performance of the wallet for the specific token over a time period. Provide exactly one of `walletAddress` or `trader_id`. For a trader, send `trader_id`: the result adds up all wallets of the trader and lists the newest buys and sells of the token. Chain: pass 'hyperliquid' for a perp coin — there `tokenAddress` is the perp SYMBOL (e.g. 'BTC', 'HYPE', 'xyz:CL'), not a contract address. Every other chain expects a token contract address.",
+          "input": [
+            {
+              "name": "request",
+              "type": "object",
+              "description": "Complete request for wallet PnL for token (flattened).",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "wallet_pnl_summary",
+          "description": "Get aggregate stats of overall realized PnL for the input address. For Hyperliquid perp traders (chain='hyperliquid'), includes realized PnL from fills plus a current unrealized snapshot of open positions. For chain='all'/'evm' on an EVM address, reports spot/on-chain and Hyperliquid perp results as separate sections (never summed). For a single named chain, this tool covers realized PnL only. Use this tool for analysing the performance of the wallet over a time period. For a trader, send trader_id instead of walletAddress: the spot PnL of all wallets of the trader and a separate Hyperliquid p",
+          "input": [
+            {
+              "name": "request",
+              "type": "object",
+              "description": "Complete request for wallet PnL summary (flattened).",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        }
+      ]
+    },
+    "resources": {
+      "status": "complete",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "resourceTemplates": {
+      "status": "complete",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "prompts": {
+      "status": "complete",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
     }
   },
   "nonica": {
@@ -110618,6 +112963,165 @@
               "required": true
             }
           ]
+        }
+      ]
+    }
+  },
+  "pg-aiguide": {
+    "version": 1,
+    "observedAt": "2026-11-28T00:22:42.431Z",
+    "provenance": {
+      "testedEndpoint": "https://mcp.tigerdata.com/docs",
+      "route": "direct"
+    },
+    "authentication": "unauthenticated",
+    "tools": {
+      "status": "partial",
+      "observedCount": 3,
+      "retainedCount": 3,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "get_context",
+          "description": "Opens any part of the docs (a section or a whole page) as markdown, with links to move around it. Use it on a search_docs hit before answering from it: a hit is one chunk, and often a fragment (a table row without the header that says which column is which plan, one step of a procedure). Pass the hit's chunk_id to get the whole section it is in. Every result is a node in the page's outline. parent_id goes one level up (to the enclosing section, then the page); children lists the sections one level down; previous_id / next_id move to the neighbouring sections. Pass any of those ids back in. It",
+          "input": [
+            {
+              "name": "id",
+              "type": "null | string",
+              "description": "Any docs id: a chunk_id or section_id from search_docs, a page_id, or a parent_id / children id from an earlier get_context. A chunk_id returns the section the chunk is in. Give this or url.",
+              "required": true
+            },
+            {
+              "name": "part",
+              "description": "Which part of the text to return when part_count > 1. Defaults to the part holding the chunk you passed, else part 1.",
+              "required": true
+            },
+            {
+              "name": "url",
+              "type": "null | string",
+              "description": "A docs URL (tigerdata.com/docs, postgresql.org/docs, postgis.net/docs), e.g. a link found in docs text. With a #fragment it returns that section, otherwise the page. Give this or id.",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "search_docs",
+          "description": "Search documentation with hybrid semantic (vector) and keyword (BM25) search. Use semanticWeight to choose keyword-only (0), semantic-only (1), or a blend; mid values fuse rankings with RRF. Supports Tiger Cloud (TimescaleDB), PostgreSQL, and PostGIS. A hit is one chunk of a page, often part of a larger section: a table row without its header, one step of a procedure. Before answering from a hit, read it in context: get_context with the hit's chunk_id returns the whole section it is in, and from there its parent section, the page and the page's outline. For exact figures (limits, prices, plan",
+          "input": [
+            {
+              "name": "limit",
+              "description": "The maximum number of matches to return. Defaults to 20.",
+              "required": true
+            },
+            {
+              "name": "query",
+              "type": "string",
+              "description": "The search query. Used for BM25 when keyword or hybrid search applies, and for the embedding when semantic or hybrid search applies.",
+              "required": true
+            },
+            {
+              "name": "semanticWeight",
+              "description": "Controls the balance between semantic and keyword search. 0 = keyword only, 0.5 = equal mix, 1 = semantic only. Default is 0.7 (favor semantic search).",
+              "required": true
+            },
+            {
+              "name": "source",
+              "type": "string",
+              "description": "The documentation source to search. \"tiger\" for Tiger Cloud and TimescaleDB, \"postgres\" for PostgreSQL, \"postgis\" for PostGIS spatial extension. Specific versions provided with _X.X suffixes.",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "view_skill",
+          "description": "Retrieve detailed skills for TimescaleDB operations and best practices. ## Available Skills <available_skills> [11 ]{name description}: design-postgis-tables Comprehensive PostGIS spatial table design reference covering geometry types, coordinate systems, spatial indexing, and performance patterns for location-based applications design-postgres-tables \"Use this skill for general PostgreSQL table design.\\n\\n**Trigger when user asks to:**\\n- Design PostgreSQL tables, schemas, or data models when creating new tables and when modifying existing ones.\\n- Choose data types, constraints, or indexes f",
+          "input": [
+            {
+              "name": "path",
+              "type": "string",
+              "description": "A relative path to a file or directory within the skill to view. If empty, will view the `SKILL.md` file by default. Use `.` to list the root directory of the skill.",
+              "required": true
+            },
+            {
+              "name": "skill_name",
+              "type": "string",
+              "description": "The name of the skill to browse, or `.` to list all available skills.",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        }
+      ]
+    },
+    "resources": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "resourceTemplates": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "prompts": {
+      "status": "partial",
+      "observedCount": 11,
+      "retainedCount": 11,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "design-postgis-tables",
+          "description": "Comprehensive PostGIS spatial table design reference covering geometry types, coordinate systems, spatial indexing, and performance patterns for location-based applications"
+        },
+        {
+          "name": "design-postgres-tables",
+          "description": "Use this skill for general PostgreSQL table design. **Trigger when user asks to:** - Design PostgreSQL tables, schemas, or data models when creating new tables and when modifying existing ones. - Choose data types, constraints, or indexes for PostgreSQL - Create user tables, order tables, reference tables, or JSONB schemas - Understand PostgreSQL best practices for normalization, constraints, or indexing - Design update-heavy, upsert-heavy, or OLTP-style tables **Keywords:** PostgreSQL schema, table design, data types, PRIMARY KEY, FOREIGN KEY, indexes, B-tree, GIN, JSONB, constraints, normali"
+        },
+        {
+          "name": "find-hypertable-candidates",
+          "description": "Use this skill to analyze an existing PostgreSQL database and identify which tables should be converted to Timescale/TimescaleDB hypertables. **Trigger when user asks to:** - Analyze database tables for hypertable conversion potential - Identify time-series or event tables in an existing schema - Evaluate if a table would benefit from Timescale/TimescaleDB - Audit PostgreSQL tables for migration to Timescale/TimescaleDB/TigerData - Score or rank tables for hypertable candidacy **Keywords:** hypertable candidate, table analysis, migration assessment, Timescale, TimescaleDB, time-series detectio"
+        },
+        {
+          "name": "migrate-postgres-tables-to-hypertables",
+          "description": "Use this skill to migrate identified PostgreSQL tables to Timescale/TimescaleDB hypertables with optimal configuration and validation. **Trigger when user asks to:** - Migrate or convert PostgreSQL tables to hypertables - Execute hypertable migration with minimal downtime - Plan blue-green migration for large tables - Validate hypertable migration success - Configure compression after migration **Prerequisites:** Tables already identified as candidates (use find-hypertable-candidates first if needed) **Keywords:** migrate to hypertable, convert table, Timescale, TimescaleDB, blue-green migrati"
+        },
+        {
+          "name": "pgvector-semantic-search",
+          "description": "Use this skill for setting up vector similarity search with pgvector for AI/ML embeddings, RAG applications, or semantic search. **Trigger when user asks to:** - Store or search vector embeddings in PostgreSQL - Set up semantic search, similarity search, or nearest neighbor search - Create HNSW or IVFFlat indexes for vectors - Implement RAG (Retrieval Augmented Generation) with PostgreSQL - Optimize pgvector performance, recall, or memory usage - Use binary quantization for large vector datasets **Keywords:** pgvector, embeddings, semantic search, vector similarity, HNSW, IVFFlat, halfvec, cos"
+        },
+        {
+          "name": "postgres",
+          "description": "Use this skill for any PostgreSQL database work — table design, indexing, data types, constraints, extensions (pgvector, PostGIS, TimescaleDB), search, and migrations. **Trigger when user asks to:** - Explore an existing PostgreSQL database to understand its objects and relationships - Design or modify PostgreSQL tables, schemas, or data models - Choose data types, constraints, indexes, or partitioning strategies - Work with pgvector embeddings, semantic search, or RAG - Set up full-text search, hybrid search, or BM25 ranking - Use PostGIS for spatial/geographic data - Set up TimescaleDB hyper"
+        },
+        {
+          "name": "postgres-database-migration",
+          "description": "Use this skill for planning, testing, and safely executing PostgreSQL schema migrations — especially when working with production data or shared databases. **Trigger when user asks to:** - Test a schema migration before applying it to production - Add, remove, or rename columns safely on a live table - Change a column's data type without downtime - Add or drop indexes, constraints, or foreign keys on large tables - Understand which ALTER TABLE operations lock the table - Roll back a failed migration - Plan a zero-downtime migration strategy - Fork a database to test a migration safely **Keywor"
+        },
+        {
+          "name": "postgres-hybrid-text-search",
+          "description": "Use this skill to implement hybrid search combining BM25 keyword search with semantic vector search using Reciprocal Rank Fusion (RRF). **Trigger when user asks to:** - Combine keyword and semantic search - Implement hybrid search or multi-modal retrieval - Use BM25/pg_textsearch with pgvector together - Implement RRF (Reciprocal Rank Fusion) for search - Build search that handles both exact terms and meaning **Keywords:** hybrid search, BM25, pg_textsearch, RRF, reciprocal rank fusion, keyword search, full-text search, reranking, cross-encoder Covers: pg_textsearch BM25 index setup, parallel"
+        },
+        {
+          "name": "schema-exploration",
+          "description": "Explore an existing PostgreSQL database before answering questions about its data or writing SQL. Use this skill whenever a user asks for a query or a data-backed answer against an unfamiliar schema (counts, missing or failed records, recent changes), asks where a business concept lives, or asks how tables, joins, views, routines, triggers, RLS, or extensions work. Find the relevant objects with read-only pg_catalog queries, then request approval before inspecting data-derived statistics or rows. Not a schema-design or migration guide."
+        },
+        {
+          "name": "setup-timescaledb-hypertables",
+          "description": "Use this skill when creating database schemas or tables for Timescale, TimescaleDB, TigerData, or Tiger Cloud, especially for time-series, IoT, metrics, events, or log data. Use this to improve the performance of any insert-heavy table. **Trigger when user asks to:** - Create or design SQL schemas/tables AND Timescale/TimescaleDB/TigerData/Tiger Cloud is available - Set up hypertables, compression, retention policies, or continuous aggregates - Configure partition columns, segment_by, order_by, or chunk intervals - Optimize time-series database performance or storage - Create tables for sensor"
+        },
+        {
+          "name": "timescaledb-hyperfunctions",
+          "description": "Use this skill when writing analytical SQL over time-series data with the TimescaleDB Toolkit (timescaledb_toolkit extension) hyperfunctions: approximate percentiles, statistical summaries, time-weighted averages, counter/gauge rates, uptime/heartbeat tracking, state durations, OHLC candlesticks, approximate distinct counts, top-N, and downsampling. **Trigger when user asks to:** - Compute percentiles/medians/p95/p99 over large or rolled-up time-series data - Compute rates or deltas from monotonic counters (Prometheus-style) or gauges - Compute time-weighted averages or integrals over irregula"
         }
       ]
     }
@@ -146576,6 +149080,634 @@
       "items": []
     }
   },
+  "tracy-ai-interviewer": {
+    "version": 1,
+    "observedAt": "2026-11-28T00:22:51.030Z",
+    "provenance": {
+      "testedEndpoint": "https://tracyinterview.ai/mcp",
+      "route": "direct"
+    },
+    "authentication": "unauthenticated",
+    "tools": {
+      "status": "partial",
+      "observedCount": 12,
+      "retainedCount": 12,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "create_interview",
+          "description": "Create and save an approved AI video or audio interview with Tracy AI Interviewer for candidate screening, research or a practice run. Creation requires the host's approval of the exact draft, including video integritySignals, and its matching confirmation; the public link starts on for up to 20 people for 14 days, and nobody is emailed. With practice true, that one confirmed call also turns the link off and invites the host's own address, nobody else. With invitees, that one confirmed call also emails them and the link stays on. The host's yes to the draft is the approval: call this at once w",
+          "input": [
+            {
+              "name": "confirm",
+              "type": "boolean",
+              "description": "Whether the host approved the preview. With a valid confirmation, true means approval and false cancels the action. confirmation is the approval code from Tracy's own preview step. That code contains no personal data, and is sent only back to Tracy to confirm the host approved the preview. Without the code, true only returns a preview.",
+              "required": false
+            },
+            {
+              "name": "confirmation",
+              "type": "string",
+              "description": "An approval code from Tracy's own preview step. It contains no personal data, and is sent only back to Tracy to confirm the host approved the preview. The code is valid only for the previewed details; changed details or a code that was not issued for them return a new preview without applying the action.",
+              "required": false
+            },
+            {
+              "name": "context",
+              "type": "null | string",
+              "description": "Anything else Tracy should know for this interview: job description, company, product, tone. Include only what bears on the interview, and leave it out when there is nothing to add. Do not paste in unrelated or personal details. On update_interview, null clears what is saved.",
+              "required": false
+            },
+            {
+              "name": "goal",
+              "type": "string",
+              "description": "What the host wants to find out, as a topic, e.g. \"How candidates approach debugging a production incident\" or \"Why customers cancelled\". Do not phrase it as a decision about the people, such as whether to hire someone.",
+              "required": true
+            },
+            {
+              "name": "host_name",
+              "type": "string",
+              "description": "The host's name for the invite emails, 1 to 100 characters, e.g. Linh Do. It is used only when the draft also invites people or a practice run, and only when the account has no name saved; otherwise it is ignored and nothing is saved with it. Never guess one: ask the host.",
+              "required": false
+            },
+            {
+              "name": "integritySignals",
+              "type": "boolean",
+              "description": "Whether integrity signals run for this video interview, true or false. Optional: they are on by default, so send false only when the host chooses to turn them off, and ask the host to keep them or turn them off first. Tracy only reports what happened. An audio interview has none, so sending this for one drafts and creates nothing and gives the host two choices: make it a video interview, or keep audio and turn integrity signals off (leave this out). It is carried into createWith, and changing it needs a new confirmation.",
+              "required": false
+            },
+            {
+              "name": "intro",
+              "type": "null | string",
+              "description": "The first message Tracy says, such as \"Hello, I'm Tracy. I'll ask a few questions about your experience.\" Left out, the standard first message is used. Tracy always opens with a fixed notice that she is an AI interviewer. It comes before your first message and cannot be changed.",
+              "required": false
+            },
+            {
+              "name": "invitees",
+              "type": "array",
+              "description": "People to invite by email as soon as the interview is created, each with an email address the host gave. Example: [{\"email\": \"ana@example.com\", \"name\": \"Ana Silva\"}]. The one confirmed create_interview call then creates the interview and emails them, so invite_participants is not called for them. Never look up addresses. Leave it out when the host names nobody. Not with practice: a practice run invites only the host's own address.",
+              "required": false
+            },
+            {
+              "name": "language",
+              "type": "string",
+              "description": "The language the interview is held in: en (English), de (German), es (Spanish), fr (French), id (Indonesian), ja (Japanese), ko (Korean), nl (Dutch), vi (Vietnamese). Send the code, e.g. es for Spanish, not the name. Optional: en (English) is the default. It does not translate questions you send: write them in this language. On update_interview, changing it leaves the saved questions as they are, so send them again in the new language.",
+              "required": false
+            },
+            {
+              "name": "mode",
+              "type": "string",
+              "description": "How the participant joins: video (the default) or audio, where they need only a microphone and no camera. Send audio when the host asks for an audio interview or one without a camera; otherwise leave it out. Optional: video is the default.",
+              "required": false
+            },
+            {
+              "name": "outro",
+              "type": "null | string",
+              "description": "The closing message, such as \"Thank you for your time. That was everything I wanted to ask.\" Left out, the standard closing message is used.",
+              "required": false
+            },
+            {
+              "name": "participants",
+              "type": "string",
+              "description": "Who is being interviewed, as a group described in the host's words, e.g. \"Backend engineers applying for the platform team\" or \"Customers who cancelled in the last 3 months\". It is an audience, not a recipient list: do not put email addresses here, invite_participants takes those.",
+              "required": true
+            },
+            {
+              "name": "practice",
+              "type": "boolean",
+              "description": "true for a practice, mock or test run, where the host takes the interview themselves: set it when the person says practice, mock or test, as in \"practice a job interview for me\". The one confirmed create_interview call then also turns the public link off and invites the address the account signed up with, so set_open_link and invite_participants are not called for it. Leave it out otherwise.",
+              "required": false
+            },
+            {
+              "name": "questions",
+              "type": "array",
+              "description": "The questions in the order Tracy asks them, as the host has reviewed them.",
+              "required": true
+            },
+            {
+              "name": "ref",
+              "type": "null | string",
+              "description": "The host's own reference for this interview, such as an ATS job id like JOB-1042.",
+              "required": false
+            },
+            {
+              "name": "result_fields",
+              "type": "array",
+              "description": "The fields the result reports, as the host has reviewed them. An empty list is allowed.",
+              "required": true
+            },
+            {
+              "name": "template",
+              "type": "null | string",
+              "description": "Copy from createWith.",
+              "required": false
+            },
+            {
+              "name": "title",
+              "type": "string",
+              "description": "The interview's title, such as Senior backend engineer screening.",
+              "required": true
+            }
+          ],
+          "outputSchema": false
+        },
+        {
+          "name": "get_balance",
+          "description": "Use this when the host asks how many interview results they have left, what their interview allowance and credit balance is, or why invitations or the public link are on hold. Do not use it for another account's balance, for another service's usage or to transcribe a recording. It returns the host's interview allowance and credit balance. Each finished session that produces a report uses one result from them. Invitations are held and the public link stops taking new people when both run out, and they carry on once credits are added. When the balance is low or used up, the reply explains how th",
+          "outputSchema": false
+        },
+        {
+          "name": "get_interview",
+          "description": "Use this when the host asks what one of their interviews contains or how it is set up, or before changing it with update_interview. Do not use it for meetings held on another service, for another account's interviews, to list interviews (use list_interviews) or to read what participants said (use get_results). It returns one interview in full: its title, purpose, mode (audio or video), language, version, questions, result fields, first and closing messages, whether it is paused, for a video interview whether its integrity signals are on, and whether the warm-up is on. Its complete lists provid",
+          "input": [
+            {
+              "name": "interview_id",
+              "type": "string",
+              "description": "The interview's id, exactly as list_interviews or create_interview returned it in its structured data. It is for tool calls only: never show it to the host; name the interview by its title. Do not guess an id, and do not send a title or an email address in its place: if you do not have the id, call list_interviews.",
+              "required": true
+            }
+          ],
+          "outputSchema": false
+        },
+        {
+          "name": "get_open_link",
+          "description": "Use this when the host asks for an interview's public link (anyone with the link can join): its address, whether it is on, how many have joined, the join limit and when it expires. Do not use this to build or guess an address, to find a person's personal interview link (list_participants shows those), or to share a meeting link or calendar invitation. It changes nothing and returns the address exactly as the app gives it; never build one from the interview's id. The state says whether it is taking people right now (Accepting) or why not (Off, Paused, No credits, Full, Expired).",
+          "input": [
+            {
+              "name": "interview_id",
+              "type": "string",
+              "description": "The interview's id, exactly as list_interviews or create_interview returned it in its structured data. It is for tool calls only: never show it to the host; name the interview by its title. Do not guess an id, and do not send a title or an email address in its place: if you do not have the id, call list_interviews.",
+              "required": true
+            }
+          ],
+          "outputSchema": false
+        },
+        {
+          "name": "get_results",
+          "description": "Use this when the host asks what a participant said, or wants their result, report or answers from an interview. Do not use it for meetings held on another service, for another account's participants or to transcribe a recording, and not to score, rank or reject participants: Tracy only reports what they said. It returns a participant's interview result: what they said to each question, the result fields, and a note for an applicant tracking system. By default it returns the primary result, the one the web app shows: the latest completed session, otherwise the latest partly done one. A person",
+          "input": [
+            {
+              "name": "all_sessions",
+              "type": "boolean",
+              "description": "Optional. Set to true to list every session, newest first, instead of only the primary result, for example when the host asks how many times someone took the interview. Leave it out for the primary result.",
+              "required": false
+            },
+            {
+              "name": "participant_id",
+              "type": "string",
+              "description": "The participant's id, exactly as list_participants or invite_participants returned it. Do not guess an id, and do not send the person's email address or name in its place: if you do not have the id, call list_participants.",
+              "required": true
+            }
+          ],
+          "outputSchema": false
+        },
+        {
+          "name": "invite_participants",
+          "description": "Invite people by email to a Tracy AI Interviewer interview, using addresses supplied by the host, or self: true for the host's practice run. Send only after approval of the exact recipient preview and its matching confirmation; turn the public link off before a practice invitation, never look up addresses or schedule meetings, and do not treat held invitations as sent. Ask the host one question with the preview; their yes is the approval, so send the confirmation at once.",
+          "input": [
+            {
+              "name": "confirm",
+              "type": "boolean",
+              "description": "Whether the host approved the preview. With a valid confirmation, true means approval and false cancels the action. confirmation is the approval code from Tracy's own preview step. That code contains no personal data, and is sent only back to Tracy to confirm the host approved the preview. Without the code, true only returns a preview.",
+              "required": false
+            },
+            {
+              "name": "confirmation",
+              "type": "string",
+              "description": "An approval code from Tracy's own preview step. It contains no personal data, and is sent only back to Tracy to confirm the host approved the preview. The code is valid only for the previewed details; changed details or a code that was not issued for them return a new preview without applying the action.",
+              "required": false
+            },
+            {
+              "name": "host_name",
+              "type": "string",
+              "description": "The host's name for the invite email, 1 to 100 characters, e.g. Linh Do. Send it only when the reply says needs_input, after asking the host for it in chat; never guess one. Send the same host_name again with the confirmation. An account that already has a name keeps it and this is ignored. The name is saved when the approved invite is sent, not by the preview.",
+              "required": false
+            },
+            {
+              "name": "interview_id",
+              "type": "string",
+              "description": "The interview's id, exactly as list_interviews or create_interview returned it in its structured data. It is for tool calls only: never show it to the host; name the interview by its title. Do not guess an id, and do not send a title or an email address in its place: if you do not have the id, call list_interviews.",
+              "required": true
+            },
+            {
+              "name": "people",
+              "type": "array",
+              "description": "Who to invite: one entry per person, each with an email address the host gave. Example: [{\"email\": \"ana@example.com\", \"name\": \"Ana Silva\"}]. Leave it out when self is true.",
+              "required": false
+            },
+            {
+              "name": "ref",
+              "type": "null | string",
+              "description": "The host's own reference for one person, such as an ATS candidate id. Used only when inviting a single person.",
+              "required": false
+            },
+            {
+              "name": "self",
+              "type": "boolean",
+              "description": "true to invite the address the account signed up with, for a practice run where the host takes the interview themselves: the host is not asked for it and people is left out. The preview names the address and the host still approves it. To use another address, send it in people instead.",
+              "required": false
+            }
+          ],
+          "outputSchema": false
+        },
+        {
+          "name": "list_interviews",
+          "description": "Use this when the host asks which interviews they have, wants to find one by its title, or when another tool needs an interview's id. Do not use it for meetings held on another service, for another account's interviews or to read what participants said: it lists interviews only. It returns the host's interviews, most recently changed first, with how many people are on each, how many finished, and whether the public link is on. An audio interview, where the participant needs only a microphone, is marked Audio; a video one is not marked. It has no search or date filter, so find the interview the",
+          "outputSchema": false
+        },
+        {
+          "name": "list_participants",
+          "description": "Use this when the host asks who is on an interview, who has been invited, has started or has finished, or when get_results needs a participant's id. Do not use it for meetings held on another service, for another account's interviews, or to score, rank or reject participants: Tracy only reports what they said. It returns the people on an interview, newest first, with each one's status (Held, Invited, Opened, Started, Completed, Expired), email status, how many sessions they have had, and their personal link. A participant's id identifies their results in get_results.",
+          "input": [
+            {
+              "name": "interview_id",
+              "type": "string",
+              "description": "The interview's id, exactly as list_interviews or create_interview returned it in its structured data. It is for tool calls only: never show it to the host; name the interview by its title. Do not guess an id, and do not send a title or an email address in its place: if you do not have the id, call list_interviews.",
+              "required": true
+            }
+          ],
+          "outputSchema": false
+        },
+        {
+          "name": "set_host_name",
+          "description": "Use this when the host gives the name their invite emails should carry without being asked for it. Do not use this to guess a name, to save a participant's or anyone else's name, to rename an interview, or to change the host's email address or other account details. Save the host's name: invite emails name the host by it, and replies go to the host's email address. Inviting people and creating an interview no longer need it: when the account has no name, those tools take the host's name as host_name and save it only when the approved action runs. Ask the host for a name only when a reply says",
+          "input": [
+            {
+              "name": "name",
+              "type": "string",
+              "description": "The host's name, as the people they invite should see it. Example: Linh Do.",
+              "required": true
+            }
+          ],
+          "outputSchema": false
+        },
+        {
+          "name": "set_open_link",
+          "description": "Use this when the host wants to turn an interview's public link on or off, or change its join limit or expiry. Do not use this to invite named people by email (invite_participants does that), to schedule a meeting, send a calendar invitation or share a meeting link, or to make an interview public when the host has not asked for a public link. The public link is a public address (anyone with the link can join): nobody needs an invitation until the limit or expiry is reached (20 people and 14 days unless set here; the expiry is 7, 14 or 30 days). An enablement request without a matching confirma",
+          "input": [
+            {
+              "name": "confirm",
+              "type": "boolean",
+              "description": "Whether the host approved the preview. With a valid confirmation, true means approval and false cancels the action. confirmation is the approval code from Tracy's own preview step. That code contains no personal data, and is sent only back to Tracy to confirm the host approved the preview. Without the code, true only returns a preview.",
+              "required": false
+            },
+            {
+              "name": "confirmation",
+              "type": "string",
+              "description": "An approval code from Tracy's own preview step. It contains no personal data, and is sent only back to Tracy to confirm the host approved the preview. The code is valid only for the previewed details; changed details or a code that was not issued for them return a new preview without applying the action.",
+              "required": false
+            },
+            {
+              "name": "enabled",
+              "type": "boolean",
+              "description": "true to turn the public link on, false to turn it off. Example: true.",
+              "required": false
+            },
+            {
+              "name": "expiry_days",
+              "description": "Days the link works, counted from the first time it was turned on: 7, 14 or 30. 14 unless set. Example: 30.",
+              "required": false
+            },
+            {
+              "name": "interview_id",
+              "type": "string",
+              "description": "The interview's id, exactly as list_interviews or create_interview returned it in its structured data. It is for tool calls only: never show it to the host; name the interview by its title. Do not guess an id, and do not send a title or an email address in its place: if you do not have the id, call list_interviews.",
+              "required": true
+            },
+            {
+              "name": "join_cap",
+              "type": "integer",
+              "description": "How many people may join through the link, a whole number of 1 or more. 20 unless set. Example: 50.",
+              "required": false
+            }
+          ],
+          "outputSchema": false
+        },
+        {
+          "name": "suggest_interview",
+          "description": "Draft the title, questions and result fields for a new AI video or audio interview with Tracy AI Interviewer from who the host wants to interview and what they want to learn. Before creation, review the full draft and the video integritySignals choice with the host; it saves nothing, invites nobody and does not handle existing recordings or score, rank or reject people. Set practice true when the host says practice, mock or test; pass invitees to email people at creation. End the draft with one question, \"Shall I create this interview with integrity signals on?\" or \"Shall I create this intervi",
+          "input": [
+            {
+              "name": "context",
+              "type": "null | string",
+              "description": "Anything else Tracy should know for this interview: job description, company, product, tone. Include only what bears on the interview, and leave it out when there is nothing to add. Do not paste in unrelated or personal details. On update_interview, null clears what is saved.",
+              "required": false
+            },
+            {
+              "name": "goal",
+              "type": "string",
+              "description": "What the host wants to find out, as a topic, e.g. \"How candidates approach debugging a production incident\" or \"Why customers cancelled\". Do not phrase it as a decision about the people, such as whether to hire someone.",
+              "required": true
+            },
+            {
+              "name": "host_name",
+              "type": "string",
+              "description": "The host's name for the invite emails, 1 to 100 characters, e.g. Linh Do. It is used only when the draft also invites people or a practice run, and only when the account has no name saved; otherwise it is ignored and nothing is saved with it. Never guess one: ask the host.",
+              "required": false
+            },
+            {
+              "name": "integritySignals",
+              "type": "boolean",
+              "description": "Whether integrity signals run for this video interview, true or false. Optional: they are on by default, so send false only when the host chooses to turn them off, and ask the host to keep them or turn them off first. Tracy only reports what happened. An audio interview has none, so sending this for one drafts and creates nothing and gives the host two choices: make it a video interview, or keep audio and turn integrity signals off (leave this out). It is carried into createWith, and changing it needs a new confirmation.",
+              "required": false
+            },
+            {
+              "name": "invitees",
+              "type": "array",
+              "description": "People to invite by email as soon as the interview is created, each with an email address the host gave. Example: [{\"email\": \"ana@example.com\", \"name\": \"Ana Silva\"}]. The one confirmed create_interview call then creates the interview and emails them, so invite_participants is not called for them. Never look up addresses. Leave it out when the host names nobody. Not with practice: a practice run invites only the host's own address.",
+              "required": false
+            },
+            {
+              "name": "keep",
+              "type": "array",
+              "description": "Questions to keep as they are when regenerating, such as [{ \"text\": \"What drew you to this role?\" }].",
+              "required": false
+            },
+            {
+              "name": "language",
+              "type": "string",
+              "description": "The language the interview is held in: en (English), de (German), es (Spanish), fr (French), id (Indonesian), ja (Japanese), ko (Korean), nl (Dutch), vi (Vietnamese). Send the code, e.g. es for Spanish, not the name. Optional: en (English) is the default. It does not translate questions you send: write them in this language. On update_interview, changing it leaves the saved questions as they are, so send them again in the new language.",
+              "required": false
+            },
+            {
+              "name": "mode",
+              "type": "string",
+              "description": "How the participant joins: video (the default) or audio, where they need only a microphone and no camera. Send audio when the host asks for an audio interview or one without a camera; otherwise leave it out. Optional: video is the default.",
+              "required": false
+            },
+            {
+              "name": "participants",
+              "type": "string",
+              "description": "Who is being interviewed, as a group described in the host's words, e.g. \"Backend engineers applying for the platform team\" or \"Customers who cancelled in the last 3 months\". It is an audience, not a recipient list: do not put email addresses here, invite_participants takes those.",
+              "required": true
+            },
+            {
+              "name": "practice",
+              "type": "boolean",
+              "description": "true for a practice, mock or test run, where the host takes the interview themselves: set it when the person says practice, mock or test, as in \"practice a job interview for me\". The one confirmed create_interview call then also turns the public link off and invites the address the account signed up with, so set_open_link and invite_participants are not called for it. Leave it out otherwise.",
+              "required": false
+            },
+            {
+              "name": "question_count",
+              "type": "integer",
+              "description": "How many questions the draft should hold in all, 1 to 8, any questions in keep counted. Set it only when the host asks for a number of questions, e.g. 4; otherwise leave it out and the draft has 5 to 8. It is not carried into createWith: the questions in createWith are the draft.",
+              "required": false
+            }
+          ],
+          "outputSchema": false
+        },
+        {
+          "name": "update_interview",
+          "description": "Use this when the host wants to change an interview that already exists: its title, purpose, mode, language, first or closing message, questions, result fields, the integrity signals or the warm-up. Do not use it to make a new interview (suggest_interview, then create_interview) or to read the current setup (get_interview), or for an existing meeting or recording, an uploaded file, a contact lookup, scoring or ranking participants, or advice alone. Change an existing interview using its current setup from get_interview and the host's edits. Changes to questions or result_fields replace the com",
+          "input": [
+            {
+              "name": "integritySignals",
+              "type": "boolean",
+              "description": "Whether the integrity signals run for this video interview, such as false to turn them off. Optional: it stays as it is when left out. It is saved on its own, without questions or result_fields. An audio interview has no integrity signals: sending this for one is refused and nothing is changed.",
+              "required": false
+            },
+            {
+              "name": "interview_id",
+              "type": "string",
+              "description": "The interview's id, exactly as list_interviews or create_interview returned it in its structured data. It is for tool calls only: never show it to the host; name the interview by its title. Do not guess an id, and do not send a title or an email address in its place: if you do not have the id, call list_interviews.",
+              "required": true
+            },
+            {
+              "name": "intro",
+              "type": "null | string",
+              "description": "The first message, such as \"Hello, I'm Tracy. I'll ask a few questions about your experience.\" Null or empty clears it. Tracy always opens with a fixed notice that she is an AI interviewer. It comes before your first message and cannot be changed.",
+              "required": false
+            },
+            {
+              "name": "language",
+              "type": "string",
+              "description": "The language the interview is held in: en (English), de (German), es (Spanish), fr (French), id (Indonesian), ja (Japanese), ko (Korean), nl (Dutch), vi (Vietnamese). Send the code, e.g. es for Spanish, not the name. Optional: en (English) is the default. It does not translate questions you send: write them in this language. On update_interview, changing it leaves the saved questions as they are, so send them again in the new language.",
+              "required": false
+            },
+            {
+              "name": "mode",
+              "type": "string",
+              "description": "How the participant joins: video (the default) or audio, where they need only a microphone and no camera. Send audio when the host asks for an audio interview or one without a camera; otherwise leave it out. Optional: video is the default.",
+              "required": false
+            },
+            {
+              "name": "outro",
+              "type": "null | string",
+              "description": "The closing message, such as \"Thank you for your time. That was everything I wanted to ask.\" Null or empty clears it.",
+              "required": false
+            },
+            {
+              "name": "purpose",
+              "type": "object",
+              "description": "The host's answers, if they change. Both participants and goal are needed.",
+              "required": false
+            },
+            {
+              "name": "questions",
+              "type": "array",
+              "description": "The complete list of questions, in the order Tracy asks them. It replaces the saved list: a question left out is removed, so send every question that stays again, unchanged ones exactly as get_interview shows them (text and source).",
+              "required": false
+            },
+            {
+              "name": "result_fields",
+              "type": "array",
+              "description": "The complete list of fields the result reports, in the order the result shows them. It replaces the saved list: a field left out is removed, so send every field that stays again, unchanged ones as get_interview shows them. If the questions are reordered or removed, check each from_question against the new list.",
+              "required": false
+            },
+            {
+              "name": "title",
+              "type": "string",
+              "description": "A new title, such as Senior backend engineer screening.",
+              "required": false
+            },
+            {
+              "name": "warmup",
+              "type": "boolean",
+              "description": "Whether the warm-up runs before the first question, such as true to turn it on. Optional: it stays as it is when left out. It is saved on its own, without questions or result_fields, and applies to a video and an audio interview alike.",
+              "required": false
+            }
+          ],
+          "outputSchema": false
+        }
+      ]
+    },
+    "resources": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "resourceTemplates": {
+      "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "prompts": {
+      "status": "complete",
+      "observedCount": 7,
+      "retainedCount": 7,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "candidate_screening",
+          "description": "Older name for candidate screening with Tracy AI Interviewer. Use tracy-suggest-interview to review a draft before anything is created.",
+          "arguments": [
+            {
+              "name": "context",
+              "description": "Anything else the interview should know, such as the company, the product or the tone. Leave it out when there is nothing to add.",
+              "required": false
+            },
+            {
+              "name": "language",
+              "description": "The language the interview is held in, as a code: en, de, es, fr, id, ja, ko, nl, vi. English (en) when left out.",
+              "required": false
+            },
+            {
+              "name": "mode",
+              "description": "video, or audio when people need only a microphone and no camera. Video when left out.",
+              "required": false
+            },
+            {
+              "name": "role",
+              "description": "The role candidates are applying for, for example Customer Support Lead.",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "customer_interviews",
+          "description": "Older name for customer research with Tracy AI Interviewer. Use tracy-suggest-interview to review a draft before anything is created or anyone is invited.",
+          "arguments": [
+            {
+              "name": "audience",
+              "description": "Who you want to interview, for example Customers who cancelled in the last 3 months.",
+              "required": true
+            },
+            {
+              "name": "context",
+              "description": "Anything else the interview should know, such as the company, the product or the tone. Leave it out when there is nothing to add.",
+              "required": false
+            },
+            {
+              "name": "goal",
+              "description": "What you want to find out, for example Why customers cancelled.",
+              "required": true
+            },
+            {
+              "name": "language",
+              "description": "The language the interview is held in, as a code: en, de, es, fr, id, ja, ko, nl, vi. English (en) when left out.",
+              "required": false
+            },
+            {
+              "name": "mode",
+              "description": "video, or audio when people need only a microphone and no camera. Video when left out.",
+              "required": false
+            }
+          ]
+        },
+        {
+          "name": "practice_interview",
+          "description": "Older name for a practice run with Tracy AI Interviewer. Use tracy-practice-run to try an interview yourself with the public link off.",
+          "arguments": [
+            {
+              "name": "context",
+              "description": "Anything else the interview should know, such as the company, the product or the tone. Leave it out when there is nothing to add.",
+              "required": false
+            },
+            {
+              "name": "goal",
+              "description": "What the practice interview is about, for example How I approach debugging a production incident.",
+              "required": true
+            },
+            {
+              "name": "language",
+              "description": "The language the interview is held in, as a code: en, de, es, fr, id, ja, ko, nl, vi. English (en) when left out.",
+              "required": false
+            },
+            {
+              "name": "mode",
+              "description": "video, or audio when people need only a microphone and no camera. Video when left out.",
+              "required": false
+            }
+          ]
+        },
+        {
+          "name": "tracy-invite-people",
+          "description": "Preview invitations to the addresses you supply with Tracy AI Interviewer, then confirm before sending.",
+          "arguments": [
+            {
+              "name": "emails",
+              "description": "The email addresses of the people you want to invite.",
+              "required": true
+            },
+            {
+              "name": "interview",
+              "description": "The interview title, if it is not already clear from this conversation.",
+              "required": false
+            }
+          ]
+        },
+        {
+          "name": "tracy-practice-run",
+          "description": "Try an interview yourself with Tracy AI Interviewer. Turn the public link off and preview an invitation to your own address.",
+          "arguments": [
+            {
+              "name": "topic",
+              "description": "The role or topic to practise, for example Customer Support Lead or debugging a production incident.",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "tracy-read-results",
+          "description": "Read what each person said with Tracy AI Interviewer and include the share link when available.",
+          "arguments": [
+            {
+              "name": "interview",
+              "description": "The interview title, if it is not already clear from this conversation.",
+              "required": false
+            }
+          ]
+        },
+        {
+          "name": "tracy-suggest-interview",
+          "description": "Draft an interview with Tracy AI Interviewer. Review the title, questions and result fields before anything is saved.",
+          "arguments": [
+            {
+              "name": "context",
+              "description": "Anything else the interview should know, such as the company, the product or the tone. Leave it out when there is nothing to add.",
+              "required": false
+            },
+            {
+              "name": "goal",
+              "description": "What to find out, for example how candidates handle support issues or why customers cancelled.",
+              "required": true
+            },
+            {
+              "name": "language",
+              "description": "The language the interview is held in, as a code: en, de, es, fr, id, ja, ko, nl, vi. English (en) when left out.",
+              "required": false
+            },
+            {
+              "name": "mode",
+              "description": "video, or audio when people need only a microphone and no camera. Video when left out.",
+              "required": false
+            },
+            {
+              "name": "who",
+              "description": "Who to interview, for example candidates for a Customer Support Lead screening or customers for research.",
+              "required": true
+            }
+          ]
+        }
+      ]
+    }
+  },
   "travel-vibes": {
     "version": 1,
     "observedAt": "2026-11-23T18:17:52.607Z",
@@ -157271,6 +160403,256 @@
     },
     "prompts": {
       "status": "unsupported",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    }
+  },
+  "zillow": {
+    "version": 1,
+    "observedAt": "2026-11-28T00:22:34.865Z",
+    "provenance": {
+      "testedEndpoint": "https://mcp.zillow.com/api/v2",
+      "route": "direct"
+    },
+    "authentication": "unauthenticated",
+    "tools": {
+      "status": "partial",
+      "observedCount": 9,
+      "retainedCount": 9,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "calculateHomeAffordability",
+          "description": "<tool_purpose> Calculates the maximum home price a user can afford in the United States only. </tool_purpose> <when_to_use> - User wants to understand the max home price they can afford - User wants to search for home that is within their means - User wants to understand the max home price and the monthly payment amounts </when_to_use> <when_not_to_use> - User wants to know what the current mortgage rates are - User knows the home price they are looking at and then want to understand how much it costs monthly - User knows the home price and they are looking to see what mortage rates they might",
+          "input": [
+            {
+              "name": "annualIncome",
+              "type": "null | number",
+              "description": "Gross i.e. pre-tax annual income of the user. Gross annual income is the sum of everything one earns in one year, before taxes or deductions.This includes your base annual income and any additional commissions, bonuses, tips and investment income that you earn each year.If one hourly, they can multiply their hourly wage by how many hours a week they work, then multiply that number by 52 to get their annual salary.",
+              "required": true
+            },
+            {
+              "name": "city",
+              "type": "null | string",
+              "description": "City name if the user is looking for an affordability in a specific city as a location.",
+              "required": true
+            },
+            {
+              "name": "creditScore",
+              "type": "null | number",
+              "description": "User's credit score. Credit score is a 3 digit number ranging from 300 to 850 and can be found in one's credit report.A lender may have lower interest rates for higher credit scores.",
+              "required": true
+            },
+            {
+              "name": "downPayment",
+              "type": "null | number",
+              "description": "Amount the user plans to put down toward the home purchase. For most people, they combine their down payment with a loan to cover the total purchase price of the home.",
+              "required": true
+            },
+            {
+              "name": "monthlyDebts",
+              "type": "null | number",
+              "description": "Monthly debts are recurring monthly payments, such as credit card payments, loan payments (like car, student or personal loans), alimony or child support.Monthly utilities like water, garbage, electricity or gas bills, Car insurance expenses, Cable bills, Cell phone bills, Health insurance costs, Groceries, food or entertainment expenses can be excluded from monthly debts.",
+              "required": true
+            },
+            {
+              "name": "monthlyMortgageBudget",
+              "type": "null | number",
+              "description": "Maximum amount the user is willing to spend monthly on a mortage payment. eg. if a user's current rent is $2500, and they wish to keep their monthly mortgage payments the same, they can set this to 2500",
+              "required": true
+            },
+            {
+              "name": "state",
+              "type": "null | string",
+              "description": "US State if the user is looking for an affordability estimate in a specific state as a location.",
+              "required": true
+            },
+            {
+              "name": "zipcode",
+              "type": "null | string",
+              "description": "USPS postal code of the location, if the user is wanting an affordability estimate for a very specific area in a city or county or state.",
+              "required": true
+            }
+          ],
+          "outputSchema": false
+        },
+        {
+          "name": "get_rent_zestimate",
+          "description": "- When to use: For queries about the estimated monthly rental value (Rent Zestimate) for a property. - Args: - address (required): Full property address. - Returns: - str: Text with the current Rent Zestimate. If the Rent Zestimate is not available, returns text explaining why the Rent Zestimate may be missing. - Behavior and content rules: - When explaining what the Rent Zestimate is, use the output of the tool verbatim (no edits, no paraphrasing). - When explaining why a Rent Zestimate is missing, use the output of the tool verbatim (no edits, no paraphrasing). - Do not cite, compare with, o",
+          "input": [
+            {
+              "name": "address",
+              "type": "string",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "get_zestimate",
+          "description": "- When to use: For queries about the estimated home value (Zestimate) for a property and/or the confidence in that valuation, including WHY it has that value and how it compares to similar properties. - Args: - address (required): Full property address. - Returns: str: Comprehensive valuation report including: - Current Zestimate and estimated sales range (confidence indicator) - Factors explaining and interpretting the valuation, including an indication that a prior sale or listing price is a key input, when appropriate - Property features (bedrooms, bathrooms, sqft, year built, renovations)",
+          "input": [
+            {
+              "name": "address",
+              "type": "string",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "get_zestimate_history",
+          "description": "- When to use: A user asks for how a Zestimate for a property has changed over time historically. - Args: - address (required): Full property address. - Returns: - json with the following keys: - address: Full property address. - disclaimer: The disclaimer text which should always be included at the end of the response - current_zestimate: The current Zestimate value. - percentage_changes: A dictionary of key value pairs where the key is the date in yyyy-mm-dd format and the value is the percentage change in Zestimate since the given date - If the historical Zestimate values are not available,",
+          "input": [
+            {
+              "name": "address",
+              "type": "string",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "get_zestimate_info",
+          "description": "- When to use: For queries about general Zestimate information, accuracy, definitions, or reasons why Zestimates might be missing. - Args: - question_type (required): The type of Zestimate question to answer. Options: - what_is_zestimate: Explains what the Zestimate is and how it works - zestimate_accuracy: Information about Zestimate accuracy and error rates - what_is_rent_zestimate: Explains what the Rent Zestimate is - zestimate_missing: Explains why a Zestimate might be missing - rent_zestimate_missing: Explains why a Rent Zestimate might be missing - Returns: - str: Detailed information a",
+          "input": [
+            {
+              "name": "question_type",
+              "type": "string",
+              "description": "Enum for different types of Zestimate-related questions.",
+              "required": true
+            }
+          ],
+          "outputSchema": true
+        },
+        {
+          "name": "interestRateMortgagePaymentSimulator",
+          "description": "Simulates monthly mortgage payments using real-time interest rates from Zillow Home Loans LLC (NMLS #10287). Retrieves current daily mortgage rates nationally or by U.S. state, and calculates estimated monthly payments based on home price, down payment, credit score, and location. Use this tool when users ask about today's mortgage rates, want to estimate a monthly payment for a specific home price, or want to see how changes in rate, credit score, or down payment affect their payment. Inputs (all optional): homePrice (USD, optional), downPayment (USD, optional), creditScore (integer, e.g. 720",
+          "input": [
+            {
+              "name": "city",
+              "type": "null | string",
+              "description": "The U.S. city where the property is located. Used to estimate property taxes",
+              "required": true
+            },
+            {
+              "name": "creditScore",
+              "type": "integer | null",
+              "description": "User's credit score. Credit score is a 3 digit number ranging from 300 to 850 and can be found in one's credit report.A lender may have lower interest rates for higher credit scores.",
+              "required": true
+            },
+            {
+              "name": "downPayment",
+              "type": "integer | null",
+              "description": "Amount the user plans to put down toward the home purchase. For most people, they combine their down payment with a loan to cover the total purchase price of the home.",
+              "required": true
+            },
+            {
+              "name": "hoADues",
+              "type": "integer | null",
+              "description": "Estimated monthly Homeowners Association (HOA) dues, if applicable. Included in the total monthly housing cost.",
+              "required": true
+            },
+            {
+              "name": "homePrice",
+              "type": "integer | null",
+              "description": "The total purchase price of the home. Used to calculate loan size and monthly payment.",
+              "required": true
+            },
+            {
+              "name": "loanAmount",
+              "type": "integer | null",
+              "description": "The desired loan amount. If not provided, it's calculated as home price minus down payment.",
+              "required": true
+            },
+            {
+              "name": "usState",
+              "type": "null | string",
+              "description": "The U.S. state where the property is located. Used to determine regional interest rates and loan limits.",
+              "required": true
+            },
+            {
+              "name": "zipCode",
+              "type": "null | string",
+              "description": "The U.S. postal code where the property is located. Used to estimate property taxes",
+              "required": true
+            }
+          ],
+          "outputSchema": false
+        },
+        {
+          "name": "zillow_city_neighborhood_real_estate_information",
+          "description": "<tool_purpose> Returns U.S. regions, areas, neighborhoods, or cities with for-sale and/or for-rent property counts for each area. Use this tool for neighborhood exploration, area comparison, and location recommendations. </tool_purpose> <when_to_use> Use this tool whenever a user asks about the best places to live, buy, or rent homes in U.S. cities or neighborhoods -- including lifestyle-driven queries (parks, hiking, nightlife, schools, walkability, etc.). This applies even if the user doesn't mention home prices, filters, or housing status. Examples: - \"Best neighborhoods in Seattle for fami",
+          "input": [
+            {
+              "name": "request",
+              "type": "object",
+              "required": true
+            }
+          ],
+          "outputSchema": false
+        },
+        {
+          "name": "zillow_property_details_by_address_or_name",
+          "description": "## Zillow Property Details by Query Retrieves detailed information about a specific property by address, building name or community name. --- ### What it returns - Comprehensive property details including address, price, features, photos, and more. - Returns structured JSON data for off-market properties from Zillow's property database. - For off market homes, JSON data will be returned but no widget will be returned. --- ### Inputs - **`query` (required)** Property address or name (e.g., \"123 Main St, Seattle, WA 98101\") --- ### Key Rules & Constraints - **CURRENTLY SUPPORTS OFF-MARKET PROPER",
+          "input": [
+            {
+              "name": "query",
+              "type": "string",
+              "required": true
+            }
+          ],
+          "outputSchema": false
+        },
+        {
+          "name": "zillow_property_search",
+          "description": "<tool_purpose> Primary property search tool for U.S. real estate. Searches for properties for sale or for rent. Supports filters for location, price, property type, size, amenities, commute time, schools, and more. Returns matching property listings with an interactive map widget. </tool_purpose> <when_to_use> - User wants to search for properties (DEFAULT choice for property search) - \"show me homes in...\", \"find properties...\", \"search for...\" - Rental searches: \"rentals in...\", \"apartments for rent\", \"pet-friendly rentals\" - Special housing: \"student housing\", \"senior apartments\", \"affordab",
+          "input": [
+            {
+              "name": "request",
+              "type": "object",
+              "required": true
+            }
+          ],
+          "outputSchema": false
+        }
+      ]
+    },
+    "resources": {
+      "status": "partial",
+      "observedCount": 3,
+      "retainedCount": 3,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": [
+        {
+          "name": "zillow-areas-html",
+          "description": "Provides Zillow areas search widget HTML populated with widget sub-app template"
+        },
+        {
+          "name": "zillow-buyability-html",
+          "description": "Provides Zillow buyability calculator widget HTML populated with widget sub-app template"
+        },
+        {
+          "name": "zillow-property-search-html",
+          "description": "Provides Zillow property search widget HTML populated with widget sub-app template"
+        }
+      ]
+    },
+    "resourceTemplates": {
+      "status": "complete",
+      "observedCount": 0,
+      "retainedCount": 0,
+      "omittedCount": 0,
+      "paginationComplete": true,
+      "items": []
+    },
+    "prompts": {
+      "status": "complete",
       "observedCount": 0,
       "retainedCount": 0,
       "omittedCount": 0,

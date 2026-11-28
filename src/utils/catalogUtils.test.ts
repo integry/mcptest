@@ -239,6 +239,7 @@ describe('catalog authentication metadata', () => {
     expect(flagged.map(({ id }) => id)).toEqual(expect.arrayContaining([
       'malwarebytes', 'snomed-ct', 'snagajob', 'descrybe', 'constant-contact', 'cash-app-ordering',
       'athenahq', 'taskrabbit', 'pophive', 'civitatis', 'all-accor', 'aiwyn-tax',
+      'zillow',
     ]));
     for (const { id, listingSource, directoryListings } of flagged) {
       expect(listingSource.kind, id).toBe('client-directory');
