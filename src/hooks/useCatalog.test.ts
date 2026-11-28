@@ -183,6 +183,7 @@ describe('catalog query params', () => {
       'Clarity AI SFDR 2.0',
       'CoinGecko',
       'CoinGecko (MCP app)',
+      'Crypto.com Market Data',
       'DoubleTaxation',
       'EOR Scope',
       'ExpenseOS',

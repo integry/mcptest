@@ -770,3 +770,75 @@ A follow-up review checked every description and caveat against a direct publish
 ### Queued for later batches
 
 The batch 28 queue is unchanged except for ranks, rechecked against the batch 29 snapshot. Zoho CRM tool discovery moves to 805 / 34, Schwab Advisor Services to 840 / 31, Papermark to 851 / 31 and Rocket Lawyer to 854 / 30. The other rows keep their relevance: Prefect 839 / 32; LSEG AI 841, Ninout 842, Productised 844, Pi Security 846, Bolna 847 and Cashfree 850 / 31; Valuecase 852, Pega Blueprint 857, Chamelio 859 and Chatbase 860 / 30. Parqet and Shipt stay held after HTTP 403.
+
+## Batch 30 import
+
+GitHub issue [#780](https://github.com/integry/mcptest/issues/780) tracks this import. It builds on batch 29 (`b699d3b4`, PR [#779](https://github.com/integry/mcptest/pull/779)). The catalog grew from 1,186 to 1,216 entries. Master already supports the three fields the import relies on: `directoryListings` (`claude` or `chatgpt`, the directory's own `id` and an HTTPS `url`, with repeated IDs rejected), an integer `relevance` from 0 to 100, and `client-directory` provenance, which must reuse one of the record's listing URLs. The 30 candidates were matched first on `directoryListings.id`, then on normalized primary and alternative URLs; none matched. Perplexity API is separate from `perplexity-computer`, and Zillow's `mcp.zillow.com` is separate from Follow Up Boss on `fub-mcp.zillow.com`. Each new record is internal, with a Streamable HTTP primary, the issue's listings and a generated monogram logo. Three records use `client-directory` sources: Yardi Matrix (its Claude directory page), Zillow (its [Claude directory page](https://claude.com/marketplace/connectors/zillow), which supplies the exact `/api/v2` endpoint that Zillow's publisher guide omits) and Meticulate (OpenAI's public [ChatGPT plugin page](https://openai.com/business/plugins/meticulate/), which is also its directory listing URL). Zillow keeps both its Claude and ChatGPT listings. The other 27 use `publisher` sources; Rox's is the [publisher setup guide](https://www.rox.com/docs/admin-guide/developer-tools-mcp), which names the exact endpoint.
+
+### Relevance snapshot
+
+The Claude index retrieved on November 28, 2026 (1,228 records, 1,225 scored) is byte-identical to the [batch 29 ranking snapshot](catalog-batch-29-claude-ranking.tsv) (SHA-256 `5d4590e1065ea0bcb0d37617ac3b3d384ded8337b30f98a704b084881e051fd1`), so no new snapshot is saved. With `Math.round(100 * (1225 - rank) / 1225)` and 1-based ranks, all nine Claude-ranked candidates reproduce the issue: Crypto.com 213 → 83, Zillow 303 → 75, BrowserStack 485 → 60, Yardi Matrix 498 → 59, Lawstronaut 625 → 49, AgentPhone 711 → 42, pg-aiguide 748 → 39, Nansen 917 → 25 and Tracy AI Interviewer 1050 → 14. The 21 ChatGPT-only records get 50. Existing scores are unchanged except `mak-public-rcic-mcp`, which gets 50.
+
+### Validation and endpoint provenance
+
+- All 30 new primaries are `online` in `src/data/catalogValidation.json`: six negotiated anonymously and yielded capability snapshots, Magnific negotiated but required OAuth for its capability lists, and the other 23 returned HTTP 401 during initialization.
+- **Anonymous negotiation.** Crypto.com (stateful MCP 2025-03-26), Zillow and Tracy (stateful 2025-11-25), and Lawstronaut, pg-aiguide and Nansen (stateless 2026-07-28) completed anonymous discovery. Their capability snapshots are in `src/data/catalogCapabilities.json`: Crypto.com 9 tools (complete); Zillow 9 tools and 3 resources; Lawstronaut 18 tools; pg-aiguide 3 tools and 11 prompts; Nansen 43 tools; Tracy 12 tools and 7 prompts. The last five are partial, as the issue expected. No tool was invoked. Magnific's root also negotiated stateless 2026-07-28, but its capability lists required OAuth, so no snapshot was stored and its tool list is unverified.
+- **Credentials after discovery.** Only the tool lists are public for Lawstronaut and Nansen. Lawstronaut is `bearer-token` (a paid developer-portal token, with pre-registered OAuth as an alternative). Nansen is `api-key` with the documented `NANSEN-API-KEY` header. Tracy's interview creation needs its OAuth sign-in, so the record is `oauth`.
+- **Authentication challenges.** The other 23 (BrowserStack through AgentPhone, in issue order) returned HTTP 401 during initialization and are recorded with `requiresOAuth: true`. Signed-in initialization, transport and tool inventories are unverified, and no snapshot was stored. Parqet returned 401 with a Bearer challenge to the validator's probe but HTTP 403 to a legacy initialize (and to an unversioned hand probe). BrowserStack likewise answered the validator with an OAuth 401 but a hand probe with an nginx 403.
+- **Other sign-in methods** (`alternativeAuthTypes: bearer-token`): Chili Piper (scoped API token; OAuth is admin-only), Perplexity API, TubeAlfred, crosswalk, FLORA, WPWriter (`wpw_` key) and AgentPhone.
+- **Alternatives.** Magnific `https://mcp.magnific.com/mcp`, Parqet `https://mcp.parqet.com/mcp`, COROS `https://mcpus.coros.com/mcp` and WPWriter `https://mcp.wpwriter.com/` are the routes their ChatGPT releases declare. Nansen's `https://mcp.nansen.ai/ra/connector-curated/mcp` is the OAuth connector route both its listings use; its ChatGPT release omits a URL. Each returned HTTP 401; Magnific's negotiated first and then refused the capability lists.
+- `exactEndpointOnly` is set for Zillow (`/api/v2`; the root failed and `/api/v1` returned 404), Magnific, Lawstronaut, pg-aiguide (`/docs`), Parqet, TubeAlfred and crosswalk. TubeAlfred's and crosswalk's `/mcp` paths returned HTTP 405 to initialization.
+- **Listings.** All 26 ChatGPT releases read anonymously are listed, enabled and from the expected developer. The TubeAlfred, WPVibe and Nansen releases omit endpoint URLs and are attributed at product level. Zillow's ChatGPT entry is the supplied app-directory connector (`connector_68d579f7b0948191a7da3124a3b560f7`); its release returned HTTP 451 anonymously. Tracy uses the Claude page `tracy-at-qode`, and BrowserStack `mcp-browserstack-com`. The separate Qode release at `tracy.qode.world/mcp` (404) and Yardi Virtuoso's ChatGPT release, which describes a different service, are not attributed.
+
+### Existing records
+
+Queue TODOs `8abc9926-0255-4885-8838-df8497bd345e`, its parent `04b4306b-e00f-4034-bd30-b6a932d8752a` and grandparent `ff14e799-4a20-42ec-9345-51b2c726d117`, and investigation runs `fd1cf26c` and `7dff194b` were reconciled against master. Every queued membership for an existing record that master lacked was appended: 121 listings on 111 records. Each Claude plugin ID and slug was checked against the live plugin index (547 plugins). Each ChatGPT release was read at `chatgpt.com/backend-anon/ps/plugins/<id>`, and all 90 are listed and enabled. Primaries, listing sources, credits and relevance are unchanged, except that `mak-public-rcic-mcp` gets relevance 50 and keeps its community-submission source, which is the MCP Registry entry.
+
+- **ChatGPT listings from the issue:** `mak-public-rcic-mcp`, `fireflies` 94 and `daloopa` 85 (`plugin_connector_*` IDs), `lattice` 86, `imanage-work` 81, `financial-datasets` 76, `third-bridge` 75, `coupler-io` 70, `lightfield` 45, `ironclad` 90, `adobe-cx-coworker` 87, `g2` 82, `tldv` 79 and `lawve-ai` 71. All of these releases omit endpoints and are attributed at product level. `weweb` 48, `anrok` 44 and `rockhopper` 44 name the primary. The queued exact-endpoint matches `abacum` and `coinversa-pulse` (both 57) are also added.
+- **Earlier queued ChatGPT listings:** Raygun, Statsig, Alchemy, Descope, Cal.com, Browser Use and Pydantic Logfire, plus the 60 product-level listings from the November 26 queue (Adobe Workfront to WorkOS). Clay carries two: Clay for reps at product level, and `plugin_asdk_app_6aedf6ea2fac819180910f8b98663c77` on its `/public/v0/mcp` route.
+- **Earlier queued Claude plugin listings:** 21 from the batch 20 audit (AdisInsight to WorkOS; Mapbox was already attributed), plus LaunchDarkly, Descope, PayPal, scrimba-explain, freee, Make, Mixpanel, Wiley Scholar Gateway, Pydantic Logfire (`wf.69fa2739ef79cf976468536e`) and two Adspirer plugins on `adspirer-ads-performance-marketing-agent`.
+- **Route-specific memberships.** Directory listings are record-level, so these routes were added as alternatives, each naming its listing. ChatGPT-declared routes: fal `https://mcp.fal.ai/mcp`, LSEG `…/lfa/mcp/server-ch`, Clay `https://api.clay.com/public/v0/mcp` and Adspirer Social Ads `https://mcp.adspirer-chatgpt.com/social-ads`. Claude-plugin routes: PayPal's sandbox `https://mcp.sandbox.paypal.com/sse`, Scrimba's `https://scrimba.com/mcp/explain` (anonymous handshake), Make's `https://mcp.make.com/claude` and Wiley's `https://connector.scholargateway.ai/mcp`. Each returned HTTP 401 except Scrimba's.
+- **Not applied, because the issue limits existing records to memberships:** the queued LaunchDarkly primary swap, the listing-source upgrades (LSEG, Adspirer Social Ads, Wiley Scholar Gateway, Amazon Selling Partner, PandaDoc), the Mixpanel plugin caveat and TinyFish's `?source=claude_plugin` route. The NumbersGame plugin belongs to records that are still queued, and holds (Shutterstock, Zoho CRM, Questrade, Diffit, NOVASOL) stay held.
+
+<a id="batch-30-capability-sources"></a>
+
+### Capability sources
+
+Descriptions and caveats state only what these publisher references document. Protected-resource metadata and directory listings were used for authentication and endpoint provenance only. The exceptions are Yardi Matrix (Yardi's technical guide requires a sign-in) and Meticulate (no publisher MCP page was found), which use `client-directory` sources, follow their directory listings and say so in their caveats. Zillow also uses a `client-directory` source, its Claude directory page, because its publisher guide does not name the `/api/v2` endpoint. The guide remains its capability and setup reference. Meticulate's protected-resource metadata corroborates only its endpoint and OAuth configuration. "Names primary" says whether the reference gives the catalog URL.
+
+| Record | Publisher capability reference | Names primary |
+|---|---|---|
+| `crypto-com` | [Crypto.com MCP: ChatGPT setup](https://mcp.crypto.com/docs/chatgpt) · [features](https://mcp.crypto.com/docs/features) | Yes |
+| `zillow` | [Connect Claude to Zillow](https://www.zillow.com/connect-claude-to-zillow/); endpoint from the [Claude directory page](https://claude.com/marketplace/connectors/zillow) (client directory) | No |
+| `magnific` | [Magnific MCP](https://www.magnific.com/ai/docs/magnific-mcp) · [MCP docs](https://docs.magnific.com/modelcontextprotocol.md) | Yes (root) |
+| `lawstronaut` | [Lawstronaut-FZCO/lawstronaut-mcp](https://github.com/Lawstronaut-FZCO/lawstronaut-mcp) | Yes |
+| `pg-aiguide` | [timescale/pg-aiguide](https://github.com/timescale/pg-aiguide) | Yes |
+| `nansen` | [Connecting](https://docs.nansen.ai/mcp/connecting.md) · [overview](https://docs.nansen.ai/mcp/overview.md) | Yes |
+| `tracy-ai-interviewer` | [Connect Tracy](https://tracyinterview.ai/connect) | Yes |
+| `browserstack` | [Remote MCP server](https://www.browserstack.com/docs/browserstack-mcp-server/get-started/remote-mcp-server) | Yes |
+| `yardi-matrix` | [Claude directory page](https://claude.com/marketplace/connectors/yardi-matrix) (client directory) | Yes |
+| `parqet` | [Parqet MCP](https://developer.parqet.com/docs/give-ai-portfolio-context-with-the-parqet-mcp) | Yes (root) |
+| `chili-piper` | [Chili Piper MCP README](https://github.com/Chili-Piper/mcp-assets/blob/main/mcp-servers/chili-piper/README.md) | Yes |
+| `meticulate` | [ChatGPT plugin page](https://openai.com/business/plugins/meticulate/) (client directory); endpoint and OAuth corroborated by [protected-resource metadata](https://brain.meticulate.ai/.well-known/oauth-protected-resource/new-mcp/mcp) | No |
+| `responsive` | [Responsive MCP in Copilot Studio](https://help.responsive.io/en-US/responsive/article/monPeZaE-setting-up-responsive-mcp-server-in-copilot-studio) | Yes |
+| `rox` | [Rox developer tools: MCP](https://www.rox.com/docs/admin-guide/developer-tools-mcp) | Yes |
+| `sentinelx` | [About SentinelX](https://get.sentinelx.app/about) | Yes |
+| `sync-labs` | [sync. labs MCP server](https://sync.so/docs/plugins-and-extensions/mcp-server) | Yes |
+| `perplexity-api` | [Perplexity MCP server](https://docs.perplexity.ai/docs/getting-started/integrations/mcp-server.md) | Yes |
+| `coros` | [COROS official MCP](https://coros.com/us/stories/coros-metrics/mcp-testing) | Yes |
+| `tubealfred` | [TubeAlfred hosted MCP URL](https://mcp.tubealfred.com/mcp.md) | Yes (root) |
+| `wpvibe` | [WPVibe](https://mcp.wpvibe.ai/) · [tools reference](https://wpvibe.ai/docs/tools-reference/) | Yes |
+| `buzzfy` | [Buzzfy MCP](https://buzzfy.co/mcp) | Yes |
+| `capacities` | [Capacities MCP](https://docs.capacities.io/developer/model-context-protocol) | Yes |
+| `crosswalk` | [crosswalk docs](https://crosswalk.to/docs) | Yes (root, no trailing slash) |
+| `flora` | [FLORA MCP](https://flora.ai/mcp) · [authentication](https://docs.flora.ai/mcp/authentication) | Yes |
+| `frameo-ai` | [Frameo MCP reference](https://mcp.frameo.ai/docs) | Yes |
+| `kittl` | [Kittl MCP connector](https://help.kittl.com/ai-tools/use-the-kittl-mcp-connector/) | Yes |
+| `nifty` | [Nifty for ChatGPT](https://docs.nifty.ai/mcp-server/mcp-server/chatgpt) | Yes |
+| `synthesia` | [Synthesia MCP](https://developers.synthesia.io/docs/synthesia-mcp) | Yes |
+| `wpwriter` | [yaniv-fink/wpwriter-mcp](https://github.com/yaniv-fink/wpwriter-mcp) | Yes (`/mcp`) |
+| `agentphone` | [AgentPhone MCP](https://docs.agentphone.ai/mcp) | Yes |
+
+### Queued for later batches
+
+The batch 29 queue is unchanged. The issue defers nine lower-ranked candidates from investigation `bce86dc7-a3ff-4db5-ac09-1725730d205e` to later batches. Global ChatGPT discovery was incomplete (HTTP 451), so no memberships were removed.
