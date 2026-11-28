@@ -107,6 +107,8 @@ const fetchArticleBody = async (article: LearnArticleSummary): Promise<string> =
   const [raw, { expandCompatMatrixDirectives }] = await Promise.all([file(), import('./compatMatrix')]);
   // Same body createArticle builds at build time for the prerendered page and exports.
   const content = expandCompatMatrixDirectives(splitFrontmatter(raw).content, article.path);
+  // Figures arrive with the body, so the article renders them without a loading state.
+  if (content.includes('](../figures/')) await (await import('./figureRegistry')).loadFiguresFor(content);
   loadedBodies.set(article.slug, content);
   return content;
 };

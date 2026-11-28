@@ -5,6 +5,8 @@ import { Link } from 'react-router-dom';
 import remarkGfm from 'remark-gfm';
 import { splitAtComponentMarker } from '../../content/contentModel';
 import { extractSegmentHeadingIds, remarkHeadingIds } from '../../content/outline';
+import { parseFigureSrc } from '../../content/figures';
+import ArticleFigure from './ArticleFigure';
 import CodeBlock from './CodeBlock';
 import { getSiteRelativePath } from '../../content/siteUrl';
 
@@ -25,6 +27,18 @@ const markdownComponents: Components = {
     );
   },
   pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
+  // A figure line parses as a paragraph holding one image; <figure> may not sit inside <p>.
+  p: ({ children, node, ...props }) => {
+    const only = node?.children.length === 1 ? node.children[0] : undefined;
+    const src = only?.type === 'element' && only.tagName === 'img' ? String(only.properties.src ?? '') : '';
+    return parseFigureSrc(src) ? <>{children}</> : <p {...props}>{children}</p>;
+  },
+  img: ({ src, alt = '', title, node: _node, ...props }) => {
+    const figure = typeof src === 'string' ? parseFigureSrc(src) : null;
+    return figure
+      ? <ArticleFigure slug={figure.slug} name={figure.name} alt={alt} caption={title} />
+      : <img src={src} alt={alt} title={title} {...props} />;
+  },
   table: ({ children, node: _node, ...props }) => (
     <div className="reading-table">
       <table {...props}>{children}</table>

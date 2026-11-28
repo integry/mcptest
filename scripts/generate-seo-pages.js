@@ -18,7 +18,8 @@ const {
   getTrackNeighbors,
 } = require('../src/content/contentModel.ts');
 const { extractHeadings, splitHeadingAnchor } = require('../src/content/outline.ts');
-const { loadArticles } = require('./content/loadArticles.js');
+const { FIGURES_DIR, loadArticles } = require('./content/loadArticles.js');
+const { parseFigureLine, parseFigureSvg, renderFigureSvgHtml } = require('../src/content/figures.ts');
 const { SEARCH_INDEX_PATH, buildSearchIndex, serializeSearchIndex } = require('../src/content/searchIndex.ts');
 const {
   FEED_PATH,
@@ -764,6 +765,20 @@ function renderMarkdown(markdown, context = undefined) {
       while (index < lines.length && !lines[index].includes('-->')) {
         index += 1;
       }
+      index += 1;
+      continue;
+    }
+
+    const figure = parseFigureLine(line);
+    if (figure) {
+      // Same markup as ArticleFigure, from the same parsed SVG.
+      const svg = parseFigureSvg(fs.readFileSync(path.join(FIGURES_DIR, figure.slug, `${figure.name}.svg`), 'utf8'));
+      html.push([
+        '<figure class="reading-figure">',
+        `<div class="reading-figure-canvas">${renderFigureSvgHtml(svg, figure.alt)}</div>`,
+        figure.caption ? `<figcaption>${escapeHtml(figure.caption)}</figcaption>` : '',
+        '</figure>',
+      ].join(''));
       index += 1;
       continue;
     }
